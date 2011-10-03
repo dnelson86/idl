@@ -231,6 +231,49 @@ function rhoTHisto, dens_in, temp_in, mass=mass, nbins=nbins, plot=plot
 
 end
 
+; redshift_axis(): draw redshift axis
+
+pro redshift_axis, xRange, yRange, ylog=ylog, snapnum=snapnum, dotted=dotted
+
+  logFac = 1.0
+  if keyword_set(ylog) then logFac = 10.0
+  
+  yTickLen = (yRange[1]-yRange[0]) / 40.0 * logFac
+  yTextOff = (yRange[1]-yRange[0]) / 50.0 * logFac
+
+  zTicknames = ['30','6','4','3','2','1','0.5','0.25','0']
+  nZ = n_elements(zTicknames)
+  
+  zXPos = fltarr(nZ)
+  
+  ; plot "maximum" redshift label
+  if (xRange[0] le 0.0) then $
+    fsc_text,0.0,yRange[1]+yTextOff,zTicknames[0],alignment=0.5
+  
+  ; skip z=30 (highest) at t=0
+  for i=1,nZ-1 do begin
+    if keyword_set(snapnum) then begin ;x-axis in snapshot number
+      zXPos[i] = redshiftToSnapNum(float(zTicknames[i]))
+    endif else begin ;x-axis in time [gyr]
+      zXPos[i] = redshiftToAge(float(zTicknames[i]))
+    endelse
+    
+    ; plot tick mark and label if inside plotrange
+    if (zXPos[i] ge xRange[0] and zXPos[i] le xRange[1]) then begin
+      fsc_plot,[zXPos[i],zXPos[i]],[yRange[1],yRange[1]-yTickLen],/overplot
+      fsc_text,zXPos[i],yRange[1]+yTextOff,zTicknames[i],alignment=0.5
+    endif
+    
+    ; plot vertical dotted line at each redshift mark if requested
+    if keyword_set(dotted) then $
+      fsc_plot,[zXPos[i],zXPos[i]],yRange,line=1,/overplot,thick=!p.thick-0.5
+  endfor
+  
+  fsc_plot,xRange,[yRange[1],yRange[1]],/overplot
+  fsc_text,0.5,0.94,"Redshift",/normal
+
+end
+
 ; sphDensityProjection(): make density projection using SPH kernel (inspired by Mark's sphMap)
 
 function sphDensityProjection, pos, hsml, mass, quantity=quantity, imgSize=imgSize, boxSize=boxSize,$

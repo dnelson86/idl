@@ -5,6 +5,7 @@
 @helper
 @coldflowsLoad
 @coldflowsUtil
+@coldflowsVis
 
 ; findThermalHistories(): for a given subhalo selection at a given redshift, load all previous
 ;                         snapshots and record the density+temperature for each gas particle in 
@@ -48,7 +49,6 @@ pro findThermalHistories, res=res
     
     ; make list of sgIDs excluding background (id=0) subgroups
     valSGids   = []
-    valSGcount = 0
     prevGrNr   = -1
     
     for i=0,n_elements(sg.subgroupLen)-1 do begin
@@ -56,7 +56,6 @@ pro findThermalHistories, res=res
         prevGrNr = sg.subgroupGrnr[i]
       endif else begin
         valSGids = [valSGids,i]
-        valSGcount += 1
       endelse
     endfor
   
@@ -191,31 +190,27 @@ pro plotTmaxRedshift, res=res
   smoothAccretionOnly = 1
   
   redshiftBins = [6.0,5.0,4.0,3.0,2.0,1.5,1.0,0.5,0.25,0.0]  
-  
-  nSnaps = 314
 
   ; plot axes
-  redshifts = [30.0,1.0]
-  
   redshifts = snapNumToRedshift(/all)
   times     = redshiftToAge(redshifts)
   
-  zTicks = [30.0,6.0,4.0,3.0,2.0,1.0,0.5,0.25,0.0]
-  zTicknames = ['30','6','4','3','2','1','0.5','0.25','0']
-
+  xrange = [0.0,max(times)]
+  yrange = [0.0,1.05]
+ 
   ; pdf
   pdfRes = 1000.0
   pdfWidth = 20.0 * max(times) / pdfRes
   pdfPts = findgen(pdfRes)/pdfRes * max(times)
   pdf = fltarr(n_elements(redshiftBins)-1,pdfRes)
     
-  ; maxt_redshift
+  ; plot
   start_PS,plotPath+'maxt_redshift_'+str(res)+'.eps';,xs=7,ys=6
 
-  fsc_plot,[0],[0],/nodata,xrange=[0,max(times)],yrange=[0.0,1.05],$
-           xtitle="Age of Universe [Gyr]",ytitle="Normalized PDF",xs=1,/ys,ymargin=[4,3]
-
-  fsc_text,0.5,0.95,"Redshift",/normal
+  fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+           xtitle="Time [Gyr]",ytitle="Normalized PDF",xs=9,/ys,ymargin=[4,3]
+  redshift_axis,xrange,yrange,/dotted
+  fsc_text,xrange[1]*0.9,yrange[1]*0.9,str(res)+"^3",alignment=0.5
   
   for j=0,n_elements(redshiftBins)-2 do begin
     targetRedshift = redshiftBins[j+1]
@@ -243,13 +238,17 @@ pro plotTmaxRedshift, res=res
     for i=0,n_elements(sgIDs_All)-1 do begin
       w = where(max(temp[i,*]) eq temp[i,*],count)
       if (count ne 1) then begin
-        print,'ERROR'
-        return
+        if (count ne 2) then begin
+          print,'ERROR'
+          stop
+        endif
+        print,'WARNING: Two snaps with same max temps',w[0],temp[i,w[0]],w[1],temp[i,w[1]]
+        w=w[0]
       endif
       maxTempTimes[i] = times[w]
     endfor
     
-    ; PDF    
+    ; calculate PDF
     for i=0,pdfRes-2 do begin
       w = where(maxTempTimes ge pdfPts[i]-pdfWidth/2.0 and $
                 maxTempTimes lt pdfPts[i+1]+pdfWidth/2.0, count)
@@ -261,10 +260,181 @@ pro plotTmaxRedshift, res=res
   ; normalize
   pdf /= max(pdf)  
   
+  redshiftNames = ['6','5','4','3','2','1.5','1.0','0.5','0.25','0']
   for j=0,n_elements(redshiftBins)-2 do begin
+    ; plot pdf
     fsc_plot,pdfPts,pdf[j,*],/overplot,color=fsc_color(units.colors[j])
+    
+    ; plot legend entry
+    ypos = yrange[1]*0.8 - yrange[1]*0.05*j
+    ;fsc_plot,[xrange[1]*0.9,xrange[1]*0.92],[ypos,ypos],line=0,color=fsc_color(units.colors[j]),/overplot
+    fsc_text,xrange[1]*0.97,ypos,redshiftNames[j+1]+" < z < "+redshiftNames[j],$
+             alignment=1.0,color=fsc_color(units.colors[j]),charsize=!p.charsize-0.5
   endfor
+  
+  end_PS
 
+end
+
+; plotModeFracVsSubhaloMass()
+
+pro plotModeFracVsSubhaloMass, res=res
+
+  units = getUnits()
+
+  if not keyword_set(res) then begin
+    print,'Error: Must specific resolution set.'
+    return
+  endif
+  
+  ; config
+  gadgetPath  = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
+  dataPath    = '/n/hernquistfs1/dnelson/coldflows/thermhist/'
+  plotPath    = '/n/home07/dnelson/coldflows/'
+
+  smoothAccretionOnly = 1
+  critLogTemp = 5.5
+  
+  minNumGasPart = 10 ;smoothly accreted gas per subhalo
+  
+  redshiftBins = [6.0,5.0,4.0,3.0,2.0,1.5,1.0,0.5,0.25,0.0]  
+  binVals      = [2,3,5,8] ;z=3,2,1,0 halo selection
+
+  ; plot
+  start_PS,plotPath+'frac_shmass_'+str(res)+'.eps'
+  !p.multi = [0,2,2]
+
+  for j=0,n_elements(binVals)-1 do begin
+    targetRedshift = redshiftBins[binVals[j]+1]
+    endingRedshift = redshiftBins[binVals[j]]
+    
+    ; make halo selection at target redshift
+    targetSnap = redshiftToSnapNum(targetRedshift)
+    endingSnap = redshiftToSnapNum(endingRedshift)
+  
+    saveFilename = dataPath + 'thermhist.'+str(res)+'.m='+str(targetSnap)+'.to.'+str(endingSnap)+'.sav'
+    
+    if (keyword_set(smoothAccretionOnly)) then $
+    saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.sAO.sav'
+    
+    if not (file_test(saveFileName)) then begin
+      print,'WARNING: Cannot load savefile: '+saveFilename
+      continue
+    endif
+    
+    restore,saveFilename
+    print,'Working: '+saveFilename
+    
+    ; calc max temp
+    maxTemps = fltarr(n_elements(sgIDs_All))
+    for i=0,n_elements(sgIDs_All)-1 do begin
+      maxTemps[i] = alog10(max(temp[i,*]))
+    endfor    
+    
+    ; load subhalo catalog
+    sg    = loadSubhaloGroups(gadgetPath,targetSnap)
+    
+    ; make list of sgIDs excluding background (id=0) subgroups
+    valSGids   = []
+    prevGrNr   = -1
+    
+    for i=0,n_elements(sg.subgroupLen)-1 do begin
+      if (sg.subgroupGrnr[i] ne prevGrNr) then begin
+        prevGrNr = sg.subgroupGrnr[i]
+      endif else begin
+        valSGids = [valSGids,i]
+      endelse
+    endfor
+    
+    ; subhalo masses (x-axis)
+    shmass = alog10( (units.UnitMass_in_g / units.Msun_in_g) * sg.subgroupMass[valSGids] )
+    
+    ; subhalo cold fractions (y-axis)
+    coldfrac = fltarr(n_elements(valSGids))
+    
+    for i=0,n_elements(valSGids)-1 do begin
+      sgIDs = sg.subGroupIDs[sg.subGroupOffset[valSGids[i]] : $
+                             sg.subGroupOffset[valSGids[i]] + sg.subGroupLen[valSGids[i]] - 1]
+
+      match,sgIDs,sgIDs_All,sh_ind,sgIDs_ind,count=count
+      
+      if (count eq 0 or count lt minNumGasPart) then begin
+        ;print,'Warning: halo sgid='+str(i)+' had no matches in sgIDs_All'
+        coldfrac[i] = -0.1
+        continue
+      endif
+      
+      wCold = where(maxTemps[sgIDs_ind] lt critLogTemp, count_cold)
+      if (count_cold ne 0) then begin
+        coldfrac[i] = float(count_cold) / count
+      endif
+    endfor
+
+    ; plot config
+    xrange = [8.5,12.5]
+    yrange = [-0.08,1.08]
+    
+    plotsym,0 ;circle
+    symsize = 0.3
+    
+    if (j eq 0) then begin
+      fsc_plot,shmass,coldfrac,psym=8,ymargin=[1.0,2.0],xmargin=[7.0,0.0],$
+               xrange=xrange,yrange=yrange,/xs,/ys,xtickname=replicate(' ',10),symsize=symsize
+      fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=3",alignment=0.5,color=fsc_color('orange')
+    endif
+    if (j eq 1) then begin
+      fsc_plot,shmass,coldfrac,psym=8,ymargin=[1.0,2.0],xmargin=[0.0,7.0],$
+               xrange=xrange,yrange=yrange,/xs,/ys,$
+               xtickname=replicate(' ',10),ytickname=replicate(' ',10),symsize=symsize
+      fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=2",alignment=0.5,color=fsc_color('orange')
+    endif
+    if (j eq 2) then begin
+      fsc_plot,shmass,coldfrac,psym=8,ymargin=[4.0,-1.0],xmargin=[7.0,0.0],$
+               xrange=xrange,yrange=yrange,/xs,/ys,symsize=symsize
+      fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=1",alignment=0.5,color=fsc_color('orange')
+    endif
+    if (j eq 3) then begin
+      fsc_plot,shmass,coldfrac,psym=8,ymargin=[4.0,-1.0],xmargin=[0.0,7.0],$
+               xrange=xrange,yrange=yrange,/xs,/ys,ytickname=replicate(' ',10),$
+               symsize=symsize
+      fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=0",alignment=0.5,color=fsc_color('orange')
+    endif
+
+    ; median line
+    ;massStep = round(100.0/sqrt(n_elements(valSGids)))/10.0
+    massStep = 0.2
+    massBins = (xrange[1]-xrange[0])/massStep
+    massXPts = findgen(massBins)/massBins * (xrange[1]-xrange[0]) + xrange[0] + massStep/2.0
+    
+    medCold = fltarr(massBins)
+    medCold[0:floor(n_elements(medCold)/2.0)] = 1.0 ;set default value high for first half
+    
+    for i=0,massBins-1 do begin
+      w = where(shmass ge xrange[0]+i*massStep and shmass lt xrange[0]+(i+1)*massStep and $
+                coldfrac ne -0.1,count)
+      if (count gt 0) then begin
+        medCold[i] = mean(coldfrac[w])
+      endif
+    endfor
+    
+    ; plot smoothed median line
+    fsc_plot,massXPts,smooth(medCold,3),color=fsc_color('blue'),line=0,/overplot
+    fsc_plot,massXPts,smooth(1.0-medCold,3),color=fsc_color('red'),line=0,thick=!p.thick-0.5,/overplot
+    
+    ; fit for medCold=0.5
+    w = where(massXPts ge 10.5 and massXPts le 11.5 and medCold ne 1.0)
+    fit = linfit(massXPts[w],medCold[w])
+    fitSHMass = (0.5 - fit[0]) / fit[1]
+
+    print,'cold frac 1/2 best fit subhalo mass = '+str(fitSHMass)
+
+  endfor ;j
+  
+  fsc_text,0.5,0.95,str(res)+"^3",alignment=0.5,/normal
+  fsc_text,0.5,0.05,"log ( Subhalo Mass )",alignment=0.5,/normal
+  fsc_text,0.04,0.5,"Normalized Fraction",alignment=0.5,orientation=90,/normal
+  
+  !p.multi = 0
   end_PS
 
 end
@@ -412,7 +582,7 @@ pro plotTempTracks, res=res
   redshiftBins = [6.0,5.0,4.0,3.0,2.0,1.5,1.0,0.5,0.25,0.0]
  
   ; load data
-  j = 5
+  j = 5 ;5,3,2
   targetRedshift = redshiftBins[j+1]
   endingRedshift = redshiftBins[j]
   
@@ -444,11 +614,6 @@ pro plotTempTracks, res=res
   
   numTracksEach = 20
   
-  snapNums  = indgen(targetSnap)
-  redshifts = [30.0,snapNumToRedshift(snapNum=targetSnap)]
-  timeMinMax = redshiftToAge([2.0,10.0])
-  zTicks = [30.0,20.0,10.0,6.0,5.0,4.0,3.0,2.0,1.0,0.0]
-  
   ; select
   wBlue = where(maxTemps lt critLogTemp-1.0, countBlue)
   wRed  = where(maxTemps gt critLogTemp+0.5, countRed)
@@ -461,26 +626,34 @@ pro plotTempTracks, res=res
   idRed = (sort(idRed))[0:numTracksEach-1]
   idRed = wRed[idRed] 
   
-  if 0 then begin
+  ;if 0 then begin
+  
+  ; plot axes
+  redshifts = snapNumToRedshift(/all)
+  times     = redshiftToAge(redshifts)
+  
+  xrange = [0,times[targetSnap]] ;targetSnap-1
+  yrange = [1e1,4e6]
   
   ; temp vs. time/redshift tracks
   start_PS, plotPath + 'temp.time.tracks.z='+string(redshiftBins[j+1],format='(f4.2)')+'.eps'
-    fsc_plot,[0],[0],/nodata,xrange=[0,targetSnap-1],yrange=[1e1,4e6],$
-             xtitle="Snapshot Number",ytitle="Temperature [K]",xs=9,/ys,/ylog,ymargin=[4,3]
-    fsc_axis,1.0,4e6,0.0,/xaxis,xrange=redshifts,xticks=n_elements(zTicks)-1,xtickv=zTicks,/xlog
-    fsc_text,0.5,0.95,"Redshift",/normal
+    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+             xtitle="Time [Gyr]",ytitle="Temperature [K]",xs=9,/ys,/ylog,ymargin=[4,3]
+    redshift_axis,xrange,yrange,/ylog
     
     ; individual tracks
     for pID=0,numTracksEach-1 do begin
-      fsc_plot,snapNums,temp[idBlue[pID],*],/overplot,thick=0.1,color=fsc_color('blue')
-      fsc_plot,snapNums,temp[idRed[pID],*],/overplot,thick=0.1,color=fsc_color('red')
+      fsc_plot,times,temp[idBlue[pID],*],/overplot,thick=0.1,color=fsc_color('blue')
+      fsc_plot,times,temp[idRed[pID],*],/overplot,thick=0.1,color=fsc_color('red')
     endfor
     
-    fsc_text,110,3e2,"log "+textoidl("T_{max}")+" < 4.5",alignment=0.5,color=fsc_color('blue')
-    fsc_text,110,1e2,"log "+textoidl("T_{max}")+" > 6.0",alignment=0.5,color=fsc_color('red')
+    fsc_text,times[targetSnap]*0.8,3e2,"log "+textoidl("T_{max}")+" < 4.5",$
+              alignment=0.5,color=fsc_color('blue')
+    fsc_text,times[targetSnap]*0.8,1e2,"log "+textoidl("T_{max}")+" > 6.0",$
+              alignment=0.5,color=fsc_color('red')
   end_PS
   
-  endif ;0
+  ;endif ;0
   
   ; rho/temp plane tracks
   start_PS, plotPath + 'rho.temp.tracks.'+string(redshiftBins[j+1],format='(f4.2)')+'.eps'
@@ -817,241 +990,3 @@ pro selectFilament
   stop
 end
 
-; makeArepoProjBsub(): write bsub file to invoke six different axis aligned projections using the 
-;                      Arepo voronoi_makeimage_new() code
-;                      (output filenames have been made unique with change to Arepo code)
-
-pro makeArepoProjBsub
-
-  ; execute bsub?
-  spawnJobs = 1
-  paramFile = "paramCut.txt"
-
-  ; object config
-  xCen = 1123.20
-  yCen = 7568.80
-  zCen = 16144.2
-  
-  snapNum    = 189
-  sliceWidth = 400.0 ; cube sidelength
-  
-  ; render config
-  workingPath = '/n/home07/dnelson/coldflows/vis/'
-  nProcs      = 8   ; 128^3=8, 256^3=24, 512^3=96
-  dimX        = 800  ; image dimensions (x)
-  dimY        = 800  ; image dimensions (y)
-  
-  ; bbox and projection setup
-  cmdCode = 5 ;projection
-  
-  xMin = xCen - sliceWidth/2.0
-  xMax = xCen + sliceWidth/2.0
-  yMin = yCen - sliceWidth/2.0
-  yMax = yCen + sliceWidth/2.0
-  zMin = zCen - sliceWidth/2.0
-  zMax = zCen + sliceWidth/2.0  
-  
-  ; integration range for each axis depends on
-  axesBB = [[xMin,xMax,yMin,yMax,zMin,zMax],$
-            [xMin,xMax,zMin,zmax,yMin,yMax],$
-            [yMin,yMax,zMin,zMax,xMin,xMax]]
-
-  axesStr = ['0 1 2','0 2 1','1 2 0']
-
-  ; write bjob files
-  foreach axisStr, axesStr, i do begin  
-  
-    ; check before overriding
-    if (file_test(workingPath+'job'+str(i)+'.bsub')) then begin
-      print,'Error: job'+str(i)+'.bsub already exists'
-      return
-    endif
-    
-    ; create jobI.bsub
-    openW, lun, workingPath+'job'+str(i)+'.bsub', /GET_LUN
-    
-    ; write header
-    printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q nancy'
-    printf,lun,'#BSUB -J cf_vis_'+str(i)
-    printf,lun,'#BSUB -n ' + str(nProcs)
-    printf,lun,'#BSUB -R "rusage[mem=30000] span[ptile=8]"'
-    printf,lun,'#BSUB -o run.out'
-    printf,lun,'#BSUB -e run.err'
-    printf,lun,'#BSUB -a openmpi'
-    printf,lun,'#BSUB -N'
-    printf,lun,''
-    
-    ; write projection commands
-    strArray = ['mpirun.lsf ./Arepo '+paramFile,$
-                str(cmdCode),$
-                str(snapNum),$
-                str(dimX),str(dimY),$
-                axisStr,$
-                str(axesBB[0,i]),str(axesBB[1,i]),$
-                str(axesBB[2,i]),str(axesBB[3,i]),$
-                str(axesBB[4,i]),str(axesBB[5,i]),$
-                '> run_'+str(i)+'.txt']
-    printf,lun,strjoin(strArray,' ')
-    
-    ; close
-    close,lun
-    free_lun,lun
-    
-  endforeach
-  
-  ; add to queue if requested
-  if (spawnJobs) then for i=0,n_elements(axesStr)-1 do spawn,'bsub < job'+str(i)+'.bsub'
-
-end
-
-; sphMapBox: run sph kernel density projection on whole box
-
-pro sphMapBox, res=res
-
-  if not keyword_set(res) then begin
-    print,'Error: Must specific resolution set.'
-    return
-  endif
-  
-  ; config
-  gadgetPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
-  workingPath  = '/n/home07/dnelson/coldflows/'
-  
-  boxSize = [10000,10000,10000] ;kpc
-  boxCen  = [10000,10000,10000] ;kpc
-  imgSize = [500,500]           ;px
-  
-  axis0 = 0 ;x
-  axis1 = 1 ;y
-  mode  = 1 ;1=col mass, 2=mass-weighted quantity, 3=col density
-  
-  targetRedshift = 3.0
-  targetSnap     = redshiftToSnapNum(targetRedshift)
-  
-  imgFilename = 'sphmap.subhalo.z='+str(targetRedshift)+'.box.axis0='+str(axis0)+$
-                '.axis1='+str(axis1)+'.res='+str(res)
-                
-  ; load properties from snapshot
-  pos  = loadSnapshotSubset(gadgetPath,snapNum=targetSnap,partType='gas',field='pos',/verbose)
-  hsml = loadSnapshotSubset(gadgetPath,snapNum=targetSnap,partType='gas',field='hsml',/verbose)
-  mass = loadSnapshotSubset(gadgetPath,snapNum=targetSnap,partType='gas',field='mass',/verbose)
-
-  colMassMap = sphDensityProjection(pos, hsml, mass, imgSize=imgSize, boxSize=boxSize,$
-                                    boxCen=boxCen, axis0=axis0, axis1=axis1, mode=mode, periodic=0)
-
-  ; rescale
-  maxVal = max(colMassMap)/2.0
-  minVal = maxVal / 1e4
-  
-  w = where(colMassMap eq 0, count, complement=ww)
-  if (count ne 0) then colMassMap[w] = min(colMassMap[ww])
-  
-  w = where(colMassMap gt maxVal, count)
-  if (count ne 0) then colMassMap[w] = maxVal
-  w = where(colMassMap lt minVal, count)
-  if (count ne 0) then colMassMap[w] = minVal
-  
-  colMassMap = alog10(colMassMap)
-  colMassMap = (colMassMap-min(colMassMap))*254.0 / (max(colMassMap)-min(colMassMap)) ;0-250
-  ;h2d = filter_image(h2d,FWHM=[1.1,1.1],/ALL) ;gaussian kernel convolution
-  colMassMap += 1.0 ;1-251
-
-  ; plot PS and PNG
-  xMinMax = [boxCen[0]-boxSize[0]/2.0,boxCen[0]+boxSize[0]/2.0]
-  yMinMax = [boxCen[1]-boxSize[1]/2.0,boxCen[1]+boxSize[1]/2.0]
-  
-  start_PS, workingPath+imgFilename+'.eps'
-    loadct, 4, bottom=1, /silent
-    tvim,colMassMap,xrange=xMinMax,yrange=yMinMax,pcharsize=0.0001
-  end_PS, pngResize=68
-  
-end
-
-; sphMapSubhalos: run sph kernel density projection on boxes centered on subhalos
-
-pro sphMapSubhalos, res=res
-
-  if not keyword_set(res) then begin
-    print,'Error: Must specific resolution set.'
-    return
-  endif
-
-  ; config
-  gadgetPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
-  workingPath  = '/n/home07/dnelson/coldflows/vis/subhalo_imgs_'+str(res)+'G/'
-  
-  boxSize = [100,100,100] ;kpc
-  imgSize = [500,500]     ;px
-  
-  axes = list([0,1]) ;x,y
-  mode  = 1 ;1=col mass, 2=mass-weighted quantity, 3=col density
-  
-  targetRedshift = 3.0
-  
-  ; load subhalo group catalogs
-  targetSnap = redshiftToSnapNum(targetRedshift)
-  
-  sg = loadSubhaloGroups(gadgetPath,targetSnap,/verbose)
-  
-  ; make list of sgIDs excluding background (id=0) subgroups
-  valSGids   = []
-  prevGrNr   = -1
-  
-  for i=0,n_elements(sg.subgroupLen)-1 do begin
-    if (sg.subgroupGrnr[i] ne prevGrNr) then begin
-      prevGrNr = sg.subgroupGrnr[i]
-    endif else begin
-      valSGids = [valSGids,i]
-    endelse
-  endfor
-  
-  ; load properties from snapshot
-  pos  = loadSnapshotSubset(gadgetPath,snapNum=targetSnap,partType='gas',field='pos',/verbose)
-  hsml = loadSnapshotSubset(gadgetPath,snapNum=targetSnap,partType='gas',field='hsml',/verbose)
-  mass = loadSnapshotSubset(gadgetPath,snapNum=targetSnap,partType='gas',field='mass',/verbose)
-  
-  ; loop over all non-background subhalos and image
-  foreach sgID, valSGids do begin
-  
-    foreach axisPair, axes do begin
-  
-      imgFilename = 'sphmap.subhalo.z='+str(targetRedshift)+'.sgID='+str(sgID)+'.axis0='+$
-                    str(axisPair[0])+'.axis1='+str(axisPair[1])+'.res='+str(res)
-  
-      ; get subhalo position
-      boxCen = sg.subgroupPos[*,sgID]
-      
-      print,'['+string(sgID,format='(I04)')+'] Mapping ['+str(axisPair[0])+' '+$
-            str(axisPair[1])+'] with '+str(boxSize[0])+$
-            ' kpc box around subhalo center ['+str(boxCen[0])+' '+str(boxCen[1])+' '+str(boxCen[2])+']'
-    
-      colMassMap = sphDensityProjection(pos, hsml, mass, imgSize=imgSize, boxSize=boxSize,$
-                                        boxCen=boxCen, axis0=axisPair[0], axis1=axisPair[1], $
-                                        mode=mode, periodic=0, /verbose)
-    
-      ; rescale
-      w = where(colMassMap eq 0, count, complement=ww)
-      if (count ne 0) then colMassMap[w] = min(colMassMap[ww])
-      
-      colMassMap = alog10(colMassMap)
-      colMassMap = (colMassMap-min(colMassMap))*254.0 / (max(colMassMap)-min(colMassMap)) ;0-254
-      ;h2d = filter_image(h2d,FWHM=[1.1,1.1],/ALL) ;gaussian kernel convolution
-      colMassMap += 1.0 ;1-254
-    
-      ; plot PS and PNG
-      xMinMax = [boxCen[0]-boxSize[0]/2.0,boxCen[0]+boxSize[0]/2.0]
-      yMinMax = [boxCen[1]-boxSize[1]/2.0,boxCen[1]+boxSize[1]/2.0]
-      
-      start_PS, workingPath+imgFilename+'.eps'
-        loadct, 4, bottom=1, /silent
-        tvim,colMassMap,xrange=xMinMax,yrange=yMinMax,pcharsize=0.0001
-        fsc_text,0.72,0.05,"z=3 id="+string(sgID,format='(I04)'),alignment=0.5,$
-                 color=fsc_color('white'),/normal
-      end_PS, pngResize=68, /deletePS
-    
-    endforeach ;axisPair
-  
-  endforeach ;valSGids
-  
-end
