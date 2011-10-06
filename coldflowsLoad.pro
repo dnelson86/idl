@@ -1,6 +1,6 @@
 ; coldflowsLoad.pro
 ; cold flows - loading procedures (cosmo snapshots, fof/subhalo group cataloges)
-; dnelson sep.2011
+; dnelson oct.2011
 
 ; loadSubhaloGroups(): load complete subfind group catalog for a given snapshot
 
@@ -476,7 +476,7 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
   if (field eq 'density' or field eq 'rho') then begin
     r = fltarr(nPartTot[partType])
     fieldName = 'Density'
-    if (partType ne 0) then begin & print,'Error: Denity is gas only!' & return,0 & endif
+    if (partType ne 0) then begin & print,'Error: Density is gas only!' & return,0 & endif
   endif
   if (field eq 'electronabundance' or field eq 'ne' or field eq 'nelec') then begin
     r = fltarr(nPartTot[partType])
