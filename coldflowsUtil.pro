@@ -1,6 +1,42 @@
 ; coldflowsUtil.pro
 ; cold flows - utility functions
-; dnelson sep.2011
+; dnelson oct.2011
+
+; getPrimarySubhaloList(): return list of subhalo IDs (indices) excluding background subhalos
+
+function getPrimarySubhaloList, sg, backgroundSHs=backgroundSHs
+
+    prevGrNr   = -1
+    valSGids   = []
+
+    if keyword_set(backgroundSHs) then begin
+    
+      ; background subhalos only
+      for i=0,n_elements(sgEnd.subgroupLen)-1 do begin
+        if (sgEnd.subgroupGrnr[i] eq prevGrNr) then begin
+          prevGrNr = sgEnd.subgroupGrnr[i]
+        endif else begin
+          valSGids = [valSGids,i]
+          prevGrNr = sgEnd.subgroupGrnr[i]
+        endelse
+      endfor
+      
+    endif else begin
+    
+      ; primary (non-background) subhalos only
+      for i=0,n_elements(sg.subgroupLen)-1 do begin
+        if (sg.subgroupGrnr[i] ne prevGrNr) then begin
+          prevGrNr = sg.subgroupGrnr[i]
+        endif else begin
+          valSGids = [valSGids,i]
+        endelse
+      endfor
+      
+    endelse
+    
+    return, valSGids
+
+end
 
 ; redshiftToSnapNum(): convert redshift to the nearest snapshot number
 
