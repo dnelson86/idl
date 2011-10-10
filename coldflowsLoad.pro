@@ -449,6 +449,9 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
     return,0
   endif
   
+  ; early exit: no particles of requested type
+  if (nPartTot[partType] eq 0) then return, 0
+  
   ; input config: set fieldName and return array
   count = 0L
   field = strlowcase(field)
@@ -578,6 +581,8 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
       nPart = h5a_read(h5a_open_name(headerID,"NumPart_ThisFile"))
       
       ; get field _data
+      if (nPart[partType] eq 0) then continue
+      
       groupName = 'PartType'+str(partType)
       
       groupID = h5g_open(fileID,groupName)
@@ -999,5 +1004,30 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
   
   ; output
   h5_create, fOut, s
+
+end
+
+; checkIDRanges()
+
+pro checkIDRanges, res=res
+
+  ; config
+  gadgetPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
+
+  ; loop over snapshots and load ids
+  mList = indgen(314)
+  foreach m,mList do begin
+  
+    gas_ids  = loadSnapshotSubset(gadgetPath,snapNum=m,partType='gas',field='ids')
+    dm_ids   = loadSnapshotSubset(gadgetPath,snapNum=m,partType='dm',field='ids')
+    star_ids = loadSnapshotSubset(gadgetPath,snapNum=m,partType='stars',field='ids')    
+  
+    print,"["+str(m)+"] z="+str(snapNumToRedshift(snapNum=m))+" nStars = "+str(n_elements(star_ids)) + $
+          " ("+str(min(star_ids))+"-"+str(max(star_ids)) + ") nGas = "+str(n_elements(gas_ids)) + $
+          " ("+str(min(gas_ids))+"-"+str(max(gas_ids)) + ") nDM = "+str(n_elements(dm_ids)) + $
+          " ("+str(min(dm_ids))+"-"+str(max(dm_ids)) + ") nStarsAndGas = " + $
+          str(n_elements(star_ids) + n_elements(gas_ids)) 
+   
+  endforeach
 
 end

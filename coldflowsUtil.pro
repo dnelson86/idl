@@ -4,12 +4,12 @@
 
 ; getPrimarySubhaloList(): return list of subhalo IDs (indices) excluding background subhalos
 
-function getPrimarySubhaloList, sg, backgroundSHs=backgroundSHs
+function getPrimarySubhaloList, sg, bSH=bSH
 
     prevGrNr   = -1
     valSGids   = []
 
-    if keyword_set(backgroundSHs) then begin
+    if keyword_set(bSH) then begin
     
       ; background subhalos only
       for i=0,n_elements(sgEnd.subgroupLen)-1 do begin
@@ -40,7 +40,7 @@ end
 
 ; redshiftToSnapNum(): convert redshift to the nearest snapshot number
 
-function redshiftToSnapNum, redshift, verbose=verbose
+function redshiftToSnapNum, redshiftList, verbose=verbose
 
   if not keyword_set(verbose) then verbose = 0
   
@@ -77,17 +77,23 @@ function redshiftToSnapNum, redshift, verbose=verbose
   endelse
   
   ; for redshift zero hard select #314
-  if (redshift eq 0.0) then begin
-    snapNum = 314
-  endif else begin
-    w = where(abs(redshifts - redshift) eq min(abs(redshifts - redshift)),count)
-    if (count eq 2) then w = w[0]
-    if (count eq 0) then return,-1
-    snapNum = w[0]
-  endelse
+  snapNum = intarr(n_elements(redshiftList))
+  
+  foreach redshift,redshiftList,i do begin
+    if (redshift eq 0.0) then begin
+      snapNum[i] = 314
+    endif else begin
+      w = where(abs(redshifts - redshift) eq min(abs(redshifts - redshift)),count)
+      if (count eq 2) then w = w[0]
+      if (count eq 0) then return,-1
+      snapNum[i] = w[0]
+    endelse
+  
+    if (verbose) then $
+      print,'Found nearest snapshot to z = ' + str(redshift) + ' (num = ' + str(snapNum) + ')'
+  endforeach
 
-  if (verbose) then $
-    print,'Found nearest snapshot to z = ' + str(redshift) + ' (num = ' + str(snapNum) + ')'
+  if (n_elements(snapNum) eq 1) then snapNum = snapNum[0]
 
   return,snapNum
 end
@@ -269,7 +275,7 @@ end
 
 ; redshift_axis(): draw redshift axis
 
-pro redshift_axis, xRange, yRange, ylog=ylog, snapnum=snapnum, dotted=dotted
+pro redshift_axis, xRange, yRange, ylog=ylog, snapnum=snapnum, dotted=dotted, zTicknames=zTicknames
 
   logFac = 1.0
   if keyword_set(ylog) then logFac = 10.0
@@ -277,7 +283,8 @@ pro redshift_axis, xRange, yRange, ylog=ylog, snapnum=snapnum, dotted=dotted
   yTickLen = (yRange[1]-yRange[0]) / 40.0 * logFac
   yTextOff = (yRange[1]-yRange[0]) / 50.0 * logFac
 
-  zTicknames = ['30','6','4','3','2','1','0.5','0.25','0']
+  if (not keyword_set(zTicknames)) then $
+    zTicknames = ['30','6','4','3','2','1','0.5','0.25','0']
   nZ = n_elements(zTicknames)
   
   zXPos = fltarr(nZ)
