@@ -420,7 +420,9 @@ pro tvim,a,scale=scale,range=range,xrange=xrange,yrange=yrange,$
         noframe=noframe,noaxis=noaxis,interp=interp,colors=colors,c_map=c_map,$
         stitle=stitle,rmarg=rmarg,clip=clip,labels=labels,clevels=clevels,$
         pcharsize=pcharsize,lcharsize=lcharsize,nbotclr=nbotclr,nodata=nodata,$
-        rgb_nodata=rgb_nodata,barwidth=barwidth,position=position,rct=rct
+        rgb_nodata=rgb_nodata,barwidth=barwidth,position=position,rct=rct,$
+        xmargin=xmargin,ymargin=ymargin,xtickname=xtickname,ytickname=ytickname,$
+        xticks=xticks,yticks=yticks,xtickv=xtickv,ytickv=ytickv
 
 if n_params() eq 0 then begin
   xhelp,'tvim'
@@ -441,7 +443,8 @@ nx=sz(1)
 ny=sz(2)
 nxm=nx-1
 nym=ny-1
-plot, [0,1],[0,1],/nodata,xstyle=4,ystyle=4,charsize=pcharsize
+plot, [0,1],[0,1],/nodata,xstyle=4,ystyle=4,charsize=pcharsize,xmargin=xmargin,ymargin=ymargin,$
+      xticks=xticks,yticks=yticks,xtickv=xtickv,ytickv=ytickv ;DNELSON added
 px=!x.window*!d.x_vsize
 py=!y.window*!d.y_vsize
 xsize=px(1)-px(0)
@@ -609,17 +612,18 @@ case 1 of
 
   keyword_set(noframe):plot,[0,0],[0,0],xstyle=5,ystyle=5,position=pos,$
                          title=title,/device, charsize=pcharsize, $
-                         xrange=xrng,yrange=yrng,/noerase,/nodata
+                         xrange=xrng,yrange=yrng,/noerase,/nodata,xtickname=xtickname,ytickname=ytickname
                          
   keyword_set(noaxis): plot,[0,0],[0,0],/xstyle,/ystyle,position=pos,$
                          title=title,xtitle=xtitle,ytitle=ytitle,/device, $
                          xrange=xrng,yrange=yrng,/noerase,/nodata,$
                          charsize=pcharsize,xticks=1,yticks=1,$
-                         xtickname=[" "," "],ytickname=[" "," "]
+                         xtickname=[" "," "],ytickname=[" "," "],xtickname=xtickname,ytickname=ytickname
 
   else:                plot,[0,0],[0,0],/xstyle,/ystyle,title=title,/nodata,$
                          xtitle=xtitle,ytitle=ytitle,xrange=xrng,yrange=yrng,$
-                         position=pos,/noerase,/device,charsize=pcharsize
+                         position=pos,/noerase,/device,charsize=pcharsize,xtickname=xtickname,ytickname=ytickname,$
+                         xticks=xticks,yticks=yticks,xtickv=xtickv,ytickv=ytickv
 endcase
 ;
 end
