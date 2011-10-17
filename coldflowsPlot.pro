@@ -18,14 +18,15 @@ pro plotTmaxRedshift, res=res
   dataPath   = '/n/home07/dnelson/coldflows/thermhist.deriv/'
   plotPath   = '/n/home07/dnelson/coldflows/'
 
-  bSH = 1
+  bSH   = 0 ; include background subhalos
+  halos = 1 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
   
   redshifts     = [5.0,4.0,3.0,2.0,1.5,1.0,0.5,0.25,0.0] 
   redshiftNames = ['5','4','3','2','1.5','1.0','0.5','0.25','0']
 
   ; plot axes
   plotRedshifts = snapNumToRedshift(/all)
-  times     = redshiftToAge(plotRedshifts)
+  times         = redshiftToAge(plotRedshifts)
   
   xrange = [0.0,max(times)]
   yrange = [0.0,1.05]
@@ -44,6 +45,8 @@ pro plotTmaxRedshift, res=res
   ; plot
   plotName = plotPath+'maxt_redshift_'+str(res)+'.eps'
   
+  if (keyword_set(halos)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.halos.eps'
   if (keyword_set(bSH)) then $
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.bSH.eps'
     
@@ -55,16 +58,13 @@ pro plotTmaxRedshift, res=res
   fsc_text,0.06,0.94,/normal,str(res)+"^3",alignment=0.5
   
   for j=0,n_elements(redshifts)-1 do begin
-    
-    ; load subhalo group catalogs
     targetSnap = redshiftToSnapnum(redshifts[j])
-    sgTarget = loadSubhaloGroups(gadgetPath,targetSnap) 
     
     ; get list of smoothly accreted gas particle ids
-    sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,sgTarget=sgTarget)    
+    sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,halos=halos)    
     
     ; get time of maximum temperatures
-    maxTempSnaps = maxTemperatures(res=res, bSH=bSH, /getSnap)
+    maxTempSnaps = maxTemperatures(res=res, /getSnap)
     maxTempSnaps = maxTempSnaps[sgIDs_Acc]
     maxTempTimes = times[maxTempSnaps]
 
@@ -103,10 +103,11 @@ end
 pro plotNormScalarProd, res=res
 
   ; config
-  workingPath  = '/n/home07/dnelson/coldflows/thermhist.deriv/'
+  workingPath = '/n/home07/dnelson/coldflows/thermhist.deriv/'
   plotPath    = '/n/home07/dnelson/coldflows/'  
   
-  bSH = 0
+  bSH   = 0 ; include background subhalos
+  halos = 1 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
   
   bin = 0.1  
   
@@ -115,6 +116,8 @@ pro plotNormScalarProd, res=res
   ; plot
   plotName = plotPath + 'normscalar_'+str(res)+'.eps'
   
+  if (keyword_set(halos)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.halos.eps'
   if (keyword_set(bSH)) then $
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.bSH.eps'
     
@@ -130,6 +133,8 @@ pro plotNormScalarProd, res=res
     ; load data
     saveFilename = workingPath + 'normscalar.'+str(res)+'.'+str(targetSnap)+'-'+str(endingSnap)+'.sav'
     
+    if (keyword_set(halos)) then $
+      saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.halos.sav' 
     if (keyword_set(bSH)) then $
       saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.bSH.sav'
   
@@ -194,8 +199,8 @@ pro plotModeFracVsSubhaloMass, res=res
 
   units = getUnits()
 
-  if not keyword_set(res) then begin
-    print,'Error: Must specific resolution set.'
+  if (not keyword_set(res)) then begin
+    print,'Error: Must specify resolution.'
     return
   endif
   
@@ -204,21 +209,24 @@ pro plotModeFracVsSubhaloMass, res=res
   dataPath    = '/n/hernquistfs1/dnelson/coldflows/thermhist/'
   plotPath    = '/n/home07/dnelson/coldflows/'
 
-  bSH = 1
-  
+  bSH    = 0 ; include background subhalos
+  halos  = 1 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
+
   critLogTemp   = 5.5  ; cold/hot mode separator
-  minNumGasPart = 10   ; smoothly accreted gas per subhalo
+  minNumGasPart = 6    ; smoothly accreted gas per subhalo
   
   redshifts = [3.0,2.0,1.0,0.0]
   
   ; restriction: gas not resolved in any snapshot previous to target
-  ;redshiftsCut = [0,0,0,0]
+  redshiftsCut = [0,0,0,0]
   ; restriction: gas not resolved at keres+ 05 redshift spacing increment before target (single)
-  redshiftsCut = [3.25,2.25,1.125,0.125]
+  ;redshiftsCut = [3.25,2.25,1.125,0.125]
 
   ; plot
   plotName = plotPath+'frac_shmass_'+str(res)+'.eps'
   
+  if (keyword_set(halos)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.halos.eps'
   if (keyword_set(bSH)) then $
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.bSH.eps'
   if (total(redshiftsCut) ne 0) then $
@@ -227,24 +235,27 @@ pro plotModeFracVsSubhaloMass, res=res
   start_PS, plotName
   !p.multi = [0,2,2]
 
-  for j=0,n_elements(redshifts)-1 do begin
-    
-    ; make halo selection at target redshift
-    targetSnap = redshiftToSnapNum(redshifts[j])
+  for m=0,n_elements(redshifts)-1 do begin
+    targetSnap = redshiftToSnapNum(redshifts[m])
     
     ; calc max temp
-    maxTemps = maxTemperatures(res=res, bSH=bSH, zMin=redshifts[j])
-    
-    ; load subhalo catalog
-    sgTarget = loadSubhaloGroups(gadgetPath,targetSnap)
-    
-    ; make list of sgIDs excluding background (id=0) subgroups
-    valSGids   = getPrimarySubhaloList(sgTarget)
+    maxTemps = maxTemperatures(res=res, zMin=redshifts[m])
     
     ; get list of smoothly accreted gas particle ids
-    sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,sgTarget=sgTarget)    
+    if (redshiftsCut[m] ne 0) then begin
+      smoothCutSnap = redshiftToSnapnum(redshiftsCut[m])
+    endif else begin
+      smoothCutSnap = !NULL
+    endelse
     
-    ; subhalo masses (x-axis)
+    sgTarget  = loadSubhaloGroups(gadgetPath,targetSnap)
+    sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,sgTarget=sgTarget,$
+                                smoothCutSnap=smoothCutSnap,halos=halos)  
+    
+    ; make list of sgIDs excluding background (id=0) subgroups
+    valSGids   = getPrimarySubhaloList(sgTarget,halos=halos)
+    
+    ; subhalo masses (total baryonic+DM) (x-axis)
     shmass = alog10( (units.UnitMass_in_g / units.Msun_in_g) * sgTarget.subgroupMass[valSGids] )
     
     ; subhalo cold fractions (y-axis)
@@ -255,14 +266,14 @@ pro plotModeFracVsSubhaloMass, res=res
                                    sgTarget.subGroupOffset[valSGids[i]] + sgTarget.subGroupLen[valSGids[i]] - 1]
 
       match,sgIDs,sgIDs_Acc,sh_ind,sgIDs_ind,count=count
-      
+
       if (count eq 0 or count lt minNumGasPart) then begin
-        ;print,'Warning: halo sgid='+str(i)+' had no matches in sgIDs_All'
+        ;print,'Warning: halo i='+str(i)+' sgID='+str(valSGids[i])+' had no matches in sgIDs_All'
         coldfrac[i] = -0.1
         continue
       endif
       
-      wCold = where(maxTemps[sgIDs_ind] lt critLogTemp, count_cold)
+      wCold = where(maxTemps[sgIDs[sgIDs_ind]] lt critLogTemp, count_cold)
       if (count_cold ne 0) then begin
         coldfrac[i] = float(count_cold) / count
       endif
@@ -275,23 +286,23 @@ pro plotModeFracVsSubhaloMass, res=res
     plotsym,0 ;circle
     symsize = 0.3
     
-    if (j eq 0) then begin
+    if (m eq 0) then begin
       fsc_plot,shmass,coldfrac,psym=8,ymargin=[1.0,2.0],xmargin=[7.0,0.0],$
                xrange=xrange,yrange=yrange,/xs,/ys,xtickname=replicate(' ',10),symsize=symsize
       fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=3",alignment=0.5
     endif
-    if (j eq 1) then begin
+    if (m eq 1) then begin
       fsc_plot,shmass,coldfrac,psym=8,ymargin=[1.0,2.0],xmargin=[0.0,7.0],$
                xrange=xrange,yrange=yrange,/xs,/ys,$
                xtickname=replicate(' ',10),ytickname=replicate(' ',10),symsize=symsize
       fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=2",alignment=0.5
     endif
-    if (j eq 2) then begin
+    if (m eq 2) then begin
       fsc_plot,shmass,coldfrac,psym=8,ymargin=[4.0,-1.0],xmargin=[7.0,0.0],$
                xrange=xrange,yrange=yrange,/xs,/ys,symsize=symsize
       fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=1",alignment=0.5
     endif
-    if (j eq 3) then begin
+    if (m eq 3) then begin
       fsc_plot,shmass,coldfrac,psym=8,ymargin=[4.0,-1.0],xmargin=[0.0,7.0],$
                xrange=xrange,yrange=yrange,/xs,/ys,ytickname=replicate(' ',10),$
                symsize=symsize
@@ -328,11 +339,11 @@ pro plotModeFracVsSubhaloMass, res=res
 
     print,'cold frac 1/2 best fit subhalo mass = '+str(fitSHMass)
 
-  endfor ;j
+  endfor ;m
   
   fsc_text,0.5,0.95,str(res)+"^3",alignment=0.5,/normal
   fsc_text,0.5,0.05,"log ( Total Subhalo Mass )",alignment=0.5,/normal
-  fsc_text,0.04,0.5,"Normalized Fraction",alignment=0.5,orientation=90,/normal
+  fsc_text,0.04,0.5,"Smoothly Accreted Gas Fraction",alignment=0.5,orientation=90,/normal
   
   !p.multi = 0
   end_PS
@@ -350,49 +361,62 @@ pro plotTmaxHisto, res=res
     return
   endif
   
-  ; config
-  gadgetPath = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'  
+  ; config 
   dataPath   = '/n/home07/dnelson/coldflows/thermhist.deriv/'
   plotPath   = '/n/home07/dnelson/coldflows/'
   
-  bSH = 0
+  kSP    = 0 ; keres+ 05 spacing
+  bSH    = 0 ; include background subhalos
+  zWidth = 0 ; only if requesting a smoothCutSnap
+  halos  = 1 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
+  
+  yScale = 0 ; 0=normalized fraction, 1=K05, 2=K09
   
   redshifts = [5.0,4.0,3.0,2.0,1.5,1.0,0.5,0.25,0.0]
+  zstrs = 'z='+['5.0','4.0','3.0','2.0','1.5','1.0','0.5','0.25','0.0']  
   
-  ; restriction: gas not resolved in any snapshot previous to target
-  redshiftsCut = [0,0,0,0,0,0,0,0,0]
-  ; restriction: gas not resolved at keres+ 05 redshift spacing increment before target (single)
-  ;redshiftsCut = [5.5,4.5,3.25,2.25,1.75,1.125,0.625,0.375,0.125]
+  if (kSP eq 1) then begin
+    ; restriction: gas not resolved at keres+ 05 redshift spacing increment before target (single)
+    redshiftsCut = [5.5,4.5,3.25,2.25,1.75,1.125,0.625,0.375,0.125]
+  endif else begin
+    ; restriction: gas not resolved in any snapshot previous to target
+    redshiftsCut = [0,0,0,0,0,0,0,0,0]
+  endelse
   
-  times = [0.0,redshiftToAge(redshifts)]
-  
-  ; plot
+  ; set plotName and open
   plotName = plotPath+'maxt_histo_allbins_'+str(res)+'.eps'
-  
+
+  if (keyword_set(halos)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.halos.eps'  
   if (keyword_set(bSH)) then $
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.bSH.eps'
-  if (total(redshiftsCut) ne 0) then $
+  if (keyword_set(kSP) and not keyword_set(zWidth)) then $
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.kSP.eps'
+  if (keyword_set(zWidth)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.zW.eps'
+    
+  if (str(res[0]) eq 'all') then res = [512,256,128]
+  if (str(res[0]) eq 'two') then res = [256,128]
     
   start_PS,plotName,xs=7,ys=6
   !p.multi = [0,3,3]
 
   ; plot config
   xrange = [3.8,7.2]
-  yrange = [0.0,1.05]
+  
+  if (yScale eq 0) then yrange = [0.0,1.10]
+  if (yScale eq 1) then yrange = [0.0,50.0]
+  if (yScale eq 2) then yrange = [0.0,20.0]
       
   bin = 0.1
    
   cs = !p.charsize
   pt = !p.thick
   !p.charsize += 1.0
-  !p.thick += 1.0
       
-  zstrs = 'z='+['5.0','4.0','3.0','2.0','1.5','1.0','0.5','0.25','0.0']
-  
+  ; loop over each redshift (panel)
   for m=0,n_elements(redshifts)-1 do begin
 
-    ; load subhalo group catalogs
     targetSnap = redshiftToSnapnum(redshifts[m])
     
     if (redshiftsCut[m] ne 0) then begin
@@ -401,100 +425,247 @@ pro plotTmaxHisto, res=res
       smoothCutSnap = !NULL
     endelse
     
-    sgTarget = loadSubhaloGroups(gadgetPath,targetSnap) 
+    ; loop over each resolution
+    for j=0,n_elements(res)-1 do begin
     
-    ; get list of smoothly accreted gas particle ids
-    sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,sgTarget=sgTarget,$
-                                smoothCutSnap=smoothCutSnap)
+      gadgetPath = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res[j])+'_20Mpc/Gadget/output/' 
+      
+      print,zstrs[m]+' res = ' + str(res[j]) + ' targetSnap = '+str(targetSnap)+' smoothCutSnap = ' + $
+            str(smoothCutSnap)
+     
+      ; get list of smoothly accreted gas particle ids
+      sgIDs_Acc = findAccretedGas(res=res[j],bSH=bSH,targetSnap=targetSnap,$
+                                  smoothCutSnap=smoothCutSnap,zWidth=zWidth,halos=halos)
+      
+       ; get maximum temperatures
+      maxTemps = maxTemperatures(res=res[j],zMin=redshifts[m])
+      maxTemps = maxTemps[sgIDs_Acc]  
+    
+      if (n_elements(maxTemps) lt 2) then maxTemps = [-1.0,0.0]
+      
+      ; weighting
+      if (yScale ne 0) then begin
+        ; calc y-axis mass/time/vol constant
+        masses = loadSnapshotSubset(gadgetPath,snapNum=targetSnap,partType='gas',field='mass')
+        
+        if (min(masses) ne max(masses)) then begin
+          print,'ERROR'
+          return
+        end
+        
+        ; mass / time / volume
+        masses *= (units.UnitMass_in_g / units.Msun_in_g) ; full array (Msun)
+        volume = (20.0)^3.0 ;Mpc^3 / h^3
+        
+        if (keyword_set(kSP)) then $
+          time = (redshiftToAge(redshifts[m]) - redshiftToAge(redshiftsCut[m])) * 1e6 ;yr
+        if (not keyword_set(kSP)) then $
+          time = (snapNumToAge(targetSnap) - snapNumToAge(targetSnap-1)) * 1e6 ;yr
+        
+        ; (log Tmax)^(-1)
+        if (yScale eq 1) then $
+          weight = masses / time / volume ;K05
+        if (yScale eq 2) then $
+          weight = masses / time / volume / maxTemps ;K09
+        
+        peak = 0
+      endif else begin
+        weight = !NULL
+        peak = 1
+      endelse
+      
+      ; overplot successive resolutions
+      overplot = j gt 0 ;0,1,1
+      line     = j ;0,1,2
+      thick    = !p.thick + 1 - (j gt 0) ;3,2,2
+
+      ; plot histograms
+      if (m eq 0) then $
+        plothist,maxTemps,bin=bin,peak=peak,weight=weight,xtitle="",ytitle="",$
+                 xrange=xrange,yrange=yrange,xtickname=replicate(' ',10),/xs,/ys,$
+                 xmargin=[7.0,-3.0],ymargin=[0.0,3.0],overplot=overplot,line=line,$
+                 thick=thick;,ytickv=[0.2,0.4,0.6,0.8,1.0],yticks=4
+      if (m eq 1) then $
+        plothist,maxTemps,bin=bin,peak=peak,weight=weight,xtitle="",ytitle="",$
+                 xrange=xrange,yrange=yrange,$
+                 xtickname=replicate(' ',10),ytickname=replicate(' ',10),/xs,/ys,$
+                 xmargin=[3.0,1.0],ymargin=[0.0,3.0],overplot=overplot,line=line,$
+                 thick=thick
+      if (m eq 2) then $
+        plothist,maxTemps,bin=bin,peak=peak,weight=weight,xtitle="",ytitle="",$
+                 xrange=xrange,yrange=yrange,$
+                 xtickname=replicate(' ',10),ytickname=replicate(' ',10),/xs,/ys,$
+                 xmargin=[-1.0,5.0],ymargin=[0.0,3.0],overplot=overplot,line=line,$
+                 thick=thick
+      if (m eq 3) then $
+        plothist,maxTemps,bin=bin,peak=peak,weight=weight,xtitle="",ytitle="",$
+                 xrange=xrange,yrange=yrange,xtickname=replicate(' ',10),/xs,/ys,$
+                 xmargin=[7.0,-3.0],ymargin=[2.0,0.0],overplot=overplot,line=line,$
+                 thick=thick;,ytickv=[0.2,0.4,0.6,0.8,1.0],yticks=4
+      if (m eq 4) then $
+        plothist,maxTemps,bin=bin,peak=peak,weight=weight,xtitle="",ytitle="",$
+                 xrange=xrange,yrange=yrange,$
+                 xtickname=replicate(' ',10),ytickname=replicate(' ',10),/xs,/ys,$
+                 xmargin=[3.0,1.0],ymargin=[2.0,0.0],overplot=overplot,line=line,$
+                 thick=thick
+      if (m eq 5) then $
+        plothist,maxTemps,bin=bin,peak=peak,weight=weight,xtitle="",ytitle="",$
+                 xrange=xrange,yrange=yrange,$
+                 xtickname=replicate(' ',10),ytickname=replicate(' ',10),/xs,/ys,$
+                 xmargin=[-1.0,5.0],ymargin=[2.0,0.0],overplot=overplot,line=line,$
+                 thick=thick
+      if (m eq 6) then $
+        plothist,maxTemps,bin=bin,peak=peak,weight=weight,xtitle="",ytitle="",$
+                 xrange=xrange,yrange=yrange,$
+                 /xs,/ys,xtickv=[4.0,5.0,6.0,7.0],xtickname=['4','5','6','7'],xticks=3,$
+                 xmargin=[7.0,-3.0],ymargin=[5.0,-2.0],overplot=overplot,line=line,$
+                 thick=thick
+      if (m eq 7) then $
+        plothist,maxTemps,bin=bin,peak=peak,weight=weight,xtitle="",ytitle="",$
+                 xrange=xrange,yrange=yrange,/xs,/ys,ytickname=replicate(' ',10),$
+                 xmargin=[3.0,1.0],ymargin=[5.0,-2.0],xticks=3,$
+                 xtickv=[4.0,5.0,6.0,7.0],xtickname=['4','5','6','7'],overplot=overplot,$
+                 line=line,thick=thick
+      if (m eq 8) then $
+        plothist,maxTemps,bin=bin,peak=peak,weight=weight,xtitle="",ytitle="",$
+                 xrange=xrange,yrange=yrange,ytickname=replicate(' ',10),/xs,/ys,$
+                 xmargin=[-1.0,5.0],ymargin=[5.0,-2.0],$
+                 xtickv=[4.0,5.0,6.0,7.0],xtickname=['4','5','6','7'],xticks=3,overplot=overplot,$
+                 line=line,thick=thick
+      
+      if (not overplot) then $
+        fsc_text,xrange[1]*0.98,yrange[1]*0.82,zstrs[m],charsize=cs,alignment=1.0,color=fsc_color('orange')
   
-    ; get maximum temperatures
-    maxTemps = maxTemperatures(res=res,bSH=bSH,zMin=redshifts[m])
-    maxTemps = maxTemps[sgIDs_Acc]
+    endfor ;j
     
-    if (n_elements(maxTemps) lt 2) then maxTemps = [-1.0,0.0]
-    
-    ; calc y-axis mass/time/vol constant
-    masses = loadSnapshotSubset(gadgetPath,snapNum=targetSnap,partType='gas',field='mass')
-    
-    if (min(masses) ne max(masses)) then begin
-      print,'ERROR'
-      return
-    end
-    
-    masses = masses[0] * (units.UnitMass_in_g / units.Msun_in_g)
-    volume = (20.0)^3.0 ;Mpc^3 / h^3
-    time = (times[m+1] - times[m]) * 1e6 ;yr
-    
-    yConst = masses / time / volume
-
-    ; plot histograms
-    if (m eq 0) then $
-      plothist,maxTemps,bin=bin,/peak,xtitle="",ytitle="",$
-               xrange=xrange,yrange=yrange,xtickname=replicate(' ',10),/xs,/ys,$
-               xmargin=[7.0,-3.0],ymargin=[0.0,3.0];,$
-               ;ytickv=[0.2,0.4,0.6,0.8,1.0],yticks=4
-    if (m eq 1) then $
-      plothist,maxTemps,bin=bin,/peak,xtitle="",ytitle="",$
-               xrange=xrange,yrange=yrange,$
-               xtickname=replicate(' ',10),ytickname=replicate(' ',10),/xs,/ys,$
-               xmargin=[3.0,1.0],ymargin=[0.0,3.0]
-    if (m eq 2) then $
-      plothist,maxTemps,bin=bin,/peak,xtitle="",ytitle="",$
-               xrange=xrange,yrange=yrange,$
-               xtickname=replicate(' ',10),ytickname=replicate(' ',10),/xs,/ys,$
-               xmargin=[-1.0,5.0],ymargin=[0.0,3.0]
-    if (m eq 3) then $
-      plothist,maxTemps,bin=bin,/peak,xtitle="",ytitle="",$
-               xrange=xrange,yrange=yrange,xtickname=replicate(' ',10),/xs,/ys,$
-               xmargin=[7.0,-3.0],ymargin=[2.0,0.0];,$
-               ;ytickv=[0.2,0.4,0.6,0.8,1.0],yticks=4
-    if (m eq 4) then $
-      plothist,maxTemps,bin=bin,/peak,xtitle="",ytitle="",$
-               xrange=xrange,yrange=yrange,$
-               xtickname=replicate(' ',10),ytickname=replicate(' ',10),/xs,/ys,$
-               xmargin=[3.0,1.0],ymargin=[2.0,0.0]
-    if (m eq 5) then $
-      plothist,maxTemps,bin=bin,/peak,xtitle="",ytitle="",$
-               xrange=xrange,yrange=yrange,$
-               xtickname=replicate(' ',10),ytickname=replicate(' ',10),/xs,/ys,$
-               xmargin=[-1.0,5.0],ymargin=[2.0,0.0]   
-    if (m eq 6) then $
-      plothist,maxTemps,bin=bin,/peak,xtitle="",ytitle="",$
-               xrange=xrange,yrange=yrange,$
-               /xs,/ys,xtickv=[4.0,5.0,6.0,7.0],xtickname=['4','5','6','7'],xticks=3,$
-               xmargin=[7.0,-3.0],ymargin=[5.0,-2.0]
-    if (m eq 7) then $
-      plothist,maxTemps,bin=bin,/peak,xtitle="",ytitle="",$
-               xrange=xrange,yrange=yrange,/xs,/ys,ytickname=replicate(' ',10),$
-               xmargin=[3.0,1.0],ymargin=[5.0,-2.0],xticks=3,$
-               xtickv=[4.0,5.0,6.0,7.0],xtickname=['4','5','6','7']
-    if (m eq 8) then $
-      plothist,maxTemps,bin=bin,/peak,xtitle="",ytitle="",$
-               xrange=xrange,yrange=yrange,ytickname=replicate(' ',10),/xs,/ys,$
-               xmargin=[-1.0,5.0],ymargin=[5.0,-2.0],$
-               xtickv=[4.0,5.0,6.0,7.0],xtickname=['4','5','6','7'],xticks=3
-               
-    fsc_text,xrange[1]*0.98,yrange[1]*0.82,zstrs[m],charsize=cs,alignment=1.0,color=fsc_color('orange')
-
   endfor ;m
   
   !p.charsize = cs
   !p.thick = pt
   
-  fsc_text,0.5,0.95,str(res)+"^3",alignment=0.5,/normal
-  fsc_text,0.5,0.04,"log (max T [K])",alignment=0.5,/normal
-  fsc_text,0.04,0.5,"Gas Accretion Rate [h"+textoidl("^3")+" M  / yr / Mpc"+$
-                    textoidl("^3")+"]",alignment=0.5,orientation=90,/normal
-  fsc_text,0.035,0.62,/normal,"!9!Z(6E)!X",font=-1,charthick=3,charsize=1.5 ;sunsymbol 
+  ; title
+  if (n_elements(res) eq 1) then $
+    fsc_text,0.5,0.95,str(res)+"^3",alignment=0.5,/normal
+    
+  ; x-axis title
+  fsc_text,0.5,0.04,"log (T"+textoidl("_{max}")+" [K])",alignment=0.5,/normal
+  
+  ; y-axis title
+  if (yScale eq 0) then $
+    fsc_text,0.04,0.5,"Normalized Gas Accretion Rate",alignment=0.5,orientation=90,/normal
+  if (yScale eq 1) then begin
+    fsc_text,0.04,0.5,"Gas Accretion Rate [h"+textoidl("^3")+" M  / yr / Mpc"+$
+                      textoidl("^3")+"]",alignment=0.5,orientation=90,/normal
+    fsc_text,0.035,0.62,/normal,"!9!Z(6E)!X",font=-1,charthick=3,charsize=1.5 ;sunsymbol
+  endif
+  if (yScale eq 2) then begin
+    fsc_text,0.04,0.5,"Gas Accretion Rate [h"+textoidl("^3")+" M  / yr / Mpc"+$
+                      textoidl("^3")+" / log(T"+textoidl("_{max}")+")]",alignment=0.5,orientation=90,/normal
+    fsc_text,0.035,0.515,/normal,"!9!Z(6E)!X",font=-1,charthick=3,charsize=1.5 ;sunsymbol
+  endif
 
   !p.multi = 0
   end_PS
   
 end
 
-; plotTempTracks()
+; plotRhoTemp2D(): plot mass-weighted 2d histogram of thermal evolution tracks in (rho,temp) plane
 
-pro plotTempTracks, res=res
+pro plotRhoTemp2D, res=res
+
+  units = getUnits()
+
+  if not keyword_set(res) then begin
+    print,'Error: Must specific resolution set.'
+    return
+  endif
+
+  ; config
+  plotPath  = '/n/home07/dnelson/coldflows/'
+
+  bSH   = 0 ; include background subhalos
+  halos = 1 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
+  tW    = 1 ; weight histogram bins by time (Gyr)
+  
+  nbins = 64
+  
+  redshifts   = [3.0,2.0,1.0,0.0]
+  
+  ; set plotName and open
+  plotName = plotPath+'rhot_2dhisto_'+str(res)+'.nB='+str(nbins)+'.eps'
+
+  if (keyword_set(halos)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.halos.eps'  
+  if (keyword_set(bSH)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.bSH.eps' 
+  if (keyword_set(tW)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.tW.eps'  
+  
+  start_PS, plotName, xs=7.0, ys=5
+  !p.multi = [0,2,2]  
+
+  ; color table
+  loadct, 2, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
+  
+  xrange = [-2.0,8.0] ;can't change, must redo histo
+  yrange = [3.0,7.0]  ;can't change, must redo histo
+  clip = [0,100]
+
+  for m=0,n_elements(redshifts)-1 do begin
+    redshift = redshifts[m]
+  
+    ; get (rho,temp) 2d histogram
+    h2rt = calcRhoTemp2DHisto(res=res,bSH=bSH,halos=halos,zMin=redshift,nbins=nbins,tW=tW)
+
+    ; convert code->solar mass units
+    w = where(h2rt ne 0)
+    h2logm = fltarr(nbins,nbins)
+    h2logm[w] = alog10( (units.UnitMass_in_g / units.Msun_in_g) * h2rt[w] )
+
+    ; plot
+    if (m eq 0) then begin
+      tvim,h2logm,clip=clip,position=[0.1,0.53,0.48,0.93],$;,/c_map
+         stitle="",barwidth=0.0,lcharsize=!p.charsize,/rct,$
+         xrange=xrange,yrange=yrange,xtickname=replicate(' ',10),yticks=3,ytickv=[4,5,6,7]
+         ;,nodata=0,rgb_nodata=[1.0,1.0,1.0] ;display zeros as white not black
+      fsc_text,xrange[1]*0.84,yrange[1]*0.92,"z=3",alignment=0.5
+    endif
+    if (m eq 1) then begin
+      tvim,h2logm,clip=clip,position=[0.48,0.53,0.86,0.93],$;,/c_map
+         stitle="",barwidth=0.0,lcharsize=!p.charsize,/rct,$
+         xrange=xrange,yrange=yrange,xtickname=replicate(' ',10),ytickname=replicate(' ',10)
+      fsc_text,xrange[1]*0.84,yrange[1]*0.92,"z=2",alignment=0.5
+    endif
+    if (m eq 2) then begin
+      tvim,h2logm,clip=clip,position=[0.1,0.13,0.48,0.53],$;,/c_map
+         stitle="",barwidth=0.0,lcharsize=!p.charsize,/rct,$
+         xrange=xrange,yrange=yrange,yticks=4,ytickv=[3,4,5,6,7],xticks=6,xtickv=[-2,0,2,4,6,8]
+      fsc_text,xrange[1]*0.84,yrange[1]*0.92,"z=1",alignment=0.5
+    endif
+    if (m eq 3) then begin
+      tvim,h2logm,clip=clip,position=[0.48,0.13,0.86,0.53],$;,/c_map
+         stitle="",barwidth=0.0,lcharsize=!p.charsize,/rct,$
+         xrange=xrange,yrange=yrange,ytickname=replicate(' ',10),xticks=5,xtickv=[0,2,4,6,8]
+      fsc_text,xrange[1]*0.84,yrange[1]*0.92,"z=0",alignment=0.5
+    endif
+
+  endfor ;m
+  
+  fsc_text,0.5,0.95,str(res)+"^3",alignment=0.5,/normal
+  fsc_text,0.5,0.02,"log ("+textoidl("\rho / \rho_{crit}")+")",alignment=0.5,/normal
+  fsc_text,0.04,0.5,"log (T [K])",alignment=0.5,orientation=90,/normal
+  fsc_colorbar,position=[0.88,0.13,0.92,0.93],/vertical,/right,/reverse,$
+               range=minmax(h2logm)
+  
+  !p.multi = 0
+  end_PS
+end
+
+; plotTempTimeTracks(): plot tracks of temperature as a function of time/redshift
+
+pro plotTempTimeTracks, res=res
+
+  units = getUnits()
 
   if not keyword_set(res) then begin
     print,'Error: Must specific resolution set.'
@@ -505,46 +676,17 @@ pro plotTempTracks, res=res
   dataPath  = '/n/hernquistfs1/dnelson/coldflows/thermhist/'
   plotPath  = '/n/home07/dnelson/coldflows/'
   
-  bSH = 1
+  bSH   = 1 ; include background subhalos
+  halos = 0 ; NOT IMPLEMENTED TODO
   
-  redshiftBins = [6.0,5.0,4.0,3.0,2.0,1.5,1.0,0.5,0.25,0.0]
+  redshift      = 1.0 ;3,2,1,0
+  critLogTemp   = 5.5
+  numTracksEach = 20 
  
-  ; load data
-  j = 5 ;5,3,2
-  targetRedshift = redshiftBins[j+1]
-  endingRedshift = redshiftBins[j]
+  ; load maxtemps to decide on tracks to save
+  ;TODO
   
-  targetSnap = redshiftToSnapNum(targetRedshift)
-  endingSnap = redshiftToSnapNum(endingRedshift)
-
-  saveFilename = dataPath + 'thermhist.'+str(res)+'.m='+str(targetSnap)+'.to.'+str(endingSnap)+'.sav'
-  
-  if (keyword_set(smoothAccretionOnly)) then $
-  saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.sAO.sav'
-  if (keyword_set(includeBackgroundSH)) then $
-  saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.bSH.sav'
-  
-  if not (file_test(saveFileName)) then begin
-    print,'Error: Cannot load savefile: '+saveFilename
-    return
-  endif
-  
-  restore, saveFilename
-
-  ; calc max temp
-  maxTemps = fltarr(n_elements(sgIDs_All))
-  for i=0,n_elements(sgIDs_All)-1 do begin
-    maxTemps[i] = alog10(max(temp[i,*]))
-  endfor
-
   ; find 100 tracks with Tmax<critLogTemp-1.0 (blue) and 100 with Tmax>critLogTemp+1.0 (red)
-  units = getUnits()
-  
-  critLogTemp = 5.5
-  
-  numTracksEach = 20
-  
-  ; select
   wBlue = where(maxTemps lt critLogTemp-1.0, countBlue)
   wRed  = where(maxTemps gt critLogTemp+0.5, countRed)
   
@@ -556,18 +698,21 @@ pro plotTempTracks, res=res
   idRed = (sort(idRed))[0:numTracksEach-1]
   idRed = wRed[idRed] 
   
-  ;if 0 then begin
+  ; load thermhist data and save specified pid tracks
+  ;TODO
   
   ; plot axes
   redshifts = snapNumToRedshift(/all)
   times     = redshiftToAge(redshifts)
   
-  xrange = [0,times[targetSnap]] ;targetSnap-1
+  xrange = [0,times[redshiftToSnapnum(redshift)]]
   yrange = [1e1,4e6]
   
   ; temp vs. time/redshift tracks
-  plotName = plotPath + 'temp.time.tracks.z='+string(redshiftBins[j+1],format='(f4.2)')+'.eps'
+  plotName = plotPath + 'temp.time.tracks.z='+string(redshift,format='(f4.2)')+'.eps'
   
+  if (keyword_set(halos)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.halos.eps'
   if (keyword_set(bSH)) then $
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.bSH.eps'
     
@@ -588,10 +733,8 @@ pro plotTempTracks, res=res
               alignment=0.5,color=fsc_color('red')
   end_PS
   
-  ;endif ;0
-  
   ; rho/temp plane tracks
-  start_PS, plotPath + 'rho.temp.tracks.'+string(redshiftBins[j+1],format='(f4.2)')+'.eps'
+  start_PS, plotPath + 'rho.temp.tracks.'+string(redshift,format='(f4.2)')+'.eps'
     fsc_plot,[0],[0],/nodata,xrange=[0.0,4.0],yrange=[3.0,7.0],$
              xtitle="log "+textoidl("\rho / \rho_{crit}"),ytitle="log Temperature [K]",/xs,/ys
             

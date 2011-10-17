@@ -2,22 +2,49 @@
 ; cold flows - utility functions
 ; dnelson oct.2011
 
+; removeIntersectionFromB(): return a modified version of B with all those elements also found in
+;                            A (the collision/intersection) removed
+
+function removeIntersectionFromB, A, B
+
+    match, A, B, A_ind, B_ind, count=count
+    
+    A_ind = !NULL ;unused
+    
+    if (count gt 0) then begin
+      ; remove B[B_ind] using complement
+      all = bytarr(n_elements(B))
+      if (B_ind[0] ne -1L) then all[B_ind] = 1B
+      w = where(all eq 0B, ncomp)
+    
+      if (ncomp ne n_elements(B)-count) then begin
+        print,'removeIntersectionFromB: ERROR ',ncomp,n_elements(B),count
+        return,0
+      endif
+      
+      return, B[w]
+    endif else begin
+      print,'Warning: removeIntersectionFromB returning unmodified.'
+      return, B
+    endelse
+end
+
 ; getPrimarySubhaloList(): return list of subhalo IDs (indices) excluding background subhalos
 
-function getPrimarySubhaloList, sg, bSH=bSH
+function getPrimarySubhaloList, sg, halos=halos
 
     prevGrNr   = -1
     valSGids   = []
 
-    if keyword_set(bSH) then begin
+    if keyword_set(halos) then begin
     
-      ; background subhalos only
-      for i=0,n_elements(sgEnd.subgroupLen)-1 do begin
-        if (sgEnd.subgroupGrnr[i] eq prevGrNr) then begin
-          prevGrNr = sgEnd.subgroupGrnr[i]
+      ; background (main) halos only
+      for i=0,n_elements(sg.subgroupLen)-1 do begin
+        if (sg.subgroupGrnr[i] eq prevGrNr) then begin
+          prevGrNr = sg.subgroupGrnr[i]
         endif else begin
           valSGids = [valSGids,i]
-          prevGrNr = sgEnd.subgroupGrnr[i]
+          prevGrNr = sg.subgroupGrnr[i]
         endelse
       endfor
       
@@ -201,6 +228,11 @@ function dtdz, z, lambda0 = lambda0, q0 = q0
   return, 1.0 / (term1 * sqrt(term2 * term3 + lambda0))
 end
    
+function snapNumToAge, snap
+  z = snapNumToRedshift(snapNum=snap)
+  return, redshiftToAge(z)
+end
+   
 function redshiftToAge, z
 
   units = getUnits()
@@ -240,7 +272,6 @@ function rhoTHisto, dens_in, temp_in, mass=mass, nbins=nbins, plot=plot
   temp = alog10(temp_in)
   rMinMax = [-2.0,8.0]
   tMinMax = [3.0,7.0]
-  
   ; calculate bin sizes
   binSizeRho  = (rMinMax[1]-rMinMax[0]) / nbins
   binSizeTemp = (tMinMax[1]-tMinMax[0]) / nbins
@@ -249,10 +280,10 @@ function rhoTHisto, dens_in, temp_in, mass=mass, nbins=nbins, plot=plot
     ; hist_2d (no weighting)
     h2rt = hist_2d(dens,temp,bin1=binSizeRho,bin2=binSizeTemp,$
                    min1=rMinMax[0],min2=tMinMax[0],max1=rMinMax[1]+binSizeRho,max2=tMinMax[1]+binSizeTemp)
-    h2rt /= float(max(h2rt)) ;norm s.t. colorbar gives fraction wrt max cell
+    ; h2rt /= float(max(h2rt)) ;norm s.t. colorbar gives fraction wrt max cell
   endif else begin
     ; hist2d (weighted)
-    h2rt = hist2d(dens,temp,mass*(units.UnitMass_in_g/units.Msun_in_g),$
+    h2rt = hist2d(dens,temp,mass,$
                   binsize1=binsizeRho,binsize2=binSizeTemp,$
                   min1=rMinMax[0],min2=tMinMax[0],max1=rMinMax[1]+binSizeRho,max2=tMinMax[1]+binSizeTemp)
   endelse

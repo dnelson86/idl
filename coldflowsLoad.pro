@@ -621,7 +621,7 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
       'cmy' : fN = 1
       'z'   : fN = 2
       'velz': fN = 2
-      'cmz' : fN = 3
+      'cmz' : fN = 2
     endcase
     r = reform(r[fN,*])
   endif

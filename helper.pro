@@ -318,3 +318,56 @@ pro end_PS, pngResize=pngResize, deletePS=deletePS
     PS_End, /PNG, Delete_PS=deletePS, Resize=pngResize
 
 end
+
+; reportCPUThreads(): return info from CPU structure for threading pool
+
+pro reportCPUThreads
+  print,'!CPU.HW_NCPU = ' + str(!CPU.HW_NCPU) + ' TPool_NThreads = ' + str(!CPU.TPOOL_NTHREADS)
+end
+
+; testBridgePro
+
+pro testBridgePro
+
+  ; retrieve from $MAIN$
+  ;redshift = SCOPE_VARFETCH("redshift", LEVEL=1)
+  ;res      = SCOPE_VARFETCH("res", LEVEL=1)
+
+  workingPath  = '/n/home07/dnelson/coldflows/'
+  
+  result = redshift*2.0
+  
+  wait,2.0
+  
+  save,result,filename=workingPath+"test."+str(redshift)+".sav"
+
+end
+
+; runBridge():
+
+pro runBridge, res=res
+
+  reportCPUThreads
+  
+  redshifts = [3.0,2.0,1.0,0.0]
+ 
+  start_time = systime(/seconds)
+  
+  ; launch children
+  oB = objarr(n_elements(redshifts))
+  for i=0,n_elements(redshifts)-1 do begin
+    oB[i] = obj_new('IDL_IDLBridge') ;OUTPUT='' send child output to tty
+    oB[i]->execute, ".r coldflows"
+    oB[i]->SetVar, "redshift", redshifts[i]
+    oB[i]->SetVar, "res", res
+    oB[i]->execute, "testBridgePro", /NOWAIT ; asynchronous
+  endfor
+  
+  ; wait for children to finish and cleanup
+  for i=0,n_elements(redshifts)-1 do $
+    while (oB[i]->Status() ne 0) do wait,0.1
+  obj_destroy,oB
+  
+  print,"Elapsed time: "+str(systime(/seconds)-start_time)+" sec"
+
+end
