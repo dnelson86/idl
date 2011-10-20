@@ -14,7 +14,6 @@ pro plotTmaxRedshift, res=res
   endif
   
   ; config
-  gadgetPath = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
   dataPath   = '/n/home07/dnelson/coldflows/thermhist.deriv/'
   plotPath   = '/n/home07/dnelson/coldflows/'
 
@@ -28,19 +27,8 @@ pro plotTmaxRedshift, res=res
   plotRedshifts = snapNumToRedshift(/all)
   times         = redshiftToAge(plotRedshifts)
   
-  xrange = [0.0,max(times)]
+  xrange = [5.0,0.0]
   yrange = [0.0,1.05]
- 
-  ; pdf
-  histoBins = round(5.0 * sqrt(res))
-  histoPts  = findgen(histoBins)/histoBins * max(times)
-  
-  pdfRes   = 1000.0
-  pdfWidth = 30.0 * max(times) / pdfRes
-  pdfPts   = findgen(pdfRes)/pdfRes * max(times)
-  
-  pdf   = fltarr(n_elements(redshifts),pdfRes)
-  histo = fltarr(n_elements(redshifts),histoBins)
     
   ; plot
   plotName = plotPath+'maxt_redshift_'+str(res)+'.eps'
@@ -50,49 +38,57 @@ pro plotTmaxRedshift, res=res
   if (keyword_set(bSH)) then $
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.bSH.eps'
     
+  if (str(res[0]) eq 'all') then res = [512,256,128]    
+    
   start_PS, plotName
 
   fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
-           xtitle="Time [Gyr]",ytitle="Normalized PDF",xs=9,/ys,ymargin=[4,3]
-  redshift_axis,xrange,yrange,zTicknames=['30',redshiftNames],/dotted
-  fsc_text,0.06,0.94,/normal,str(res)+"^3",alignment=0.5
+           xtitle="Redshift",ytitle="Normalized Fraction",xs=9,/ys,ymargin=[4,3]
+  universeage_axis,xrange,yrange
+    
+  if (n_elements(res) eq 1) then $
+    fsc_text,0.06,0.94,/normal,str(res)+"^3",alignment=0.5
   
-  for j=0,n_elements(redshifts)-1 do begin
-    targetSnap = redshiftToSnapnum(redshifts[j])
+  ; calculate histogram
+  for m=0,n_elements(redshifts)-1 do begin
     
-    ; get list of smoothly accreted gas particle ids
-    sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,halos=halos)    
+    ; loop over each resolution
+    for j=0,n_elements(res)-1 do begin    
     
-    ; get time of maximum temperatures
-    maxTempSnaps = maxTemperatures(res=res, /getSnap)
-    maxTempSnaps = maxTempSnaps[sgIDs_Acc]
-    maxTempTimes = times[maxTempSnaps]
+      gadgetPath = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res[j])+'_20Mpc/Gadget/output/'
+      targetSnap = redshiftToSnapnum(redshifts[m])
+      
+      ; get list of smoothly accreted gas particle ids
+      sgIDs_Acc = findAccretedGas(res=res[j],bSH=bSH,targetSnap=targetSnap,halos=halos)    
+      
+      ; get time of maximum temperatures
+      maxTempSnaps = maxTemperatures(res=res[j], /getSnap)
+      maxTempSnaps = maxTempSnaps[sgIDs_Acc]
+      maxTempRedshifts = plotRedshifts[maxTempSnaps]
+      
+      ; safeguard against degenerate size  
+      if (n_elements(maxTempRedshifts) eq 1) then maxTempRedshifts = [-1.0,maxTempRedshifts]
+      ;maxTempRedshifts = maxTempRedshifts[where(maxTempRedshifts gt 0.05)]
+  
+       ; overplot successive resolutions
+      overplot = 1 ;1,1,1
+      line     = j ;0,1,2
+      thick    = !p.thick + 1 - 2*(j gt 0) ;3,1,1
+  
+      bin = 4.0 / sqrt(res[j])
+  
+      plothist,maxTempRedshifts,bin=bin,/peak,color=fsc_color(units.colors[m]),$
+               overplot=overplot,line=line,thick=thick,psym=0
 
-    ; calculate PDF
-    for i=0,pdfRes-2 do begin
-      w = where(maxTempTimes ge pdfPts[i]-pdfWidth/2.0 and $
-                maxTempTimes lt pdfPts[i+1]+pdfWidth/2.0, count)
-      pdf[j,i] = count
-    endfor
-    
-    histo[j,*] = histogram(maxTempTimes,nbins=histoBins)
-    
-  endfor ;j
-  
-  ; normalize
-  pdf   /= max(pdf)  
-  histo /= max(histo)
-  
-  for j=0,n_elements(redshifts)-1 do begin
-    ; plot pdf
-    ;fsc_plot,pdfPts,pdf[j,*],/overplot,color=fsc_color(units.colors[j])
-    fsc_plot,histoPts,histo[j,*],/overplot,color=fsc_color(units.colors[j])
-    
-    ; plot legend entry
-    ypos = yrange[1]*0.92 - yrange[1]*0.05*j
-    fsc_text,xrange[1]*0.80,ypos,"z = "+redshiftNames[j],$
-             alignment=0.0,color=fsc_color(units.colors[j]),charsize=!p.charsize-0.5
-  endfor
+      ; plot legend entry
+      if (j eq 0) then begin
+        ypos = yrange[1]*0.92 - yrange[1]*0.05*m
+        fsc_text,xrange[0]*0.95,ypos,"z = "+redshiftNames[m],$
+                 alignment=0.0,color=fsc_color(units.colors[m]),charsize=!p.charsize-0.5
+      endif
+
+    endfor ;j
+  endfor ;m
   
   end_PS
 
@@ -109,9 +105,15 @@ pro plotNormScalarProd, res=res
   bSH   = 0 ; include background subhalos
   halos = 1 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
   
-  bin = 0.1  
+  normRel = 0 ; normalize (within each resolution) the same for hot/cold, which shows better both
+              ; their relative dominance and the relative strengths of their peaks near 1.0, but
+              ; shows worse the "relative" shape of the 1.0 peak vs the rest
   
   redshifts = [3.0,2.0,1.0,0.0]
+  zstrs = 'z='+['3','2','1','0']
+
+  xrange = [-1.25,1.25]
+  yrange = [0.0,1.05]
 
   ; plot
   plotName = plotPath + 'normscalar_'+str(res)+'.eps'
@@ -120,80 +122,218 @@ pro plotNormScalarProd, res=res
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.halos.eps'
   if (keyword_set(bSH)) then $
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.bSH.eps'
+  if (keyword_set(normRel)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.normRel.eps'
+    
+  if (str(res[0]) eq 'all') then res = [512,256,128]     
     
   start_PS, plotName
   !p.multi = [0,2,2]
   
-    for j=0,n_elements(redshifts)-1 do begin
+  for m=0,n_elements(redshifts)-1 do begin
   
-    ; load data
-    targetSnap = redshiftToSnapNum(redshifts[j])
-    endingSnap = targetSnap - 1 ;immediate preceeding
-    
-    ; load data
-    saveFilename = workingPath + 'normscalar.'+str(res)+'.'+str(targetSnap)+'-'+str(endingSnap)+'.sav'
-    
-    if (keyword_set(halos)) then $
-      saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.halos.sav' 
-    if (keyword_set(bSH)) then $
-      saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.bSH.sav'
-  
-    print,'Loading: '+saveFilename
-    restore, saveFilename
-
-    xrange = [-1.25,1.25]
-    yrange = [0.0,0.20]
-    
-    if (n_elements(normProd_Cold) lt 2) then normProd_Cold = [-2.0,-1.5] ;dummy
-    if (n_elements(normProd_Hot) lt 2) then normProd_Hot = [-2.0,-1.5] ;dummy
-    if (n_elements(uniq(normProd_Cold)) eq 1) then normProd_Cold = [-2.0,normProd_Cold] ;add dummy
-
-    ; plot histograms
-    if (j eq 0) then begin
-      plothist,normProd_Cold,bin=bin,/fraction,color=fsc_color('blue'),ymargin=[1.0,2.0],xmargin=[7.0,0.0],$
+    ; plot frames
+    if (m eq 0) then $
+      fsc_plot,[0],[0],/nodata,ymargin=[1.0,2.0],xmargin=[7.0,0.0],$
                xrange=xrange,yrange=yrange,/xs,/ys,xtickname=replicate(' ',10),$
-               ytickv=[0.05,0.10,0.15,0.20],yticks=3
-      plothist,normProd_Hot,bin=bin,/fraction,/overplot,color=fsc_color('red'),line=1
-      fsc_text,xrange[0]*0.7,yrange[1]*0.8,"z=3",alignment=0.5
-    endif
-    if (j eq 1) then begin
-      plothist,normProd_Cold,bin=bin,/fraction,color=fsc_color('blue'),ymargin=[1.0,2.0],xmargin=[0.0,7.0],$
+               ytickv=[0.25,0.50,0.75,1.0],yticks=3
+    if (m eq 1) then $
+      fsc_plot,[0],[0],/nodata,ymargin=[1.0,2.0],xmargin=[0.0,7.0],$
                xrange=xrange,yrange=yrange,/xs,/ys,$
                xtickname=replicate(' ',10),ytickname=replicate(' ',10)
-      plothist,normProd_Hot,bin=bin,/fraction,/overplot,color=fsc_color('red'),line=1
-      fsc_text,xrange[0]*0.7,yrange[1]*0.8,"z=2",alignment=0.5
-    endif
-    if (j eq 2) then begin
-      plothist,normProd_Cold,bin=bin,/fraction,color=fsc_color('blue'),ymargin=[4.0,-1.0],xmargin=[7.0,0.0],$
+    if (m eq 2) then $
+      fsc_plot,[0],[0],/nodata,ymargin=[4.0,-1.0],xmargin=[7.0,0.0],$
                xrange=xrange,yrange=yrange,/xs,/ys,$
-               ytickv=[0.0,0.05,0.10,0.15,0.20],yticks=5
-      plothist,normProd_Hot,bin=bin,/fraction,/overplot,color=fsc_color('red'),line=1
-      fsc_text,xrange[0]*0.7,yrange[1]*0.8,"z=1",alignment=0.5
-    endif
-    if (j eq 3) then begin
-      plothist,normProd_Cold,bin=bin,/fraction,color=fsc_color('blue'),ymargin=[4.0,-1.0],xmargin=[0.0,7.0],$
+               ytickv=[0.0,0.25,0.50,0.75,1.0],yticks=5
+    if (m eq 3) then $
+      fsc_plot,[0],[0],/nodata,ymargin=[4.0,-1.0],xmargin=[0.0,7.0],$
                xrange=xrange,yrange=yrange,/xs,/ys,ytickname=replicate(' ',10)
-      plothist,normProd_Hot,bin=bin,/fraction,/overplot,color=fsc_color('red'),line=1
-      fsc_text,xrange[0]*0.7,yrange[1]*0.8,"z=0",alignment=0.5
-    endif
-    
-    
-    endfor
-    
-    ;fsc_text,0.8,0.2,"Cold",alignment=0.5,color=fsc_color('blue'),/normal
-    ;fsc_text,0.8,0.12,"Hot",alignment=0.5,color=fsc_color('red'),/normal
-    
-    ; title and axes labels
+             
+    for j=0,n_elements(res)-1 do begin
+  
+      nsp = calcNormScalarProd(res=res[j],bSH=bSH,halos=halos,redshift=redshifts[m])
+
+      ; flattten norm scalar products for global statistics
+      normProd_Cold = flatten_list(nsp.normProd_Cold)
+      normProd_Hot  = flatten_list(nsp.normProd_Hot)
+      nsp = !NULL
+      
+      if (normProd_Cold eq !NULL or normProd_Hot eq !NULL) then begin
+        print,'Flattened normProd is NULL, skipping plot (res='+str(res[j])+' '+zstrs[m]+').'
+        continue
+      endif
+      
+      ; check for degenerate sizes/entries
+      if (n_elements(normProd_Cold) lt 2 or n_elements(normProd_Hot) lt 2) then begin
+        print,'Too few elements, skipping plot (res='+str(res[j])+' '+zstrs[m]+').' 
+        continue
+      endif
+      
+      uniqHot  = n_elements(normProd_Hot[uniq(normProd_Hot,sort(normProd_Hot))])
+      uniqCold = n_elements(normProd_Cold[uniq(normProd_Cold,sort(normProd_Cold))])
+      
+      if (uniqHot lt 2 or uniqCold lt 2) then begin
+        print,'Not enough unique elements, skipping plot (res='+str(res[j])+' '+zstrs[m]+').' 
+        continue
+      endif
+      
+       ; overplot successive resolutions
+      line     = j ;0,1,2
+      thick    = !p.thick + 1 - (j gt 0) ;3,1,1
+      
+      ; cross-hatching of histograms
+      fspacing = 0.15
+      fill     = 0
+      if (n_elements(res) eq 1) then $
+        fill = 1
+      
+      ; histogram binsize
+      bin = 0.1
+      ;bin = 1.0 / sqrt(res[j])
+      
+      ; histogram y-normalization
+      if (normRel) then begin
+        normfac = max([histogram(normProd_Hot,bin=bin),histogram(normProd_Cold,bin=bin)])
+        normfac = 1.0 / normfac
+        peak = 0
+      endif else begin
+        normfac = !NULL
+        peak = 1
+      endelse
+
+      ; plot histograms
+      plothist,normProd_Cold,bin=bin,normfac=normfac,peak=peak,$
+               fill=fill,/fline,forientation=-45,fspacing=fspacing,fcolor=fsc_color('blue'),$
+               /overplot,color=fsc_color('blue'),line=line,thick=thick
+      plothist,normProd_Hot,bin=bin,normfac=normfac,peak=peak,$
+               fill=fill,/fline,forientation=45,fspacing=fspacing,fcolor=fsc_color('red'),$
+               /overplot,color=fsc_color('red'),line=line,thick=thick
+      
+      fsc_text,xrange[0]*0.7,yrange[1]*0.8,zstrs[m],alignment=0.5   
+       
+    endfor ;j
+  endfor ;m
+  
+  ; title and axes labels
+  if (n_elements(res) eq 1) then $
     fsc_text,0.5,0.95,str(res)+"^3",alignment=0.5,/normal
-    fsc_text,0.5,0.03,"Normalized Scalar Product",alignment=0.5,/normal
-    fsc_text,0.03,0.5,"Accreted Gas Fraction",alignment=0.5,orientation=90,/normal    
+    
+  fsc_text,0.5,0.03,"Normalized Scalar Product",alignment=0.5,/normal
+  fsc_text,0.03,0.5,"Normalized Fraction",alignment=0.5,orientation=90,/normal    
     
   !p.multi = 0
   end_PS
 
 end
 
-; plotModeFracVsSubhaloMass()
+; plotAccretionRate(): plot the total smooth accretion rate (decomposed into hot and cold modes) over
+;                      the whole simulation time
+
+pro plotAccretionRate, res=res
+
+  units = getUnits()
+
+  if (not keyword_set(res)) then begin
+    print,'Error: Must specify resolution.'
+    return
+  endif
+  
+  ; config
+  dataPath    = '/n/hernquistfs1/dnelson/coldflows/thermhist/'
+  plotPath    = '/n/home07/dnelson/coldflows/'
+  
+  bSH    = 0 ; include background subhalos
+  halos  = 0 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
+
+  yScale  = 1 ; 0=normalized fraction, 1=mass/time/vol (K05)
+  kerSize = 5
+
+  ; plot axes
+  plotRedshifts = snapNumToRedshift(/all)
+  times         = redshiftToAge(plotRedshifts)
+  
+  xrange = [0.0,max(times)]
+
+  ; plot
+  plotName = plotPath+'accretion_rate_'+str(res)+'.eps'
+  
+  if (keyword_set(halos)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.halos.eps'
+  if (keyword_set(bSH)) then $
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.bSH.eps'
+    
+  if (str(res[0]) eq 'all') then res = [512,256,128]        
+    
+  start_PS, plotName
+    
+    for j=0,n_elements(res)-1 do begin
+      ; get accretion rate (code units mass)
+      sa = findAccretionRate(res=res[j],bSH=bSH,halos=halos)
+      
+      smoothAccHot  = sa.smoothAccHot
+      smoothAccCold = sa.smoothAccCold
+    
+      ; truncate first value (abnormally large)
+      ind = min(where(smoothAccCold ne 0.0))
+      smoothAccHot[ind]  = 0.01
+      smoothAccCold[ind] = 0.01
+    
+      smoothAccTot  = smoothAccHot + smoothAccCold
+    
+      ; scale rate to physical units
+      if (yScale eq 1) then begin
+        ; mass / time / volume
+        massFac = (units.UnitMass_in_g / units.Msun_in_g) ; (Msun)
+        volFac  = (20.0)^3.0 ;Mpc^3 / h^3
+        timeFac = (times - shift(times,1)) * 1e9 ;yr
+          
+        smoothAccTot  *= massFac / timeFac / volFac
+        smoothAccHot  *= massFac / timeFac / volFac
+        smoothAccCold *= massFac / timeFac / volFac
+    
+        yrange = [0.01,max(smoothAccTot)*1.05]
+        ytitle = "Accretion Rate [h"+textoidl("^3")+" M  / yr / Mpc"+textoidl("^3")+"]"
+      endif else begin
+        smoothAccHot  /= max(smoothAccTot)
+        smoothAccCold /= max(smoothAccTot)
+        smoothAccTot  /= max(smoothAccTot)
+        
+        yrange = [0.0,1.05]
+        ytitle = "Normalized Smooth Accretion Rate"
+      endelse
+      
+      ; frame and text
+      if (j eq 0) then begin
+        fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/ylog,$
+                 xtitle="Time [Gyr]",ytitle=ytitle,xs=9,/ys,ymargin=[4,3]
+        redshiftNames = ['30','6','4','3','2','1.5','1.0','0.5','0.25','0']
+        redshift_axis,xrange,yrange,/ylog,zTicknames=redshiftNames,/dotted
+        
+        ; sun symbol
+        if (yScale eq 1) then $
+          fsc_text,0.065,0.618,/normal,"!9!Z(6E)!X",font=-1,charthick=3,charsize=1.1 ;sunsymbol
+        
+        ; title
+        if (n_elements(res) eq 1) then $
+          fsc_text,0.06,0.94,/normal,str(res)+"^3",alignment=0.5
+      endif
+      
+      ; overplot successive resolutions
+      line     = j ;0,1,2
+      thick    = !p.thick + 1 - (j gt 0) ;3,2,2
+  
+      fsc_plot,times,smooth(smoothAccCold,kerSize),color=fsc_color('blue'),/overplot,line=line,thick=thick
+      fsc_plot,times,smooth(smoothAccHot,kerSize),color=fsc_color('red'),/overplot,line=line,thick=thick
+      fsc_plot,times,smooth(smoothAccTot,kerSize),/overplot,line=line,thick=thick
+      
+    endfor ;j
+  
+  end_PS
+  
+end
+
+; plotModeFracVsSubhaloMass(): plot the total smooth accretion rate (decomposed into hot and cold modes)
+;                              as a function of total (DM+baryonic) halo (parent or subhalo) mass
 
 pro plotModeFracVsSubhaloMass, res=res
 
@@ -205,22 +345,30 @@ pro plotModeFracVsSubhaloMass, res=res
   endif
   
   ; config
-  gadgetPath  = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
   dataPath    = '/n/hernquistfs1/dnelson/coldflows/thermhist/'
   plotPath    = '/n/home07/dnelson/coldflows/'
 
+  kSP    = 1 ; keres+ 05 spacing
   bSH    = 0 ; include background subhalos
-  halos  = 1 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
-
-  critLogTemp   = 5.5  ; cold/hot mode separator
-  minNumGasPart = 6    ; smoothly accreted gas per subhalo
+  halos  = 0 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
   
   redshifts = [3.0,2.0,1.0,0.0]
+  zstrs = 'z='+['3','2','1','0']
   
-  ; restriction: gas not resolved in any snapshot previous to target
-  redshiftsCut = [0,0,0,0]
-  ; restriction: gas not resolved at keres+ 05 redshift spacing increment before target (single)
-  ;redshiftsCut = [3.25,2.25,1.125,0.125]
+  if (kSP eq 1) then begin
+    ; restriction: gas not resolved at keres+ 05 redshift spacing increment before target (single)
+    redshiftsCut = [3.25,2.25,1.125,0.125]
+  endif else begin
+    ; restriction: gas not resolved in any snapshot previous to target
+    redshiftsCut = [-1,-1,-1,-1]
+  endelse
+
+  ; plot config
+  xrange = [8.5,12.5]
+  yrange = [-0.08,1.08]
+  
+  plotsym,0 ;circle
+  symsize = 0.3
 
   ; plot
   plotName = plotPath+'frac_shmass_'+str(res)+'.eps'
@@ -229,128 +377,116 @@ pro plotModeFracVsSubhaloMass, res=res
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.halos.eps'
   if (keyword_set(bSH)) then $
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.bSH.eps'
-  if (total(redshiftsCut) ne 0) then $
+  if (keyword_set(kSP)) then $
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.kSP.eps'    
+     
+  if (str(res[0]) eq 'all') then res = [512,256,128]    
     
   start_PS, plotName
   !p.multi = [0,2,2]
 
   for m=0,n_elements(redshifts)-1 do begin
-    targetSnap = redshiftToSnapNum(redshifts[m])
+    targetSnap    = redshiftToSnapNum(redshifts[m])
+    smoothCutSnap = redshiftToSnapnum(redshiftsCut[m])
     
-    ; calc max temp
-    maxTemps = maxTemperatures(res=res, zMin=redshifts[m])
+    ; plot borders
+    if (m eq 0) then $
+      fsc_plot,[0],[0],ymargin=[1.0,2.0],xmargin=[7.0,0.0],xrange=xrange,yrange=yrange,/xs,/ys,$
+               xtickname=replicate(' ',10)
+    if (m eq 1) then $
+      fsc_plot,[0],[0],ymargin=[1.0,2.0],xmargin=[0.0,7.0],xrange=xrange,yrange=yrange,/xs,/ys,$
+               xtickname=replicate(' ',10),ytickname=replicate(' ',10)
+    if (m eq 2) then $
+      fsc_plot,[0],[0],ymargin=[4.0,-1.0],xmargin=[7.0,0.0],xrange=xrange,yrange=yrange,/xs,/ys
+    if (m eq 3) then $
+      fsc_plot,[0],[0],ymargin=[4.0,-1.0],xmargin=[0.0,7.0],xrange=xrange,yrange=yrange,/xs,/ys,$
+               ytickname=replicate(' ',10)
+  
+    fsc_text,9.1,0.5,zstrs[m],alignment=0.5
     
-    ; get list of smoothly accreted gas particle ids
-    if (redshiftsCut[m] ne 0) then begin
-      smoothCutSnap = redshiftToSnapnum(redshiftsCut[m])
-    endif else begin
-      smoothCutSnap = !NULL
-    endelse
-    
-    sgTarget  = loadSubhaloGroups(gadgetPath,targetSnap)
-    sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,sgTarget=sgTarget,$
-                                smoothCutSnap=smoothCutSnap,halos=halos)  
-    
-    ; make list of sgIDs excluding background (id=0) subgroups
-    valSGids   = getPrimarySubhaloList(sgTarget,halos=halos)
-    
-    ; subhalo masses (total baryonic+DM) (x-axis)
-    shmass = alog10( (units.UnitMass_in_g / units.Msun_in_g) * sgTarget.subgroupMass[valSGids] )
-    
-    ; subhalo cold fractions (y-axis)
-    coldfrac = fltarr(n_elements(valSGids))
-    
-    for i=0,n_elements(valSGids)-1 do begin
-      sgIDs = sgTarget.subGroupIDs[sgTarget.subGroupOffset[valSGids[i]] : $
-                                   sgTarget.subGroupOffset[valSGids[i]] + sgTarget.subGroupLen[valSGids[i]] - 1]
+    for j=0,n_elements(res)-1 do begin
+      cf = calcColdFracVsSubhaloMass(res=res[j],halos=halos,bSH=bSH,$
+                                     targetSnap=targetSnap,smoothCutSnap=smoothCutSnap)
 
-      match,sgIDs,sgIDs_Acc,sh_ind,sgIDs_ind,count=count
-
-      if (count eq 0 or count lt minNumGasPart) then begin
-        ;print,'Warning: halo i='+str(i)+' sgID='+str(valSGids[i])+' had no matches in sgIDs_All'
-        coldfrac[i] = -0.1
-        continue
-      endif
+    ; plot individual systems
+    if (n_elements(res) eq 1) then $
+      fsc_plot,cf.shmass,cf.coldfrac,psym=8,symsize=symsize,/overplot
       
-      wCold = where(maxTemps[sgIDs[sgIDs_ind]] lt critLogTemp, count_cold)
-      if (count_cold ne 0) then begin
-        coldfrac[i] = float(count_cold) / count
-      endif
-    endfor
-
-    ; plot config
-    xrange = [8.5,12.5]
-    yrange = [-0.08,1.08]
-    
-    plotsym,0 ;circle
-    symsize = 0.3
-    
-    if (m eq 0) then begin
-      fsc_plot,shmass,coldfrac,psym=8,ymargin=[1.0,2.0],xmargin=[7.0,0.0],$
-               xrange=xrange,yrange=yrange,/xs,/ys,xtickname=replicate(' ',10),symsize=symsize
-      fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=3",alignment=0.5
-    endif
-    if (m eq 1) then begin
-      fsc_plot,shmass,coldfrac,psym=8,ymargin=[1.0,2.0],xmargin=[0.0,7.0],$
-               xrange=xrange,yrange=yrange,/xs,/ys,$
-               xtickname=replicate(' ',10),ytickname=replicate(' ',10),symsize=symsize
-      fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=2",alignment=0.5
-    endif
-    if (m eq 2) then begin
-      fsc_plot,shmass,coldfrac,psym=8,ymargin=[4.0,-1.0],xmargin=[7.0,0.0],$
-               xrange=xrange,yrange=yrange,/xs,/ys,symsize=symsize
-      fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=1",alignment=0.5
-    endif
-    if (m eq 3) then begin
-      fsc_plot,shmass,coldfrac,psym=8,ymargin=[4.0,-1.0],xmargin=[0.0,7.0],$
-               xrange=xrange,yrange=yrange,/xs,/ys,ytickname=replicate(' ',10),$
-               symsize=symsize
-      fsc_text,xrange[1]*0.96,yrange[1]*0.72,"z=0",alignment=0.5
-    endif
-
-    ; median line
-    ;massStep = round(100.0/sqrt(n_elements(valSGids)))/10.0
-    massStep = 0.2
+    ; calculate median line
+    massStep = round(100.0/sqrt(n_elements(cf.coldfrac)))/10.0
+    ;massStep = 0.2
     massBins = (xrange[1]-xrange[0])/massStep
     massXPts = findgen(massBins)/massBins * (xrange[1]-xrange[0]) + xrange[0] + massStep/2.0
     
     medCold = fltarr(massBins) - 1
+    stdCold = fltarr(massBins) - 1
     medCold[0:floor(n_elements(medCold)/2.0)] = 1.0 ;set default value high for first half
     
     for i=0,massBins-1 do begin
-      w = where(shmass ge xrange[0]+i*massStep and shmass lt xrange[0]+(i+1)*massStep and $
-                coldfrac ne -0.1,count)
+      w = where(cf.shmass ge xrange[0]+i*massStep and cf.shmass lt xrange[0]+(i+1)*massStep and $
+                cf.coldfrac ne -1,count)
       if (count gt 0) then begin
-        medCold[i] = mean(coldfrac[w])
+        medCold[i] = median(cf.coldfrac[w])
+        stdCold[i] = stddev(cf.coldfrac[w])
       endif
     endfor
     
+     ; overplot successive resolutions
+    line     = j ;0,1,2
+    thick    = !p.thick + 1 - 2*(j gt 0) ;3,1,1
+    smoothSize = 3
+    
     ; plot smoothed median line
-    w = where(medCold ne -1)
-    fsc_plot,massXPts[w],smooth(medCold[w],3),color=fsc_color('blue'),line=0,/overplot
-    fsc_plot,massXPts[w],smooth(1.0-medCold[w],3),color=fsc_color('red'),line=0,thick=!p.thick-0.5,/overplot
+    w = where(medCold ne -1,count)
+    
+    if (count lt SmoothSize+1) then continue
+      
+    fsc_plot,massXPts[w],smooth(medCold[w],smoothSize),color=fsc_color('blue'),line=line,thick=thick,/overplot
+    fsc_plot,massXPts[w],smooth(1.0-medCold[w],smoothSize),color=fsc_color('red'),line=line,$
+             thick=thick,/overplot
+
+    ; plot error visualization for j=0
+    if (j eq 0) then begin
+      w = where(stdCold gt 0,count)
+      
+      if (count lt smoothSize+1) then continue
+      
+      fsc_plot,massXPts[w],smooth(medCold[w]-stdCold[w],smoothSize),color=fsc_color('skyblue'),$
+               line=line,thick=thick,/overplot
+      fsc_plot,massXPts[w],smooth(medCold[w]+stdCold[w],smoothSize),color=fsc_color('skyblue'),$
+               line=line,thick=thick,/overplot
+    endif
 
     ; fit for medCold=0.5
-    w = where(massXPts ge 10.5 and massXPts le 11.5 and medCold ne 1.0)
+    w = where(massXPts ge 10.5 and massXPts le 11.5 and medCold ne 1.0 and medCold ne -1.0)
     fit = linfit(massXPts[w],medCold[w])
     fitSHMass = (0.5 - fit[0]) / fit[1]
-    fsc_plot,[fitSHMass,fitSHMass],[yrange[0],yrange[0]+(yrange[1]-yrange[0])/10.0],line=0,/overplot
+    
+    ; plot best fit coldfrac=0.5
+    fsc_plot,[fitSHMass,fitSHMass],[yrange[0],yrange[0]+(yrange[1]-yrange[0])/10.0],$
+              line=line,thick=thick,/overplot
 
-    print,'cold frac 1/2 best fit subhalo mass = '+str(fitSHMass)
+    print,'res='+str(res[j])+' cold frac 1/2 best fit subhalo mass = '+str(fitSHMass)
 
+    endfor ;j
   endfor ;m
   
-  fsc_text,0.5,0.95,str(res)+"^3",alignment=0.5,/normal
-  fsc_text,0.5,0.05,"log ( Total Subhalo Mass )",alignment=0.5,/normal
-  fsc_text,0.04,0.5,"Smoothly Accreted Gas Fraction",alignment=0.5,orientation=90,/normal
+  if (n_elements(res) eq 1) then $
+    fsc_text,0.5,0.95,str(res)+"^3",alignment=0.5,/normal
+    
+  objStr = "Subhalo"
+  if (halos) then objStr = "Halo"
+  
+  fsc_text,0.5,0.05,"log ( Total "+objStr+" Mass )",alignment=0.5,/normal
+  fsc_text,0.04,0.5,"Cold Mode Accretion Fraction",alignment=0.5,orientation=90,/normal
   
   !p.multi = 0
   end_PS
 
 end
 
-; plotTmaxHisto():
+; plotTmaxHisto(): plot a histogram of maximum past temperature reached by all smoothly accreted gas 
+;                  particles in a series of panels at various redshifts
 
 pro plotTmaxHisto, res=res
 
@@ -368,7 +504,7 @@ pro plotTmaxHisto, res=res
   kSP    = 0 ; keres+ 05 spacing
   bSH    = 0 ; include background subhalos
   zWidth = 0 ; only if requesting a smoothCutSnap
-  halos  = 1 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
+  halos  = 0 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
   
   yScale = 0 ; 0=normalized fraction, 1=K05, 2=K09
   
@@ -380,7 +516,7 @@ pro plotTmaxHisto, res=res
     redshiftsCut = [5.5,4.5,3.25,2.25,1.75,1.125,0.625,0.375,0.125]
   endif else begin
     ; restriction: gas not resolved in any snapshot previous to target
-    redshiftsCut = [0,0,0,0,0,0,0,0,0]
+    redshiftsCut = [-1,-1,-1,-1,-1,-1,-1,-1,-1]
   endelse
   
   ; set plotName and open
@@ -396,7 +532,6 @@ pro plotTmaxHisto, res=res
     plotName = strmid(plotName,0,strlen(plotName)-4) + '.zW.eps'
     
   if (str(res[0]) eq 'all') then res = [512,256,128]
-  if (str(res[0]) eq 'two') then res = [256,128]
     
   start_PS,plotName,xs=7,ys=6
   !p.multi = [0,3,3]
@@ -416,14 +551,8 @@ pro plotTmaxHisto, res=res
       
   ; loop over each redshift (panel)
   for m=0,n_elements(redshifts)-1 do begin
-
-    targetSnap = redshiftToSnapnum(redshifts[m])
-    
-    if (redshiftsCut[m] ne 0) then begin
-      smoothCutSnap = redshiftToSnapnum(redshiftsCut[m])
-    endif else begin
-      smoothCutSnap = !NULL
-    endelse
+    targetSnap    = redshiftToSnapnum(redshifts[m])
+    smoothCutSnap = redshiftToSnapnum(redshiftsCut[m])
     
     ; loop over each resolution
     for j=0,n_elements(res)-1 do begin
@@ -458,9 +587,9 @@ pro plotTmaxHisto, res=res
         volume = (20.0)^3.0 ;Mpc^3 / h^3
         
         if (keyword_set(kSP)) then $
-          time = (redshiftToAge(redshifts[m]) - redshiftToAge(redshiftsCut[m])) * 1e6 ;yr
+          time = (redshiftToAge(redshifts[m]) - redshiftToAge(redshiftsCut[m])) * 1e9 ;yr
         if (not keyword_set(kSP)) then $
-          time = (snapNumToAge(targetSnap) - snapNumToAge(targetSnap-1)) * 1e6 ;yr
+          time = (snapNumToAge(targetSnap) - snapNumToAge(targetSnap-1)) * 1e9 ;yr
         
         ; (log Tmax)^(-1)
         if (yScale eq 1) then $
@@ -556,12 +685,12 @@ pro plotTmaxHisto, res=res
   if (yScale eq 1) then begin
     fsc_text,0.04,0.5,"Gas Accretion Rate [h"+textoidl("^3")+" M  / yr / Mpc"+$
                       textoidl("^3")+"]",alignment=0.5,orientation=90,/normal
-    fsc_text,0.035,0.62,/normal,"!9!Z(6E)!X",font=-1,charthick=3,charsize=1.5 ;sunsymbol
+    fsc_text,0.035,0.62,/normal,"!9!Z(6E)!X",font=-1,charthick=3,charsize=1.1 ;sunsymbol
   endif
   if (yScale eq 2) then begin
     fsc_text,0.04,0.5,"Gas Accretion Rate [h"+textoidl("^3")+" M  / yr / Mpc"+$
                       textoidl("^3")+" / log(T"+textoidl("_{max}")+")]",alignment=0.5,orientation=90,/normal
-    fsc_text,0.035,0.515,/normal,"!9!Z(6E)!X",font=-1,charthick=3,charsize=1.5 ;sunsymbol
+    fsc_text,0.035,0.515,/normal,"!9!Z(6E)!X",font=-1,charthick=3,charsize=1.1 ;sunsymbol
   endif
 
   !p.multi = 0
@@ -585,7 +714,7 @@ pro plotRhoTemp2D, res=res
 
   bSH   = 0 ; include background subhalos
   halos = 1 ; find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
-  tW    = 1 ; weight histogram bins by time (Gyr)
+  tW    = 0 ; weight histogram bins by time (Gyr)
   
   nbins = 64
   
@@ -609,18 +738,18 @@ pro plotRhoTemp2D, res=res
   
   xrange = [-2.0,8.0] ;can't change, must redo histo
   yrange = [3.0,7.0]  ;can't change, must redo histo
-  clip = [0,100]
+  clip = [0,100] ;percentage
 
   for m=0,n_elements(redshifts)-1 do begin
     redshift = redshifts[m]
   
     ; get (rho,temp) 2d histogram
-    h2rt = calcRhoTemp2DHisto(res=res,bSH=bSH,halos=halos,zMin=redshift,nbins=nbins,tW=tW)
+    rt = calcRhoTemp2DHisto(res=res,bSH=bSH,halos=halos,zMin=redshift,nbins=nbins,tW=tW)
 
     ; convert code->solar mass units
-    w = where(h2rt ne 0)
+    w = where(rt.h2rt ne 0)
     h2logm = fltarr(nbins,nbins)
-    h2logm[w] = alog10( (units.UnitMass_in_g / units.Msun_in_g) * h2rt[w] )
+    h2logm[w] = alog10( (units.UnitMass_in_g / units.Msun_in_g) * rt.h2rt[w] )
 
     ; plot
     if (m eq 0) then begin
@@ -662,6 +791,7 @@ pro plotRhoTemp2D, res=res
 end
 
 ; plotTempTimeTracks(): plot tracks of temperature as a function of time/redshift
+; TODO
 
 pro plotTempTimeTracks, res=res
 

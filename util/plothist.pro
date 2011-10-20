@@ -6,7 +6,8 @@ PRO plothist, arr, xhist,yhist, BIN=bin,  NOPLOT=NoPlot, $
                  _EXTRA = _extra, Halfbin = halfbin, AUTOBin = autobin, $
                  Boxplot = boxplot, xlog = xlog, ylog = ylog, $
                  yrange = yrange, Color = color,axiscolor=axiscolor, $
-                 rotate = rotate, weight=weight, fraction=fraction
+                 rotate = rotate, $
+                 weight=weight, fraction=fraction, normfac=normfac, xshift=xshift ;DNELSON
 ;+
 ; NAME:
 ;      PLOTHIST
@@ -172,10 +173,17 @@ PRO plothist, arr, xhist,yhist, BIN=bin,  NOPLOT=NoPlot, $
  
  if not halfbin then xhist = xhist + 0.5*bin
 
+ ; xshift (DNELSON)
+ if keyword_set(xshift) then xhist += xshift
+
 ;;;
 ;   If renormalizing the peak, do so.
 ;
 if keyword_set(Peak) then yhist = yhist * (Peak / float(max(yhist)))
+
+; normfac (DNELSON)
+
+if keyword_set(normfac) then yhist = yhist * normfac
 
 ;;;
 ;   If not doing a plot, exit here.
