@@ -5,7 +5,7 @@
 ; removeIntersectionFromB(): return a modified version of B with all those elements also found in
 ;                            A (the collision/intersection) removed
 
-function removeIntersectionFromB, A, B
+function removeIntersectionFromB, A, B, union=union
 
     match, A, B, A_ind, B_ind, count=count
     
@@ -21,6 +21,9 @@ function removeIntersectionFromB, A, B
         print,'removeIntersectionFromB: ERROR ',ncomp,n_elements(B),count
         return,0
       endif
+      
+      ; set union return
+      if (keyword_set(union)) then union=B[B_ind]
       
       return, B[w]
     endif else begin
@@ -102,6 +105,9 @@ function redshiftToSnapNum, redshiftList, verbose=verbose
   endif else begin
     restore,saveFileName
   endelse
+  
+  ; for -1 return !NULL
+  if (total(redshiftList) eq -1) then return,!NULL
   
   ; for redshift zero hard select #314
   snapNum = intarr(n_elements(redshiftList))
@@ -340,11 +346,54 @@ pro redshift_axis, xRange, yRange, ylog=ylog, snapnum=snapnum, dotted=dotted, zT
     
     ; plot vertical dotted line at each redshift mark if requested
     if keyword_set(dotted) then $
-      fsc_plot,[zXPos[i],zXPos[i]],yRange,line=1,/overplot,thick=!p.thick-0.5
+      fsc_plot,[zXPos[i],zXPos[i]],yRange,line=dotted,/overplot,thick=!p.thick-0.5
   endfor
   
   fsc_plot,xRange,[yRange[1],yRange[1]],/overplot
   fsc_text,0.5,0.94,"Redshift",/normal
+
+end
+
+; universeage_axis(): draw age of universe (elapsed) axis
+
+pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted
+
+  logFac = 1.0
+  if keyword_set(ylog) then logFac = 10.0
+  
+  yTickLen = (yRange[1]-yRange[0]) / 40.0 * logFac
+  yTextOff = (yRange[1]-yRange[0]) / 50.0 * logFac
+
+  if (not keyword_set(zTicknames)) then begin
+    zTicknames = ['0.1','1','1.5','2','3','4','5','6','8','13.8'] ;10=0.33
+    zRedshifts = [30,5.7,4.21,3.25,2.23,1.65,1.265,0.98,0.595,0.0]
+  endif
+  nZ = n_elements(zTicknames)
+  
+  zXPos = fltarr(nZ)
+  
+  ; plot "maximum" redshift label
+  if (xRange[0] le 0.0) then $
+    fsc_text,0.0,yRange[1]+yTextOff,zTicknames[0],alignment=0.5
+  
+  ; skip t=0 (highest) at z=inf (?)
+  for i=1,nZ-1 do begin
+
+    zXPos[i] = zRedshifts[i]
+    
+    ; plot tick mark and label if inside plotrange
+    if (zXPos[i] le xRange[0] and zXPos[i] ge xRange[1]) then begin
+      fsc_plot,[zXPos[i],zXPos[i]],[yRange[1],yRange[1]-yTickLen],/overplot
+      fsc_text,zXPos[i],yRange[1]+yTextOff,zTicknames[i],alignment=0.5
+    endif
+    
+    ; plot vertical dotted line at each redshift mark if requested
+    if keyword_set(dotted) then $
+      fsc_plot,[zXPos[i],zXPos[i]],yRange,line=dotted,/overplot,thick=!p.thick-0.5
+  endfor
+  
+  fsc_plot,xRange,[yRange[1],yRange[1]],/overplot
+  fsc_text,(xRange[0]-xRange[1])/2.0,yRange[1]+yTextOff*5.0,"Time [Gyr]",alignment=0.5
 
 end
 

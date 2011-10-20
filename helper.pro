@@ -371,3 +371,17 @@ pro runBridge, res=res
   print,"Elapsed time: "+str(systime(/seconds)-start_time)+" sec"
 
 end
+
+; flatten_list
+
+function flatten_list, list
+  
+  if (list.Count() eq 0) then return,[0]
+  
+  arr = []
+  for i=0ULL,list.Count()-1 do $
+    arr = [arr,list[i]]
+
+  return,arr
+  
+end
