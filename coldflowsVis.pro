@@ -13,18 +13,18 @@ pro makeArepoProjBsub
   paramFile = "paramCut.txt"
 
   ; object config
-  xCen = 1123.20
-  yCen = 7568.80
-  zCen = 16144.2
+  ;xCen = 1123.20 & yCen = 7568.80 & zCen = 16144.2 ;dusan 512
   
-  snapNum    = 189
-  sliceWidth = 400.0 ; cube sidelength
+  targetRedshift = 3.0
+  targetSnap     = redshiftToSnapNum(targetRedshift)
   
   ; render config
   workingPath = '/n/home07/dnelson/coldflows/vis/'
   nProcs      = 8   ; 128^3=8, 256^3=24, 512^3=96
-  dimX        = 800  ; image dimensions (x)
-  dimY        = 800  ; image dimensions (y)
+  dimX        = 500  ; image dimensions (x)
+  dimY        = 500  ; image dimensions (y)
+  
+  sliceWidth  = 200.0 ; cube sidelength
   
   ; bbox and projection setup
   cmdCode = 5 ;projection
@@ -70,7 +70,7 @@ pro makeArepoProjBsub
     ; write projection commands
     strArray = ['mpirun.lsf ./Arepo '+paramFile,$
                 str(cmdCode),$
-                str(snapNum),$
+                str(targetSnap),$
                 str(dimX),str(dimY),$
                 axisStr,$
                 str(axesBB[0,i]),str(axesBB[1,i]),$
@@ -153,44 +153,39 @@ pro sphMapBox, res=res
   
 end
 
-; sphMapSubhalos: run sph kernel density projection on boxes centered on subhalos
+; sphMapSubhalos: run sph kernel density projection on boxes centered on halos/subhalos
 
-pro sphMapSubhalos, res=res
+pro sphMapHalos, res=res, halos=halos, sgIDs=sgIDs
 
-  if not keyword_set(res) then begin
-    print,'Error: Must specific resolution set.'
+  if (not keyword_set(res) or (halos ne 0 and halos ne 1)) then begin
+    print,'Error: sphMapHalos: Bad inputs.'
     return
   endif
 
   ; config
   gadgetPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
-  workingPath  = '/n/home07/dnelson/coldflows/vis/subhalo_imgs_'+str(res)+'G/'
+  ;workingPath  = '/n/home07/dnelson/coldflows/vis/subhalo_imgs_'+str(res)+'G/'
+  workingPath  = '/n/home07/dnelson/coldflows/vis/coldfil/'
   
-  boxSize = [100,100,100] ;kpc
+  boxSize = [200,200,200] ;kpc
   imgSize = [500,500]     ;px
   
   axes = list([0,1]) ;x,y
-  mode  = 1 ;1=col mass, 2=mass-weighted quantity, 3=col density
+  mode = 1 ;1=col mass, 2=mass-weighted quantity, 3=col density
   
   targetRedshift = 3.0
+  targetSnap     = redshiftToSnapNum(targetRedshift)
   
-  ; load subhalo group catalogs
-  targetSnap = redshiftToSnapNum(targetRedshift)
-  
-  sg = loadSubhaloGroups(gadgetPath,targetSnap,/verbose)
-  
-  ; make list of sgIDs excluding background (id=0) subgroups
-  valSGids   = []
-  prevGrNr   = -1
-  
-  for i=0,n_elements(sg.subgroupLen)-1 do begin
-    if (sg.subgroupGrnr[i] ne prevGrNr) then begin
-      prevGrNr = sg.subgroupGrnr[i]
-    endif else begin
-      valSGids = [valSGids,i]
-    endelse
-  endfor
-  
+  sgTarget = loadSubhaloGroups(gadgetPath,targetSnap,/verbose)
+    
+  if (not keyword_set(sgIDs)) then begin
+    ; make list of halos/subhalo IDs (map them all)
+    valSGids = getPrimarySubhaloList(sgTarget,halos=halos)
+  endif else begin
+    ; make specified IDs
+    valSGids = sgIDs
+  endelse
+
   ; load properties from snapshot
   pos  = loadSnapshotSubset(gadgetPath,snapNum=targetSnap,partType='gas',field='pos',/verbose)
   hsml = loadSnapshotSubset(gadgetPath,snapNum=targetSnap,partType='gas',field='hsml',/verbose)
@@ -201,11 +196,16 @@ pro sphMapSubhalos, res=res
   
     foreach axisPair, axes do begin
   
-      imgFilename = 'sphmap.subhalo.z='+str(targetRedshift)+'.sgID='+str(sgID)+'.axis0='+$
-                    str(axisPair[0])+'.axis1='+str(axisPair[1])+'.res='+str(res)
+      imgFilename = 'sphmap.G.z='+str(targetRedshift)+'.sgID='+str(sgID)+'.axis0='+$
+                    str(axisPair[0])+'.axis1='+str(axisPair[1])+'.res='+str(res)+'.box='+str(boxSize[0])
+                    
+      if (file_test(workingPath+imgFilename+'.png') or file_test(workingPath+imgFilename+'.eps')) then begin
+        print,'Skipping: ' + imgFilename
+        continue
+      endif     
   
       ; get subhalo position
-      boxCen = sg.subgroupPos[*,sgID]
+      boxCen = sgTarget.subgroupPos[*,sgID]
       
       print,'['+string(sgID,format='(I04)')+'] Mapping ['+str(axisPair[0])+' '+$
             str(axisPair[1])+'] with '+str(boxSize[0])+$

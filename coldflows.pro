@@ -3,9 +3,45 @@
 ; dnelson oct.2011
 
 @helper
-@coldflowsUtil
-@coldflowsLoad
+@cosmoUtil
+@cosmoLoad
 @coldflowsVis
+
+; getPrimarySubhaloList(): return list of subhalo IDs (indices) excluding background subhalos
+
+function getPrimarySubhaloList, sg, halos=halos
+
+    prevGrNr   = -1
+    valSGids   = []
+
+    if keyword_set(halos) then begin
+    
+      ; background (main) halos only
+      for i=0,n_elements(sg.subgroupLen)-1 do begin
+        if (sg.subgroupGrnr[i] eq prevGrNr) then begin
+          prevGrNr = sg.subgroupGrnr[i]
+        endif else begin
+          valSGids = [valSGids,i]
+          prevGrNr = sg.subgroupGrnr[i]
+        endelse
+      endfor
+      
+    endif else begin
+    
+      ; primary (non-background) subhalos only
+      for i=0,n_elements(sg.subgroupLen)-1 do begin
+        if (sg.subgroupGrnr[i] ne prevGrNr) then begin
+          prevGrNr = sg.subgroupGrnr[i]
+        endif else begin
+          valSGids = [valSGids,i]
+        endelse
+      endfor
+      
+    endelse
+    
+    return, valSGids
+
+end
 
 ; getSubgroupIDList(): get list of gas particle ids belonging to subgroups at specified snapshot
 ;                      endingSnap (including or excluding background subhalos) used as an
@@ -22,8 +58,9 @@
 ; note: if neither bSH or halos is set, then all gas particle ids in all halos+subhalos are returned
 ; 
 ; gasOnly=1 : load gas ids from snapshot and match to restrict return to only gas particle ids
+; dmOnly=1 : load dm ids from snapshot and match to restrict return to only dark matter ids
 
-function getSubgroupIDList, res=res, snap=snap, bSH=bSH, halos=halos, gasOnly=gasOnly
+function getSubgroupIDList, res=res, snap=snap, bSH=bSH, halos=halos, gasOnly=gasOnly, dmOnly=dmOnly
 
   if not keyword_set(res) or not keyword_set(snap) then begin
      print,'Error: getSubgroupIDList() arguments not specified.'
@@ -54,19 +91,22 @@ function getSubgroupIDList, res=res, snap=snap, bSH=bSH, halos=halos, gasOnly=ga
     
   endif
   
-  if (keyword_set(gasOnly)) then begin
-    ; load gas ids from targetSnap and restrict to gas
-    gas_ids = loadSnapshotSubset(gadgetPath,snapNum=snap,partType='gas',field='ids')
+  if (keyword_set(gasOnly) or keyword_set(dmOnly)) then begin
+    if (keyword_set(gasOnly)) then partName='gas'
+    if (keyword_set(dmOnly)) then partName='dm'
     
-    match, gas_ids, sgEnd_subgroupIDs, gas_ids_ind, sgIDs_ind, count=count_gas
+    ; load gas/dm ids from targetSnap and restrict
+    pIDs = loadSnapshotSubset(gadgetPath,snapNum=snap,partType=partName,field='ids')
     
-    gas_ids = !NULL
-    gas_ids_ind = !NULL
+    match, pIDs, sgEnd_subgroupIDs, pIDs_ind, sgIDs_ind, count=count_pID
     
-    if (count_gas gt 0) then begin
+    pIDs = !NULL
+    pIDs_ind = !NULL
+    
+    if (count_pID gt 0) then begin
         print,' Found ['+str(n_elements(sgEnd_subgroupIDs))+'] particles (all subhalos)'+$
-              ' after gas particle cut have ['+str(count_gas)+'] left, lost '+$
-              str(n_elements(sgEnd_subgroupIDs)-count_gas)+'.'
+              ' after '+str(partName)+' particle cut have ['+str(count_pID)+'] left, lost '+$
+              str(n_elements(sgEnd_subgroupIDs)-count_pID)+'.'
               
         ; keep only sgIDs[sgIDs_ind]
         sgEnd_subgroupIDs = sgEnd_subgroupIDs[sgIDs_ind]
@@ -89,6 +129,7 @@ function findAccretionRate, res=res, bSH=bSH, halos=halos
 
   ; config
   gadgetPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'  
+  dataPath     = '/n/home07/dnelson/coldflows/thermhist/'
   workingPath  = '/n/home07/dnelson/coldflows/thermhist.deriv/'  
   
   snapRange = [51,314]
@@ -125,14 +166,11 @@ function findAccretionRate, res=res, bSH=bSH, halos=halos
    
   ; loop over starting snapshots to find maxtemps during this period
   for m=0,snapRange[0]-1 do begin
-    ; load u and nelec and calculate temperature (of all gas particles)
-    u     = loadSnapshotSubset(gadgetPath,snapNum=m,partType='gas',field='u')
-    nelec = loadSnapshotSubset(gadgetPath,snapNum=m,partType='gas',field='ne')
+    maxTempsFilename = dataPath + 'thermhist.gas.'+str(res)+'_' + str(m) + '.sav'
     
-    temp = convertUtoTemp(u,nelec)
-    
-    u     = !NULL
-    nelec = !NULL
+    ; load maximum temperatures
+    restore,maxTempsFilename
+    density = !NULL
     
     ; take log
     w = where(temp eq 0,count)
@@ -144,15 +182,15 @@ function findAccretionRate, res=res, bSH=bSH, halos=halos
     w = where(temp ge critLogTemp,count)
     temp = !NULL
     
-    ; load ids for sorted insert to mask
-    if (count ne 0) then begin
-      ids = loadSnapshotSubset(gadgetPath,snapNum=m,partType='gas',field='ids')
-      hmMask[ids[w]] = 1B
-      ids = !NULL
-    endif
+    if (count ge 1) then $
+      hmMask[w] = 1B
     
     w = !NULL
   endfor
+  
+  ; constant masses (GADGET ONLY)
+  masses = loadSnapshotSubset(gadgetPath,snapNum=snapRange[0],partType='gas',field='mass')
+  masses = masses[0]
   
   ; loop over all for accretion rate calculation
   for m=snapRange[0],snapRange[1] do begin
@@ -172,27 +210,33 @@ function findAccretionRate, res=res, bSH=bSH, halos=halos
     mask_pIDs  = !NULL
     
     ; load masses and pids
-    masses = loadSnapshotSubset(gadgetPath,snapNum=m,partType='gas',field='mass')
-    ids    = loadSnapshotSubset(gadgetPath,snapNum=m,partType='gas',field='ids')
+    ; mass+id load for arepo
+    ; ids    = loadSnapshotSubset(gadgetPath,snapNum=m,partType='gas',field='ids')
     
-    ; store
-    smoothAccCold[m] = total(masses[ids[sgIDs_Cold]])
+    ; store (arepo w/ masses)
+    ;smoothAccCold[m] = total(masses[ids[sgIDs_Cold]])
     
-    if (sgIDs_Hot[0] ne 1) then $
-      smoothAccHot[m]  = total(masses[ids[sgIDs_Hot]])
+    ;if (sgIDs_Hot[0] ne 1) then $
+    ;  smoothAccHot[m]  = total(masses[ids[sgIDs_Hot]])
+      
+    ; store (GADGET ONLY)
+    smoothAccCold[m] = masses * n_elements(sgIDs_Cold)
+    smoothAccHot[m]  = masses * n_elements(sgIDs_Hot)
+    
+    sgIDs_Cold = !NULL
+    sgIDs_Hot  = !NULL
     
     print,'snap ['+str(m)+'] cold = ' + str(smoothAccCold[m]) + ' hot = ' + str(smoothAccHot[m])
     
-    masses = !NULL
+    ; masses = !NULL ; for arepo
+    ids = !NULL
     
-    ; load u and nelec and calculate temperature (of all gas particles)
-    u     = loadSnapshotSubset(gadgetPath,snapNum=m,partType='gas',field='u')
-    nelec = loadSnapshotSubset(gadgetPath,snapNum=m,partType='gas',field='ne')
+    ; load maximum temperatures
+    maxTempsFilename = dataPath + 'thermhist.gas.'+str(res)+'_' + str(m) + '.sav'
     
-    temp = convertUtoTemp(u,nelec)
-    
-    u     = !NULL
-    nelec = !NULL
+    ; load maximum temperatures
+    restore,maxTempsFilename
+    density = !NULL
     
     ; take log
     w = where(temp eq 0,count)
@@ -204,12 +248,7 @@ function findAccretionRate, res=res, bSH=bSH, halos=halos
     w = where(temp ge critLogTemp,count)
     temp = !NULL
     
-    ; load ids for sorted insert to mask
-    if (count ne 0) then begin
-      ;ids = loadSnapshotSubset(gadgetPath,snapNum=m,partType='gas',field='ids')
-      hmMask[ids[w]] = 1B
-      ids = !NULL
-    endif
+    hmMask[w] = 1B
     
     w = !NULL
     
@@ -232,8 +271,12 @@ end
 
 ; findAccretedGasMulti(): same as findAccretedGas but for more efficiently for multiple targetSnaps
 ;                         and without support for smoothCutSnap or zWidth (halos and bSH ok)
+;
+; halos=1: find cosmological smooth accretion onto main subhalos ("background" subfind groups)
+;  - should not set bSH, smoothCutSnap, zWidth for most recent approach
+; DM=1 : dark matter instead of gas
 
-pro findAccretedGasMulti, res=res, bSH=bSH, targetSnaps=targetSnaps, halos=halos
+pro findAccretedGasMulti, res=res, bSH=bSH, targetSnaps=targetSnaps, halos=halos, DM=DM
 
   if not keyword_set(res) or not keyword_set(targetSnaps) then begin
      print,'Error: findAccretedGasMult() arguments not specified.'
@@ -246,6 +289,9 @@ pro findAccretedGasMulti, res=res, bSH=bSH, targetSnaps=targetSnaps, halos=halos
   
   smoothEnd  = 50 ; first gorup catalogs at z=6
   smoothLast = max(targetSnaps)
+  
+  if not keyword_set(DM) then partName = 'gas'
+  if keyword_set(DM) then partName = 'dm'
 
   ; exclusion mask
   h = loadSnapshotHeader(gadgetPath,snapNum=0)
@@ -260,11 +306,14 @@ pro findAccretedGasMulti, res=res, bSH=bSH, targetSnaps=targetSnaps, halos=halos
     ; if m is a targetSnap, load sgTarget and match gas_ids, save results and continue
     w = where(targetSnaps eq m,count)
     if (count ne 0) then begin
-        print,'TargetSnap = ['+str(m)+'] reached:'
+        print,'TargetSnap = ['+str(m)+'] reached, loading ('+partName+'):'
         
-        ; get list of gas ids in subhalos (or halos) at this targetSnap
-        sgIDs_All = getSubgroupIDList(res=res,snap=m,bSH=bSH,halos=halos,/gasOnly)
-    
+        ; get list of particle ids in subhalos (or halos) at this targetSnap
+        if not keyword_set(DM) then $
+          sgIDs_All = getSubgroupIDList(res=res,snap=m,bSH=bSH,halos=halos,/gasOnly)
+        if keyword_set(DM) then $
+          sgIDs_All = getSubgroupIDList(res=res,snap=m,bSH=bSH,halos=halos,/dmOnly)
+          
         ; keep only those not in mask
         sgEnd_subgroupIDs = where(sgMask eq 1B,countMask)
         
@@ -273,7 +322,7 @@ pro findAccretedGasMulti, res=res, bSH=bSH, targetSnaps=targetSnaps, halos=halos
         print,' After smooth accretion cut have ['+str(n_elements(sgIDs_All))+'] left.'
         
         ; set saveFilename and save results
-        saveFilename = workingPath + 'accreted.gas.'+str(res)+'.target='+str(m)+'.'+$
+        saveFilename = workingPath + 'accreted.'+partName+'.'+str(res)+'.target='+str(m)+'.'+$
                         str(m-1)+'-'+str(smoothEnd)+'.sav'
                         
         if (keyword_set(halos)) then $
@@ -318,9 +367,10 @@ end
 ;
 ; halos=1: find cosmological smooth accretion onto main subhalos ("background" subfind groups)
 ;  - should not set bSH, smoothCutSnap, zWidth for most recent approach
+; DM=1 : dark matter instead of gas
 
 function findAccretedGas, res=res, bSH=bSH, targetSnap=targetSnap, sgTarget=sgTarget, $
-                          smoothCutSnap=smoothCutSnap, zWidth=zWidth, halos=halos
+                          smoothCutSnap=smoothCutSnap, zWidth=zWidth, halos=halos, DM=DM
 
   if not keyword_set(res) or not keyword_set(targetSnap) then begin
      print,'Error: findAccretedGas() arguments not specified.'
@@ -355,12 +405,15 @@ function findAccretedGas, res=res, bSH=bSH, targetSnap=targetSnap, sgTarget=sgTa
     widthEnd   = targetSnap
   endelse
   
+  if keyword_set(DM) then partName = 'dm'
+  if not keyword_set(DM) then partName = 'gas'
+  
   ; load group catalog at targetSnap if not passed in
   if not keyword_set(sgTarget) then $
     sgTarget  = loadSubhaloGroups(gadgetPath,targetSnap)
   
   ; set saveFilename and check existence
-  saveFilename = workingPath + 'accreted.gas.'+str(res)+'.target='+str(targetSnap)+'.'+$
+  saveFilename = workingPath + 'accreted.'+partName+'.'+str(res)+'.target='+str(targetSnap)+'.'+$
                   str(smoothStart)+'-'+str(smoothEnd)+'.sav'
                   
   if (keyword_set(halos)) then $
@@ -381,7 +434,10 @@ function findAccretedGas, res=res, bSH=bSH, targetSnap=targetSnap, sgTarget=sgTa
   for m=widthStart,widthEnd,-1 do begin
 
     ; get list of gas ids in subhalos (or halos) at this snap
-    sgIDs_Cur = getSubgroupIDList(res=res,snap=m,bSH=bSH,halos=halos,/gasOnly)
+    if not keyword_set(DM) then $
+      sgIDs_Cur = getSubgroupIDList(res=res,snap=m,bSH=bSH,halos=halos,/gasOnly)
+    if keyword_set(DM) then $
+      sgIDs_Cur = getSubgroupIDList(res=res,snap=m,bSH=bSH,halos=halos,/dmOnly)
     
     ; enforce smooth accretion on immediately prior if using zWidth:
     if keyword_set(zWidth) then begin
@@ -496,16 +552,15 @@ function maxTemperatures, res=res, zMin=zMin, zMax=zMax, getSnap=getSnap
   if not keyword_set(zMax) then zMax = 30.0
   
   ; config
-  dataPath     = '/n/hernquistfs1/dnelson/coldflows/thermhist/'
-  workingPath  = '/n/home07/dnelson/coldflows/thermhist.deriv/'
+  dataPath = '/n/hernquistfs1/dnelson/coldflows/thermhist/'
 
   ; restrict temp array to redshift range
   maxSnap = redShiftToSnapnum(zMin)
   minSnap = redShiftToSnapnum(zMax)
 
   ; set saveFilenames and check for existence
-  saveFilename1 = workingPath + 'maxtemp.'+str(res)+'.'+str(minSnap)+'-'+str(maxSnap)+'.sav'
-  saveFilename2 = workingPath + 'maxtempsnap.'+str(res)+'.'+str(minSnap)+'-'+str(maxSnap)+'.sav'
+  saveFilename1 = dataPath + 'maxtemp.'+str(res)+'.'+str(minSnap)+'-'+str(maxSnap)+'.sav'
+  saveFilename2 = dataPath + 'maxtempsnap.'+str(res)+'.'+str(minSnap)+'-'+str(maxSnap)+'.sav'
   
   if (keyword_set(getSnap) and file_test(saveFilename2)) then begin
     restore, saveFilename2
@@ -603,7 +658,8 @@ function calcRhoTemp2DHisto, bSH=bSH, halos=halos, zMin=zMin, zMax=zMax, res=res
 
   if (file_test(saveFilename)) then begin
     restore,saveFilename
-    return,h2rt
+    r = {h2rt:h2rt,h2rt_hot:h2rt_hot,h2rt_cold:h2rt_cold}
+    return,r
   endif
   
   print,'Calculating new (rho,temp) 2d histo for res = '+str(res)+' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
@@ -633,6 +689,8 @@ function calcRhoTemp2DHisto, bSH=bSH, halos=halos, zMin=zMin, zMax=zMax, res=res
   maxTemps = maxTemperatures(res=res, zMin=zMin)
   maxTemps = maxTemps[sgIDs_Acc]
   
+  wH = where(maxTemps ge critLogTemp,countH,complement=wC,ncomplement=countC)
+  
   ; load thermal history
   for m=maxSnap,minSnap,-1 do begin
     thFilename = dataPath + 'thermhist.gas.'+str(res)+'_'+str(m)+'.sav'
@@ -661,7 +719,6 @@ function calcRhoTemp2DHisto, bSH=bSH, halos=halos, zMin=zMin, zMax=zMax, res=res
     h2rt += (h2rt_cur[0:nbins-1,0:nbins-1] * timeWeight)
     
     ; calculate hot mode histogram
-    wH = where(alog10(maxTemps) ge critLogTemp,countH,complement=wC,ncomplement=countC)
     if (countH ne 0) then begin
       h2rt_cur = rhoTHisto(density[wH],temp[wH],nbins=nbins-1) ;mass=masses for Arepo
       h2rt_hot += (h2rt_cur[0:nbins-1,0:nbins-1] * timeWeight)
@@ -670,7 +727,7 @@ function calcRhoTemp2DHisto, bSH=bSH, halos=halos, zMin=zMin, zMax=zMax, res=res
     ; calculate cold mode histogram
     if (countC ne 0) then begin
       h2rt_cur = rhoTHisto(density[wC],temp[wC],nbins=nbins-1) ;mass=masses for Arepo
-      h2rt_hot += (h2rt_cur[0:nbins-1,0:nbins-1] * timeWeight)
+      h2rt_cold += (h2rt_cur[0:nbins-1,0:nbins-1] * timeWeight)
     endif
   endfor ;m
   
@@ -687,31 +744,162 @@ function calcRhoTemp2DHisto, bSH=bSH, halos=halos, zMin=zMin, zMax=zMax, res=res
   return, r
 end
 
-; calcColdFracVsSubhaloMass()
+; calcMaxTempVsMassHisto
 
-function calcColdFracVsSubhaloMass, res=res, halos=halos, bSH=bSH, $
-                                    targetSnap=targetSnap, smoothCutSnap=smoothCutSnap
+function calcMaxTempVsMassHisto, res=res, halos=halos, targetSnap=targetSnap, smoothCutSnap=smoothCutSnap
 
   units = getUnits()
 
-  if not keyword_set(res) or not keyword_set(targetSnap) then begin
-    print,'Error: calcColdFracVsSubhaloMass: Inputs not set.'
+  if (not keyword_set(res) or not keyword_set(targetSnap)) then begin
+    print,'Error: calcMaxTempVsMassHisto: Inputs not set.'
     return,0
   endif
   
   ; config
   gadgetPath  = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
   workingPath  = '/n/home07/dnelson/coldflows/thermhist.deriv/'
-  
-  minNumGasPart = 6    ; minimum smoothly accreted gas particles per subhalo
-  critLogTemp   = 5.5  ; cold/hot mode separator  
+
+  massMM = [9.0,13.0] ; minmax for mass
+  tempMM = [4.0,7.0]  ; minmax for temp
+  massB  = 0.025
+  tempB  = 0.025
   
   ; check savefile for existence
   if (keyword_set(smoothCutSnap)) then $
     endingSnap = smoothCutSnap
   if (not keyword_set(smoothCutSnap)) then $
     endingSnap = 'all'
-  saveFilename = workingPath + 'coldfracmass.'+str(res)+'.'+str(targetSnap)+'-'+str(endingSnap)+'.sav'
+    
+  saveFilename = workingPath + 'tmaxmass.'+str(res)+'.'+str(targetSnap)+'-'+str(endingSnap)+'.sav'
+  
+  if (keyword_set(halos)) then $
+    saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.halos.sav' 
+
+  if (file_test(saveFilename)) then begin
+    restore,saveFilename
+    r = {shmass:shmass,tm2d:tm2d}
+    return,r
+  endif
+  
+  ; calc max temp
+  redshift = snapNumToRedshift(snapNum=targetSnap)
+  maxTemps = maxTemperatures(res=res, zMin=redshift)
+  
+  ; get smoothly accreted gas particle id list
+  sgTarget  = loadSubhaloGroups(gadgetPath,targetSnap)
+  sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,sgTarget=sgTarget,$
+                              smoothCutSnap=smoothCutSnap,halos=halos)  
+
+  maxTemps = maxTemps[sgIDs_Acc]
+
+  ; make list of sgIDs of either subhalos or halos
+  valSGids = getPrimarySubhaloList(sgTarget,halos=halos)
+  shmass   = sgTarget.subgroupMass[valSGids]
+  ;shmass   = sgTarget.groupMass[sgTarget.subgroupGrnr[valSGids]] ;use/record parent fof masses
+  
+  ; reform subgroupIDs to valid & acc only
+  subgroupIDs = lonarr(total(sgTarget.subgroupLen[valSGids]))
+  subgroupOff = lonarr(n_elements(valSGids))
+  subgroupLen = lonarr(n_elements(valSGids))
+  
+  match,sgTarget.subgroupIDs,sgIDs_Acc,sgtarg_ind,sgIDs_ind,count=matchAcc
+  
+  nextOff = 0
+  
+  for i=0,n_elements(valSGids)-1 do begin
+    origOff = sgTarget.subGroupOffset[valSGids[i]]
+    origLen = sgTarget.subGroupLen[valSGids[i]]
+    
+    w = where(sgtarg_ind ge origOff and sgtarg_ind lt (origOff+origLen),count)
+    
+    subgroupLen[i] = count
+    subgroupOff[i] = nextOff
+    nextOff = subgroupOff[i] + subgroupLen[i]
+    ;print,i,count,subgroupOff[i],nextOff-1
+    if (count ne 0) then $
+      subgroupIDs[subgroupOff[i]:nextOff-1] = sgIDs_Acc[sgIDs_ind[w]]
+    
+  endfor
+  
+  sgTarget = !NULL
+  
+  ; 2d histogram
+  massNB = (massMM[1]-massMM[0])/massB
+  tempNB = (tempMM[1]-tempMM[0])/tempB
+  
+  tm2d = fltarr(massNB,tempNB)
+  
+  print,'Processing ['+str(n_elements(valSGids))+'] halos.'
+
+  for i=0,n_elements(valSGids)-1 do begin
+    if (i mod 1000 eq 0) then print,' '+str(i)
+    
+    ; method with reformed arrays
+    if (subgroupLen[i] ne 0) then begin
+      pIDs = subgroupIDs[subgroupOff[i] : subgroupOff[i] + subgroupLen[i] - 1]
+      match,sgIDs_Acc,pIDs,sgIDs_ind,pIDs_ind,count=count
+    endif
+
+    if (count eq 0) then $
+      continue
+    
+    ; 2d histogram
+    hist = histogram(maxTemps[sgIDs_ind],binsize=tempB,min=tempMM[0],max=tempMM[1])
+    hist = hist[0:tempNB-1]
+    mass_ind = alog10( shmass[i] * (units.UnitMass_in_g / units.Msun_in_g) )
+    mass_ind = floor((mass_ind - massMM[0]) / massB)
+    
+    ; out of mass range we're saving
+    if (mass_ind lt 0 or mass_ind ge massNB) then $
+      continue
+    
+    tm2d[mass_ind,*] += hist
+    
+  endfor
+  
+  ; subhalo masses (total baryonic+DM in log(msun))
+  shmass = alog10( (units.UnitMass_in_g / units.Msun_in_g) * shmass )  
+  
+  ; save
+  save,shmass,tm2d,valSGids,filename=saveFilename
+  
+  r = {shmass:shmass,tm2d:tm2d}
+  return,r
+  
+end
+
+; calcColdFracVsSubhaloMass()
+
+function calcColdFracVsSubhaloMass, res=res, halos=halos, bSH=bSH, critLogTemp=critLogTemp, $
+                                    targetSnap=targetSnap, smoothCutSnap=smoothCutSnap
+
+  units = getUnits()
+
+  if (not keyword_set(res) or not keyword_set(targetSnap) or not keyword_set(critLogTemp)) then begin
+    print,'Error: calcColdFracVsSubhaloMass: Inputs not set.'
+    return,0
+  endif
+  
+  if (str(critLogTemp) eq 'vTC') then begin
+    critLogTempStr = 'vTC'
+  endif else begin
+    critLogTempStr = string(critLogTemp,format='(f3.1)')
+  endelse
+  
+  ; config
+  gadgetPath  = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
+  workingPath  = '/n/home07/dnelson/coldflows/thermhist.deriv/'
+  
+  minNumGasPart = 6    ; minimum smoothly accreted gas particles per subhalo
+  
+  ; check savefile for existence
+  if (keyword_set(smoothCutSnap)) then $
+    endingSnap = smoothCutSnap
+  if (not keyword_set(smoothCutSnap)) then $
+    endingSnap = 'all'
+    
+  saveFilename = workingPath + 'coldfracmass.'+str(res)+'.CT='+critLogTempStr+$
+                 '.'+str(targetSnap)+'-'+str(endingSnap)+'.sav'
   
   if (keyword_set(halos)) then $
     saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.halos.sav'  
@@ -733,33 +921,86 @@ function calcColdFracVsSubhaloMass, res=res, halos=halos, bSH=bSH, $
   sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,sgTarget=sgTarget,$
                               smoothCutSnap=smoothCutSnap,halos=halos)  
 
+  maxTemps = maxTemps[sgIDs_Acc]
+
   ; make list of sgIDs of either subhalos or halos
-  valSGids   = getPrimarySubhaloList(sgTarget,halos=halos)
+  valSGids = getPrimarySubhaloList(sgTarget,halos=halos)
+  shmass   = sgTarget.subgroupMass[valSGids]
+  ;shmass   = sgTarget.groupMass[sgTarget.subgroupGrnr[valSGids]] ;use/record parent fof masses
   
-  ; subhalo masses (total baryonic+DM) (x-axis)
-  shmass = alog10( (units.UnitMass_in_g / units.Msun_in_g) * sgTarget.subgroupMass[valSGids] )
+  ; reform subgroupIDs to valid & acc only
+  subgroupIDs = lonarr(total(sgTarget.subgroupLen[valSGids]))
+  subgroupOff = lonarr(n_elements(valSGids))
+  subgroupLen = lonarr(n_elements(valSGids))
+  
+  match,sgTarget.subgroupIDs,sgIDs_Acc,sgtarg_ind,sgIDs_ind,count=matchAcc
+  
+  nextOff = 0
+  
+  for i=0,n_elements(valSGids)-1 do begin
+    origOff = sgTarget.subGroupOffset[valSGids[i]]
+    origLen = sgTarget.subGroupLen[valSGids[i]]
+    
+    w = where(sgtarg_ind ge origOff and sgtarg_ind lt (origOff+origLen),count)
+    
+    if (count gt 0) then begin
+      subgroupLen[i] = count
+      subgroupOff[i] = nextOff
+  
+      nextOff = subgroupOff[i] + subgroupLen[i]
+      ;print,i,count,subgroupOff[i],nextOff-1  
+
+      subgroupIDs[subgroupOff[i]:nextOff-1] = sgIDs_Acc[sgIDs_ind[w]]
+    endif
+    
+  endfor
+  
+  sgTarget = !NULL
   
   ; subhalo cold fractions (y-axis)
   coldfrac = fltarr(n_elements(valSGids))
   counts   = lonarr(n_elements(valSGids))
   
+  print,'Processing ['+str(n_elements(valSGids))+'] halos.'
+
   for i=0,n_elements(valSGids)-1 do begin
-    sgIDs = sgTarget.subGroupIDs[sgTarget.subGroupOffset[valSGids[i]] : $
-                                 sgTarget.subGroupOffset[valSGids[i]] + sgTarget.subGroupLen[valSGids[i]] - 1]
+    if (i mod 1000 eq 0) then print,' '+str(i)
+    
+    ; method without reformed subgroupIDs,subgroupOff,subgroupLen (much slower)
+    ;sgIDs = sgTarget.subGroupIDs[sgTarget.subGroupOffset[valSGids[i]] : $
+    ;                             sgTarget.subGroupOffset[valSGids[i]] + sgTarget.subGroupLen[valSGids[i]] - 1]
+    ;match,sgIDs,sgIDs_Acc,sh_ind,sgIDs_ind,count=matchCount
+    ;counts[i] = matchCount
+    
+    ; method with reformed arrays
+    if (subgroupLen[i] ne 0) then begin
+      pIDs = subgroupIDs[subgroupOff[i] : subgroupOff[i] + subgroupLen[i] - 1]
+      match,sgIDs_Acc,pIDs,sgIDs_ind,pIDs_ind,count=count
+      counts[i] = subgroupLen[i]
+    endif
 
-    match,sgIDs,sgIDs_Acc,sh_ind,sgIDs_ind,count=matchCount
-    counts[i] = matchCount
-
+    ; common
     if (counts[i] eq 0 or counts[i] lt minNumGasPart) then begin
       coldfrac[i] = -1
       continue
     endif
     
-    wCold = where(maxTemps[sgIDs_Acc[sgIDs_ind]] lt critLogTemp, count_cold)
+    ; select count based on logCritTemp or halo virial temp
+    if (str(critLogTemp) eq 'vTC') then begin
+      critT = alog10( codeMassToVirTemp(shmass[i],redshift) )
+      wCold = where(maxTemps[sgIDs_ind] lt critT, count_cold)
+    endif else begin
+      wCold = where(maxTemps[sgIDs_ind] lt critLogTemp, count_cold)
+    endelse
+      
+    ; either "cold fraction" or "never heated above Tvir fraction"
     if (count_cold ne 0) then begin
       coldfrac[i] = float(count_cold) / counts[i]
     endif
   endfor
+  
+  ; subhalo masses (total baryonic+DM in log(msun))
+  shmass = alog10( (units.UnitMass_in_g / units.Msun_in_g) * shmass )  
   
   ; save
   save,shmass,coldfrac,valSGids,counts,filename=saveFilename
@@ -769,79 +1010,56 @@ function calcColdFracVsSubhaloMass, res=res, halos=halos, bSH=bSH, $
 
 end
 
-; calcNormScalarProd(): calculate normalized scalar products of velocity vectors of individual
-;                       gas particles prior to accretion, towards the subhalo center
-;
-; bSH=1 : include background subhalos
-; halos=1 : find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
+; calcRadialPosAndVel(): calculate radial position distribution (with respect to r_200 of each parent halo)
+;                        and decomposed radial/tangential velocity vectors of individual gas particles
+;                        prior to accretion
 
-function calcNormScalarProd, res=res, redshift=redshift, bSH=bSH, halos=halos
+function calcRadialPosAndVel, res=res, redshift=redshift, halos=halos, bSH=bSH, DM=DM
 
   ; config
   gadgetPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
   workingPath  = '/n/home07/dnelson/coldflows/thermhist.deriv/'
-  
-  critLogTemp = 5.5
 
   targetSnap = redshiftToSnapNum(redshift)
   endingSnap = targetSnap - 1 ; immediately preceeding
-
+  
+  if keyword_set(DM) then partName = 'dm'
+  if not keyword_set(DM) then partName = 'gas'
+  
   ; set saveFilename
-  saveFilename = workingPath + 'normscalar.'+str(res)+'.'+str(targetSnap)+'-'+str(endingSnap)+'.sav'
+  saveFilename = workingPath + 'radposvel.'+str(res)+'.'+str(targetSnap)+'-'+str(endingSnap)+'.sav'
   
   if (keyword_set(halos)) then $
-    saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.halos.sav'  
+    saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.halos.sav'
   if (keyword_set(bSH)) then $
     saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.bSH.sav'
-
+  if (keyword_set(DM)) then $
+    saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.DM.sav'    
+    
   if (file_test(saveFilename)) then begin
     restore,saveFilename
-    r = {normProd_Hot:normProd_Hot,normProd_Cold:normProd_Cold,$
-         parentIDs_Hot:parentIDs_Hot,parentIDs_Cold:parentIDs_Cold}
+    r = {radPos:radPos,radVel:radVel,tanVel:tanVel,parentIDs:parentIDs}
     return,r
-  endif
-
+  endif  
+  
   ; load subhalo group catalogs
   sgTarget = loadSubhaloGroups(gadgetPath,targetSnap) 
   
-  ; get list of smoothly accreted gas particle ids
-  sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,sgTarget=sgTarget,halos=halos)
-
-  ; get maximum temperatures
-  maxTemps = maxTemperatures(res=res,zMin=redshift)
-  maxTemps = maxTemps[sgIDs_Acc]
-
-  ; arrays
-  normProd_Cold = list()
-  normProd_Hot  = list()
-  parentIDs_Cold = list()
-  parentIDs_Hot  = list()  
+  ; get list of smoothly accreted gas/dm particle ids
+  sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,sgTarget=sgTarget,halos=halos,DM=DM)
   
-  parentIDs      = intarr(n_elements(sgIDs_Acc))
+  ; arrays
+  radPos = list()
+  radVel = list()
+  tanVel = list()
+  
   radialVectors  = fltarr(3,n_elements(sgIDs_Acc))
   
   ; find parent subhalo IDs 
-  print,'Processing [' + str(n_elements(sgIDs_Acc)) + '] accreted gas particles.'
-  
-  match,sgTarget.subgroupIDs,sgIDs_Acc,sg_ind,acc_ind,count=count
-  acc_ind = !NULL
-  
-  if (count ne n_elements(sgIDs_Acc)) then begin
-    print,'ERROR'
-    return,0
-  endif
-  
-  sg_start = sgTarget.subgroupOffset
-  sg_stop  = sgTarget.subgroupOffset + sgTarget.subgroupLen
-
-  for i=0,n_elements(sg_ind)-1 do $
-    parentIDs[i] = where(sg_ind[i] ge sg_start and sg_ind[i] lt sg_stop,count)
-    
-  sg_start = !NULL
-  sg_stop  = !NULL
+  parentIDs = findParentIDs(sgTarget,sgIDs_Acc)
   
   ; load particle ids
-  ids = loadSnapshotSubset(gadgetPath,snapNum=endingSnap,partType='gas',field='ids')
+  ids = loadSnapshotSubset(gadgetPath,snapNum=endingSnap,partType=partName,field='ids')
   
   match,ids,sgIDs_Acc,ids_ind,sg_ind,count=count
   ids = !NULL
@@ -852,7 +1070,154 @@ function calcNormScalarProd, res=res, redshift=redshift, bSH=bSH, halos=halos
   endif
   
   ; load particle positions
-  pos = loadSnapshotSubset(gadgetPath,snapNum=endingSnap,partType='gas',field='pos')  
+  pos = loadSnapshotSubset(gadgetPath,snapNum=endingSnap,partType=partName,field='pos')  
+
+  radialVectors = pos[*,ids_ind] - sgTarget.subgroupPos[*,parentIDs]
+  pos = !NULL
+  sgTarget = !NULL
+  
+  ; periodic B.C. for distances (effectively component by component)
+  boxSize = 20000.0 ;kpc
+  w = where(radialVectors gt boxSize*0.5,count)
+  if (count ne 0) then $
+    radialVectors[w] = radialVectors[w] - boxSize
+    
+  w = where(radialVectors lt -boxSize*0.5,count)
+  if (count ne 0) then $
+    radialVectors[w] = boxSize + radialVectors[w]
+    
+  ; load particle velocities
+  vel = loadSnapshotSubset(gadgetPath,snapNum=endingSnap,partType=partName,field='vel')  
+  vel = vel[*,ids_ind]
+
+  ; find unique parent IDs
+  uniqParentIDs = parentIDs[uniq(parentIDs,sort(parentIDs))]
+  
+  print,'Processing [' + str(n_elements(uniqParentIDs)) + '] unique parent subhalos (of '+$
+         str(n_elements(parentIDs))+' total):'
+
+  ; loop over each unique parent ID
+  foreach parentID,uniqParentIDs,k do begin
+  
+    if (k mod 100 eq 0) then print,' '+str(k)
+    
+      ; find all accreted gas particles of this parent subhalo
+      w = where(parentIDs eq parentID,count)
+ 
+      if (count gt 1) then begin
+        bufRadPos = fltarr( ulong64(count) )
+        bufRadVel = fltarr( ulong64(count) )
+        bufTanVel = fltarr( ulong64(count) )
+        ind = 0ULL
+        
+        ; save properties of each particle into buffer
+        for i=0,count-1 do begin
+          radNorm = sqrt(radialVectors[*,w[i]] ## transpose(radialVectors[*,w[i]]))
+          
+          radVelNorm = vel[*,w[i]] ## transpose(-radialVectors[*,w[i]]) / radNorm ; flipped sign for radVec
+          radVelNorm = radVelNorm[0]
+          tanVelVec  = vel[*,w[i]] - radVelNorm * radialVectors[*,w[i]] ; flipped sign for radVec
+          tanVelNorm = sqrt(tanVelVec ## transpose(tanVelVec))
+          stop ;TODO FINISH
+          bufRadPos[ind] = radNorm
+          bufRadVel[ind] = radVelNorm
+          bufTanVel[ind] = tanVelNorm
+          ind++
+        endfor
+        
+        ; save buffer once per parentID
+        radPos->add, bufRadPos
+        radVel->add, bufRadVel
+        tanVel->add, buftanVel
+        parentIDs->add, parentID
+      endif
+  
+  endforeach
+
+  ; save and return  
+  save,radPos,radVel,tanVel,parentIDs,filename=saveFilename
+  
+  print,'Saved: '+saveFilename
+
+  r = {radPos:radPos,radVel:radVel,tanVel:tanVel,parentIDs:parentIDs}
+  return,r  
+  
+end
+
+; calcNormScalarProd(): calculate normalized scalar products of velocity vectors of individual
+;                       gas particles prior to accretion, towards the subhalo center
+;
+; bSH=1 : include background subhalos
+; halos=1 : find accretion onto main halos (do not set bSH,zWidth,redshiftsCut)
+; DM=1 : calculate for dark matter particles instead of gas
+
+function calcNormScalarProd, res=res, redshift=redshift, bSH=bSH, halos=halos, DM=DM
+
+  ; config
+  gadgetPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
+  workingPath  = '/n/home07/dnelson/coldflows/thermhist.deriv/'
+  
+  critLogTemp = 5.5
+
+  targetSnap = redshiftToSnapNum(redshift)
+  endingSnap = targetSnap - 1 ; immediately preceeding
+
+  if keyword_set(DM) then partName = 'dm'
+  if not keyword_set(DM) then partName = 'gas'
+
+  ; set saveFilename
+  saveFilename = workingPath + 'normscalar.'+str(res)+'.'+str(targetSnap)+'-'+str(endingSnap)+'.sav'
+  
+  if (keyword_set(halos)) then $
+    saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.halos.sav'  
+  if (keyword_set(bSH)) then $
+    saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.bSH.sav'
+  if (keyword_set(DM)) then $
+    saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.DM.sav'
+    
+  if (file_test(saveFilename)) then begin
+    restore,saveFilename
+    r = {normProd_Hot:normProd_Hot,normProd_Cold:normProd_Cold,$
+         parentIDs_Hot:parentIDs_Hot,parentIDs_Cold:parentIDs_Cold}
+    return,r
+  endif
+
+  ; load subhalo group catalogs
+  sgTarget = loadSubhaloGroups(gadgetPath,targetSnap) 
+  
+  ; get list of smoothly accreted gas/dm particle ids
+  sgIDs_Acc = findAccretedGas(res=res,bSH=bSH,targetSnap=targetSnap,sgTarget=sgTarget,halos=halos,DM=DM)
+
+  ; get maximum temperatures
+  if not keyword_set(DM) then begin
+    maxTemps = maxTemperatures(res=res,zMin=redshift)
+    maxTemps = maxTemps[sgIDs_Acc]
+  endif
+
+  ; arrays
+  normProd_Cold = list() ; or for dm
+  normProd_Hot  = list() ; empty for dm
+  parentIDs_Cold = list() ; or dm
+  parentIDs_Hot  = list() ; empty for dm
+  
+  radialVectors  = fltarr(3,n_elements(sgIDs_Acc))
+  
+  ; find parent subhalo IDs 
+  parentIDs = findParentIDs(sgTarget,sgIDs_Acc)
+  
+  ; load particle ids
+  ids = loadSnapshotSubset(gadgetPath,snapNum=endingSnap,partType=partName,field='ids')
+  
+  match,ids,sgIDs_Acc,ids_ind,sg_ind,count=count
+  ids = !NULL
+  
+  if (count ne n_elements(sgIDs_Acc)) then begin
+    print,'ERROR2'
+    return,0
+  endif
+  
+  ; load particle positions
+  pos = loadSnapshotSubset(gadgetPath,snapNum=endingSnap,partType=partName,field='pos')  
 
   radialVectors = pos[*,ids_ind] - sgTarget.subgroupPos[*,parentIDs]
   pos = !NULL
@@ -885,48 +1250,91 @@ function calcNormScalarProd, res=res, redshift=redshift, bSH=bSH, halos=halos
   foreach parentID,uniqParentIDs,k do begin
   
     if (k mod 100 eq 0) then print,' '+str(k)
-    ; find all COLD accreted gas particles of this parent subhalo
-    w = where(parentIDs eq parentID and maxTemps lt critLogTemp,count)
-
-    if (count gt 1) then begin
-      buf = fltarr( ulong64(count)*(count-1)/2 ) ; long overflow on count
-      ind = 0ULL
-      
-      ; COLD: pairwise (double loop) compute: normalized scalar product and save
-      for i=0,count-1 do begin
-        iip = sqrt(radialVectors[*,w[i]] ## transpose(radialVectors[*,w[i]]))
-        for j=i+1,count-1 do begin
-          dotp = radialVectors[*,w[i]] ## transpose(radialVectors[*,w[j]])
-          norm = iip * sqrt(radialVectors[*,w[j]] ## transpose(radialVectors[*,w[j]]))
-          buf[ind] = dotp/norm
-          ind++
-        endfor
-      endfor
-      
-      normProd_Cold->add, buf
-      parentIDs_Cold->add, parentID
-    endif
-
-    ; find all HOT accreted gas particles of this parent subhalo
-    w = where(parentIDs eq parentID and maxTemps ge critLogTemp,countH)
     
-    if (countH gt 1) then begin
-      buf = fltarr( ulong64(countH)*(countH-1)/2 )
-      ind = 0ULL ;ugh int overflow from ~count^2
-      
-      ; HOT: pairwise product
-      for i=0,countH-1 do begin
-        iip = sqrt(radialVectors[*,w[i]] ## transpose(radialVectors[*,w[i]]))
-        for j=i+1,countH-1 do begin
-          dotp = radialVectors[*,w[i]] ## transpose(radialVectors[*,w[j]])
-          norm = iip * sqrt(radialVectors[*,w[j]] ## transpose(radialVectors[*,w[j]]))
-          buf[ind] = dotp/norm
-          ind++
+    if not keyword_set(DM) then begin
+      ; find all COLD accreted gas particles of this parent subhalo
+      w = where(parentIDs eq parentID and maxTemps lt critLogTemp,count)
+  
+      if (count gt 5e4) then begin
+        print,'EXITING. Not a good idea, gas count='+str(count)+' and pairwise size would be ='+$
+              str(ulong64(count)*(count-1)/2)
+        return,0
+      endif
+  
+      if (count gt 1) then begin
+        buf = fltarr( ulong64(count)*(count-1)/2 ) ; long overflow on count
+        ind = 0ULL
+        
+        ; COLD: pairwise (double loop) compute: normalized scalar product and save
+        for i=0,count-1 do begin
+          iip = sqrt(radialVectors[*,w[i]] ## transpose(radialVectors[*,w[i]]))
+          for j=i+1,count-1 do begin
+            dotp = radialVectors[*,w[i]] ## transpose(radialVectors[*,w[j]])
+            norm = iip * sqrt(radialVectors[*,w[j]] ## transpose(radialVectors[*,w[j]]))
+            buf[ind] = dotp/norm
+            ind++
+          endfor
         endfor
-      endfor
-      normProd_Hot->add, buf
-      parentIDs_Hot->add, parentID
-    endif
+        
+        normProd_Cold->add, buf
+        parentIDs_Cold->add, parentID
+      endif
+  
+      ; find all HOT accreted gas particles of this parent subhalo
+      w = where(parentIDs eq parentID and maxTemps ge critLogTemp,countH)
+      
+      if (countH gt 5e4) then begin
+        print,'EXITING. Not a good idea, countH='+str(count)+' and pairwise size would be ='+$
+              str(ulong64(countH)*(countH-1)/2)
+        return,0
+      endif      
+      
+      if (countH gt 1) then begin
+        buf = fltarr( ulong64(countH)*(countH-1)/2 )
+        ind = 0ULL ;ugh int overflow from ~count^2
+        
+        ; HOT: pairwise product
+        for i=0,countH-1 do begin
+          iip = sqrt(radialVectors[*,w[i]] ## transpose(radialVectors[*,w[i]]))
+          for j=i+1,countH-1 do begin
+            dotp = radialVectors[*,w[i]] ## transpose(radialVectors[*,w[j]])
+            norm = iip * sqrt(radialVectors[*,w[j]] ## transpose(radialVectors[*,w[j]]))
+            buf[ind] = dotp/norm
+            ind++
+          endfor
+        endfor
+        normProd_Hot->add, buf
+        parentIDs_Hot->add, parentID
+      endif
+    endif else begin ;DM
+      w = where(parentIDs eq parentID,count)
+      
+      if (count gt 5e4) then begin
+        print,'EXITING. Not a good idea, DM count='+str(count)+' and pairwise size would be ='+$
+              str(ulong64(count)*(count-1)/2)
+        return,0
+      endif
+      
+      if (count gt 1) then begin
+        buf = fltarr( ulong64(count)*(count-1)/2 ) ; long overflow on count
+        ind = 0ULL
+        
+        ; COLD: pairwise (double loop) compute: normalized scalar product and save
+        for i=0,count-1 do begin
+          iip = sqrt(radialVectors[*,w[i]] ## transpose(radialVectors[*,w[i]]))
+          for j=i+1,count-1 do begin
+            dotp = radialVectors[*,w[i]] ## transpose(radialVectors[*,w[j]])
+            norm = iip * sqrt(radialVectors[*,w[j]] ## transpose(radialVectors[*,w[j]]))
+            buf[ind] = dotp/norm
+            ind++
+          endfor
+        endfor
+        
+        normProd_Cold->add, buf
+        parentIDs_Cold->add, parentID
+      endif
+      
+    endelse
     
   endforeach
   
@@ -938,6 +1346,115 @@ function calcNormScalarProd, res=res, redshift=redshift, bSH=bSH, halos=halos
        parentIDs_Hot:parentIDs_Hot,parentIDs_Cold:parentIDs_Cold}
   return,r
   
+end
+
+; selectColdFilHalos(): select halos or subhalos by making cuts in the normalized scalar dot product
+;                       (prefer accreting gas has preferential direction) and the thermal history
+;                       of smoothly accreted gas (prefer cold mode dominated)
+
+function selectColdFilHalos, res=res, halos=halos, redshift=redshift
+
+  if (not keyword_set(res) or (halos ne 0 and halos ne 1)) then begin
+    print,'Error: selectColdFilHalos: Bad inputs.'
+    return,0
+  endif
+
+  ; config
+  gadgetPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
+  workingPath  = '/n/home07/dnelson/coldflows/thermhist.deriv/'
+  
+  critLogTemp  = 5.5
+  normProdMin  = 0.8 ; minimum mean normScalarProd (cold mode) to include a halo
+  coldFracMin  = 0.5 ; minimum fraction of smoothly accreted gas that was in the cold mode
+  minNumPart   = 100 ; minimum number of accreting gas particles
+  
+  bSH = 0
+  
+  targetSnap    = redshiftToSnapNum(redshift)
+  smoothCutSnap = !NULL
+
+  ; set saveFilename
+  saveFilename = workingPath + 'selcoldfil.'+str(res)+'.'+str(targetSnap)+'-all.sav'
+  
+  if (keyword_set(halos)) then $
+    saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.halos.sav'  
+  if (keyword_set(bSH)) then $
+    saveFilename = strmid(saveFilename,0,strlen(saveFilename)-4) + '.bSH.sav'
+
+  if (file_test(saveFilename)) then begin
+    restore,saveFilename
+    return,valSGids
+  endif
+
+  ; load catalog
+  sgTarget = loadSubhaloGroups(gadgetPath,targetSnap)
+  valSGids = getPrimarySubhaloList(sgTarget,halos=halos)
+
+  print,'Searching ['+str(n_elements(valSGids))+'] halos for candidates:'
+
+  ; load norm scalar dot product
+  nsp = calcNormScalarProd(res=res, redshift=redshift, bSH=bSH, halos=halos)
+  
+  normProd_Cold  = nsp.normProd_Cold
+  parentIDs_Cold = nsp.parentIDs_Cold
+  nsp = !NULL
+  
+  npInclude = []
+  
+  ; save parentIDs meeting normProd cut  
+  for i=0UL,n_elements(normProd_Cold)-1 do begin
+    if (mean(normProd_Cold[i]) ge normProdMin and $
+        n_elements(normProd_Cold[i]) ge minNumPart) then begin
+      npInclude = [npInclude,parentIDs_Cold[i]]
+      print,median(normProd_Cold[i]),mean(normProd_Cold[i]),n_elements(normProd_Cold[i])
+    endif
+  endfor
+  
+  ; keep only intersection
+  match,valSGids,npInclude,val_ind,np_ind,count=count
+
+  if (count eq 0) then begin
+    print,'Out of candidates after normProd cut, exiting.'
+    return,0
+  endif
+  
+  print,' After normProd cut have ['+str(count)+'] candidates (lost '+$
+        str(n_elements(valSGids)-count)+').'
+        
+  valSGids = valSGids[val_ind]
+  
+  ; load coldmode smoothly accreted gas fraction
+  print,' Skipping coldFrac cut.'
+  if 0 then begin
+    cf = calcColdFracVsSubhaloMass(res=res,halos=halos,bSH=bSH,$
+                                   targetSnap=targetSnap,smoothCutSnap=smoothCutSnap)
+  
+    cfSGind = where(cf.coldfrac ge coldFracMin,count)
+    cfSGids = cf.valSGids[cfSGind]
+  
+    if (count eq 0) then begin
+      print,'Out of candidates after colddFrac cut, exiting.'
+      return,0
+    endif
+    
+    ; keep only intersection
+    match,valSGids,cfSGids,val_ind,cf_ind,count=countCF
+    
+    print,' After coldFrac cut have ['+str(countCF)+'] candidates (lost '+$
+          str(n_elements(valSGids)-countCF)+').'
+    
+    if (countCF ne 0) then $
+      valSGids = valSGids[val_ind]
+    if (countCF eq 0) then $
+      valSGids = -1
+  endif
+    
+  ; save and return
+  save,valSGids,filename=saveFilename
+  print,'Saved: '+saveFilename
+  
+  return,valSGids
+
 end
 
 ; selectFilament(): beginning of an algorithm to select a filamentary structure incident on a 
