@@ -1,10 +1,12 @@
-; coldflowsLoad.pro
-; cold flows - loading procedures (cosmo snapshots, fof/subhalo group cataloges)
-; dnelson oct.2011
+; cosmoLoad.pro
+; cosmological simulations - loading procedures (snapshots, fof/subhalo group cataloges)
+; dnelson nov.2011
 
 ; loadSubhaloGroups(): load complete subfind group catalog for a given snapshot
+;
+; skipIDs=1 : don't load actual group member particle IDs
 
-function loadSubhaloGroups, fileBase, m, verbose=verbose
+function loadSubhaloGroups, fileBase, m, verbose=verbose, skipIDs=skipIDs
 
   if not keyword_set(verbose) then verbose = 0
 
@@ -59,11 +61,11 @@ function loadSubhaloGroups, fileBase, m, verbose=verbose
   close,lun
   free_lun,lun
   
-  if (h.nTask ne nSplit_tab) then begin
-    print,'WARNING: h.nTask='+str(h.nTask)+' (m='+str(m)+$
-          ') differs from number of TAB split files ('+str(nSplit_tab)+'.'
+  ;if (h.nTask ne nSplit_tab) then begin
+    ;print,'WARNING: h.nTask='+str(h.nTask)+' (m='+str(m)+$
+    ;      ') differs from number of TAB split files ('+str(nSplit_tab)+'.'
     ;return,0
-  endif
+  ;endif
   
   for i=0,h.nTask-1 do begin
   
@@ -73,6 +75,9 @@ function loadSubhaloGroups, fileBase, m, verbose=verbose
     openr,lun,fName,/GET_LUN
     
     readu,lun,h
+      
+    ; skip loading actual particle IDs
+    if keyword_set(skipIDs) then h.nIDsTot = 1
   
     ; add counters and error check
     nGroupsTot    += h.nGroups
@@ -222,106 +227,111 @@ function loadSubhaloGroups, fileBase, m, verbose=verbose
   endfor
   
   ; verify accumulated totals with last header totals
-  if (nGroupsTot ne h.nGroupsTot or nIDsTot ne h.nIDsTot or nSubgroupsTot ne h.nSubgroupsTot) then begin
+  if (nGroupsTot ne h.nGroupsTot or $
+      (nIDsTot ne h.nIDsTot and not keyword_set(skipIDs)) or $
+      nSubgroupsTot ne h.nSubgroupsTot) then begin
     print,'ERROR: Totals do not add up.'
     return,0
   endif
   
-  ; IDs header
-  hIDs  = { headerIDs,              $
-               nGroups:        0L,  $
-               nGroupsTot:     0L,  $
-               nIDs:           0L,  $
-               nIDsTot:        0LL, $
-               nTask:          0L,  $
-               nPrevIDs:       0L   $
-             }
-  
-  ; IDs counters
-  nGroupsTot_IDs = 0L
-  nIDsTot_IDs    = 0L
-  
-  count = 0
-  found = 0
-  
-  ; load 0 for header
-  fName = fIDs + '.' + str(0)
-  openr,lun,fName,/GET_LUN
-  readu,lun,hIDs
-  
-  if (hIDs.nTask ne nSplit_IDs) then begin
-    print,'WARNING: h.nTask='+str(h.nTask)+' (m='+str(m)+$
-          ') differs from number of IDS split files ('+str(nSplit_IDs)+'.'
-    ;return,0
-  endif
-  
-  close,lun
-  free_lun,lun
-  
-  ; load IDs
-  for i=0,hIDs.nTask-1 do begin
-  
-    fName = fIDs + '.' + str(i)
+  if not keyword_set(skipIDs) then begin
+    ; IDs header
+    hIDs  = { headerIDs,              $
+                 nGroups:        0L,  $
+                 nGroupsTot:     0L,  $
+                 nIDs:           0L,  $
+                 nIDsTot:        0LL, $
+                 nTask:          0L,  $
+                 nPrevIDs:       0L   $
+               }
     
-    ; open and read header
+    ; IDs counters
+    nGroupsTot_IDs = 0L
+    nIDsTot_IDs    = 0L
+    
+    count = 0
+    found = 0
+    
+    ; load 0 for header
+    fName = fIDs + '.' + str(0)
     openr,lun,fName,/GET_LUN
-    
     readu,lun,hIDs
-  
-    ; add counters and error check
-    nGroupsTot_IDs    += hIDs.nGroups
-    nIDsTot_IDs       += hIDs.nIDs
     
-    ; allocate storage if this is the first iteration
-    if (i eq 0) then begin
-      subgroupLen = hIDs.nIDsTot ; only for i==0
-      ;subgroupIDs = lon64arr(hIDs.nIDsTot)
+    if (hIDs.nTask ne nSplit_IDs) then begin
+      print,'WARNING: h.nTask='+str(h.nTask)+' (m='+str(m)+$
+            ') differs from number of IDS split files ('+str(nSplit_IDs)+'.'
+      ;return,0
     endif
     
-    ; determine number of IDs to read for this subgroup
-    if (count lt hIDs.nPrevIDs + hIDs.nIDs) then begin
-      nSkip       = count - hIDs.nPrevIDs
-      nRemaining  = hIDs.nPrevIDs + hIDs.nIDs - count
+    close,lun
+    free_lun,lun
+    
+    ; load IDs
+    for i=0,hIDs.nTask-1 do begin
+    
+      fName = fIDs + '.' + str(i)
       
-      if (subgroupLen gt nRemaining) then begin
-        nToRead = nRemaining
-      endif else begin
-        nToRead = subgroupLen
-      endelse
-    endif
+      ; open and read header
+      openr,lun,fName,/GET_LUN
+      
+      readu,lun,hIDs
     
-    ; read IDs for this subgroup
-    if (nToRead gt 0) then begin
-      if (nSkip gt 0) then begin
-        dummy = lon64arr(nSkip)
-        readu,lun,dummy
-        print,dummy
-        return,0 ;die
+      ; add counters and error check
+      nGroupsTot_IDs    += hIDs.nGroups
+      nIDsTot_IDs       += hIDs.nIDs
+      
+      ; allocate storage if this is the first iteration
+      if (i eq 0) then begin
+        subgroupLen = hIDs.nIDsTot ; only for i==0
+        ;subgroupIDs = lon64arr(hIDs.nIDsTot)
       endif
       
-      ; read IDs for this file part
-      partIDs = ulon64arr(hIDs.nIDs)
-      readu,lun,partIDs
+      ; determine number of IDs to read for this subgroup
+      if (count lt hIDs.nPrevIDs + hIDs.nIDs) then begin
+        nSkip       = count - hIDs.nPrevIDs
+        nRemaining  = hIDs.nPrevIDs + hIDs.nIDs - count
+        
+        if (subgroupLen gt nRemaining) then begin
+          nToRead = nRemaining
+        endif else begin
+          nToRead = subgroupLen
+        endelse
+      endif
       
-      ; fill sf.SubgroupIDs with this part
-      sf.SubgroupIDs[hIDs.nPrevIDs : (hIDs.nPrevIDs + hIDs.nIDs - 1)] = partIDs
+      ; read IDs for this subgroup
+      if (nToRead gt 0) then begin
+        if (nSkip gt 0) then begin
+          dummy = lon64arr(nSkip)
+          readu,lun,dummy
+          print,dummy
+          return,0 ;die
+        endif
+        
+        ; read IDs for this file part
+        partIDs = ulon64arr(hIDs.nIDs)
+        readu,lun,partIDs
+        
+        ; fill sf.SubgroupIDs with this part
+        sf.SubgroupIDs[hIDs.nPrevIDs : (hIDs.nPrevIDs + hIDs.nIDs - 1)] = partIDs
+        
+        ; update counters
+        count       += nToRead
+        subgroupLen -= nToRead
+      endif
       
-      ; update counters
-      count       += nToRead
-      subgroupLen -= nToRead
+      ; close file
+      close,lun
+      free_lun, lun    
+      
+    endfor
+    
+    ; verify accumulated totals with last header totals
+    if (nGroupsTot_IDs ne hIDs.nGroupsTot or nIDsTot_IDs ne hIDs.nIDsTot) then begin
+      print,'ERROR: IDs totals do not add up.'
+      return,0
     endif
-    
-    ; close file
-    close,lun
-    free_lun, lun    
-    
-  endfor
   
-  ; verify accumulated totals with last header totals
-  if (nGroupsTot_IDs ne hIDs.nGroupsTot or nIDsTot_IDs ne hIDs.nIDsTot) then begin
-    print,'ERROR: IDs totals do not add up.'
-    return,0
-  endif
+  endif ;skipIDs
   
   if (verbose) then $
     print,'Load complete. (nGroupsTot = ' + str(nGroupsTot) + ' nSubgroupsTot = ' + str(nSubgroupsTot) + $
@@ -389,7 +399,7 @@ function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
 end
 
 ; loadSnapshotSubset(): for a given snapshot load only one field for one particle type
-;                       partType = [0,1,4] or ('gas','DM','stars') (case insensitive)
+;                       partType = [0,1,4] or ('gas','dm','stars') (case insensitive)
 ;                       field    = ['ParticleIDs','coordinates','xyz',...] (case insensitive)
 
 function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field, verbose=verbose

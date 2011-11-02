@@ -319,6 +319,23 @@ pro end_PS, pngResize=pngResize, deletePS=deletePS
 
 end
 
+; save_eps(): idl 8.x compatible EPS save
+
+pro save_eps, p, plotName, width=width, height=height, savePDF=savePDF, savePNG=savePNG
+
+  if not keyword_set(width)  then width=7.5
+  if not keyword_set(height) then height=5.0
+
+  p->save, plotName, page_size=[width,height]
+  
+  ; other save formats
+  if (keyword_set(savePDF)) then begin
+    plotName = strmid(plotName,0,strlen(plotName)-4) + '.pdf'
+    p->save, plotName, page_size=[width,height]
+  endif
+
+end
+
 ; reportCPUThreads(): return info from CPU structure for threading pool
 
 pro reportCPUThreads
@@ -384,4 +401,34 @@ function flatten_list, list
 
   return,arr
   
+end
+
+; removeIntersectionFromB(): return a modified version of B with all those elements also found in
+;                            A (the collision/intersection) removed
+
+function removeIntersectionFromB, A, B, union=union
+
+    match, A, B, A_ind, B_ind, count=count
+    
+    A_ind = !NULL ;unused
+    
+    if (count gt 0) then begin
+      ; remove B[B_ind] using complement
+      all = bytarr(n_elements(B))
+      if (B_ind[0] ne -1L) then all[B_ind] = 1B
+      w = where(all eq 0B, ncomp)
+    
+      if (ncomp ne n_elements(B)-count) then begin
+        print,'removeIntersectionFromB: ERROR ',ncomp,n_elements(B),count
+        return,0
+      endif
+      
+      ; set union return
+      if (keyword_set(union)) then union=B[B_ind]
+      
+      return, B[w]
+    endif else begin
+      print,'Warning: removeIntersectionFromB returning unmodified.'
+      return, B
+    endelse
 end

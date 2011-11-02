@@ -44,6 +44,90 @@ pro plotScalings
   stop
 end
 
+; genOrbitConfigs(): generate series of configuration files derived from a template that move the
+;                    camera position in a circular orbit about a center (x,y,z) position over a 
+;                    specified number of frames, tangent to some axis
+
+pro genOrbitConfigs
+
+  ; orbit config
+  xyzCen    = [1123.2,7568.8,16144.2] ;kpc/h in box
+  radius    = 500.0 ;kpc
+
+  numFrames = 360 ;360
+  tanAxis   = 'y'
+  
+  ; path config
+  path         = '/n/home07/dnelson/vis/ArepoVTK/orbit_test/'
+  templateName = path+'config_template.txt'
+  filenameBase = 'orbit_test_'
+  
+  ; generate (x,y,z) camera positions
+  cameraPos = fltarr(numFrames,3)
+  
+  for i=0,numFrames-1 do begin
+    if (tanAxis eq 'x') then begin
+      cameraPos[i,0] = xyzCen[0]
+      cameraPos[i,1] = xyzCen[1] + radius * cos(float(i)/numFrames * 2*!pi)
+      cameraPos[i,2] = xyzCen[2] + radius * sin(float(i)/numFrames * 2*!pi)
+    endif
+    if (tanAxis eq 'y') then begin
+      cameraPos[i,0] = xyzCen[0] + radius * cos(float(i)/numFrames * 2*!pi)
+      cameraPos[i,1] = xyzCen[1]
+      cameraPos[i,2] = xyzCen[2] + radius * sin(float(i)/numFrames * 2*!pi)
+    endif
+    if (tanAxis eq 'z') then begin
+      cameraPos[i,0] = xyzCen[0] + radius * cos(float(i)/numFrames * 2*!pi)
+      cameraPos[i,1] = xyzCen[1] + radius * sin(float(i)/numFrames * 2*!pi)
+      cameraPos[i,2] = xyzCen[2]
+    endif
+  endfor
+  
+  ; load template
+  nRows = file_lines(templateName)
+  fileText = strarr(nRows)
+  
+  openR, lun, templateName, /GET_LUN
+  
+  for i=0,nRows-1 do begin
+    tt = ''
+    readF,lun,tt
+    fileText[i] = tt
+  endfor
+  
+  close, lun
+  free_lun, lun
+  
+  ; write new config files
+  for i=0,numFrames-1 do begin
+    ; copy template text
+    outText = fileText
+    
+    ; make camera position string
+    cameraPosStr = str(string(cameraPos[i,0],format='(f9.3)')) + " " + $
+                   str(string(cameraPos[i,1],format='(f9.3)')) + " " + $
+                   str(string(cameraPos[i,2],format='(f9.3)'))
+    
+    ; replace FRAMENAME and CAMERAPOSTUPLE
+    strreplace,outText,'FRAMENAME','frame_'+str(i)+'.tga'
+    strreplace,outText,'CAMERAPOSTUPLE',cameraPosStr
+    
+    ; write
+    writeName = path + 'config_'+str(i)+'.txt'
+    
+    openW,lun,writeName,/GET_LUN
+    
+    for j=0,nRows-1 do begin
+      printf,lun,outText[j]
+    endfor
+    
+    close,lun
+    free_lun, lun
+    
+    print,writeName + " -- " + cameraPosStr
+  endfor
+end
+
 pro makeArepoICs
 
   ; config

@@ -1,47 +1,20 @@
-; coldflowsUtil.pro
-; cold flows - utility functions
-; dnelson oct.2011
+; cosmoUtil.pro
+; cosmological simulations - utility functions
+; dnelson nov.2011
 
-; removeIntersectionFromB(): return a modified version of B with all those elements also found in
-;                            A (the collision/intersection) removed
+; sgIDList(): return a sub-list of subgroup IDs from a given group catalog sg
+; 
+; primary=1   : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
+; secondary=1 : members of the non-first subgroups of each group only ("satellites"/"subhalos")
 
-function removeIntersectionFromB, A, B, union=union
-
-    match, A, B, A_ind, B_ind, count=count
-    
-    A_ind = !NULL ;unused
-    
-    if (count gt 0) then begin
-      ; remove B[B_ind] using complement
-      all = bytarr(n_elements(B))
-      if (B_ind[0] ne -1L) then all[B_ind] = 1B
-      w = where(all eq 0B, ncomp)
-    
-      if (ncomp ne n_elements(B)-count) then begin
-        print,'removeIntersectionFromB: ERROR ',ncomp,n_elements(B),count
-        return,0
-      endif
-      
-      ; set union return
-      if (keyword_set(union)) then union=B[B_ind]
-      
-      return, B[w]
-    endif else begin
-      print,'Warning: removeIntersectionFromB returning unmodified.'
-      return, B
-    endelse
-end
-
-; getPrimarySubhaloList(): return list of subhalo IDs (indices) excluding background subhalos
-
-function getPrimarySubhaloList, sg, halos=halos
+function sgIDList, sg=sg, primary=primary, secondary=secondary
 
     prevGrNr   = -1
     valSGids   = []
 
-    if keyword_set(halos) then begin
+    if keyword_set(primary) then begin
     
-      ; background (main) halos only
+      ; "background"/"main subhalos"/"halos" only
       for i=0,n_elements(sg.subgroupLen)-1 do begin
         if (sg.subgroupGrnr[i] eq prevGrNr) then begin
           prevGrNr = sg.subgroupGrnr[i]
@@ -53,7 +26,7 @@ function getPrimarySubhaloList, sg, halos=halos
       
     endif else begin
     
-      ; primary (non-background) subhalos only
+      ; "satellites"/"subhalos" only
       for i=0,n_elements(sg.subgroupLen)-1 do begin
         if (sg.subgroupGrnr[i] ne prevGrNr) then begin
           prevGrNr = sg.subgroupGrnr[i]
@@ -66,6 +39,90 @@ function getPrimarySubhaloList, sg, halos=halos
     
     return, valSGids
 
+end
+
+; sgPIDList(): return a list of member particle IDs from a given group catalog sg
+;
+; primary=1   : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
+; secondary=1 : members of the non-first subgroups of each group only ("satellites"/"subhalos")
+; all=1       : the union of the above (one of these three options must be set)
+;
+; gasOnly=1 : load gas ids from snapshot and match to restrict return to only gas particle ids
+; dmOnly=1  : load dm ids from snapshot and match to restrict return to only dark matter ids
+
+function sgPIDList, sg=sg, primary=primary, secondary=secondary, all=all, gasOnly=gasOnly, dmOnly=dmOnly
+
+  if (not keyword_set(sg) or (not keyword_set(primary) and not keyword_set(secondary) and $
+                              not keyword_set(all))) then begin
+    print,'Error: sgPIDList: Bad inputs.'
+    return,0
+  endif
+
+  ; get list of appropriate group ids
+  if keyword_set(all) then $
+    valSGids = indgen(sg.nSubgroupsTot)
+  if not keyword_set(all) then $
+    valSGids = sgIDList(primary=primary,secondary=secondary)
+  
+  ; make list of particle ids in these groups
+  subgroupPIDs = []
+  
+  foreach sgID, valSGids do begin
+    ; select subgroup
+    sgIDs = sg.subGroupIDs[sg.subGroupOffset[sgID] : sg.subGroupOffset[sgID] + $
+                           sg.subGroupLen[sgID] - 1]
+    
+    subgroupPIDs = [subgroupPIDs, sgIDs]
+  endforeach
+    
+  ; particle type restriction
+  if (keyword_set(gasOnly) or keyword_set(dmOnly)) then begin
+    if (keyword_set(gasOnly)) then partName='gas'
+    if (keyword_set(dmOnly))  then partName='dm'
+    
+    ; load gas/dm ids from targetSnap and restrict
+    ;pIDs = loadSnapshotSubset(gadgetPath,snapNum=snap,partType=partName,field='ids')
+    
+    ;match, pIDs, sgEnd_subgroupIDs, pIDs_ind, sgIDs_ind, count=count_pID
+    
+    ;pIDs = !NULL
+    ;pIDs_ind = !NULL
+    
+    ; keep only sgIDs[sgIDs_ind]
+    ;if (count_pID gt 0) then $
+    ;    sgEnd_subgroupIDs = sgEnd_subgroupIDs[sgIDs_ind]
+    print,'ERROR'
+    exit
+  endif
+
+  return, subgroupPIDs
+end
+
+; findParentIDs(): given a group catalog sg and a set of particle ids PIDs, for each PID find 
+;                  the "parent" group id to which it belongs
+
+function findParentIDs, sg, pIDs
+
+  parentIDs = intarr(n_elements(pIDs))
+  
+  match,sg.subgroupIDs,pIDs,sg_ind,pids_ind,count=count
+  pids_ind = !NULL
+  
+  if (count ne n_elements(pIDs)) then begin
+    print,'ERROR'
+    return,0
+  endif
+  
+  sg_start = sg.subgroupOffset
+  sg_stop  = sg.subgroupOffset + sg.subgroupLen
+
+  for i=0,n_elements(sg_ind)-1 do $
+    parentIDs[i] = where(sg_ind[i] ge sg_start and sg_ind[i] lt sg_stop,count)
+    
+  sg_start = !NULL
+  sg_stop  = !NULL
+  
+  return, parentIDs  
 end
 
 ; redshiftToSnapNum(): convert redshift to the nearest snapshot number
@@ -163,6 +220,37 @@ function snapNumToRedshift, snapNum=snapNum, time=time, all=all
 
 end
 
+; codeMassToVirTemp(): convert halo mass (in code units) to virial temperature at specified redshift
+
+function codeMassToVirTemp, mass, redshift, meanmolwt=meanmolwt
+
+  units = getUnits()
+
+  ; mean molecular weight default (valid for ComparisonProject)
+  if not keyword_set(meanmolwt) then meanmolwt = 0.6
+
+  ; mass to msun
+  mass_msun = mass * (units.UnitMass_in_g / units.Msun_in_g)
+  
+  ; cosmo
+  omega_m   = 0.27
+  omega_L   = 0.73
+  omega_k   = 0.0
+  little_h  = 0.7
+  
+  omega_m_z = omega_m * (1+redshift)^3.0 / $
+              ( omega_m*(1+redshift)^3.0 + omega_L + omega_k*(1+redshift)^2.0 )
+  
+  Delta_c = 18*!pi^2 + 82*(omega_m_z-1.0) - 39*(omega_m_z-1.0)^2.0
+
+  Tvir = 1.98e4 * (meanmolwt/0.6) * (mass_msun/1e8*little_h)^(2.0/3.0) * $
+         (omega_m/omega_m_z * Delta_c / 18.0 / !pi^2.0)^(1.0/3.0) * $
+         (1.0 + redshift)/10.0 ;K
+
+  return, Tvir
+  
+end
+
 ; convertUtoTemp():
 
 function convertUtoTemp, u, nelec, gamma=gamma, hmassfrac=hmassfrac
@@ -175,7 +263,7 @@ function convertUtoTemp, u, nelec, gamma=gamma, hmassfrac=hmassfrac
   
   ; calculate mean molecular weight
   meanmolwt = 4.0/(1.0 + 3.0 * hmassfrac + 4.0* hmassfrac * nelec) * units.mass_proton
-  
+
   ; calculate temperature
   temp = (gamma-1.0) * u / units.boltzmann * units.UnitEnergy_in_cgs / units.UnitMass_in_g * meanmolwt
   
@@ -234,11 +322,6 @@ function dtdz, z, lambda0 = lambda0, q0 = q0
   return, 1.0 / (term1 * sqrt(term2 * term3 + lambda0))
 end
    
-function snapNumToAge, snap
-  z = snapNumToRedshift(snapNum=snap)
-  return, redshiftToAge(z)
-end
-   
 function redshiftToAge, z
 
   units = getUnits()
@@ -264,6 +347,11 @@ function redshiftToAge, z
 
   return, age * 3.085678e+19 / 3.15567e+7 / H0 / 1e9 ;Gyr
 
+end
+
+function snapNumToAge, snap
+  z = snapNumToRedshift(snapNum=snap)
+  return, redshiftToAge(z)
 end
   
 ; rhoTHisto(): make mass-weighted density-temperature 2d histogram
