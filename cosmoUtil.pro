@@ -2,6 +2,53 @@
 ; cosmological simulations - utility functions
 ; dnelson nov.2011
 
+; simParams(): return structure of simulation parameters
+
+function simParams, res=res, run=run
+
+  if not keyword_set(res) or not keyword_set(run) then begin
+     print,'Error: simParams: arguments not specified.'
+     exit
+  endif
+
+  r = {simPath:      '',$    ; root path to simulation snapshots and group catalogs
+       savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
+       boxSize:      0.0,$   ; boxsize of simulation, kpc
+       snapRange:    [0,0],$ ; snapshot range of simulation
+       groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
+       plotPath:     '',$    ; path to put plots
+       galCatPath:   '',$    ; path to galaxy catalog files
+       thistPath:    '',$    ; path to thermal history files
+       derivPath:    '',$    ; path to put derivative (data) files
+       snap:         0,$     ; convenience for passing between functions
+       res:          0,$     ; copied from input
+       run:          '',$    ; copied from input
+       minNumGasPart: 0}     ; minimum number of gas particles in a galaxy to include in e.g. mass func
+       
+  r.boxSize       = 20000.0
+  r.snapRange     = [0,314]
+  r.groupCatRange = [50,314]
+  r.minNumGasPart = 100
+  
+  if (isnumeric(res)) then $
+    r.res = res
+  r.run = run
+  
+  r.plotPath   = '/n/home07/dnelson/coldflows/'
+  r.galCatPath = '/n/home07/dnelson/coldflows/galaxycat/'
+  r.thistPath  = '/n/home07/dnelson/coldflows/thermhist/'
+  r.derivPath  = '/n/home07/dnelson/coldflows/data.files/'
+       
+  if (run eq 'gadget') then begin
+    r.simPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
+    r.savPrefix = 'G'
+    return,r
+  endif
+
+  print,'simParams: ERROR.'
+  exit
+end
+
 ; sgIDList(): return a sub-list of subgroup IDs from a given group catalog sg
 ; 
 ; pri=1 : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
@@ -18,15 +65,15 @@ function sgIDList, sP=sP, sg=sg, pri=pri, sec=sec, all=all, minNumPart=minNumPar
     endif
     
     ; load galaxy cat if necessary
-    if not keyword_set(gc) then begin
+    if not keyword_set(sg) then begin
       if not keyword_set(sP) then begin
-        print,'Error: Must specific sg or sP.'
+        print,'Error: Must specify sg or sP.'
         return,0
       endif
       sg = loadSubhaloGroups(sP.simPath,sP.snap)
     endif
 
-    minNumPartVal = 100 ; total (dm+stars+gas)
+    minNumPartVal = 100 ; in subgroup (total, dm+gas+stars)
 
     prevGrNr   = -1
     valSGids   = []
@@ -38,12 +85,14 @@ function sgIDList, sP=sP, sg=sg, pri=pri, sec=sec, all=all, minNumPart=minNumPar
         if (sg.subgroupGrnr[i] eq prevGrNr) then begin
           prevGrNr = sg.subgroupGrnr[i]
         endif else begin
+        
           if (keyword_set(minNumPart)) then begin
             if (sg.subgroupLen[i] ge minNumPartVal) then $
               valSGids = [valSGids,i]
           endif else begin
             valSGids = [valSGids,i]
           endelse ;minNumPart
+          
           prevGrNr = sg.subgroupGrnr[i]
         endelse
       endfor
@@ -57,12 +106,14 @@ function sgIDList, sP=sP, sg=sg, pri=pri, sec=sec, all=all, minNumPart=minNumPar
         if (sg.subgroupGrnr[i] ne prevGrNr) then begin
           prevGrNr = sg.subgroupGrnr[i]
         endif else begin
+        
           if (keyword_set(minNumPart)) then begin
             if (sg.subgroupLen[i] ge minNumPartVal) then $
               valSGids = [valSGids,i]
           endif else begin
             valSGids = [valSGids,i]
           endelse ;minNumPart
+          
         endelse
       endfor
       
@@ -72,12 +123,14 @@ function sgIDList, sP=sP, sg=sg, pri=pri, sec=sec, all=all, minNumPart=minNumPar
     
       ; both primary and secondary
       for i=0,n_elements(sg.subgroupLen)-1 do begin
+      
         if (keyword_set(minNumPart)) then begin
           if (sg.subgroupLen[i] ge minNumPartVal) then $
             valSGids = [valSGids,i]
         endif else begin
           valSGids = [valSGids,i]
         endelse ;minNumPart
+        
       endfor
     
     endif
@@ -140,42 +193,6 @@ function sgPIDList, sg=sg, pri=pri, sec=sec, all=all, gasOnly=gasOnly, dmOnly=dm
   return, subgroupPIDs
 end
 
-; gcINDList(): return a list of member particle indices from a given list of subgroup IDs
-
-function gcINDList, sP=sP, gc=gc, sgIDList=sgIDList
-
-  ; load galaxy cat if necessary
-  if not keyword_set(gc) then begin
-    if not keyword_set(sP) then begin
-      print,'Error: Must specific gc or sP.'
-      return,0
-    endif
-    gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
-  endif
-
-  galaxyInds = []
-  groupmemInds = []
-  
-  foreach sgID, sgIDList do begin
-    ; galaxy
-    if (gc.galaxyLen[sgID] gt 0) then begin
-      galInds  = lindgen(gc.galaxyLen[sgID]) + gc.galaxyOff[sgID] ; int overflow on indgen
-      galaxyInds   = [galaxyInds, galInds]
-    endif
-    
-    ; group member
-    if (gc.groupmemLen[sgID] gt 0) then begin
-      gmemInds = lindgen(gc.groupmemLen[sgID]) + gc.groupmemOff[sgID]
-      groupmemInds = [groupmemInds, gmemInds]
-    endif    
-    
-  endforeach
-  
-  r = {gal:galaxyInds,gmem:groupmemInds}
-  return,r
-  
-end
-
 ; galCatRepParentIDs(): for the galaxy catalog, replicate the list of ordered parent IDs such that
 ;                       the return array is the same size as the number of gas particle ids with
 ;                       each element the id of its parent
@@ -222,156 +239,6 @@ function galCatRepParentIDs, gc=gc, sgIDListPri=sgIDListPri
     
     r = {gal:sg_ind_gal,gmem:sg_ind_gmem}
     return,r
-end
-
-; galCatParentProperties: calculate some property of the parent galaxy/group for every gas particle
-;                         in the galaxy catalog at some snapshot
-; virTemp=1 : virial temperature
-; mass=1    : total mass (from catalog, dm+baryon)
-; rVir=1    : virial radius (r_200 critical)
-
-function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir
-
-  ; load group catalog for masses
-  sg = loadSubhaloGroups(sP.simPath,sP.snap)
-
-  ; load galaxy catalog
-  gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
-
-  ; replicate parent IDs
-  sgInd = galCatRepParentIDs(gc=gc)
-  
-  ; arrays
-  gal  = fltarr(n_elements(gc.galaxyIDs))
-  gmem = fltarr(n_elements(gc.groupmemIDs))
-  
-  ; masses (log msun)
-  if keyword_set(mass) then begin
-    gal  = sg.subgroupMass[sgInd.gal]
-    gmem = sg.subgroupMass[sgInd.gmem]
-    
-    gal  = codeMassToLogMsun(gal)
-    gmem = codeMassToLogMsun(gmem)
-  endif
-
-  ; calculate virial temperatures (K)
-  if keyword_set(virTemp) then begin
-    gal  = sg.subgroupMass[sgInd.gal]
-    gmem = sg.subgroupMass[sgInd.gmem]
-    
-    redshift = snapNumToRedshift(snap=sP.snap)
-  
-    gal  = codeMassToVirTemp(gal,redshift)
-    gmem = codeMassToVirTemp(gmem,redshift)
-  endif
-  
-  if keyword_set(rVir) then begin
-    gal  = sg.subgroupGrnr[sgInd.gal]
-    gmem = sg.subgroupGrnr[sgInd.gmem]
-    
-    gal  = sg.group_r_crit200[gal]
-    gmem = sg.group_r_crit200[gmem]
-  endif
-
-  r = {gal:gal,gmem:gmem}
-  return,r
-end
-
-; groupCenterPosByMostBoundID(): compute a "best" center position in space for all groups by using the 
-;                                position of the most bound particles, whose IDs are stored in the group
-;                                catalog but without knowing the particle types we have to load all
-;                                gas+dm+stars particle positions
-
-function groupCenterPosByMostBoundID, sP=sP, sg=sg
-
-  groupCen = fltarr(3,sg.nSubgroupsTot)
-  
-  ; load gas ids and pos, find matches
-  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='ids')
-  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count1,/sort
-  
-  ids_ind = ids_ind[sort(sg_ind)]
-  sg_ind  = sg_ind[sort(sg_ind)]
-  
-  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
-  
-  groupCen[*,sg_ind] = pos[*,ids_ind]
-  
-  ; load stars ids and pos, find matches
-  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='ids')
-  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count2,/sort
-  
-  ids_ind = ids_ind[sort(sg_ind)]
-  sg_ind  = sg_ind[sort(sg_ind)]
-  
-  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
-  
-  groupCen[*,sg_ind] = pos[*,ids_ind]
-  
-  ; load dm ids and pos, find matches
-  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='ids')
-  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count3,/sort
-  
-  ids_ind = ids_ind[sort(sg_ind)]
-  sg_ind  = sg_ind[sort(sg_ind)]
-  
-  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
-  
-  groupCen[*,sg_ind] = pos[*,ids_ind]
-
-  if ((count1 + count2 + count3) ne sg.nSubgroupsTot) then begin
-    print,'ERROR'
-    stop
-  endif
-  
-  return, groupCen
-end
-
-; simParams(): return structure of simulation parameters
-
-function simParams, res=res, run=run
-
-  if not keyword_set(res) or not keyword_set(run) then begin
-     print,'Error: simParams: arguments not specified.'
-     exit
-  endif
-
-  r = {simPath:      '',$    ; root path to simulation snapshots and group catalogs
-       savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
-       boxSize:      0.0,$   ; boxsize of simulation, kpc
-       snapRange:    [0,0],$ ; snapshot range of simulation
-       groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
-       plotPath:     '',$    ; path to put plots
-       galCatPath:   '',$    ; path to galaxy catalog files
-       thistPath:    '',$    ; path to thermal history files
-       derivPath:    '',$    ; path to put derivative (data) files
-       snap:         0,$     ; convenience for passing between functions
-       res:          0,$     ; copied from input
-       run:          '',$    ; copied from input
-       minNumGasPart: 0}     ; minimum number of gas particles in a galaxy to include in e.g. mass func
-       
-  r.boxSize       = 20000.0
-  r.snapRange     = [0,314]
-  r.groupCatRange = [50,314]
-  r.minNumGasPart = 100
-  
-  if (isnumeric(res)) then $
-    r.res = res
-  r.run = run
-  
-  r.plotPath   = '/n/home07/dnelson/coldflows/'
-  r.galCatPath = '/n/home07/dnelson/coldflows/galaxycat/'
-  r.thistPath  = '/n/home07/dnelson/coldflows/thermhist/'
-  r.derivPath  = '/n/home07/dnelson/coldflows/data.files/'
-       
-  if (run eq 'gadget') then begin
-    r.simPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
-    r.savPrefix = 'G'
-    return,r
-  endif
-
-  print,'simParams: ERROR.'
-  exit
 end
 
 ; correctPeriodicDistVecs(): enforce periodic B.C. for distance vecotrs (effectively component by 
