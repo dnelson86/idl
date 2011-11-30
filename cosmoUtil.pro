@@ -4,38 +4,83 @@
 
 ; sgIDList(): return a sub-list of subgroup IDs from a given group catalog sg
 ; 
-; primary=1   : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
-; secondary=1 : members of the non-first subgroups of each group only ("satellites"/"subhalos")
+; pri=1 : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
+; sec=1 : members of the non-first subgroups of each group only ("satellites"/"subhalos")
+; all=1 : all subgroups
+; 
+; minNumPart=1 : require a minimum number of particles in (subfind) group to include
 
-function sgIDList, sg=sg, primary=primary, secondary=secondary
+function sgIDList, sP=sP, sg=sg, pri=pri, sec=sec, all=all, minNumPart=minNumPart
+
+    if (not keyword_set(pri) and not keyword_set(sec) and not keyword_set(all)) then begin
+      print,'Error: Must specify sgID parameter.'
+      return,0
+    endif
+    
+    ; load galaxy cat if necessary
+    if not keyword_set(gc) then begin
+      if not keyword_set(sP) then begin
+        print,'Error: Must specific sg or sP.'
+        return,0
+      endif
+      sg = loadSubhaloGroups(sP.simPath,sP.snap)
+    endif
+
+    minNumPartVal = 100 ; total (dm+stars+gas)
 
     prevGrNr   = -1
     valSGids   = []
 
-    if keyword_set(primary) then begin
+    if keyword_set(pri) then begin
     
       ; "background"/"main subhalos"/"halos" only
       for i=0,n_elements(sg.subgroupLen)-1 do begin
         if (sg.subgroupGrnr[i] eq prevGrNr) then begin
           prevGrNr = sg.subgroupGrnr[i]
         endif else begin
-          valSGids = [valSGids,i]
+          if (keyword_set(minNumPart)) then begin
+            if (sg.subgroupLen[i] ge minNumPartVal) then $
+              valSGids = [valSGids,i]
+          endif else begin
+            valSGids = [valSGids,i]
+          endelse ;minNumPart
           prevGrNr = sg.subgroupGrnr[i]
         endelse
       endfor
       
-    endif else begin
+    endif
+    
+    if keyword_set(sec) then begin
     
       ; "satellites"/"subhalos" only
       for i=0,n_elements(sg.subgroupLen)-1 do begin
         if (sg.subgroupGrnr[i] ne prevGrNr) then begin
           prevGrNr = sg.subgroupGrnr[i]
         endif else begin
-          valSGids = [valSGids,i]
+          if (keyword_set(minNumPart)) then begin
+            if (sg.subgroupLen[i] ge minNumPartVal) then $
+              valSGids = [valSGids,i]
+          endif else begin
+            valSGids = [valSGids,i]
+          endelse ;minNumPart
         endelse
       endfor
       
-    endelse
+    endif
+    
+    if keyword_set(all) then begin
+    
+      ; both primary and secondary
+      for i=0,n_elements(sg.subgroupLen)-1 do begin
+        if (keyword_set(minNumPart)) then begin
+          if (sg.subgroupLen[i] ge minNumPartVal) then $
+            valSGids = [valSGids,i]
+        endif else begin
+          valSGids = [valSGids,i]
+        endelse ;minNumPart
+      endfor
+    
+    endif
     
     return, valSGids
 
@@ -43,26 +88,23 @@ end
 
 ; sgPIDList(): return a list of member particle IDs from a given group catalog sg
 ;
-; primary=1   : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
-; secondary=1 : members of the non-first subgroups of each group only ("satellites"/"subhalos")
-; all=1       : the union of the above (one of these three options must be set)
+; pri=1 : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
+; sec=1 : members of the non-first subgroups of each group only ("satellites"/"subhalos")
+; all=1 : the union of the above (one of these three options must be set)
 ;
 ; gasOnly=1 : load gas ids from snapshot and match to restrict return to only gas particle ids
 ; dmOnly=1  : load dm ids from snapshot and match to restrict return to only dark matter ids
 
-function sgPIDList, sg=sg, primary=primary, secondary=secondary, all=all, gasOnly=gasOnly, dmOnly=dmOnly
+function sgPIDList, sg=sg, pri=pri, sec=sec, all=all, gasOnly=gasOnly, dmOnly=dmOnly
 
-  if (not keyword_set(sg) or (not keyword_set(primary) and not keyword_set(secondary) and $
+  if (not keyword_set(sg) or (not keyword_set(pri) and not keyword_set(sec) and $
                               not keyword_set(all))) then begin
     print,'Error: sgPIDList: Bad inputs.'
     return,0
   endif
 
   ; get list of appropriate group ids
-  if keyword_set(all) then $
-    valSGids = indgen(sg.nSubgroupsTot)
-  if not keyword_set(all) then $
-    valSGids = sgIDList(primary=primary,secondary=secondary)
+  valSGids = sgIDList(sg=sg,pri=pri,sec=sec,all=all)
   
   ; make list of particle ids in these groups
   subgroupPIDs = []
@@ -91,38 +133,262 @@ function sgPIDList, sg=sg, primary=primary, secondary=secondary, all=all, gasOnl
     ; keep only sgIDs[sgIDs_ind]
     ;if (count_pID gt 0) then $
     ;    sgEnd_subgroupIDs = sgEnd_subgroupIDs[sgIDs_ind]
-    print,'ERROR'
+    print,'ERROR need to fix this part'
     exit
   endif
 
   return, subgroupPIDs
 end
 
-; findParentIDs(): given a group catalog sg and a set of particle ids PIDs, for each PID find 
-;                  the "parent" group id to which it belongs
+; gcINDList(): return a list of member particle indices from a given list of subgroup IDs
 
-function findParentIDs, sg, pIDs
+function gcINDList, sP=sP, gc=gc, sgIDList=sgIDList
 
-  parentIDs = intarr(n_elements(pIDs))
+  ; load galaxy cat if necessary
+  if not keyword_set(gc) then begin
+    if not keyword_set(sP) then begin
+      print,'Error: Must specific gc or sP.'
+      return,0
+    endif
+    gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
+  endif
+
+  galaxyInds = []
+  groupmemInds = []
   
-  match,sg.subgroupIDs,pIDs,sg_ind,pids_ind,count=count
-  pids_ind = !NULL
+  foreach sgID, sgIDList do begin
+    ; galaxy
+    if (gc.galaxyLen[sgID] gt 0) then begin
+      galInds  = lindgen(gc.galaxyLen[sgID]) + gc.galaxyOff[sgID] ; int overflow on indgen
+      galaxyInds   = [galaxyInds, galInds]
+    endif
+    
+    ; group member
+    if (gc.groupmemLen[sgID] gt 0) then begin
+      gmemInds = lindgen(gc.groupmemLen[sgID]) + gc.groupmemOff[sgID]
+      groupmemInds = [groupmemInds, gmemInds]
+    endif    
+    
+  endforeach
   
-  if (count ne n_elements(pIDs)) then begin
-    print,'ERROR'
-    return,0
+  r = {gal:galaxyInds,gmem:groupmemInds}
+  return,r
+  
+end
+
+; galCatRepParentIDs(): for the galaxy catalog, replicate the list of ordered parent IDs such that
+;                       the return array is the same size as the number of gas particle ids with
+;                       each element the id of its parent
+;
+; sgIDListPri=1 : should be a list of primary subhalo IDs, e.g. sgIDListPri=sgIDList(sg=sg,/pri)
+;                 if set, for secondary groups, return instead of the ID of the primary parent
+;                 (for primary groups the return is unchanged)
+
+function galCatRepParentIDs, gc=gc, sgIDListPri=sgIDListPri
+
+    ; arrays to hold parent IDs for each gas particle
+    sg_ind_gal  = lonarr(n_elements(gc.galaxyIDs))
+    sg_ind_gmem = lonarr(n_elements(gc.groupmemIDs))
+    
+    if not keyword_set(sgIDListPri) then $
+      sgIDListPri = indgen(n_elements(gc.galaxyLen)) ; valid id list set to all
+    
+    for sgID=0,n_elements(gc.galaxyLen)-1 do begin
+    
+        ; parent ID (pri or sec)
+        if (total(sgID eq sgIDListPri) eq 0) then begin
+          dists = sgID - sgIDListPri
+          dists = dists[where(dists gt 0)]
+          w = where(dists eq min(dists),count)
+          parID = sgIDListPri[w[0]]
+        endif else begin
+          parID = sgID
+        endelse
+        
+        ; galaxies
+        groupStart = gc.galaxyOff[sgID]
+        groupEnd   = groupStart + gc.galaxyLen[sgID]
+        
+        if (gc.galaxyLen[sgID] gt 0) then $
+          sg_ind_gal[groupStart:groupEnd-1] = cmreplicate(parID,groupEnd-groupStart)
+          
+        ; group members
+        groupStart = gc.groupmemOff[sgID]
+        groupEnd   = groupStart + gc.groupmemLen[sgID]
+        
+        if (gc.groupmemLen[sgID] gt 0) then $
+          sg_ind_gmem[groupStart:groupEnd-1] = cmreplicate(parID,groupEnd-groupStart)
+    endfor
+    
+    r = {gal:sg_ind_gal,gmem:sg_ind_gmem}
+    return,r
+end
+
+; galCatParentProperties: calculate some property of the parent galaxy/group for every gas particle
+;                         in the galaxy catalog at some snapshot
+; virTemp=1 : virial temperature
+; mass=1    : total mass (from catalog, dm+baryon)
+; rVir=1    : virial radius (r_200 critical)
+
+function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir
+
+  ; load group catalog for masses
+  sg = loadSubhaloGroups(sP.simPath,sP.snap)
+
+  ; load galaxy catalog
+  gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
+
+  ; replicate parent IDs
+  sgInd = galCatRepParentIDs(gc=gc)
+  
+  ; arrays
+  gal  = fltarr(n_elements(gc.galaxyIDs))
+  gmem = fltarr(n_elements(gc.groupmemIDs))
+  
+  ; masses (log msun)
+  if keyword_set(mass) then begin
+    gal  = sg.subgroupMass[sgInd.gal]
+    gmem = sg.subgroupMass[sgInd.gmem]
+    
+    gal  = codeMassToLogMsun(gal)
+    gmem = codeMassToLogMsun(gmem)
+  endif
+
+  ; calculate virial temperatures (K)
+  if keyword_set(virTemp) then begin
+    gal  = sg.subgroupMass[sgInd.gal]
+    gmem = sg.subgroupMass[sgInd.gmem]
+    
+    redshift = snapNumToRedshift(snap=sP.snap)
+  
+    gal  = codeMassToVirTemp(gal,redshift)
+    gmem = codeMassToVirTemp(gmem,redshift)
   endif
   
-  sg_start = sg.subgroupOffset
-  sg_stop  = sg.subgroupOffset + sg.subgroupLen
-
-  for i=0,n_elements(sg_ind)-1 do $
-    parentIDs[i] = where(sg_ind[i] ge sg_start and sg_ind[i] lt sg_stop,count)
+  if keyword_set(rVir) then begin
+    gal  = sg.subgroupGrnr[sgInd.gal]
+    gmem = sg.subgroupGrnr[sgInd.gmem]
     
-  sg_start = !NULL
-  sg_stop  = !NULL
+    gal  = sg.group_r_crit200[gal]
+    gmem = sg.group_r_crit200[gmem]
+  endif
+
+  r = {gal:gal,gmem:gmem}
+  return,r
+end
+
+; groupCenterPosByMostBoundID(): compute a "best" center position in space for all groups by using the 
+;                                position of the most bound particles, whose IDs are stored in the group
+;                                catalog but without knowing the particle types we have to load all
+;                                gas+dm+stars particle positions
+
+function groupCenterPosByMostBoundID, sP=sP, sg=sg
+
+  groupCen = fltarr(3,sg.nSubgroupsTot)
   
-  return, parentIDs  
+  ; load gas ids and pos, find matches
+  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='ids')
+  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count1,/sort
+  
+  ids_ind = ids_ind[sort(sg_ind)]
+  sg_ind  = sg_ind[sort(sg_ind)]
+  
+  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
+  
+  groupCen[*,sg_ind] = pos[*,ids_ind]
+  
+  ; load stars ids and pos, find matches
+  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='ids')
+  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count2,/sort
+  
+  ids_ind = ids_ind[sort(sg_ind)]
+  sg_ind  = sg_ind[sort(sg_ind)]
+  
+  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
+  
+  groupCen[*,sg_ind] = pos[*,ids_ind]
+  
+  ; load dm ids and pos, find matches
+  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='ids')
+  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count3,/sort
+  
+  ids_ind = ids_ind[sort(sg_ind)]
+  sg_ind  = sg_ind[sort(sg_ind)]
+  
+  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
+  
+  groupCen[*,sg_ind] = pos[*,ids_ind]
+
+  if ((count1 + count2 + count3) ne sg.nSubgroupsTot) then begin
+    print,'ERROR'
+    stop
+  endif
+  
+  return, groupCen
+end
+
+; simParams(): return structure of simulation parameters
+
+function simParams, res=res, run=run
+
+  if not keyword_set(res) or not keyword_set(run) then begin
+     print,'Error: simParams: arguments not specified.'
+     exit
+  endif
+
+  r = {simPath:      '',$    ; root path to simulation snapshots and group catalogs
+       savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
+       boxSize:      0.0,$   ; boxsize of simulation, kpc
+       snapRange:    [0,0],$ ; snapshot range of simulation
+       groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
+       plotPath:     '',$    ; path to put plots
+       galCatPath:   '',$    ; path to galaxy catalog files
+       thistPath:    '',$    ; path to thermal history files
+       derivPath:    '',$    ; path to put derivative (data) files
+       snap:         0,$     ; convenience for passing between functions
+       res:          0,$     ; copied from input
+       run:          '',$    ; copied from input
+       minNumGasPart: 0}     ; minimum number of gas particles in a galaxy to include in e.g. mass func
+       
+  r.boxSize       = 20000.0
+  r.snapRange     = [0,314]
+  r.groupCatRange = [50,314]
+  r.minNumGasPart = 100
+  
+  if (isnumeric(res)) then $
+    r.res = res
+  r.run = run
+  
+  r.plotPath   = '/n/home07/dnelson/coldflows/'
+  r.galCatPath = '/n/home07/dnelson/coldflows/galaxycat/'
+  r.thistPath  = '/n/home07/dnelson/coldflows/thermhist/'
+  r.derivPath  = '/n/home07/dnelson/coldflows/data.files/'
+       
+  if (run eq 'gadget') then begin
+    r.simPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
+    r.savPrefix = 'G'
+    return,r
+  endif
+
+  print,'simParams: ERROR.'
+  exit
+end
+
+; correctPeriodicDistVecs(): enforce periodic B.C. for distance vecotrs (effectively component by 
+;                            component), input vecs in format fltarr[3,n]
+
+pro correctPeriodicDistVecs, vecs
+
+  boxSize = 20000.0 ;kpc, valid for ComparisonProject
+  
+  w = where(vecs gt boxSize*0.5,count)
+  if (count ne 0) then $
+    vecs[w] = vecs[w] - boxSize
+    
+  w = where(vecs lt -boxSize*0.5,count)
+  if (count ne 0) then $
+    vecs[w] = boxSize + vecs[w]
+
 end
 
 ; redshiftToSnapNum(): convert redshift to the nearest snapshot number
@@ -249,6 +515,22 @@ function codeMassToVirTemp, mass, redshift, meanmolwt=meanmolwt
 
   return, Tvir
   
+end
+
+; codeMassToLogMsun(): convert mass in code units to log(msun)
+
+function codeMassToLogMsun, mass
+
+  units = getUnits()
+  
+  mass_msun = mass * (units.UnitMass_in_g / units.Msun_in_g)
+  
+  ; log of nonzero
+  w = where(mass_msun eq 0.0,count)
+  if (count ne 0) then $
+    mass_msun[w] = 1.0
+  
+  return,alog10(mass_msun)
 end
 
 ; convertUtoTemp():
