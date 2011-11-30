@@ -1,9 +1,46 @@
-
 ; arepoTests_ICs.pro
 ; dnelson
 ; 03.2011
 
 @helper
+
+; 2D arepo.cuda input
+pro gen_arepo_cuda_2D_input
+
+  ; config
+  fOut = 'input.txt'
+  
+  Lx = 1.0
+  Ly = 1.0
+  
+  N = 10L
+  
+  ; setup arrays
+  pos = fltarr(3,N)
+  
+  ; uniformly random positions
+  pos[0,*] = randomu(seed,N)
+  pos[1,*] = randomu(seed,N)
+
+  ; write
+  openw,lun,fOut,/GET_LUN
+  
+  printf,lun,"#"
+  printf,lun,"# test input file with "+str(N)+" points in [0,1]x[0,1]"
+  printf,lun,"# gen_arepo_cuda_2D_input"
+  printf,lun,"#"
+  printf,lun,str(N)
+  
+  for i=0,N-1 do begin
+    printf,lun,string(pos[0,i],format='(f6.4)')+" "+string(pos[1,i],format='(f6.4)')
+  endfor
+
+  close,lun
+  free_lun,lun
+  
+  print,'wrote ',fOut
+  
+end
 
 ; 2D Kelvin-Helmholtz Instability ICs
 pro gen_KH_2D_ICs

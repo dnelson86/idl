@@ -301,8 +301,8 @@ pro start_PS, filename, xs=xs, ys=ys
 
   PS_Start, FILENAME=filename, /nomatch, /quiet, bits_per_pixel=8, color=1, $
             /encapsulated, decomposed=0, xs=xs, ys=ys, /inches, font=0, tt_font='Times' ;3/2  
-            
-  ;!p.charsize = 1.2
+ 
+  !p.charsize = 1.5
   !p.thick    = 3.0          
             
 end

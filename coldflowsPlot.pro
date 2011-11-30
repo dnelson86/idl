@@ -51,23 +51,16 @@ pro plotRedshiftSpacings
     fsc_text,xrange[0]*1.2,0.92,"V11",alignment=0.5,color=fsc_color('forest green')
     
   end_PS
-  
-  
-  stop
 
 end
 
 ; plotHaloMassesVirTemp(): plot halo/subhalo histograms of mass and virial temp
 
-pro plotHaloMassesVirTemp, res=res, halos=halos
+pro plotHaloMassesVirTemp, res=res, run=run, halos=halos
 
   units = getUnits()
+  sP = simParams(res=res,run=run)
 
-  if (not keyword_set(res) or (halos ne 0 and halos ne 1)) then begin
-    print,'Error: plotTmaxRedshift: Bad inputs.'
-    return
-  endif
-  
   ;redshifts = [4.0,3.0,2.0,1.0,0.0]
   redshifts = [3.0,0.0]
   
@@ -83,10 +76,7 @@ pro plotHaloMassesVirTemp, res=res, halos=halos
   legSp = 0.02
   
   ; plot names
-  plotName = plotPath+'halo_masses_tvir_'+str(res)+'.eps'
-  
-  if (keyword_set(halos)) then $
-    plotName = strmid(plotName,0,strlen(plotName)-4) + '.halos.eps'
+  plotName = sP.plotPath+'halo_masses_tvir_'+str(res)+'.eps'
   
   if (str(res[0]) eq 'two') then res = [256,128]  
   if (str(res[0]) eq 'all') then res = [512,256,128]  
@@ -113,7 +103,7 @@ pro plotHaloMassesVirTemp, res=res, halos=halos
     
       gadgetPath = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res[j])+'_20Mpc/Gadget/output/'  
   
-      sgTarget = loadSubhaloGroups(gadgetPath,targetSnap,/skipIDs)
+      sgTarget = loadSubhaloGroups(sP.simPath,targetSnap,/skipIDs)
       valSGids = getPrimarySubhaloList(sgTarget,halos=halos)
 
       ;haloMasses = sgTarget.subgroupMass[valSGids] ;a
@@ -161,12 +151,12 @@ pro plotHaloMassesVirTemp, res=res, halos=halos
     
       gadgetPath = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res[j])+'_20Mpc/Gadget/output/'  
   
-      sgTarget = loadSubhaloGroups(gadgetPath,targetSnap,/skipIDs)
+      sgTarget = loadSubhaloGroups(sP.simPath,targetSnap,/skipIDs)
       valSGids = getPrimarySubhaloList(sgTarget,halos=halos)
       
       ;haloMasses = sgTarget.subgroupMass[valSGids] ;a
-      haloMasses = sgTarget.subgroupMass ;b
-      ;haloMasses = sgTarget.groupMass ;c
+      ;haloMasses = sgTarget.subgroupMass ;b
+      haloMasses = sgTarget.groupMass ;c
 
       sgTarget = !NULL
       valSGids = !NULL
@@ -181,25 +171,6 @@ pro plotHaloMassesVirTemp, res=res, halos=halos
 
       plothist, haloTvir,bin=bin,/ylog,peak=peak,overplot=overplot,line=line,$
                thick=thick,color=fsc_color(tempColors[m])
-
-      ; overplot maximum temps
-      sgIDs_Acc = findAccretedGas(res=res[j],bSH=0,targetSnap=targetSnap,$
-                                  smoothCutSnap=!NULL,zWidth=!NULL,halos=halos)
-      
-       ; get maximum temperatures
-      maxTemps = maxTemperatures(res=res[j],zMin=redshifts[m])
-      maxTemps = maxTemps[sgIDs_Acc]
-      
-      ; scale different resolutions to match vertically
-      if (j eq 0) then begin
-        fac = max(histogram(maxTemps,binsize=bin))
-        weight = 1.0
-      endif else begin
-        weight = fac / max(histogram(maxTemps,binsize=bin))
-      endelse
-      
-      plothist,maxTemps,bin=bin,/ylog,overplot=overplot,line=line,thick=thick,$
-               weight=weight,color=fsc_color(maxTempColors[m])
 
     endfor ;j
   endfor ;m    
