@@ -6,56 +6,6 @@
 @cosmoUtil
 @cosmoLoad
 
-; groupCenterPosByMostBoundID(): compute a "best" center position in space for all groups by using the 
-;                                position of the most bound particles, whose IDs are stored in the group
-;                                catalog but without knowing the particle types we have to load all
-;                                gas+dm+stars particle positions
-
-function groupCenterPosByMostBoundID, sP=sP, sg=sg
-
-  groupCen = fltarr(3,sg.nSubgroupsTot)
-  
-  ; load gas ids and pos, find matches
-  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='ids')
-  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count1,/sort
-  
-  ids_ind = ids_ind[sort(sg_ind)]
-  sg_ind  = sg_ind[sort(sg_ind)]
-  
-  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
-  
-  groupCen[*,sg_ind] = pos[*,ids_ind]
-  
-  ; load stars ids and pos, find matches
-  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='ids')
-  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count2,/sort
-  
-  ids_ind = ids_ind[sort(sg_ind)]
-  sg_ind  = sg_ind[sort(sg_ind)]
-  
-  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
-  
-  groupCen[*,sg_ind] = pos[*,ids_ind]
-  
-  ; load dm ids and pos, find matches
-  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='ids')
-  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count3,/sort
-  
-  ids_ind = ids_ind[sort(sg_ind)]
-  sg_ind  = sg_ind[sort(sg_ind)]
-  
-  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
-  
-  groupCen[*,sg_ind] = pos[*,ids_ind]
-
-  if ((count1 + count2 + count3) ne sg.nSubgroupsTot) then begin
-    print,'ERROR'
-    stop
-  endif
-  
-  return, groupCen
-end
-
 ; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
 ;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)
 ;              if snap is specified, create only for one snapshot number or return previously saved
@@ -104,7 +54,7 @@ function galaxyCat, res=res, run=run, snap=snap
     
     ; load ids of particles in all subfind groups
     sg = loadSubhaloGroups(sP.simPath,m)
-    sgPIDs = sgPIDList(sg=sg,/all)
+    sgPIDs = sgPIDList(sg=sg,select='all')
     
     ; load gas ids and match to catalog
     ids  = loadSnapshotSubset(sP.simPath,snapNum=m,partType='gas',field='ids')
@@ -141,7 +91,7 @@ function galaxyCat, res=res, run=run, snap=snap
               countCut,comp=wComp,ncomp=countComp)
 
     if (countCut eq 0 or countComp eq 0) then begin
-      print,'Warning: Empty galaxy cut or comp. Skipping: ' + strmid(saveFilename,strlen(sP.galCatPath))
+      print,'Warning: Empty galaxy cut or comp. Skipping: ' + strmid(saveFilename1,strlen(sP.galCatPath))
       continue
     endif
     
@@ -234,159 +184,6 @@ function galaxyCat, res=res, run=run, snap=snap
   
 end
 
-; galCatParentProperties: calculate some property of the parent galaxy/group for every gas particle
-;                         in the galaxy catalog at some snapshot
-; virTemp=1 : virial temperature
-; mass=1    : total mass (from catalog, dm+baryon)
-; rVir=1    : virial radius (r_200 critical)
-
-function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir
-
-  ; load group catalog for masses
-  sg = loadSubhaloGroups(sP.simPath,sP.snap)
-
-  ; load galaxy catalog
-  gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
-
-  ; replicate parent IDs
-  sgInd = galCatRepParentIDs(gc=gc)
-  
-  ; arrays
-  gal  = fltarr(n_elements(gc.galaxyIDs))
-  gmem = fltarr(n_elements(gc.groupmemIDs))
-  
-  ; masses (log msun)
-  if keyword_set(mass) then begin
-    gal  = sg.subgroupMass[sgInd.gal]
-    gmem = sg.subgroupMass[sgInd.gmem]
-    
-    gal  = codeMassToLogMsun(gal)
-    gmem = codeMassToLogMsun(gmem)
-  endif
-
-  ; calculate virial temperatures (K)
-  if keyword_set(virTemp) then begin
-    gal  = sg.subgroupMass[sgInd.gal]
-    gmem = sg.subgroupMass[sgInd.gmem]
-    
-    redshift = snapNumToRedshift(snap=sP.snap)
-  
-    gal  = codeMassToVirTemp(gal,redshift)
-    gmem = codeMassToVirTemp(gmem,redshift)
-  endif
-  
-  if keyword_set(rVir) then begin
-    gal  = sg.subgroupGrnr[sgInd.gal]
-    gmem = sg.subgroupGrnr[sgInd.gmem]
-    
-    gal  = sg.group_r_crit200[gal]
-    gmem = sg.group_r_crit200[gmem]
-  endif
-
-  r = {gal:gal,gmem:gmem}
-  return,r
-end
-
-; gcINDList(): return a list of member particle indices from a given list of subgroup IDs
-
-function gcINDList, sP=sP, gc=gc, sgIDList=sgIDList
-
-  ; load galaxy cat if necessary
-  if not keyword_set(gc) then begin
-    if not keyword_set(sP) then begin
-      print,'Error: Must specific gc or sP.'
-      return,0
-    endif
-    gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
-  endif
-
-  galaxyInds = []
-  groupmemInds = []
-  
-  foreach sgID, sgIDList do begin
-    ; galaxy
-    if (gc.galaxyLen[sgID] gt 0) then begin
-      galInds  = lindgen(gc.galaxyLen[sgID]) + gc.galaxyOff[sgID] ; int overflow on indgen
-      galaxyInds   = [galaxyInds, galInds]
-    endif
-    
-    ; group member
-    if (gc.groupmemLen[sgID] gt 0) then begin
-      gmemInds = lindgen(gc.groupmemLen[sgID]) + gc.groupmemOff[sgID]
-      groupmemInds = [groupmemInds, gmemInds]
-    endif    
-    
-  endforeach
-  
-  r = {gal:galaxyInds,gmem:groupmemInds}
-  return,r
-  
-end
-
-; gasOrigins(): loop through all snapshots from the beginning of the group catalogs (z=6) and
-;               categorize gas into different modes/origins:
-;                   
-;               1. smooth (in the DM sense) - no membership in any subfind group at any previous time
-;               2-4. TODO
-
-function gasOrigins, res=res, run=run
-
-  sP = simParams(res=res,run=run)
-
-  targetRedshifts = [3.0,2.0,1.0,0.0]
-  targetSnapshots = redshiftToSnapNum(targetRedshifts)
-
-  ; masks
-  h = loadSnapshotHeader(sP.simPath,snapNum=0)
-  
-  nTot   = h.nPartTot[0] + h.nPartTot[1] + h.nPartTot[3] ; gas + dm + stars
-  padFac = 1.1 ; allow 10% more ids to exist due to refinement (Arepo)
-  nMask  = round(nTot * padFac)
-  
-  cat1Mask = bytarr(nMask) ;smooth
-  ;cat2Mask = bytarr(nMask) ;quasi-smooth
-  ;cat3Mask = bytarr(nMask) ;merger/clumpy
-  ;cat4Mask = bytarr(nMask) ;recycled/stripped
-  
-  for m=sP.groupCatRange[0],sP.groupCatRange[1],1 do begin
-  
-    ; load catalog
-    gc = galaxyCat(res=res,run=run,snap=m)
-    
-    ; if target redshift, save results
-    w = where(targetSnapshots eq m,count)
-    if (count ne 0) then begin
-        ; find all particle ids that have not been added to masks
-        pIDs_Cat1 = where(cat1Mask eq 0B,count1)
-        
-        ; match with ids in catalog at this snapshot
-        match,pIDs_Cat1,gc.galaxyIDs,pids_ind_gal,gc_ind_gal,count=count_gal,/sort
-        match,pIDs_Cat1,gc.groupmemIDs,pids_ind_gmem,gc_ind_gmem,count=count_gmem,/sort
-        
-        pIDs_Cat1_gal  = pIDs_Cat1[pids_ind_gal]
-        pIDs_Cat1_gmem = pIDs_Cat1[pids_ind_gmem]
-        
-        ; set saveFilename and save
-        saveFilename = sP.derivPath + 'gas.smooth.'+str(res)+'.'+str(sP.snapRange[0])+'-'+str(m)+'.sav'
-
-        save,pIDs_Cat1_gal,pIDs_Cat1_gmem,filename=saveFilename
-        print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
-    endif
-    
-    ; check overflow on masks
-    if (max(gc.galaxyIDs) ge nMask or max(gc.groupmemIDs) ge nMask) then begin
-      print,'ERROR'
-      stop
-    endif
-    
-    ; add catalog members to masks
-    cat1Mask[gc.galaxyIDs]   = 1B
-    cat1Mask[gc.groupmemIDs] = 1B
-  
-  endfor
-
-end
-
 ; galaxyCatRadii(): find radial distance of all group member particles wrt the group they belong to
 ;                   as well as the rad to the primary group if this is a secondary group
 
@@ -413,6 +210,9 @@ function galaxyCatRadii, res=res, run=run, snap=snap
   
   ; loop from target redshift to beginning of group catalogs
   for m=snapRange[0],snapRange[1],1 do begin
+  
+    ; set save filename and check for existence
+    sP.snap  = m
     saveFilename = sP.galCatPath + 'galradii.' + sP.savPrefix + str(res) + '.' + str(m) + '.sav'
     
     if (file_test(saveFilename)) then begin
@@ -420,24 +220,14 @@ function galaxyCatRadii, res=res, run=run, snap=snap
       continue
     endif
     
-    ; load ids of particles in all subfind groups
-    sg = loadSubhaloGroups(sP.simPath,m)
-    sgPIDs = sgPIDList(sg=sg,/all)
-    sgIDListPri = sgIDList(sg=sg,/pri)
-    
-    sg = !NULL
-  
     ; load galaxy and group membership catalogs
     gc = galaxyCat(res=res,run=run,snap=m)
-    
-    ; load group catalog for positions and gas particle positions
-    sg  = loadSubhaloGroups(sP.simPath,m,/skipIDs)
     
     ; restrict gas particle positions to ids_ind
     ids  = loadSnapshotSubset(sP.simPath,snapNum=m,partType='gas',field='ids')
     
-    ; IMPORTANT! rearrange ids_ind to be in the order of sgPIDs, need this if we want ids[ids_ind], 
-    ; temp[ids_ind], etc to be in the same order as the group catalog id list    
+    ; IMPORTANT! rearrange ids_ind to be in the order of gc.xIDs, need this if we want ids[ids_ind], 
+    ; temp[ids_ind], etc to be in the same order as the galaxy catalog id list    
     match,gc.galaxyIDs,ids,gc_ind,ids_gal_ind,count=countGal,/sort
     ids_gal_ind = ids_gal_ind[sort(gc_ind)]
     
@@ -447,15 +237,18 @@ function galaxyCatRadii, res=res, run=run, snap=snap
     ids    = !NULL
     gc_ind = !NULL
     
-    pos = loadSnapshotSubset(sP.simPath,snapNum=m,partType='gas',field='pos')
+    ; calculate radial distances of gas elements to primary and secondary parents
+    pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
     
     pos_gal  = pos[*,ids_gal_ind]
     pos_gmem = pos[*,ids_gmem_ind]
     
     pos = !NULL
     
-    ; find positions of most bound particles for each group
-    sP.snap  = m
+    ; load subhalo catalog for mostBoundParticleID and for sgIDListPri
+    sg  = loadSubhaloGroups(sP.simPath,sP.snap)
+    
+    ; find group center positions with most bound particles for each group
     groupCen = groupCenterPosByMostBoundID(sP=sP,sg=sg)
     
     ; arrays to hold r for all remaining gas particles
@@ -464,6 +257,8 @@ function galaxyCatRadii, res=res, run=run, snap=snap
     
     ; replicate parent IDs (of SECONDARY/direct)
     sgInd = galCatRepParentIDs(gc=gc)
+    
+    ; if requested, match this snapshot galCat against the IDs of another galCat
     
     ; calulate radial vector of gas from group center, correct for periodic B.C.
     rvec_gal  = groupCen[*,sgInd.gal] - pos_gal
@@ -486,6 +281,9 @@ function galaxyCatRadii, res=res, run=run, snap=snap
     rvec_gmem = !NULL
     
     ; replicate parent IDs (of PRIMARY/parent)
+    sgIDListPri = sgIDList(sg=sg,select='pri')
+    sg = !NULL
+    
     sgInd = galCatRepParentIDs(gc=gc,sgIDListPri=sgIDListPri)
     
     ; calulate radial vector of gas from group center, correct for periodic B.C.
@@ -508,12 +306,145 @@ function galaxyCatRadii, res=res, run=run, snap=snap
     
     rvec_gmem = !NULL
     
-    ; save galaxy catalog
+    ; save radial distances (and group centers)
     save,gal_pri,gal_sec,gmem_pri,gmem_sec,groupCen,filename=saveFilename
     print,'Saved: '+strmid(saveFilename,strlen(sp.galCatPath))
 
   endfor
   
+end
+
+; gasOrigins(): from a target redshift load the galaxy catalog and consider the evolution of all the gas 
+;               elements snapshot by snapshot backwards in time. at each step save:
+;                 1. the radial distance of each from its primary/secondary parent
+;                 2. temperature and entropy
+;                 3. implicitly, whether the gas is in a primary or secondary subhalo (corresponding to 
+;                    the two radial distances being equal or different)              
+
+function gasOrigins, res=res, run=run, snap=snap
+
+  sP = simParams(res=res,run=run)
+
+  ; config
+  redshift = 2.0
+  
+  targetSnap = redshiftToSnapNum(redshift)
+  
+  ; if snap specified, run only one snapshot (and/or just return previous results)
+  if (keyword_set(snap)) then begin
+    saveFilename = sP.derivPath + 'gas.origins.'+str(res)+'.'+str(targetSnap)+'-'+str(snap)+'.sav'
+    
+    ; results exist, return
+    if (file_test(saveFilename)) then begin
+      restore,saveFilename
+      r = {temp_gal:temp_gal,temp_gmem:temp_gmem,entropy_gal:entropy_gal,entropy_gmem:entropy_gmem,$
+           gal_pri:gal_pri,gal_sec:gal_sec,gmem_pri:gmem_pri,gmem_sec:gmem_sec}
+      return,r
+    endif
+    
+    ; need to compute, set restricted range of snapshots to process
+    snapRange = [snap,snap]
+  endif else begin
+    ; default config
+    numSnapsBack = 5
+    
+    snapRange = [targetSnap,targetSnap-numSnapsBack]
+  endelse  
+  
+  ; load galaxy catalog at target redshift
+  gc = galaxyCat(res=res,run=run,snap=targetSnap)
+  
+  print,'Loaded  ['+str(n_elements(gc.galaxyIDs))+'] ['+str(n_elements(gc.groupmemIDs))+'] from galCat.'
+  
+  for m=snapRange[0],snapRange[1],-1 do begin
+  
+    ; set save filename and check for existence
+    sP.snap = m
+    saveFilename = sP.derivPath + 'gas.origins.'+str(res)+'.'+str(targetSnap)+'-'+str(m)+'.sav'
+    
+    if (file_test(saveFilename)) then begin
+      print,'Skipping: '+strmid(saveFilename,strlen(sP.derivPath))
+      continue
+    endif  
+  
+    ; load gas IDs and match
+    ids  = loadSnapshotSubset(sP.simPath,snapNum=m,partType='gas',field='ids')
+    
+    ; IMPORTANT! rearrange ids_ind to be in the order of gc.xIDs, need this if we want ids[ids_ind], 
+    ; temp[ids_ind], etc to be in the same order as the galaxy catalog id list     
+    match,gc.galaxyIDs,ids,gc_ind,ids_gal_ind,count=countGal,/sort
+    ids_gal_ind = ids_gal_ind[sort(gc_ind)]
+    
+    match,gc.groupmemIDs,ids,gc_ind,ids_gmem_ind,count=countGmem,/sort
+    ids_gmem_ind = ids_gmem_ind[sort(gc_ind)]
+    
+    ids    = !NULL
+    gc_ind = !NULL
+    
+    ; load u,nelec and calculate temp of gas
+    u     = loadSnapshotSubset(sP.simPath,snapNum=m,partType='gas',field='u')
+    nelec = loadSnapshotSubset(sP.simPath,snapNum=m,partType='gas',field='nelec')
+
+    temp_gal  = convertUtoTemp(u[ids_gal_ind], nelec[ids_gal_ind])
+    temp_gmem = convertUtoTemp(u[ids_gmem_ind],nelec[ids_gmem_ind])
+    
+    nelec = !NULL
+    
+    ; load gas density to calculate entropy
+    dens = loadSnapshotSubset(sP.simPath,snapNum=m,partType='gas',field='density')
+    
+    entropy_gal  = calcEntropy(u[ids_gal_ind], dens[ids_gal_ind])
+    entropy_gmem = calcEntropy(u[ids_gmem_ind],dens[ids_gmem_ind])
+    
+    u    = !NULL
+    dens = !NULL
+    
+    ; load the galaxy catalog at this redshift and match IDs from the galCat at the target redshift
+    gcCur = galaxyCat(res=res,run=run,snap=m)
+    
+    match,gc.galaxyIDs,gcCur.galaxyIDs,gc_ind_gal,gcCur_ind_gal,count=countGal,/sort
+    match,gc.galaxyIDs,gcCur.groupmemIDs,gc_ind_gal2,gcCur_ind_gal2,count=countGal2,/sort
+    match,gc.groupmemIDs,gcCur.groupmemIDs,gc_ind_gmem,gcCur_ind_gmem,count=countGmem,/sort
+    match,gc.groupmemIDs,gcCur.galaxyIDs,gc_ind_gmem2,gcCur_ind_gmem2,count=countGmem2,/sort
+    
+    gcCur = !NULL
+    
+    print,'['+str(targetSnap-m)+'] Matched ['+str(countGal)+' + '+str(countGal2)+'] ['+$
+          str(countGmem)+' + '+str(countGmem2)+'].'
+    
+    ; allocate space for radial distances
+    gal_pri = fltarr(n_elements(gc.galaxyIDs)) - 1.0
+    gal_sec = fltarr(n_elements(gc.galaxyIDs)) - 1.0
+    
+    gmem_pri = fltarr(n_elements(gc.groupmemIDs)) - 1.0
+    gmem_sec = fltarr(n_elements(gc.groupmemIDs)) - 1.0
+    
+    ; load the galaxy radii catalog at this redshift
+    galRad = galaxyCatRadii(res=res,run=run,snap=m)
+
+    ; store radial distances of gas elements to primary and secondary parents for matching IDs
+    gal_pri[gc_ind_gal]  = galRad.gal_pri[gcCur_ind_gal]
+    gal_sec[gc_ind_gal]  = galRad.gal_sec[gcCur_ind_gal]
+    
+    if (countGal2 gt 0) then begin
+      gal_pri[gc_ind_gal2] = galRad.gmem_pri[gcCur_ind_gal2]
+      gal_sec[gc_ind_gal2] = galRad.gmem_sec[gcCur_ind_gal2]
+    endif
+      
+    gmem_pri[gc_ind_gmem]  = galRad.gmem_pri[gcCur_ind_gmem]
+    gmem_sec[gc_ind_gmem]  = galRad.gmem_sec[gcCur_ind_gmem]
+    
+    if (countGmem2 gt 0) then begin
+      gmem_pri[gc_ind_gmem2] = galRad.gal_pri[gcCur_ind_gmem2]
+      gmem_sec[gc_ind_gmem2] = galRad.gal_sec[gcCur_ind_gmem2]
+    endif
+
+    ; save
+    save,temp_gal,temp_gmem,entropy_gal,entropy_gmem,gal_pri,gal_sec,gmem_pri,gmem_sec,filename=saveFilename
+    print,'    Saved: '+strmid(saveFilename,strlen(sP.derivPath))
+
+  endfor
+
 end
 
 ; maxTemps(): find maximum temperature for gas particles in galaxy/group member catalogs at redshift
@@ -626,30 +557,25 @@ function maxTemps, res=res, run=run, redshift=redshift, zStart=zStart, inclEffEO
 
 end
 
+
+
 ; gcSubsetProp(): read galaxy catalog for a specific subgroup selection (pri,sec,all) and
-;                 return properties for each gas particle (may or may not depend on parent halo)
+;                 return properties for each gas element (may or may not depend on parent halo)
 ;
 ; rVirNorm=1    : radial distances normalized by r_vir of either primary or secondary parent
 ; virTemp=1     : virial temperatures of parent halos
 ; parMass=1     : total mass (dm+baryonic) of parent halos (from catalog)
-; curTemp=1     : current temperature of each particle
-; maxPastTemp=1 : maximum past previos temperature of each particle
+; curTemp=1     : current temperature of each element
+; curDens=1     : current density of each gas element
+; maxPastTemp=1 : maximum past previos temperature of each element
 
-function gcSubsetProp, sP=sP, sgSelect=sgSelect, $
+function gcSubsetProp, sP=sP, select=select, $
                        rVirNorm=rVirNorm, virTemp=virTemp, parMass=parMass, $
-                       curTemp=curTemp, maxPastTemp=maxPastTemp, $
+                       curTemp=curTemp, curDens=curDens, maxPastTemp=maxPastTemp, $
                        parNorm=parNorm, minNumPart=minNumPart ;this row for rVirNorm only
 
   ; select primary,secondary,or all subhalos subject to minimum number of particles
-  pri = 0
-  sec = 0
-  all = 0
-  
-  if (sgSelect eq 'pri') then pri = 1
-  if (sgSelect eq 'sec') then sec = 1
-  if (sgSelect eq 'all') then all = 1
-  
-  sgIDList = sgIDList(sP=sP,pri=pri,sec=sec,all=all,minNumPart=minNumPart)
+  sgIDList = sgIDList(sP=sP,select=select,minNumPart=minNumPart)
 
   ; select galaxycat indices corresponding to this list of subgroup ids
   gcInds = gcINDList(sP=sP,sgIDList=sgIDList)
@@ -696,14 +622,18 @@ function gcSubsetProp, sP=sP, sgSelect=sgSelect, $
   endif
   
   if keyword_set(curTemp) then begin
-    ; load thermal state
+    ; load intermediate save for thermal state
     thFilename = sP.thistPath + 'thermhist.gas.'+str(sP.res)+'_'+str(sP.snap)+'.sav'
     restore,thFilename
     
-    ; restrict temps to subset of galaxy cat
-    temp_gal  = temp[gcInds.gal]
-    temp_gmem = temp[gcInds.gmem]
+    ; load galaxy catalog to change INDs to gas IDs
+    gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
     
+    ; restrict temps to subset of galaxy cat
+    temp_gal  = temp[gc.galaxyIDs[gcInds.gal]]
+    temp_gmem = temp[gc.groupmemIDs[gcInds.gmem]]
+    
+    gc      = !NULL
     density = !NULL
     temp    = !NULL
     gcInds  = !NULL
@@ -718,6 +648,26 @@ function gcSubsetProp, sP=sP, sgSelect=sgSelect, $
     temp_gmem = alog10(temp_gmem)
     
     r = {gal:temp_gal,gmem:temp_gmem}
+  endif
+  
+  if keyword_set(curDens) then begin
+    ; load intermediate save for gas densities
+    thFilename = sP.thistPath + 'thermhist.gas.'+str(sP.res)+'_'+str(sP.snap)+'.sav'
+    restore,thFilename
+    
+    ; load galaxy catalog to change INDs to gas IDs
+    gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
+
+    ; restrict temps to subset of galaxy cat
+    dens_gal  = density[gc.galaxyIDs[gcInds.gal]]
+    dens_gmem = density[gc.groupmemIDs[gcInds.gmem]]
+
+    gc      = !NULL
+    density = !NULL
+    temp    = !NULL
+    gcInds  = !NULL
+      
+    r = {gal:dens_gal,gmem:dens_gmem}
   endif
   
   if keyword_set(maxPastTemp) then begin

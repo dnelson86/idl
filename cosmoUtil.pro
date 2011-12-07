@@ -51,78 +51,44 @@ end
 
 ; sgIDList(): return a sub-list of subgroup IDs from a given group catalog sg
 ; 
-; pri=1 : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
-; sec=1 : members of the non-first subgroups of each group only ("satellites"/"subhalos")
-; all=1 : all subgroups
+; select: one of the following
+;   'pri' : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
+;   'sec' : members of the non-first subgroups of each group only ("satellites"/"subhalos")
+;   'all' : all subgroups
 ; 
 ; minNumPart=1 : require a minimum number of particles in (subfind) group to include
 
-function sgIDList, sP=sP, sg=sg, pri=pri, sec=sec, all=all, minNumPart=minNumPart
+function sgIDList, sP=sP, sg=sg, select=select, minNumPart=minNumPart
 
-    if (not keyword_set(pri) and not keyword_set(sec) and not keyword_set(all)) then begin
-      print,'Error: Must specify sgID parameter.'
+  forward_function loadSubhaloGroups
+
+  if (not keyword_set(select)) then begin
+    print,'Error: Must specify select.'
+    return,0
+  endif
+    
+  ; load galaxy cat if necessary
+  if not keyword_set(sg) then begin
+    if not keyword_set(sP) then begin
+      print,'Error: Must specify sg or sP.'
       return,0
     endif
-    
-    ; load galaxy cat if necessary
-    if not keyword_set(sg) then begin
-      if not keyword_set(sP) then begin
-        print,'Error: Must specify sg or sP.'
-        return,0
-      endif
-      sg = loadSubhaloGroups(sP.simPath,sP.snap)
-    endif
+    sg = loadSubhaloGroups(sP.simPath,sP.snap)
+  endif
 
-    minNumPartVal = 100 ; in subgroup (total, dm+gas+stars)
+  minNumPartVal = 100 ; in subgroup (total, dm+gas+stars)
+  ; TODO: reconcile with the other minNumGasPart check on gas only
 
-    prevGrNr   = -1
-    valSGids   = []
+  prevGrNr   = -1
+  valSGids   = []
 
-    if keyword_set(pri) then begin
-    
-      ; "background"/"main subhalos"/"halos" only
-      for i=0,n_elements(sg.subgroupLen)-1 do begin
-        if (sg.subgroupGrnr[i] eq prevGrNr) then begin
-          prevGrNr = sg.subgroupGrnr[i]
-        endif else begin
-        
-          if (keyword_set(minNumPart)) then begin
-            if (sg.subgroupLen[i] ge minNumPartVal) then $
-              valSGids = [valSGids,i]
-          endif else begin
-            valSGids = [valSGids,i]
-          endelse ;minNumPart
-          
-          prevGrNr = sg.subgroupGrnr[i]
-        endelse
-      endfor
-      
-    endif
-    
-    if keyword_set(sec) then begin
-    
-      ; "satellites"/"subhalos" only
-      for i=0,n_elements(sg.subgroupLen)-1 do begin
-        if (sg.subgroupGrnr[i] ne prevGrNr) then begin
-          prevGrNr = sg.subgroupGrnr[i]
-        endif else begin
-        
-          if (keyword_set(minNumPart)) then begin
-            if (sg.subgroupLen[i] ge minNumPartVal) then $
-              valSGids = [valSGids,i]
-          endif else begin
-            valSGids = [valSGids,i]
-          endelse ;minNumPart
-          
-        endelse
-      endfor
-      
-    endif
-    
-    if keyword_set(all) then begin
-    
-      ; both primary and secondary
-      for i=0,n_elements(sg.subgroupLen)-1 do begin
+  if (select eq 'pri') then begin
+  
+    ; "background"/"main subhalos"/"halos" only
+    for i=0,n_elements(sg.subgroupLen)-1 do begin
+      if (sg.subgroupGrnr[i] eq prevGrNr) then begin
+        prevGrNr = sg.subgroupGrnr[i]
+      endif else begin
       
         if (keyword_set(minNumPart)) then begin
           if (sg.subgroupLen[i] ge minNumPartVal) then $
@@ -131,33 +97,71 @@ function sgIDList, sP=sP, sg=sg, pri=pri, sec=sec, all=all, minNumPart=minNumPar
           valSGids = [valSGids,i]
         endelse ;minNumPart
         
-      endfor
+        prevGrNr = sg.subgroupGrnr[i]
+      endelse
+    endfor
     
-    endif
+  endif
+  
+  if (select eq 'sec') then begin
+  
+    ; "satellites"/"subhalos" only
+    for i=0,n_elements(sg.subgroupLen)-1 do begin
+      if (sg.subgroupGrnr[i] ne prevGrNr) then begin
+        prevGrNr = sg.subgroupGrnr[i]
+      endif else begin
+      
+        if (keyword_set(minNumPart)) then begin
+          if (sg.subgroupLen[i] ge minNumPartVal) then $
+            valSGids = [valSGids,i]
+        endif else begin
+          valSGids = [valSGids,i]
+        endelse ;minNumPart
+        
+      endelse
+    endfor
     
-    return, valSGids
+  endif
+  
+  if (select eq 'all') then begin
+  
+    ; both primary and secondary
+    for i=0,n_elements(sg.subgroupLen)-1 do begin
+    
+      if (keyword_set(minNumPart)) then begin
+        if (sg.subgroupLen[i] ge minNumPartVal) then $
+          valSGids = [valSGids,i]
+      endif else begin
+        valSGids = [valSGids,i]
+      endelse ;minNumPart
+      
+    endfor
+  
+  endif
+  
+  return, valSGids
 
 end
 
 ; sgPIDList(): return a list of member particle IDs from a given group catalog sg
 ;
-; pri=1 : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
-; sec=1 : members of the non-first subgroups of each group only ("satellites"/"subhalos")
-; all=1 : the union of the above (one of these three options must be set)
+; select: one of the following
+;   'pri' : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
+;   'sec' : members of the non-first subgroups of each group only ("satellites"/"subhalos")
+;   'all' : all subgroups
 ;
 ; gasOnly=1 : load gas ids from snapshot and match to restrict return to only gas particle ids
 ; dmOnly=1  : load dm ids from snapshot and match to restrict return to only dark matter ids
 
-function sgPIDList, sg=sg, pri=pri, sec=sec, all=all, gasOnly=gasOnly, dmOnly=dmOnly
+function sgPIDList, sg=sg, select=select, gasOnly=gasOnly, dmOnly=dmOnly
 
-  if (not keyword_set(sg) or (not keyword_set(pri) and not keyword_set(sec) and $
-                              not keyword_set(all))) then begin
+  if (not keyword_set(sg) or not keyword_set(select)) then begin
     print,'Error: sgPIDList: Bad inputs.'
     return,0
   endif
 
   ; get list of appropriate group ids
-  valSGids = sgIDList(sg=sg,pri=pri,sec=sec,all=all)
+  valSGids = sgIDList(sg=sg,select=select)
   
   ; make list of particle ids in these groups
   subgroupPIDs = []
@@ -239,6 +243,151 @@ function galCatRepParentIDs, gc=gc, sgIDListPri=sgIDListPri
     
     r = {gal:sg_ind_gal,gmem:sg_ind_gmem}
     return,r
+end
+
+; galCatParentProperties: calculate some property of the parent galaxy/group for every gas particle
+;                         in the galaxy catalog at some snapshot
+; virTemp=1 : virial temperature
+; mass=1    : total mass (from catalog, dm+baryon)
+; rVir=1    : virial radius (r_200 critical)
+
+function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir
+
+  forward_function galaxyCat, snapNumToRedshift, codeMassToLogMsun
+
+  ; load group catalog for masses
+  sg = loadSubhaloGroups(sP.simPath,sP.snap)
+
+  ; load galaxy catalog
+  gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
+
+  ; replicate parent IDs
+  sgInd = galCatRepParentIDs(gc=gc)
+  
+  ; arrays
+  gal  = fltarr(n_elements(gc.galaxyIDs))
+  gmem = fltarr(n_elements(gc.groupmemIDs))
+  
+  ; masses (log msun)
+  if keyword_set(mass) then begin
+    gal  = sg.subgroupMass[sgInd.gal]
+    gmem = sg.subgroupMass[sgInd.gmem]
+    
+    gal  = codeMassToLogMsun(gal)
+    gmem = codeMassToLogMsun(gmem)
+  endif
+
+  ; calculate virial temperatures (K)
+  if keyword_set(virTemp) then begin
+    gal  = sg.subgroupMass[sgInd.gal]
+    gmem = sg.subgroupMass[sgInd.gmem]
+    
+    redshift = snapNumToRedshift(snap=sP.snap)
+  
+    gal  = codeMassToVirTemp(gal,redshift)
+    gmem = codeMassToVirTemp(gmem,redshift)
+  endif
+  
+  if keyword_set(rVir) then begin
+    gal  = sg.subgroupGrnr[sgInd.gal]
+    gmem = sg.subgroupGrnr[sgInd.gmem]
+    
+    gal  = sg.group_r_crit200[gal]
+    gmem = sg.group_r_crit200[gmem]
+  endif
+
+  r = {gal:gal,gmem:gmem}
+  return,r
+end
+
+; gcINDList(): return a list of member particle indices from a given list of subgroup IDs
+
+function gcINDList, sP=sP, gc=gc, sgIDList=sgIDList
+
+  forward_function galaxyCat
+
+  ; load galaxy cat if necessary
+  if not keyword_set(gc) then begin
+    if not keyword_set(sP) then begin
+      print,'Error: Must specific gc or sP.'
+      return,0
+    endif
+    gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
+  endif
+
+  galaxyInds = []
+  groupmemInds = []
+  
+  foreach sgID, sgIDList do begin
+    ; galaxy
+    if (gc.galaxyLen[sgID] gt 0) then begin
+      galInds  = lindgen(gc.galaxyLen[sgID]) + gc.galaxyOff[sgID] ; int overflow on indgen
+      galaxyInds   = [galaxyInds, galInds]
+    endif
+    
+    ; group member
+    if (gc.groupmemLen[sgID] gt 0) then begin
+      gmemInds = lindgen(gc.groupmemLen[sgID]) + gc.groupmemOff[sgID]
+      groupmemInds = [groupmemInds, gmemInds]
+    endif    
+    
+  endforeach
+  
+  r = {gal:galaxyInds,gmem:groupmemInds}
+  return,r
+  
+end
+
+; groupCenterPosByMostBoundID(): compute a "best" center position in space for all groups by using the 
+;                                position of the most bound particles, whose IDs are stored in the group
+;                                catalog but without knowing the particle types we have to load all
+;                                gas+dm+stars particle positions
+
+function groupCenterPosByMostBoundID, sP=sP, sg=sg
+
+  forward_function loadSnapshotSubset
+
+  groupCen = fltarr(3,sg.nSubgroupsTot)
+  
+  ; load gas ids and pos, find matches
+  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='ids')
+  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count1,/sort
+  
+  ids_ind = ids_ind[sort(sg_ind)]
+  sg_ind  = sg_ind[sort(sg_ind)]
+  
+  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
+  
+  groupCen[*,sg_ind] = pos[*,ids_ind]
+  
+  ; load stars ids and pos, find matches
+  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='ids')
+  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count2,/sort
+  
+  ids_ind = ids_ind[sort(sg_ind)]
+  sg_ind  = sg_ind[sort(sg_ind)]
+  
+  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
+  
+  groupCen[*,sg_ind] = pos[*,ids_ind]
+  
+  ; load dm ids and pos, find matches
+  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='ids')
+  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count3,/sort
+  
+  ids_ind = ids_ind[sort(sg_ind)]
+  sg_ind  = sg_ind[sort(sg_ind)]
+  
+  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
+  
+  groupCen[*,sg_ind] = pos[*,ids_ind]
+
+  if ((count1 + count2 + count3) ne sg.nSubgroupsTot) then begin
+    print,'ERROR'
+    stop
+  endif
+  
+  return, groupCen
 end
 
 ; correctPeriodicDistVecs(): enforce periodic B.C. for distance vecotrs (effectively component by 
@@ -450,14 +599,25 @@ end
 
 ; rhoRatioToCrit():
 
-function rhoRatioToCrit, rho, omega_b=omega_b
+function rhoRatioToCrit, rho, omega_b=omega_b, redshift=redshift
 
   units = getUnits()
+  
+  ; cosmo
+  omega_m   = 0.27
+  omega_L   = 0.73
+  omega_k   = 0.0
   
   ; default omega_b (valid for ComparisonProject)
   if not keyword_set(omega_b) then omega_b = 0.044
   
   rho_b = omega_b * units.rhoCrit
+  
+  ; scale for redshift other than zero
+  if keyword_set(redshift) then begin
+    H_z_fact = ( omega_m*(1+redshift)^3.0 + omega_L + omega_k*(1+redshift)^2.0 )
+    rho_b *= H_z_fact
+  endif
   
   return, rho/rho_b
 
@@ -515,6 +675,7 @@ function rhoTHisto, dens_in, temp_in, mass=mass, nbins=nbins, plot=plot
   temp = alog10(temp_in)
   rMinMax = [-2.0,8.0]
   tMinMax = [3.0,7.0]
+  
   ; calculate bin sizes
   binSizeRho  = (rMinMax[1]-rMinMax[0]) / nbins
   binSizeTemp = (tMinMax[1]-tMinMax[0]) / nbins
