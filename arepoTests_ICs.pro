@@ -13,7 +13,7 @@ pro gen_arepo_cuda_2D_input
   Lx = 1.0
   Ly = 1.0
   
-  N = 10L
+  N = 1024L*1024L
   
   ; setup arrays
   pos = fltarr(3,N)
@@ -21,6 +21,24 @@ pro gen_arepo_cuda_2D_input
   ; uniformly random positions
   pos[0,*] = randomu(seed,N)
   pos[1,*] = randomu(seed,N)
+  
+  visFlag = 0
+  
+  if (visFlag eq 1) then begin
+    ; move some points along vertical edges
+    numAdd = round(sqrt(N) / 2.0)
+    
+    ; set x-pos
+    pos[0,0:numAdd-1] = 0.0
+    pos[0,numAdd:2*numAdd-1] = 1.0
+    
+    ; set y-pos
+    pos[1,0:numAdd-1] = findgen(numAdd) / (numAdd-1) * 0.90
+    pos[1,numAdd:2*numAdd-1] = findgen(numAdd) / (numAdd-1) * 0.90
+    
+    ; compress to y<0.5
+    pos[1,*] /= 2.0
+  endif
 
   ; write
   openw,lun,fOut,/GET_LUN
@@ -32,7 +50,7 @@ pro gen_arepo_cuda_2D_input
   printf,lun,str(N)
   
   for i=0,N-1 do begin
-    printf,lun,string(pos[0,i],format='(f6.4)')+" "+string(pos[1,i],format='(f6.4)')
+    printf,lun,string(pos[0,i],format='(f12.10)')+" "+string(pos[1,i],format='(f12.10)')
   endfor
 
   close,lun

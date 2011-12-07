@@ -53,7 +53,7 @@ function getUnits
              units.UnitVelocity_in_cm_per_s * units.UnitLength_in_cm
   units.G  = Gravity / units.UnitLength_in_cm^3.0 * units.UnitMass_in_g * units.UnitTime_in_s^2.0
   
-  units.rhoCrit = 3.0 * units.H0^2.0 / (8.0*!pi*units.G) ;code
+  units.rhoCrit = 3.0 * units.H0^2.0 / (8.0*!pi*units.G) ;code, z=0
 
   ; color list
   units.colors = ['black','blue','green','red','cyan','magenta','gray','orange', $
