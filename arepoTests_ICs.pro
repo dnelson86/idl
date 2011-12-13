@@ -61,6 +61,8 @@ pro gen_arepo_cuda_2D_input
 end
 
 ; 2D Kelvin-Helmholtz Instability ICs (only really tested for angle=0)
+; BoxSize=1.0 PERIODIC TWODIMS GAMMA=1.4
+
 pro gen_KH_2D_ICs
 
   ; config
@@ -69,7 +71,7 @@ pro gen_KH_2D_ICs
   
   stripeWidth = 0.5
   
-  ga   = 5.0/3.0
+  ga   = 1.4
   P0   = 2.5
   rho1 = 1.0
   rho2 = 2.0
@@ -141,11 +143,15 @@ pro gen_KH_2D_ICs
   endfor
 
   ;write
-  writeICFile,fOut,pos,vel,id,dens,u
+  gas    = {pos:pos,vel:vel,id:id,mass:mass,u:u}
+  
+  writeICFile,fOut,part0=gas
 
 end
 
 ; 3D Taylor-Sedov (point explosion) blastwave IC
+; BoxSize=1.0 PERIODIC GAMMA=1.4
+
 pro gen_TS_BlastWave_3D_ICs
 
   ;config
@@ -199,11 +205,15 @@ pro gen_TS_BlastWave_3D_ICs
   endfor
 
   ;write
-  writeICFile,fOut,pos,vel,id,mass,u
+  gas    = {pos:pos,vel:vel,id:id,mass:mass,u:u}
+  
+  writeICFile,fOut,part0=gas
   
 end
 
 ; 2D shocktube with tracer particles
+; BoxSize=2.0 PERIODIC TWODIMS LONG_X=10.0 GAMMA=1.4
+
 pro gen_shocktube_tracer_2D_ICs
 
   ; config
@@ -220,9 +230,9 @@ pro gen_shocktube_tracer_2D_ICs
   Ly = 2.0
   
   Nx   = 100L
-  Ny   = 10L
+  Ny   = 1L
   
-  tfac = 16L
+  tfac = 1L
   
   ; deriv
   if (( round(Nx*Ny/4) ne (Nx*Ny/4) ) or ( round(sqrt(tfac)) ne (sqrt(tfac)) ) ) then begin
@@ -236,6 +246,7 @@ pro gen_shocktube_tracer_2D_ICs
   deltay = Ly/Ny
   
   ; create gas arrays
+  id   = lindgen(nTotGas)+1L
   pos  = fltarr(3,nTotGas)
   vel  = fltarr(3,nTotGas)
   mass = fltarr(nTotGas)
@@ -271,6 +282,7 @@ pro gen_shocktube_tracer_2D_ICs
   
   nTotTracers = nTrLeft + nTrRight
   
+  id2   = lindgen(nTotTracers) + nTotGas + 1L
   pos2  = fltarr(3,nTotTracers)
   vel2  = fltarr(3,nTotTracers)
   mass2 = fltarr(nTotTracers)
@@ -331,47 +343,361 @@ pro gen_shocktube_tracer_2D_ICs
   ;pos2[0,nTrLeft:nTotTracers-1] = findgen(nTrRight)/(nTrRight+1) * Lx/2.0 + Lx/2.0
   ;pos2[1,nTrLeft:nTotTracers-1] = findgen(nTrRight)/(nTrRight+1) * Ly
   
+  ; quick plot
   start_PS,'ics.eps'
     fsc_plot,pos[0,*],pos[1,*],psym=4,symsize=0.2,xrange=[0.0,Lx],yrange=[0.0,Ly],/xs,/ys,color=fsc_color('forest green')
     fsc_plot,pos2[0,*],pos2[1,*],psym=4,symsize=0.4,color=fsc_color('crimson'),/overplot
   end_PS
   
-  ; ids
-  id   = lindgen(nTotGas + nTotTracers)+1L
-  
-  ; header
-  npart    = lonarr(6) 
-  massarr  = dblarr(6)
-  npartall = lonarr(6)
-  
-  npart[0] = nTotGas
-  npart[2] = nTotTracers
-  npartall[0] = nTotGas
-  npartall[2] = nTotTracers
-  
-  time          = 0.0D
-  redshift      = 0.0D
-  flag_sfr      = 0L
-  flag_feedback = 0L
-  bytesleft     = 136
-  la            = intarr(bytesleft/2)
-  
   ; debug
-  print, total(npartall,/int)
+  print, nTotGas+nTotTracers
   print, n_elements(pos(0,*)) + n_elements(pos2(1,*))
   print, n_elements(vel(0,*)) + n_elements(vel2(1,*))
-  print, n_elements(id)
+  print, n_elements(id) + n_elements(id2)
   
   ; write
-  openw,1,fOut,/f77_unformatted
-  writeu,1,npart,massarr,time,redshift,flag_sfr,flag_feedback,npartall,la
+  gas    = {pos:pos,vel:vel,id:id,mass:mass,u:u}
+  tracer = {pos:pos2,vel:vel2,id:id2,mass:mass2,u:u2}
   
-  writeu,1, pos,pos2
-  writeu,1, vel,vel2
-  writeu,1, id
-  writeu,1, mass, mass2
-  writeu,1, u
-  
-  close,1
+  writeICFile,fOut,part0=gas,part2=tracer
   
 end
+
+; 1D shocktube with tracer particles
+; BoxSize=2.0
+; PERIODIC ONEDIMS LONG_X=10.0 GAMMA=1.4
+
+pro gen_shocktube_tracer_1D_ICs
+
+  ; config
+  fOut = "ics.dat"
+  
+  ga   = 1.4
+  
+  P1   = 1.0
+  rho1 = 1.0
+  P2   = 0.1795
+  rho2 = 0.25
+  
+  Lx = 20.0
+  
+  Nx   = 100L
+  
+  tfac = 1L
+  
+  ; deriv
+  if ( round(Nx/4) ne (Nx/4) ) then begin
+    print,'Error: Choose nicer numbers.'
+    return
+  endif
+  
+  nTotGas = Nx
+  deltax  = Lx/Nx
+  
+  ; create gas arrays
+  id   = lindgen(nTotGas)+1L
+  pos  = fltarr(3,nTotGas)
+  vel  = fltarr(3,nTotGas)
+  mass = fltarr(nTotGas)
+  u    = fltarr(nTotGas)
+  
+  ; set gas properties
+  for i=0L,Nx-1 do begin
+      
+      pos[0,i] = i*deltax+deltax/2.0  
+      pos[1,i] = 0.0
+      pos[2,i] = 0.0
+  
+      ;left  
+      if (pos[0,i] lt Lx/2.0) then begin
+        mass[i] = rho1*(Lx/2.0)/(Nx/2.0)
+        u[i]    = P1/rho1/(ga-1.0)
+      endif 
+    
+      ;right
+      if (pos[0,i] ge Lx/2.0) then begin
+        mass[i] = rho2*(Lx/2.0)/(Nx/2.0) 
+        u[i]    = P2/rho2/(ga-1.0) 
+      endif 
+      
+  endfor
+  
+  ; create tracer arrays
+  nTrLeft  = tfac*Nx
+  nTrRight = tfac*Nx/4
+  
+  nTotTracers = nTrLeft + nTrRight
+  
+  id2   = lindgen(nTotTracers) + nTotGas + 1L
+  pos2  = fltarr(3,nTotTracers)
+  vel2  = fltarr(3,nTotTracers)
+  mass2 = fltarr(nTotTracers)
+  u2    = fltarr(nTotTracers)
+  
+  ; set tracer properties (right)
+  NxTr   = tfac*Nx/4
+  deltax = Lx/NxTr/2.0
+  
+  prevCount = 0
+  
+  for i=0L,NxTr-1 do begin
+      pos2[0,i] = Lx/2.0 + i*deltax+deltax/2.0  
+      pos2[1,i] = 0.0
+      pos2[2,i] = 0.0
+      
+      prevCount += 1
+  endfor
+  
+  ; set tracer properties (left)
+  NxTr   = tfac*Nx
+  deltax = Lx/NxTr/2.0
+  
+  for i=0L,NxTr-1 do begin
+      pos2[0,prevCount + i] = i*deltax+deltax/2.0  
+      pos2[1,prevCount + i] = 0.0  
+      pos2[2,prevCount + i] = 0.0
+  endfor
+  
+  ; offset tracers from gas by a small amount
+  seed = 45L
+  offset_x = ( deltax/4.0 * randomu(seed,1) )[0]
+
+  pos2[0,*] = pos2[0,*] + offset_x
+  
+  ; quick plot
+  start_PS,'ics.eps'
+    fsc_plot,pos[0,*],pos[1,*],psym=4,symsize=0.2,xrange=[0.0,Lx],yrange=[-1.0,1.0],$
+             /xs,/ys,color=fsc_color('forest green')
+    fsc_plot,pos2[0,*],pos2[1,*],psym=4,symsize=0.4,color=fsc_color('crimson'),/overplot
+  end_PS  
+  
+  ; write
+  gas    = {pos:pos,vel:vel,id:id,mass:mass,u:u}
+  tracer = {pos:pos2,vel:vel2,id:id2,mass:mass2,u:u2}
+  
+  writeICFile,fOut,part0=gas,part2=tracer
+  
+end
+
+; ---------------------------------------------------------------------
+; alternative 1D blastwave (original from paper?):
+; ---------------------------------------------------------------------
+;  ga=1.4
+;  P1=1000.0
+;  P2=0.01
+;  P3=100.0
+;  rho=1.0
+;  
+;  Lx=1.0
+;  
+;  Nx=400L
+;  
+;  pos=fltarr(3,Nx)
+;  vel=fltarr(3,Nx)
+;  mass=fltarr(Nx)
+;  u=fltarr(Nx)
+;  id=lindgen(Nx)+1L
+;  
+;  deltax=Lx/Nx
+;  
+;  for i=0L,Nx-1 do begin
+;    pos(0,i)=i*deltax+deltax/2.0
+;    pos(1,i)=0.0
+;    pos(2,i)=0.0
+;  
+;    ;middle
+;    mass(i)=rho*Lx/Nx
+;    u(i)=P2/rho/(ga-1.0)
+;  
+;    ;left
+;    if (pos(0,i) lt 0.1) then begin
+;     u(i)=P1/rho/(ga-1.0)
+;    endif
+;  
+;    ;right
+;    if (pos(0,i) gt 0.9) then begin
+;     u(i)=P3/rho/(ga-1.0)
+;    endif
+;  endfor
+
+; ---------------------------------------------------------------------
+; original 2D KH:
+; ---------------------------------------------------------------------
+;  ga=5./3.
+;  P0=2.5
+;  rho1=1.
+;  rho2=2.
+;  
+;  v=0.5
+;  sigma=0.05/sqrt(2.)
+;  w0=0.1
+;  
+;  Lx=1.
+;  Ly=1.
+;  Nx=512L
+;  Ny=512L
+;  
+;  pos=fltarr(3,Nx*Ny)
+;  vel=fltarr(3,Nx*Ny)
+;  mass=fltarr(Nx*Ny)
+;  u=fltarr(Nx*Ny)
+;  id=lindgen(Nx*Ny)+1L
+;  
+;  deltax=Lx/Nx
+;  deltay=Ly/Ny
+;  
+;  for i=0L,Nx-1 do begin
+;   for j=0L,Ny-1 do begin
+;    pos(0,i+j*Nx)=i*deltax+deltax/2.0
+;    pos(1,i+j*Nx)=j*deltay+deltay/2.0
+;    pos(2,i+j*Nx)=0.0
+;  
+;    x=pos(0,i+j*Nx)
+;    y=pos(1,i+j*Nx)
+;  
+;    ;top/bottom
+;    if (abs(y-0.5) ge 0.25) then begin
+;     mass(i+j*Nx)=rho1*(Lx*Ly/2.0)/(Nx*Ny/2L)
+;     P=P0
+;     u(i+j*Nx)=P/rho1/(ga-1.0)
+;     vel(0,i+j*Nx)=-v
+;    endif
+;  
+;    ;stripe
+;    if (abs(y-0.5) lt 0.25) then begin
+;     mass(i+j*Nx)=rho2*(Lx*Ly/2.0)/(Nx*Ny/2L)
+;     P=P0
+;     u(i+j*Nx)=P/rho2/(ga-1.0)
+;     vel(0,i+j*Nx)=+v
+;    endif
+;  
+;    vel(1,i+j*Nx)=w0*sin(4.*!PI*x)*(exp(-(y-0.25)^2./(2.*sigma^2.)) + exp(-(y-0.75)^2./(2.*sigma^2.)))
+;  
+;   endfor
+;  endfor
+
+; ---------------------------------------------------------------------
+; original 2D RT:
+; BoxSize=0.5 PERIODIC TWODIMS REFLECTIVE_Y GAMMA=1.4 EXTERNALGRAVITY EXTERNALGY=-0.1 LONG_Y=3.0
+; ---------------------------------------------------------------------
+; 
+;  ga=1.4
+;  P0=2.5
+;  rho1=2.
+;  rho2=1.
+;  
+;  g=-0.1
+;  w0=0.0025
+;  
+;  Lx=0.5
+;  Ly=1.5
+;  Nx=50L
+;  Ny=150L
+;  
+;  pos=fltarr(3,Nx*Ny)
+;  vel=fltarr(3,Nx*Ny)
+;  mass=fltarr(Nx*Ny)
+;  u=fltarr(Nx*Ny)
+;  id=lindgen(Nx*Ny)+1L
+;  
+;  deltax=Lx/Nx
+;  deltay=Ly/Ny
+;  
+;  for i=0L,Nx-1 do begin
+;   for j=0L,Ny-1 do begin
+;    pos(0,i+j*Nx)=i*deltax+deltax/2.0
+;    pos(1,i+j*Nx)=j*deltay+deltay/2.0
+;    pos(2,i+j*Nx)=0.0
+;  
+;    x=pos(0,i+j*Nx)
+;    y=pos(1,i+j*Nx)
+;  
+;    ;top
+;    if (y gt Ly/2.0) then begin
+;     mass(i+j*Nx)=rho1*(Lx*Ly/2.0)/(Nx*Ny/2L)
+;     P=P0 + g*(y-0.75)*rho1
+;     u(i+j*Nx)=P/rho1/(ga-1.0)
+;    endif
+;  
+;    ;bottom
+;    if (y le Ly/2.0) then begin
+;     mass(i+j*Nx)=rho2*(Lx*Ly/2.0)/(Nx*Ny/2L)
+;     P=P0 + g*(y-0.75)*rho2
+;     u(i+j*Nx)=P/rho2/(ga-1.0)
+;    endif
+;  
+;    ;velocity perturbation to excite
+;    vel(1,i+j*Nx)=w0*(1.-cos(4.*!PI*x))*(1.-cos(4.*!PI*y/3.))
+;   endfor
+;  endfor
+
+; ---------------------------------------------------------------------
+; original 3D Evrard collapse:
+; BoxSize=10.0 PERIODIC GAMMA=1.4
+; ---------------------------------------------------------------------
+; 
+;  Lx=10.
+;  Ly=10.
+;  Lz=10.
+;  xc=5.
+;  yc=5.
+;  zc=5.
+;  ga=1.4
+;  rho_hot=1.
+;  rho_cold=10.
+;  P=1.
+;  
+;  Machnumber=2.7
+;  cs=sqrt(ga*P/rho_hot)
+;  vext=Machnumber*cs
+;  
+;  R_cold=1.
+;  
+;  vol_hot=Lx*Ly*Lz - 4.*!PI/3.*R_cold^3.
+;  vol_cold=4.*!PI/3.*R_cold^3.
+;  
+;  N_cold=2000L
+;  mpart=rho_cold*vol_cold/N_cold
+;  N_hot=round(rho_hot*vol_hot/mpart)
+;  
+;  N_total=N_cold + N_hot
+;  
+;  pos=fltarr(3,N_total)
+;  vel=fltarr(3,N_total)
+;  mass=fltarr(N_total)
+;  u=fltarr(N_total)
+;  id=lindgen(N_total)+1L
+;  
+;  mass+=mpart
+;  
+;  seed=42L
+;  for n=0L, N_hot-1 do begin
+;    repeat begin
+;     x=Lx*randomu(seed,1)
+;     y=Ly*randomu(seed,1)
+;     z=Lz*randomu(seed,1)
+;     r=sqrt((x-xc)^2. + (y-yc)^2. + (z-zc)^2.)
+;    endrep until r gt R_cold
+;  
+;    pos(0,n)=x
+;    pos(1,n)=y
+;    pos(2,n)=z
+;    u(n)=P/rho_hot/(ga-1.0)
+;  
+;    vel(0,n)=vext
+;  
+;  endfor
+;  
+;  for n=0L, N_cold-1 do begin
+;    repeat begin
+;     x=xc+R_cold*(randomu(seed,1)-0.5)*2.
+;     y=yc+R_cold*(randomu(seed,1)-0.5)*2.
+;     z=zc+R_cold*(randomu(seed,1)-0.5)*2.
+;     r=sqrt((x-xc)^2. + (y-yc)^2. + (z-zc)^2.)
+;    endrep until r lt R_cold
+;  
+;    pos(0,n+N_hot)=x
+;    pos(1,n+N_hot)=y
+;    pos(2,n+N_hot)=z
+;    u(n+N_hot)=P/rho_cold/(ga-1.0)
+;  endfor

@@ -161,16 +161,56 @@ function loadBinarySequence, fileBase, ptStruct
   return, pts
 end
 
-; writeICFile():
-pro writeICFile, fOut, pos, vel, id, mass, u
+; writeICFile(): write old Gadget format IC file with gas particles and tracers
+;                each partX struct should contain {id,pos,vel,mass,u} in the usual format
+
+pro writeICFile, fOut, part0=part0, part1=part1, part2=part2
+
+  ; arrays
+  pos  = []
+  vel  = []
+  id   = []
+  mass = []
+  u    = []
 
   ; create header
   npart    = lonarr(6)  
   massarr  = dblarr(6)
   npartall = lonarr(6)
 
-  npart(0)    = n_elements(id)
-  npartall(0) = n_elements(id)
+  ; add to particle counts and concat arrays
+  if keyword_set(part0) then begin
+    npart(0)    = n_elements(part0.id)
+    npartall(0) = n_elements(part0.id)
+    
+    pos  = [[pos], [part0.pos]]
+    vel  = [[vel], [part0.vel]]
+    id   = [id,    part0.id]
+    mass = [mass,  part0.mass]
+    u    = [u,     part0.u]
+  endif
+  
+  if keyword_set(part1) then begin
+    npart(1)    = n_elements(part1.id)
+    npartall(1) = n_elements(part1.id)
+    
+    pos  = [[pos], [part1.pos]]
+    vel  = [[vel], [part1.vel]]
+    id   = [id,    part1.id]
+    mass = [mass,  part1.mass]
+    u    = [u,     part1.u]
+  endif
+  
+  if keyword_set(part2) then begin
+    npart(2)    = n_elements(part2.id)
+    npartall(2) = n_elements(part2.id)
+    
+    pos  = [[pos], [part2.pos]]
+    vel  = [[vel], [part2.vel]]
+    id   = [id,    part2.id]
+    mass = [mass,  part2.mass]
+    u    = [u,     part2.u]
+  endif
 
   time          = 0.0D
   redshift      = 0.0D
@@ -279,7 +319,7 @@ pro writeICFileHDF5, fOut, boxSize, pos, vel, id, massOrDens, u
 
 end
 
-; str()
+; one line utility functions: str(), isnumeric()
 
 function str, tString
   return, strcompress(string(tString),/remove_all)

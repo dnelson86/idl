@@ -20,7 +20,7 @@ pro plotShocktube, snap=snap, resize=resize
   units = getUnits()
   
   ; config
-  tfac = 1
+  tfac = '1.line'
   workingPath = '/n/home07/dnelson/dev.tracer/'
   snapPath    = workingPath + 'shocktube.tfac'+str(tfac)+'/output/'
   
@@ -98,14 +98,15 @@ pro plotShocktube, snap=snap, resize=resize
     endfor    
   
   ; plot (0) - scatterplot of (x,y) gas and tracer positions
-  start_PS, workingPath + 'shocktube_2d_spos_'+string(snap,format='(I3.3)')+'.eps', xs=8, ys=4
+  start_PS, workingPath + 'shocktube_2d_spos_'+string(snap,format='(I3.3)')+'.eps', xs=10.5, ys=2
   
     xrange = [0.0,20.0]
     yrange = [0.0,2.0]
     
     fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-              xtitle="x",ytitle="y",$
-              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+""  
+              xtitle="x Position [Code]",ytitle="y",$
+              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+"",$
+              charsize=!p.charsize-0.6,position=[0.06,0.2,0.97,0.86]
     
     fsc_plot,pos_tracer,y_tracer,psym=4,symsize=0.2,/overplot,color=fsc_color(colors[1])
     fsc_plot,pos_gas,y_gas,psym=4,symsize=0.2,/overplot,color=fsc_color(colors[0])
@@ -145,7 +146,7 @@ pro plotShocktube, snap=snap, resize=resize
     yrange = minmax(res)*[0.9,1.1]
     ;yrange=[-1e-6,1e-6]
     
-    fsc_plot,[0],[0],ytitle="Frac Res",xtitle="Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
+    fsc_plot,[0],[0],ytitle="Frac Res",xtitle="x Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
               xticklen=0.05,/nodata,position=[0.25,0.15,0.95,0.3],/noerase,yticks=2
     
     fsc_plot,pos_gas,res,psym=-4,line=line,thick=thick,symsize=0.2,/overplot   
@@ -179,13 +180,75 @@ pro plotShocktube, snap=snap, resize=resize
     print,minmax(res)
     yrange = minmax(res)*[0.8,1.2]
     
-    fsc_plot,[0],[0],ytitle="Res [in Log]",xtitle="Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
+    fsc_plot,[0],[0],ytitle="Res [in Log]",xtitle="x Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
               xticklen=0.05,/nodata,position=[0.25,0.15,0.95,0.3],/noerase,yticks=2,/ylog
   
     fsc_plot,pos_gas,res,psym=-4,line=line,thick=thick,symsize=0.2,/overplot  
   
   end_PS, pngResize=resize, deletePS=deletePS
-stop
+
+
+
+  ; load vertical velocity field
+  vy_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='vely')
+  vy_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='vely')
+  
+  vy_gas    = vy_gas[sort_ind_gas]
+  vy_tracer = vy_tracer[sort_ind_tracer]
+  
+  ; plot (3) - v_y
+  start_PS, workingPath + 'shocktube_2d_vy_'+string(snap,format='(I3.3)')+'.eps'
+  
+    yrange = [-1e-2,1e-2]
+  
+    ; plot
+    fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+              xtitle="x Position [Code]",ytitle="v_y [Code]",$
+              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+""
+  
+    ; plot gas
+    fsc_plot, pos_gas,vy_gas,psym=4,line=line,thick=thick,$
+              symsize=0.4,/overplot,color=fsc_color(colors[0])  
+  
+    ; plot tracer
+    fsc_plot, pos_tracer,vy_tracer,psym=4,line=line,thick=thick,$
+              symsize=0.2,/overplot,color=fsc_color(colors[1])  
+  
+    ; legend
+    legend,['gas','tracer'],textcolors=colors,box=0,margin=0.25,/right
+    
+  end_PS, pngResize=resize, deletePS=deletePS
+  
+  ; load vertical velocity field
+  vz_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='velz')
+  vz_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='velz')
+  
+  vz_gas    = vz_gas[sort_ind_gas]
+  vz_tracer = vz_tracer[sort_ind_tracer]
+  
+  ; plot (3) - v_y
+  start_PS, workingPath + 'shocktube_2d_vz_'+string(snap,format='(I3.3)')+'.eps'
+  
+    yrange = [-1e-2,1e-2]
+  
+    ; plot
+    fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+              xtitle="x Position [Code]",ytitle="v_z [Code]",$
+              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+""
+  
+    ; plot gas
+    fsc_plot, pos_gas,vz_gas,psym=4,line=line,thick=thick,$
+              symsize=0.4,/overplot,color=fsc_color(colors[0])  
+  
+    ; plot tracer
+    fsc_plot, pos_tracer,vz_tracer,psym=4,line=line,thick=thick,$
+              symsize=0.2,/overplot,color=fsc_color(colors[1])  
+  
+    ; legend
+    legend,['gas','tracer'],textcolors=colors,box=0,margin=0.25,/right
+    
+  end_PS, pngResize=resize, deletePS=deletePS
+  stop
 end
 
 ; plotShocktubeMovie()
@@ -289,10 +352,10 @@ pro compMassDist, snap=snap
   units = getUnits()
   
   ; config
-  tfac = 1
+  tfac = 4
   ndims = 1
   
-  filterSize = 1.2 ; constant tophat filter size
+  filterSize = 0.6 ; constant tophat filter size
   nNeighbors = 0   ; constant number of nearest neighbors
   
   workingPath = '/n/home07/dnelson/dev.tracer/'
