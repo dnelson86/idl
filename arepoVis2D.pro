@@ -1,6 +1,6 @@
 ; arepoVis2D.pro
 ; dnelson
-; 7/5/10
+; dec 2011
 ;
 ; visualization for 2D arepo runs
 
@@ -134,45 +134,6 @@ pro plotDensityField2D, fBase, i, writePNG=writePNG, writeJPG=writeJPG, $
     tvimage,pic,true=1,position=[0.0,0.0,1.0,1.0]
   endif
 
-end
-
-; makeDensityField2D(): no claims this does anything remotely correct
-;                       just puts particles in pixel boxes, no SPH smoothing/density recon
-
-function makeDensityField2D, snapBase, i, boxSize, nPixelsXY
-
-  stepX = boxSize[0] / nPixelsXY[0]
-  stepY = boxSize[1] / nPixelsXY[1]
-
-  ; load snapshot
-  nParticles = loadSnapshotHDF5(snapBase,i,time,pos,vel,id,mass,u,rho)
-  
-  ; create density grid
-  dens = fltarr(nPixelsXY[0],nPixelsXY[1])
-  
-  for i=0,nPixelsXY[0]-1 do begin
-    for j=0,nPixelsXY[1]-1 do begin
-      minX = i*stepX
-      maxX = minX + stepX
-      minY = j*stepY
-      maxY = minY + stepY
-      
-      w = where( (pos[0,*] ge minX) and (pos[0,*] lt maxX) and $
-                 (pos[1,*] ge minY) and (pos[1,*] lt maxY), count)
-                 
-      if (count ne 0) then begin
-        rhoAvg = mean(rho[w])
-      endif else begin
-        rhoAvg = 0.0
-      endelse
-        
-      dens[i,j] = rhoAvg
-    
-    endfor
-  endfor
-
-  return, dens
-  
 end
 
 ;plot voronoi over density

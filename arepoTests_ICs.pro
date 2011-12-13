@@ -60,7 +60,7 @@ pro gen_arepo_cuda_2D_input
   
 end
 
-; 2D Kelvin-Helmholtz Instability ICs
+; 2D Kelvin-Helmholtz Instability ICs (only really tested for angle=0)
 pro gen_KH_2D_ICs
 
   ; config
@@ -200,5 +200,178 @@ pro gen_TS_BlastWave_3D_ICs
 
   ;write
   writeICFile,fOut,pos,vel,id,mass,u
+  
+end
+
+; 2D shocktube with tracer particles
+pro gen_shocktube_tracer_2D_ICs
+
+  ; config
+  fOut = "ics.dat"
+  
+  ga   = 1.4
+  
+  P1   = 1.0
+  rho1 = 1.0
+  P2   = 0.1795
+  rho2 = 0.25
+  
+  Lx = 20.0
+  Ly = 2.0
+  
+  Nx   = 100L
+  Ny   = 10L
+  
+  tfac = 16L
+  
+  ; deriv
+  if (( round(Nx*Ny/4) ne (Nx*Ny/4) ) or ( round(sqrt(tfac)) ne (sqrt(tfac)) ) ) then begin
+    print,'Error: Choose nicer numbers.'
+    return
+  endif
+  
+  nTotGas = Nx*Ny
+  
+  deltax = Lx/Nx
+  deltay = Ly/Ny
+  
+  ; create gas arrays
+  pos  = fltarr(3,nTotGas)
+  vel  = fltarr(3,nTotGas)
+  mass = fltarr(nTotGas)
+  u    = fltarr(nTotGas)
+  
+  ; set gas properties
+  for i=0L,Nx-1 do begin
+    for j=0L,Ny-1 do begin
+      pid = i+j*Nx
+      
+      pos[0,pid] = i*deltax+deltax/2.0  
+      pos[1,pid] = j*deltay+deltay/2.0  
+      pos[2,pid] = 0.0
+  
+      ;left  
+      if (pos[0,pid] lt Lx/2.0) then begin
+        mass[pid] = rho1*(Lx/2.0*Ly)/(Nx*Ny/2L)
+        u[pid]    = P1/rho1/(ga-1.0)
+      endif 
+    
+      ;right
+      if (pos[0,pid] ge Lx/2.0) then begin
+        mass[pid] = rho2*(Lx/2.0*Ly)/(Nx*Ny/2L) 
+        u[pid]    = P2/rho2/(ga-1.0) 
+      endif 
+      
+    endfor
+  endfor
+  
+  ; create tracer arrays
+  nTrLeft  = tfac*Nx*Ny
+  nTrRight = tfac*Nx*Ny/4
+  
+  nTotTracers = nTrLeft + nTrRight
+  
+  pos2  = fltarr(3,nTotTracers)
+  vel2  = fltarr(3,nTotTracers)
+  mass2 = fltarr(nTotTracers)
+  u2    = fltarr(nTotTracers)
+  
+  ; set tracer properties (right)
+  NxTr = sqrt(tfac)*Nx/4
+  NyTr = sqrt(tfac)*Ny
+  
+  deltax = Lx/NxTr/2.0
+  deltay = Ly/NyTr
+  
+  prevCount = 0
+  
+  for i=0L,NxTr-1 do begin
+    for j=0L,NyTr-1 do begin
+      pid = i+j*NxTr
+      
+      pos2[0,pid] = Lx/2.0 + i*deltax+deltax/2.0  
+      pos2[1,pid] = j*deltay+deltay/2.0  
+      pos2[2,pid] = 0.0
+      
+      prevCount += 1
+      
+    endfor
+  endfor
+  
+  ; set tracer properties (left)
+  NxTr = sqrt(tfac)*Nx
+  NyTr = sqrt(tfac)*Ny
+  
+  deltax = Lx/NxTr/2.0
+  
+  for i=0L,NxTr-1 do begin
+    for j=0L,NyTr-1 do begin
+      pid = prevCount + i+j*NxTr
+      
+      pos2[0,pid] = i*deltax+deltax/2.0  
+      pos2[1,pid] = j*deltay+deltay/2.0  
+      pos2[2,pid] = 0.0
+      
+    endfor
+  endfor
+  
+  ; offset tracers from gas by a small amount
+  seed = 45L
+  offset_x = ( deltax/4.0 * randomu(seed,1) )[0]
+  offset_y = ( deltay/4.0 * randomu(seed,1) )[0]
+
+  pos2[0,*] = pos2[0,*] + offset_x
+  pos2[1,*] = pos2[1,*] + offset_y
+  
+  ; set tracer properties OLD (left)
+  ;pos2[0,0:nTrLeft-1] = findgen(nTrLeft)/(nTrLeft+1) * Lx/2.0
+  ;pos2[1,0:nTrLeft-1] = findgen(nTrLeft)/(nTrLeft+1) * Ly
+  
+  ; set tracer properties OLD (right)
+  ;pos2[0,nTrLeft:nTotTracers-1] = findgen(nTrRight)/(nTrRight+1) * Lx/2.0 + Lx/2.0
+  ;pos2[1,nTrLeft:nTotTracers-1] = findgen(nTrRight)/(nTrRight+1) * Ly
+  
+  start_PS,'ics.eps'
+    fsc_plot,pos[0,*],pos[1,*],psym=4,symsize=0.2,xrange=[0.0,Lx],yrange=[0.0,Ly],/xs,/ys,color=fsc_color('forest green')
+    fsc_plot,pos2[0,*],pos2[1,*],psym=4,symsize=0.4,color=fsc_color('crimson'),/overplot
+  end_PS
+  
+  ; ids
+  id   = lindgen(nTotGas + nTotTracers)+1L
+  
+  ; header
+  npart    = lonarr(6) 
+  massarr  = dblarr(6)
+  npartall = lonarr(6)
+  
+  npart[0] = nTotGas
+  npart[2] = nTotTracers
+  npartall[0] = nTotGas
+  npartall[2] = nTotTracers
+  
+  time          = 0.0D
+  redshift      = 0.0D
+  flag_sfr      = 0L
+  flag_feedback = 0L
+  bytesleft     = 136
+  la            = intarr(bytesleft/2)
+  
+  ; debug
+  print, total(npartall,/int)
+  print, n_elements(pos(0,*)) + n_elements(pos2(1,*))
+  print, n_elements(vel(0,*)) + n_elements(vel2(1,*))
+  print, n_elements(id)
+  
+  ; write
+  openw,1,fOut,/f77_unformatted
+  writeu,1,npart,massarr,time,redshift,flag_sfr,flag_feedback,npartall,la
+  
+  writeu,1, pos,pos2
+  writeu,1, vel,vel2
+  writeu,1, id
+  writeu,1, mass, mass2
+  writeu,1, u
+  
+  close,1
   
 end
