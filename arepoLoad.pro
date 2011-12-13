@@ -184,7 +184,7 @@ function loadSnapshot, fBase, i, $
   return, h
 end
 
-; loadSnapshotHDF5():
+; loadSnapshotHDF5(): GAS ONLY
 ;
 ; inputs:  fBase, i
 ; outputs: h=header returned

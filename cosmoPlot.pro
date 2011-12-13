@@ -332,17 +332,19 @@ pro plotRhoTempGalCut, res=res, run=run
                 textoidl("_{part}")+" ) or ~log ( M"+textoidl("_{tot}")+" )",$
          barwidth=0.5,lcharsize=!p.charsize-0.5,xrange=rMinMax,yrange=tMinMax
     
+    ; scale Torrey+ (2011) galaxy cut to physical density
+    scalefac = snapNumToRedshift(snap=sP.snap,/time) ; time flag gives simulation time = scale factor
+    a3inv = 1.0 / (scalefac*scalefac*scalefac)
+    
     ; draw cut line
-    xpts = [1e-9,1e-1]
-    ypts = galcut_T + galcut_rho * alog10(xpts)  
+    xpts = [1e-9,1e-1] ; comoving density (code units)
+    ypts = galcut_T + galcut_rho * alog10(xpts * a3inv) ; cut on physical density  
       
     fsc_plot,alog10(rhoRatioToCrit(xpts,redshift=redshift)),ypts,$
              line=0,thick=!p.thick+1.0,color=fsc_color('light gray'),/overplot
  
   end_PS
-                        
-  stop
-
+           
 end
 
 ; plotGasOrigins(): plot temperature, entropy, and primary/secondary radius for all gas elements
@@ -353,9 +355,10 @@ pro plotGasOrigins, res=res, run=run
   sP = simParams(res=res,run=run)
 
   ; config
-  redshift = 2.0
-  
-  numSnapsBack = 5
+  redshift     = 2.0
+  numSnapsBack = 5         ; how many steps backwards to plot from target redshift
+  radBounds    = [0.3,0.325] ; fraction of r_vir in target redshift
+  gcType       = 'gmem'     ; plot which component, gal or gmem
   
   colors = ['black','forest green','slate blue','crimson','orange','saddle brown']
 
@@ -366,16 +369,19 @@ pro plotGasOrigins, res=res, run=run
   
   sP.snap = redshiftToSnapnum(redshift)
   
-  ; select primary,secondary,or all subhalos subject to minimum number of particles
-  sgIDList = sgIDList(sP=sP,select=sgSelect,minNumPart=minNumPart)
-
-  ; select galaxycat indices corresponding to this list of subgroup ids
-  gcInds = gcINDList(sP=sP,sgIDList=sgIDList)
+  ; make legend
+  legStrs = []
+  timeStart = snapNumToAge(sP.snap)
   
-  ; TODO: radial selection
+  for i=0,numSnapsBack do begin
+    timeDiff = (timeStart - snapnumToAge(sP.snap-i)) * 1000 ;Myr
+    ;curZ = snapNumToRedshift(snap=sP.snap-i)
+    curStr   = textoidl('\Delta')+"t = "+string(timeDiff,format='(i3)')+" Myr"
+    legStrs = [legStrs,curStr]
+  endfor
   
   ; plot (1) - overplotted histograms of temp vs number of snapshots back
-  plotBase = "gas.origins.temp_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)
+  plotBase = "gas.origins.temp_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)+'_'+gcType
   plotName = sP.plotPath + plotBase + '_'+str(sP.res)+'_'+str(sP.snap)+'.eps'
   
   start_PS, plotName
@@ -384,36 +390,316 @@ pro plotGasOrigins, res=res, run=run
     for m=sP.snap,sP.snap-numSnapsBack,-1 do begin
    
       ; load
-      gasOrig = gasOrigins(res=res,run=run,snap=m)
+      gcTemp = gcSubsetProp(sP=sP,select=sgSelect,minNumPart=minNumpart,oSnap=m,/curTemp)
 
-       ; overplot successive snapshots
-      overplot = 1 ;1,1,1
-      line     = m ;0,1,2
-      thick    = !p.thick + 1 - (m gt 0) ;3,2,2
+      ; load galaxy radii catalog to make radial cut at target redshift
+      if (m eq sP.snap) then $
+        gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,minNumPart=minNumpart,$
+                             oSnap=m,/rVirNorm)
+
+      ; select between galaxy and group member
+      if (gcType eq 'gal') then begin
+        ; radial selection
+        if (m eq sP.snap) then begin
+          wGal  = where(gcRad.gal gt radBounds[0] and gcRad.gal le radBounds[1],countGal)
+          print,' Gal Radial cut: '+str(countGal)+' of '+str(n_elements(gcRad.gal))
+        endif
+        
+        data = gcTemp.gal[wGal]
+      endif
       
+      if (gcType eq 'gmem') then begin
+        ; radial selection
+        if (m eq sP.snap) then begin
+          wGmem = where(gcRad.gmem gt radBounds[0] and gcRad.gmem le radBounds[1],countGmem)
+          print,' Gmem Radial cut: '+str(countGmem)+' of '+str(n_elements(gcRad.gmem))
+        endif
+        
+        data = gcTemp.gmem[wGmem]
+      endif
+
       ; histogram
-      xrange  = [3.8,7.0]
-      binSize = 0.04
-      
-      data = alog10( gasOrig.temp_gal[gcInds.gal] )
+      xrange  = [min(data)*0.9,max(data)*1.1]
+      binSize = 0.05
       
       hist = histogram(data,binsize=binSize,locations=xpts,min=xrange[0],max=xrange[1])
       
-      ; first plot
-      yrange = [1.0,max(hist)*2.0]
+      ; first plot make axes and bounds
+      yrange = [10.0,max(hist)*2.0]
       
       if (m eq sP.snap) then $
         fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+           title=str(sP.res)+textoidl("^3")+" z = "+string(redshift,format='(f3.1)')+" "+gcType,$
            xtitle="log ( T [K] )",ytitle="Count",/xs,/ys,/ylog
            
       ; plot
       w = where(hist ne 0)
       
-      fsc_plot,xpts[w]+binSize/2.0,hist[w],overplot=overplot,line=line,$
-               thick=thick,color=fsc_color(colors[sP.snap-m])
+      fsc_plot,xpts[w]+binSize/2.0,hist[w],/overplot,line=0,thick=!p.thick,color=fsc_color(colors[sP.snap-m])
                
     endfor
+       
+    ; legend    
+    legend,legStrs,textcolors=colors,box=0,margin=0.25,/right       
                
+  end_PS
+  
+  ; plot (2) - radial distances
+  
+  plotBase = "gas.origins.rad_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)+'_'+gcType
+  plotName = sP.plotPath + plotBase + '_'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  
+  start_PS, plotName
+    
+    ; loop backwards over snapshots
+    for m=sP.snap,sP.snap-numSnapsBack,-1 do begin
+      ; load
+      gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,minNumPart=minNumpart,$
+                           oSnap=m,/rVirNorm)
+      
+      ;w = where(gcRad.gal eq -1,count)
+      ;print,'['+str(m)+'] Not matched: '+str(count)+' of '+str(n_elements(gcRad.gal))
+      
+      ; select between galaxy and group member
+      if (gcType eq 'gal') then begin
+        ; radial selection
+        if (m eq sP.snap) then begin
+          wGal  = where(gcRad.gal gt radBounds[0] and gcRad.gal le radBounds[1],countGal)
+        endif
+        
+        data = gcRad.gal[wGal]
+      endif
+      
+      if (gcType eq 'gmem') then begin
+        ; radial selection
+        if (m eq sP.snap) then begin
+          wGmem = where(gcRad.gmem gt radBounds[0] and gcRad.gmem le radBounds[1],countGmem)
+        endif
+        
+        data = gcRad.gmem[wGmem]
+      endif
+      
+      ; histogram
+      xrange  = [0.0,1.1]
+      binSize = 0.025
+      
+      hist = histogram(data,binsize=binSize,locations=xpts,min=xrange[0],max=xrange[1])
+
+      ; first plot make axes and bounds
+      yrange = [10.0,max(hist)*2.0]
+      
+      if (m eq sP.snap) then $
+        fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+           title=str(sP.res)+textoidl("^3")+" z = "+string(redshift,format='(f3.1)')+" "+gcType,$
+           xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle="Count",/xs,/ys,/ylog
+           
+      ; add drop to zero for first histogram, otherwise restrict to nonzero
+      w = where(hist gt 0)
+      
+      if (m eq sP.snap) then begin
+        ; for first overplot a faint histogram of the whole distribution
+        hist2 = histogram(gcRad.gal,binsize=binSize,locations=xpts2,min=xrange[0],max=xrange[1])
+        
+        ; strong vertical lines over radial selection
+        xpts = [radBounds[0],radBounds[0],xpts[w] + binSize/2.0,radBounds[1],radBounds[1]]
+        hist = [yrange[0],(hist2[w[0]]+hist2[w[0]-1])/2.0,hist2[w],$
+                (hist2[w[n_elements(w)-1]]+hist2[w[n_elements(w)-1]+1])/2.0,yrange[0]]
+
+        fsc_plot,xpts2+binSize/2.0,hist2,/overplot,line=0,thick=!p.thick,color=fsc_color('light gray')
+        
+        ; plot
+        fsc_plot,xpts,hist,/overplot,line=0,thick=!p.thick+1.0,color=fsc_color(colors[sP.snap-m])
+      endif else begin
+        xpts = xpts[w] + binSize/2.0
+        hist = hist[w]
+        
+        ; plot
+        fsc_plot,xpts,hist,/overplot,line=0,thick=!p.thick+1.0,color=fsc_color(colors[sP.snap-m])
+      endelse
+      
+    endfor
+    
+    ; legend    
+    legend,legStrs,textcolors=colors,box=0,margin=0.25,/right
+    
+  end_PS
+  
+end
+
+; plotGasOriginsTracks():
+  
+pro plotGasOriginsTracks, res=res, run=run
+  
+  sP = simParams(res=res,run=run)
+
+  ; config
+  redshift     = 2.0
+  numSnapsBack = 5           ; how many steps backwards to plot from target redshift
+  radBounds    = [0.3,0.302] ; fraction of r_vir in target redshift
+  minRadCut    = 0.45        ; gas element must reach this r/r_vir at least to be included
+  gcType       = 'gal'      ; plot which component, gal or gmem
+  
+  colors = ['black','forest green','slate blue','crimson','orange','saddle brown']
+
+  ; subhalo selection config
+  sgSelect = 'pri' ; pri,sec,all
+  parNorm  = 'sec' ; pri,sec (normalize r_vir by primary or secondary parent)
+  minNumPart = 1   ; enforce minimum 100 gas particles per halo
+  
+  sP.snap = redshiftToSnapnum(redshift)
+  
+  ; make legend
+  legStrs = []
+  timeStart = snapNumToAge(sP.snap)
+  
+  for i=0,numSnapsBack do begin
+    timeDiff = (timeStart - snapnumToAge(sP.snap-i)) * 1000 ;Myr
+    ;curZ = snapNumToRedshift(snap=sP.snap-i)
+    curStr   = textoidl('\Delta')+"t = "+string(timeDiff,format='(i3)')+" Myr"
+    legStrs = [legStrs,curStr]
+  endfor  
+    
+  ; loop backwards over snapshots and make tracks
+  for m=sP.snap,sP.snap-numSnapsBack,-1 do begin
+    ; load
+    gcTemp = gcSubsetProp(sP=sP,select=sgSelect,minNumPart=minNumpart,oSnap=m,/curTemp)
+    gcRad  = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,minNumPart=minNumpart,$
+                          oSnap=m,/rVirNorm)
+    
+    ; select between galaxy and group member
+    if (gcType eq 'gal') then begin
+      ; radial selection
+      if (m eq sP.snap) then begin
+        wGal  = where(gcRad.gal gt radBounds[0] and gcRad.gal le radBounds[1],countGal)
+        xdata = fltarr(numSnapsBack+1,countGal)
+        ydata = fltarr(numSnapsBack+1,countGal)
+      endif
+      
+      xdata[sP.snap-m,*] = gcRad.gal[wGal]
+      ydata[sP.snap-m,*] = gcTemp.gal[wGal]
+    endif
+    
+    if (gcType eq 'gmem') then begin
+      ; radial selection
+      if (m eq sP.snap) then begin
+        wGmem = where(gcRad.gmem gt radBounds[0] and gcRad.gmem le radBounds[1],countGmem)
+        xdata = fltarr(numSnapsBack+1,countGmem)
+        ydata = fltarr(numSnapsBack+1,countGmem)
+      endif
+      
+      xdata[sP.snap-m,*] = gcRad.gmem[wGmem]
+      ydata[sP.snap-m,*] = gcTemp.gmem[wGmem]
+    endif
+  endfor
+  
+  sz = size(xdata)
+  
+  ; remove -1 in xdata (rad) - not found in prior group
+  wBad = where(xdata eq -1,count)
+  w2d = array_indices(xdata,wBad)
+  
+  for i=0,n_elements(wBad)-1 do begin
+    xdata[wBad[i]] = xdata[w2d[0,i]-1,w2d[1,i]]
+  endfor
+  
+  ; minimum radial distance reached cut
+  wR = lindgen(sz[2])
+  if (minRadCut ne 0) then $
+    wR = where(max(xdata,dim=1) ge minRadCut,comp=wRcomp)
+    
+  ; plot (1) - temperature vs. radial distances (all)
+  
+  xrange = [0.0,1.1]
+  yrange = [4.0,max(ydata)*1.1]  
+  
+  plotBase = "gas.origins.rt_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)+'_'+gcType
+  plotName = sP.plotPath + plotBase + '_'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  
+  start_PS, plotName
+    
+    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+       title=str(sP.res)+textoidl("^3")+" z = "+string(redshift,format='(f3.1)')+" "+gcType+" (all)",$
+       xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle="log ( T [K] )",/xs,/ys
+    
+    ; plot tracks
+    foreach i,lindgen(sz[2]) do $
+      fsc_plot,xdata[*,i],ydata[*,i],/overplot,psym=-4,symsize=0.4,thick=0.5,color=fsc_color('black')
+      
+    ; oplot colored markers
+    for i=0,sz[1]-1 do $
+      fsc_plot,xdata[i,*],ydata[i,*],/overplot,psym=4,symsize=0.4,color=fsc_color(colors[i])
+      
+    ; oplot dotted indicators for -1
+    for i=0,n_elements(wBad)-1 do begin
+      fsc_plot,[xdata[w2d[0,i]-1,w2d[1,i]],xdata[w2d[0,i]-1,w2d[1,i]]+0.1],[ydata[wBad[i]],ydata[wBad[i]]],$
+      line=1,thick=0.5,/overplot
+    endfor
+      
+    ; legend    
+    legend,legStrs,textcolors=colors,box=0,margin=0.25,/right
+    
+  end_PS    
+    
+  ; plot (2) - temperature vs. radial distances meeting minRadCut
+  
+  plotBase = "gas.origins.rt1_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)+'_'+gcType
+  plotName = sP.plotPath + plotBase + '_'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  
+  start_PS, plotName
+    
+    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+       title=str(sP.res)+textoidl("^3")+" z = "+string(redshift,format='(f3.1)')+" "+gcType+" (minCut)",$
+       xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle="log ( T [K] )",/xs,/ys
+    
+    ; plot tracks
+    foreach i,wR do $
+      fsc_plot,xdata[*,i],ydata[*,i],/overplot,psym=-4,symsize=0.4,thick=0.5,color=fsc_color('black')
+      
+    ; oplot colored markers
+    for i=0,sz[1]-1 do $
+      fsc_plot,xdata[i,wR],ydata[i,wR],/overplot,psym=4,symsize=0.4,color=fsc_color(colors[i])
+      
+    ; oplot dotted indicators for -1
+    for i=0,n_elements(wBad)-1 do begin
+      if (total(i eq wR) gt 0) then $
+        fsc_plot,[xdata[w2d[0,i]-1,w2d[1,i]],xdata[w2d[0,i]-1,w2d[1,i]]+0.1],[ydata[wBad[i]],ydata[wBad[i]]],$
+        line=1,thick=0.5,/overplot
+    endfor
+      
+    ; legend    
+    legend,legStrs,textcolors=colors,box=0,margin=0.25,/right
+    
+  end_PS
+  
+  ; plot (3) - other tracks not meeting minRadCut
+  
+  plotBase = "gas.origins.rt2_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)+'_'+gcType
+  plotName = sP.plotPath + plotBase + '_'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  
+  start_PS, plotName
+  
+    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+       title=str(sP.res)+textoidl("^3")+" z = "+string(redshift,format='(f3.1)')+" "+gcType+" (failed minCut)",$
+       xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle="log ( T [K] )",/xs,/ys
+    
+    ; plot tracks
+    foreach i,wRcomp do $
+      fsc_plot,xdata[*,i],ydata[*,i],/overplot,psym=-4,symsize=0.4,thick=0.5,color=fsc_color('black')
+      
+    ; oplot colored markers
+    for i=0,sz[1]-1 do $
+      fsc_plot,xdata[i,wRcomp],ydata[i,wRcomp],/overplot,psym=4,symsize=0.4,color=fsc_color(colors[i])
+      
+    ; oplot dotted indicators for -1
+    for i=0,n_elements(wBad)-1 do begin
+      if (total(i eq wRcomp) gt 0) then $
+        fsc_plot,[xdata[w2d[0,i]-1,w2d[1,i]],xdata[w2d[0,i]-1,w2d[1,i]]+0.1],[ydata[wBad[i]],ydata[wBad[i]]],$
+        line=1,thick=0.5,/overplot
+    endfor
+      
+    ; legend    
+    legend,legStrs,textcolors=colors,box=0,margin=0.25,/right
+    
   end_PS
   
   stop

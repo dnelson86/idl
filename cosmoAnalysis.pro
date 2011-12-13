@@ -338,7 +338,7 @@ function gasOrigins, res=res, run=run, snap=snap
     if (file_test(saveFilename)) then begin
       restore,saveFilename
       r = {temp_gal:temp_gal,temp_gmem:temp_gmem,entropy_gal:entropy_gal,entropy_gmem:entropy_gmem,$
-           gal_pri:gal_pri,gal_sec:gal_sec,gmem_pri:gmem_pri,gmem_sec:gmem_sec}
+           indMatch:indMatch}
       return,r
     endif
     
@@ -411,36 +411,16 @@ function gasOrigins, res=res, run=run, snap=snap
     
     print,'['+str(targetSnap-m)+'] Matched ['+str(countGal)+' + '+str(countGal2)+'] ['+$
           str(countGmem)+' + '+str(countGmem2)+'].'
-    
-    ; allocate space for radial distances
-    gal_pri = fltarr(n_elements(gc.galaxyIDs)) - 1.0
-    gal_sec = fltarr(n_elements(gc.galaxyIDs)) - 1.0
-    
-    gmem_pri = fltarr(n_elements(gc.groupmemIDs)) - 1.0
-    gmem_sec = fltarr(n_elements(gc.groupmemIDs)) - 1.0
-    
-    ; load the galaxy radii catalog at this redshift
-    galRad = galaxyCatRadii(res=res,run=run,snap=m)
 
-    ; store radial distances of gas elements to primary and secondary parents for matching IDs
-    gal_pri[gc_ind_gal]  = galRad.gal_pri[gcCur_ind_gal]
-    gal_sec[gc_ind_gal]  = galRad.gal_sec[gcCur_ind_gal]
+    ; keep the match indices relating gas elements in the two galaxy catalogs
+    ; NOTE: -1 for empty here    
+    indMatch = {gc_ind_gal:gc_ind_gal,         gc_ind_gal2:gc_ind_gal2,         $
+                gcCur_ind_gal:gcCur_ind_gal,   gcCur_ind_gal2:gcCur_ind_gal2,   $
+                gc_ind_gmem:gc_ind_gmem,       gc_ind_gmem2:gc_ind_gmem2,       $
+                gcCur_ind_gmem:gcCur_ind_gmem, gcCur_ind_gmem2:gcCur_ind_gmem2}
     
-    if (countGal2 gt 0) then begin
-      gal_pri[gc_ind_gal2] = galRad.gmem_pri[gcCur_ind_gal2]
-      gal_sec[gc_ind_gal2] = galRad.gmem_sec[gcCur_ind_gal2]
-    endif
-      
-    gmem_pri[gc_ind_gmem]  = galRad.gmem_pri[gcCur_ind_gmem]
-    gmem_sec[gc_ind_gmem]  = galRad.gmem_sec[gcCur_ind_gmem]
-    
-    if (countGmem2 gt 0) then begin
-      gmem_pri[gc_ind_gmem2] = galRad.gal_pri[gcCur_ind_gmem2]
-      gmem_sec[gc_ind_gmem2] = galRad.gal_sec[gcCur_ind_gmem2]
-    endif
-
     ; save
-    save,temp_gal,temp_gmem,entropy_gal,entropy_gmem,gal_pri,gal_sec,gmem_pri,gmem_sec,filename=saveFilename
+    save,temp_gal,temp_gmem,entropy_gal,entropy_gmem,indMatch,filename=saveFilename
     print,'    Saved: '+strmid(saveFilename,strlen(sP.derivPath))
 
   endfor
@@ -557,10 +537,13 @@ function maxTemps, res=res, run=run, redshift=redshift, zStart=zStart, inclEffEO
 
 end
 
-
-
 ; gcSubsetProp(): read galaxy catalog for a specific subgroup selection (pri,sec,all) and
 ;                 return properties for each gas element (may or may not depend on parent halo)
+;                 
+;                 note: target redshift is ready from sP.snap and values are returned for that
+;                       redshift unless oSnap is specified, in which gasOrigins() is used and the
+;                       gas elements are matched to those existing in the subhalo catalog at the
+;                       earlier snapshot
 ;
 ; rVirNorm=1    : radial distances normalized by r_vir of either primary or secondary parent
 ; virTemp=1     : virial temperatures of parent halos
@@ -569,7 +552,7 @@ end
 ; curDens=1     : current density of each gas element
 ; maxPastTemp=1 : maximum past previos temperature of each element
 
-function gcSubsetProp, sP=sP, select=select, $
+function gcSubsetProp, sP=sP, select=select, oSnap=oSnap, $
                        rVirNorm=rVirNorm, virTemp=virTemp, parMass=parMass, $
                        curTemp=curTemp, curDens=curDens, maxPastTemp=maxPastTemp, $
                        parNorm=parNorm, minNumPart=minNumPart ;this row for rVirNorm only
@@ -581,20 +564,73 @@ function gcSubsetProp, sP=sP, select=select, $
   gcInds = gcINDList(sP=sP,sgIDList=sgIDList)
 
   if keyword_set(rVirNorm) then begin
-    ; load parent r_vir and galaxy radii catalog
-    r_vir = galCatParentProperties(sP=sP, /rVir)
-    gcr   = galaxyCatRadii(res=sP.res,run=sP.run,snap=sP.snap)
+
+    ; gasOrigins - return this quantity for the gas elements at the different snapshot oSnap
+    if (keyword_set(oSnap)) then begin
     
-    ; create subsets for subhalo selection and normalized by parent r_vir
-    if (parNorm eq 'pri') then begin
-      rad_gal  = gcr.gal_pri[gcInds.gal] / r_vir.gal[gcInds.gal]
-      rad_gmem = gcr.gmem_pri[gcInds.gmem] / r_vir.gmem[gcInds.gmem]
-    endif
+      gasOrig = gasOrigins(res=sP.res,run=sP.run,snap=oSnap)
+      
+      ; load parent r_vir and galaxy radii catalog at oSnap
+      snapSwap = sP.snap
+      sP.snap = oSnap
+      
+      r_vir = galCatParentProperties(sP=sP, /rVir)
+      gcr   = galaxyCatRadii(res=sP.res,run=sP.run,snap=sP.snap)
+      
+      sP.snap = snapSwap
+      
+      ; arrays
+      rad_gal  = fltarr(n_elements(gcr.gal_pri)) - 1.0
+      rad_gmem = fltarr(n_elements(gcr.gmem_pri)) - 1.0
+      
+      ; store radial distance of gas elements to parents for matching IDs
+      if (parNorm eq 'pri') then begin
+        rad_gal[gasOrig.indMatch.gc_ind_gal]  = gcr.gal_pri[gasOrig.indMatch.gcCur_ind_gal] / $
+                                                r_vir.gal[gasOrig.indMatch.gcCur_ind_gal]
+                                                
+        if (n_elements(gasOrig.indMatch.gc_ind_gal2) gt 0) then $
+          rad_gal[gasOrig.indMatch.gc_ind_gal2] = gcr.gmem_pri[gasOrig.indMatch.gcCur_ind_gal2] / $
+                                                  r_vir.gmem[gasOrig.indMatch.gcCur_ind_gal2]
+        
+        rad_gmem[gasOrig.indMatch.gc_ind_gmem]  = gcr.gmem_pri[gasOrig.indMatch.gcCur_ind_gmem] / $
+                                                r_vir.gmem[gasOrig.indMatch.gcCur_ind_gmem]
+                                                
+        if (n_elements(gasOrig.indMatch.gc_ind_gmem2) gt 0) then $
+          rad_gmem[gasOrig.indMatch.gc_ind_gmem2] = gcr.gal_pri[gasOrig.indMatch.gcCur_ind_gmem2] / $
+                                                  r_vir.gal[gasOrig.indMatch.gcCur_ind_gmem2]
+      endif
+      
+      if (parNorm eq 'sec') then begin
+        rad_gal[gasOrig.indMatch.gc_ind_gal]  = gcr.gal_sec[gasOrig.indMatch.gcCur_ind_gal] / $
+                                                r_vir.gal[gasOrig.indMatch.gcCur_ind_gal]
+        rad_gal[gasOrig.indMatch.gc_ind_gal2] = gcr.gmem_sec[gasOrig.indMatch.gcCur_ind_gal2] / $
+                                                r_vir.gmem[gasOrig.indMatch.gcCur_ind_gal2]
+        
+        rad_gmem[gasOrig.indMatch.gc_ind_gmem]  = gcr.gmem_sec[gasOrig.indMatch.gcCur_ind_gmem] / $
+                                                r_vir.gmem[gasOrig.indMatch.gcCur_ind_gmem]
+        rad_gmem[gasOrig.indMatch.gc_ind_gmem2] = gcr.gal_sec[gasOrig.indMatch.gcCur_ind_gmem2] / $
+                                                r_vir.gal[gasOrig.indMatch.gcCur_ind_gmem2]
+      endif
+    endif else begin
+      ; load parent r_vir and galaxy radii catalog at sP.snap
+      r_vir = galCatParentProperties(sP=sP, /rVir)
+      gcr   = galaxyCatRadii(res=sP.res,run=sP.run,snap=sP.snap)
+      
+      ; store radial distance normalized by parent r_vir
+      if (parNorm eq 'pri') then begin
+        rad_gal  = gcr.gal_pri / r_vir.gal
+        rad_gmem = gcr.gmem_pri / r_vir.gmem
+      endif
+      
+      if (parNorm eq 'sec') then begin
+        rad_gal  = gcr.gal_sec / r_vir.gal
+        rad_gmem = gcr.gmem_sec / r_vir.gmem
+      endif
+    endelse
     
-    if (parNorm eq 'sec') then begin
-      rad_gal  = gcr.gal_sec[gcInds.gal] / r_vir.gal[gcInds.gal]
-      rad_gmem = gcr.gmem_sec[gcInds.gmem] / r_vir.gmem[gcInds.gmem]
-    endif
+    ; restrict to subset
+    rad_gal  = rad_gal[gcInds.gal]
+    rad_gmem = rad_gmem[gcInds.gmem]
     
     r = {gal:rad_gal,gmem:rad_gmem}
   endif
@@ -622,28 +658,35 @@ function gcSubsetProp, sP=sP, select=select, $
   endif
   
   if keyword_set(curTemp) then begin
-    ; load intermediate save for thermal state
-    thFilename = sP.thistPath + 'thermhist.gas.'+str(sP.res)+'_'+str(sP.snap)+'.sav'
-    restore,thFilename
-    
-    ; load galaxy catalog to change INDs to gas IDs
-    gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
-    
-    ; restrict temps to subset of galaxy cat
-    temp_gal  = temp[gc.galaxyIDs[gcInds.gal]]
-    temp_gmem = temp[gc.groupmemIDs[gcInds.gmem]]
-    
-    gc      = !NULL
-    density = !NULL
-    temp    = !NULL
-    gcInds  = !NULL
+    if (keyword_set(oSnap)) then begin
+      gasOrig = gasOrigins(res=sP.res,run=sP.run,snap=oSnap)
       
-    ; take log of temperatures
-    w = where(temp_gal le 0,count)
-    if (count ne 0) then temp_gal[w] = 1.0
-    w = where(temp_gmem le 0,count)
-    if (count ne 0) then temp_gmem[w] = 1.0
-    
+      temp_gal  = gasOrig.temp_gal[gcInds.gal]
+      temp_gmem = gasOrig.temp_gmem[gcInds.gmem]
+    endif else begin
+      ; load intermediate save for thermal state
+      thFilename = sP.thistPath + 'thermhist.gas.'+str(sP.res)+'_'+str(sP.snap)+'.sav'
+      restore,thFilename
+      
+      ; load galaxy catalog to change INDs to gas IDs
+      gc = galaxyCat(res=sP.res,run=sP.run,snap=sP.snap)
+      
+      ; restrict temps to subset of galaxy cat
+      temp_gal  = temp[gc.galaxyIDs[gcInds.gal]]
+      temp_gmem = temp[gc.groupmemIDs[gcInds.gmem]]
+      
+      gc      = !NULL
+      density = !NULL
+      temp    = !NULL
+      gcInds  = !NULL
+        
+      ; take log of temperatures
+      w = where(temp_gal le 0,count)
+      if (count ne 0) then temp_gal[w] = 1.0
+      w = where(temp_gmem le 0,count)
+      if (count ne 0) then temp_gmem[w] = 1.0
+    endelse
+  
     temp_gal  = alog10(temp_gal)
     temp_gmem = alog10(temp_gmem)
     
