@@ -180,6 +180,7 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2
 
   ; add to particle counts and concat arrays
   if keyword_set(part0) then begin
+    ; GAS
     npart(0)    = n_elements(part0.id)
     npartall(0) = n_elements(part0.id)
     
@@ -202,6 +203,7 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2
   endif
   
   if keyword_set(part2) then begin
+    ; TRACER
     npart(2)    = n_elements(part2.id)
     npartall(2) = n_elements(part2.id)
     
@@ -209,7 +211,7 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2
     vel  = [[vel], [part2.vel]]
     id   = [id,    part2.id]
     mass = [mass,  part2.mass]
-    u    = [u,     part2.u]
+    ;u    = [u,     part2.u] ; u not expected in input for tracer
   endif
 
   time          = 0.0D

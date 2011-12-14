@@ -286,7 +286,7 @@ pro gen_shocktube_tracer_2D_ICs
   pos2  = fltarr(3,nTotTracers)
   vel2  = fltarr(3,nTotTracers)
   mass2 = fltarr(nTotTracers)
-  u2    = fltarr(nTotTracers)
+  ;u2    = fltarr(nTotTracers) ; u not expected in IC for tracer
   
   ; set tracer properties (right)
   NxTr = sqrt(tfac)*Nx/4
@@ -357,7 +357,7 @@ pro gen_shocktube_tracer_2D_ICs
   
   ; write
   gas    = {pos:pos,vel:vel,id:id,mass:mass,u:u}
-  tracer = {pos:pos2,vel:vel2,id:id2,mass:mass2,u:u2}
+  tracer = {pos:pos2,vel:vel2,id:id2,mass:mass2}
   
   writeICFile,fOut,part0=gas,part2=tracer
   
@@ -432,7 +432,7 @@ pro gen_shocktube_tracer_1D_ICs
   pos2  = fltarr(3,nTotTracers)
   vel2  = fltarr(3,nTotTracers)
   mass2 = fltarr(nTotTracers)
-  u2    = fltarr(nTotTracers)
+  ;u2    = fltarr(nTotTracers) ; u not expected in IC for tracer
   
   ; set tracer properties (right)
   NxTr   = tfac*Nx/4
@@ -473,7 +473,7 @@ pro gen_shocktube_tracer_1D_ICs
   
   ; write
   gas    = {pos:pos,vel:vel,id:id,mass:mass,u:u}
-  tracer = {pos:pos2,vel:vel2,id:id2,mass:mass2,u:u2}
+  tracer = {pos:pos2,vel:vel2,id:id2,mass:mass2}
   
   writeICFile,fOut,part0=gas,part2=tracer
   
