@@ -8,6 +8,31 @@
 @cosmoUtil
 @cosmoLoad
 
+function interpNN, pos_src, pos_dest, val_src
+
+    ; something fancy (linear or cubic?)
+    ;dens_interp = interpol(dens_gas,pos_gas,pos_tracer)
+    ;res = dens_interp - dens_tracer
+    
+    ; nearest neighbor interpolation by indices
+    ;inds = round(pos_gas / 20.0 * n_elements(dens_tracer))
+    
+    ; nearest neighbor interpolation (manual)
+    val_interp = fltarr(n_elements(pos_src))
+    
+    for i=0,n_elements(pos_src)-1 do begin
+      ind = where(abs(pos_dest-pos_src[i]) eq min(abs(pos_dest-pos_src[i])),count)
+      
+      if (count eq 0) then begin
+        print,'WARNING'
+        stop
+      endif
+      val_interp[i] = val_src[ind[0]]
+    endfor
+    
+  return, val_interp
+end
+
 ; plotShocktube():
 
 pro plotShocktube, snap=snap, resize=resize
@@ -20,7 +45,7 @@ pro plotShocktube, snap=snap, resize=resize
   units = getUnits()
   
   ; config
-  tfac = '1.line'
+  tfac = '16'
   workingPath = '/n/home07/dnelson/dev.tracer/'
   snapPath    = workingPath + 'shocktube.tfac'+str(tfac)+'/output/'
   
@@ -79,26 +104,12 @@ pro plotShocktube, snap=snap, resize=resize
     endfor
   
   ; interpolate tracer density+temp to positions of gas particles
-    ;dens_interp = interpol(dens_gas,pos_gas,pos_tracer) ; something fancy
-    ;res = dens_interp - dens_tracer
-    
-    ; nearest neighbor interpolation
-    ;inds = round(pos_gas / 20.0 * n_elements(dens_tracer))
-    dens_interp = fltarr(n_elements(pos_gas))
-    temp_interp = fltarr(n_elements(pos_gas))
-    
-    for i=0,n_elements(pos_gas)-1 do begin
-      ind = where(abs(pos_tracer-pos_gas[i]) eq min(abs(pos_tracer-pos_gas[i])),count)
-      if (count eq 0) then begin
-        print,'WARNING'
-        stop
-      endif
-      dens_interp[i] = dens_tracer[ind[0]]
-      temp_interp[i] = temp_tracer[ind[0]]
-    endfor    
+  dens_interp = interpNN(pos_gas,pos_tracer,dens_tracer)
+  temp_interp = interpNN(pos_gas,pos_tracer,temp_tracer)
   
   ; plot (0) - scatterplot of (x,y) gas and tracer positions
-  start_PS, workingPath + 'shocktube_2d_spos_'+string(snap,format='(I3.3)')+'.eps', xs=10.5, ys=2
+  start_PS, workingPath + 'shocktube_2d_spos_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps',$
+            xs=10.5, ys=2
   
     xrange = [0.0,20.0]
     yrange = [0.0,2.0]
@@ -114,7 +125,7 @@ pro plotShocktube, snap=snap, resize=resize
   end_PS, pngResize=resize, deletePS=deletePS
   
   ; plot (1) - density comparison
-  start_PS, workingPath + 'shocktube_2d_dens_'+string(snap,format='(I3.3)')+'.eps'
+  start_PS, workingPath + 'shocktube_2d_dens_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps'
   
     yrange = [0.05,max(dens_gas)*1.1]
   
@@ -154,7 +165,7 @@ pro plotShocktube, snap=snap, resize=resize
   end_PS, pngResize=resize, deletePS=deletePS
   
   ; plot (2) - temperature comparison
-  start_PS, workingPath + 'shocktube_2d_temp_'+string(snap,format='(I3.3)')+'.eps'
+  start_PS, workingPath + 'shocktube_2d_temp_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps'
   
     yrange = [-7.88,-8.07]
   
@@ -197,7 +208,7 @@ pro plotShocktube, snap=snap, resize=resize
   vy_tracer = vy_tracer[sort_ind_tracer]
   
   ; plot (3) - v_y
-  start_PS, workingPath + 'shocktube_2d_vy_'+string(snap,format='(I3.3)')+'.eps'
+  start_PS, workingPath + 'shocktube_2d_vy_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps'
   
     yrange = [-1e-2,1e-2]
   
@@ -226,10 +237,10 @@ pro plotShocktube, snap=snap, resize=resize
   vz_gas    = vz_gas[sort_ind_gas]
   vz_tracer = vz_tracer[sort_ind_tracer]
   
-  ; plot (3) - v_y
-  start_PS, workingPath + 'shocktube_2d_vz_'+string(snap,format='(I3.3)')+'.eps'
+  ; plot (3) - v_z
+  start_PS, workingPath + 'shocktube_2d_vz_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps'
   
-    yrange = [-1e-2,1e-2]
+    yrange = [-1e-12,1e-12]
   
     ; plot
     fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
@@ -269,61 +280,44 @@ end
 ; estimateDensityTophat(): 2D or 3D number density estimator for a given particle type using a square
 ;                          or cubic filter function (ideally should do with HSML)
 
-function estimateDensityTophat, pos, mass, eval_pos, ndims=ndims, $
-                                filterSize=filterSize, nNeighbors=nNeighbors
+function estimateDensityTophat, pos, mass, ndims=ndims, filterSize=filterSize, useHSML=useHSML
 
-  if ((keyword_set(filterSize) and keyword_set(nNeighbors)) or not keyword_set(ndims)) then begin
+  if ((keyword_set(filterSize) and keyword_set(useHSML)) or not keyword_set(ndims)) then begin
     print,'Error: Only specify one of filterSize or nNeighbors, and ndims.'
     return,0
   endif
 
   ; config
-  ;boxSize = [20.0,2.0,0.0]
-  sz_eval = size(eval_pos)
-  neval = sz_eval[2]
-  
-  ;sz_pos = size(pos)
-  ;npos   = sz_pos[2]
+  sz_pos = size(pos)
+  npos   = sz_pos[2]
   
   ; arrays
-  eval_dens = fltarr(neval)
+  eval_dens = fltarr(npos)
   
   ; do density calculation with a constant filter size
   if keyword_set(filterSize) then begin
     invAreaVol = 1.0 / filterSize^ndims
     
-    for i=0,neval-1 do begin
+    for i=0,npos-1 do begin
    
-      ;vecs = fltarr(3,npos)
-      
       ; 1d - select neighbors in filter (can use in 2d, e.g. ignore y-coordinate)
       if (ndims eq 1) then $
-        dists = sqrt( (pos[0,*]-eval_pos[0,i])^2.0 )
+        dists = sqrt( (pos[0,*]-pos[0,i])^2.0 )
         
       ; 2d - select neighbors in filter
       if (ndims eq 2) then $
-        dists = sqrt( (pos[0,*]-eval_pos[0,i])^2.0 + $
-                      (pos[1,*]-eval_pos[1,i])^2.0 )
+        dists = sqrt( (pos[0,*]-pos[0,i])^2.0 + $
+                      (pos[1,*]-pos[1,i])^2.0 )
       
       ; 3d - select neighbors in filter
       if (ndims eq 3) then $
-        dists = sqrt( (pos[0,*]-eval_pos[0,i])^2.0 + $
-                      (pos[1,*]-eval_pos[1,i])^2.0 + $
-                      (pos[2,*]-eval_pos[2,i])^2.0 )
+        dists = sqrt( (pos[0,*]-pos[0,i])^2.0 + $
+                      (pos[1,*]-pos[1,i])^2.0 + $
+                      (pos[2,*]-pos[2,i])^2.0 )
       
       ; correct distance vectors for periodic B.C.
-      ;for i=0,2 do begin
-      ;  w = where(vecs[i,*] gt boxSize[i]*0.5,count)
-      ;  if (count ne 0) then $
-      ;    vecs[i,w] = vecs[i,w] - boxSize[i]
-      ;    
-      ;  w = where(vecs[i,*] lt -boxSize[i]*0.5,count)
-      ;  if (count ne 0) then $
-      ;    vecs[i,w] = boxSize[i] + vecs[i,w]
-      ;endfor
-      ;
-      ;dists = sqrt(vecs[0,*] * vecs[0,*] + vecs[1,*] * vecs[1,*] + vecs[2,*] * vecs[2,*])
-      
+      ; todo
+
       ; calculate density = number/area_or_vol
       w = where(dists le filterSize,count)
       
@@ -331,12 +325,49 @@ function estimateDensityTophat, pos, mass, eval_pos, ndims=ndims, $
         eval_dens[i] = total(mass[w]) * invAreaVol
 
     endfor
-  endif
+    
+    ; some factor of 4 I don't understand offset in density for ndims=1 and filterSize
+    if (ndims eq 1) then eval_dens /= 4.0
   
-  ; do density calculation with a constant number of nearest neighbors
-  if keyword_set(nNeighbors) then begin
-    print,'ERROR implement'
-    return,0
+  endif
+
+  ; do density calculation by calculating smoothing lengths for all the particles
+  ; use CalcHSML external C-routine for the tree, neighbor searchings, and smoothing lengths
+  if keyword_set(useHSML) then begin
+  
+    nNGB = 32
+    
+    ; prepare inputs
+    NumPart = long(npos)
+    ;Pos     = pos
+    ;Mass    = mass
+    
+    DesNumNgb    = long(nNGB)
+    DesNumNgbDev = long(0)
+    BoxSize      = 0.0
+    HsmlGuess    = float(1.0)
+    Softening    = float(1.0)
+    
+    hsml_out = fltarr(NumPart)
+    
+    ; call CalcHSML
+    ret = Call_External('/n/home07/dnelson/idl/CalcHSML/CalcHSML.so', 'CalcHSML', $
+                        NumPart,Pos,Mass,DesNumNgb,DesNumNgbDev,BoxSize,HsmlGuess,Softening,hsml_out, $
+                        /CDECL)
+
+    ; estimate densities on eval_pos using hsml
+    if (ndims eq 1) then $
+      eval_dens = nNGB / hsml_out
+      
+    if (ndims eq 2) then $
+      eval_dens = nNGB / (!pi * hsml_out^2.0)
+      
+    if (ndims eq 3) then $
+      eval_dens = nNGB / (4.0*!pi/3.0 * hsml_out^3.0)
+    
+    ; add in mass
+    eval_dens *= mass[0]
+    
   endif
   
   return,eval_dens
@@ -352,11 +383,11 @@ pro compMassDist, snap=snap
   units = getUnits()
   
   ; config
-  tfac = 4
-  ndims = 1
+  tfac = '16'
+  ndims = 2
   
-  filterSize = 0.6 ; constant tophat filter size
-  nNeighbors = 0   ; constant number of nearest neighbors
+  filterSize = 0   ; constant tophat filter size (code units)
+  useHSML    = 1   ; use external CalcHSML routine to find smoothing lengths for density estimate
   
   workingPath = '/n/home07/dnelson/dev.tracer/'
   snapPath    = workingPath + 'shocktube.tfac'+str(tfac)+'/output/'
@@ -374,31 +405,40 @@ pro compMassDist, snap=snap
   mass_tracer = replicate(total(mass_gas) / h.nPartTot[2], h.nPartTot[2])
 
   ; evaluate tracer density on gas particle positions
-  eval_dens = estimateDensityTophat(pos_tracer,mass_tracer,pos_gas,ndims=ndims,$
-                                    filterSize=filterSize,nNeighbors=nNeighbors)
+  eval_dens = estimateDensityTophat(pos_tracer,mass_tracer,ndims=ndims,$
+                                    filterSize=filterSize,useHSML=useHSML)
   
   ; sort on gas x-position
   sort_ind_gas    = sort(pos_gas[0,*])
+  sort_ind_tracer = sort(pos_tracer[0,*])
   
-  x_gas  = reform(pos_gas[0,sort_ind_gas])
+  x_gas    = reform(pos_gas[0,sort_ind_gas])
+  x_tracer = reform(pos_tracer[0,sort_ind_tracer])
+  y_tracer = reform(pos_tracer[1,sort_ind_tracer])
   
   dens_gas    = dens_gas[sort_ind_gas]
-  dens_tracer = eval_dens[sort_ind_gas]
+  dens_tracer = eval_dens[sort_ind_tracer]
   
-  ; some factor I don't understand offset in density for ndims=1
-  if (ndims eq 1) then dens_tracer /= 4.0
+  ; tracer selection to avoid vertical edges (CalcHSML not doing periodic correctly)
+  wTracer = where(y_tracer ge 0.4 and y_tracer le 1.6,count)
   
+  ; interpolate tracer density to positions of gas particles
+  dens_interp = interpNN(x_gas,x_tracer[wTracer],dens_tracer[wTracer])  
+
   ; plot comparison
-  start_PS, workingPath + 'shocktube_2d_massdist_'+string(snap,format='(I3.3)')+'.eps'
+  start_PS, workingPath + 'shocktube_2d_massdist_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps'
   
     xrange = [0.0,20.0]
     yrange = [0.05,max(dens_tracer)*1.1]
+  
+    if (filterSize ne 0) then tag = "filterSize="+string(filterSize,format='(f3.1)')
+    if (useHSML ne 0)    then tag = "useHSML=1"
   
     ; plot
     fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
               xtitle="",ytitle="Density [Code]",$
               title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+$
-              " (filterSize="+string(filterSize,format='(f3.1)')+" tFac="+str(tfac)+")",$
+              " ("+tag+" tFac="+str(tfac)+")",$
               position=[0.25,0.3,0.95,0.9],xtickname=replicate(' ',10)
               
     psym = 4
@@ -406,29 +446,28 @@ pro compMassDist, snap=snap
     thick = 0.5
     
     ; plot gas
-    fsc_plot, x_gas,dens_gas,psym=psym,line=line,thick=thick,$
+    fsc_plot, x_gas,dens_gas,psym=-psym,line=line,thick=thick,$
               symsize=0.6,/overplot,color=fsc_color(colors[0])    
     
-    ; plot tracer
-    fsc_plot, x_gas,dens_tracer,psym=psym,line=line,thick=thick,$
-              symsize=0.3,/overplot,color=fsc_color(colors[1])
+    ; plot tracer (only wTracer center ones in y-hat for now)   
+    fsc_plot, x_tracer[wTracer],dens_tracer[wTracer],psym=psym,line=line,thick=thick,$
+              symsize=0.2,/overplot,color=fsc_color(colors[1])
     
     ; legend
     legend,['gas','tracer'],textcolors=colors,box=0,margin=0.25,/right
     
     ; residual (difference)
-    res = dens_tracer - dens_gas
-    print,minmax(res)
+    res = abs(dens_interp - dens_gas) / dens_gas
+    print,'residual minmax: ',minmax(res)
     
     yrange = minmax(res)
-    ;yrange=[-1e-6,1e-6]
     
-    fsc_plot,[0],[0],ytitle="Residual",xtitle="Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
-              xticklen=0.05,/nodata,position=[0.25,0.15,0.95,0.3],/noerase,yticks=2
+    fsc_plot,[0],[0],ytitle="Fractional Error",xtitle="Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
+              xticklen=0.05,/nodata,position=[0.25,0.15,0.95,0.3],/noerase,yticks=2,/ylog
     
-    fsc_plot,x_gas,res,psym=4,line=line,thick=thick,symsize=0.2,/overplot  
+    fsc_plot,x_gas,res,psym=-4,line=line,thick=thick,symsize=0.2,/overplot  
               
-  end_PS
+  end_PS, pngResize=40
   
   stop
   
