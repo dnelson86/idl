@@ -3,8 +3,8 @@
 
 //#define VERBOSE
 
-#define TWODIMS // affects kernel coefficients
-//#define STRIDE_BYTES_PER_ELEM 4 // 4 byte floats
+//#define TWODIMS // affects kernel coefficients, set in makefile
+//#define STRIDE_BYTES_PER_ELEM 4 // 4 byte floats, unused
 
 #ifdef VERBOSE
 #define IF_VERBOSE(expr) (expr)
