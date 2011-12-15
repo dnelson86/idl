@@ -45,7 +45,7 @@ pro plotShocktube, snap=snap, resize=resize
   units = getUnits()
   
   ; config
-  tfac = '16'
+  tfac = '1'
   workingPath = '/n/home07/dnelson/dev.tracer/'
   snapPath    = workingPath + 'shocktube.tfac'+str(tfac)+'/output/'
   
@@ -335,14 +335,12 @@ function estimateDensityTophat, pos, mass, ndims=ndims, filterSize=filterSize, u
   ; use CalcHSML external C-routine for the tree, neighbor searchings, and smoothing lengths
   if keyword_set(useHSML) then begin
   
-    nNGB = 32
-    
     ; prepare inputs
     NumPart = long(npos)
     ;Pos     = pos
     ;Mass    = mass
     
-    DesNumNgb    = long(nNGB)
+    DesNumNgb    = long(useHSML) ; number of neighbors to use in keyword
     DesNumNgbDev = long(0)
     BoxSize      = 0.0
     HsmlGuess    = float(1.0)
@@ -351,19 +349,20 @@ function estimateDensityTophat, pos, mass, ndims=ndims, filterSize=filterSize, u
     hsml_out = fltarr(NumPart)
     
     ; call CalcHSML
-    ret = Call_External('/n/home07/dnelson/idl/CalcHSML/CalcHSML.so', 'CalcHSML', $
+    libName = '/n/home07/dnelson/idl/CalcHSML/CalcHSML_'+str(ndims)+'D.so'
+    ret = Call_External(libName, 'CalcHSML', $
                         NumPart,Pos,Mass,DesNumNgb,DesNumNgbDev,BoxSize,HsmlGuess,Softening,hsml_out, $
                         /CDECL)
 
     ; estimate densities on eval_pos using hsml
     if (ndims eq 1) then $
-      eval_dens = nNGB / hsml_out
+      eval_dens = DesNumNgb / hsml_out
       
     if (ndims eq 2) then $
-      eval_dens = nNGB / (!pi * hsml_out^2.0)
+      eval_dens = DesNumNgb / (!pi * hsml_out^2.0)
       
     if (ndims eq 3) then $
-      eval_dens = nNGB / (4.0*!pi/3.0 * hsml_out^3.0)
+      eval_dens = DesNumNgb / (4.0*!pi/3.0 * hsml_out^3.0)
     
     ; add in mass
     eval_dens *= mass[0]
@@ -383,11 +382,14 @@ pro compMassDist, snap=snap
   units = getUnits()
   
   ; config
-  tfac = '16'
-  ndims = 2
+  tfac = '4'
+  ndims = 3
   
   filterSize = 0   ; constant tophat filter size (code units)
-  useHSML    = 1   ; use external CalcHSML routine to find smoothing lengths for density estimate
+  useHSML    = 64  ; use external CalcHSML routine to find smoothing lengths for density estimate
+                   ; in which case this is the number of neighbors to use!
+  
+  xrange = [0.0,20.0]  
   
   workingPath = '/n/home07/dnelson/dev.tracer/'
   snapPath    = workingPath + 'shocktube.tfac'+str(tfac)+'/output/'
@@ -404,7 +406,7 @@ pro compMassDist, snap=snap
   pos_tracer  = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='pos')
   mass_tracer = replicate(total(mass_gas) / h.nPartTot[2], h.nPartTot[2])
 
-  ; evaluate tracer density on gas particle positions
+  ; evaluate tracer density
   eval_dens = estimateDensityTophat(pos_tracer,mass_tracer,ndims=ndims,$
                                     filterSize=filterSize,useHSML=useHSML)
   
@@ -426,13 +428,13 @@ pro compMassDist, snap=snap
   dens_interp = interpNN(x_gas,x_tracer[wTracer],dens_tracer[wTracer])  
 
   ; plot comparison
-  start_PS, workingPath + 'shocktube_2d_massdist_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps'
-  
-    xrange = [0.0,20.0]
+  start_PS, workingPath + 'shocktube_2d_massdist_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.'+$
+            str(useHSML)+'.eps'
+
     yrange = [0.05,max(dens_tracer)*1.1]
   
     if (filterSize ne 0) then tag = "filterSize="+string(filterSize,format='(f3.1)')
-    if (useHSML ne 0)    then tag = "useHSML=1"
+    if (useHSML ne 0)    then tag = "useHSML="+str(useHSML)
   
     ; plot
     fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
@@ -472,3 +474,162 @@ pro compMassDist, snap=snap
   stop
   
 end
+
+; compMassDistTwoRuns():  compare mass distribution of tracer particles to the underlying density field of gas
+
+pro compMassDistTwoRuns, snap=snap
+
+  print,'Running: snap ['+str(snap)+']'
+
+  units = getUnits()
+  
+  ; config
+  ndims = 2
+  
+  filterSize = 0   ; constant tophat filter size (code units)
+  useHSML    = 256 ; use external CalcHSML routine to find smoothing lengths for density estimate
+                   ; in which case this is the number of neighbors to use!
+  
+  xrange = [0.0,20.0]  
+  
+  workingPath = '/n/home07/dnelson/dev.tracer/'
+  snapPath1   = workingPath + 'shocktube.tfac16/output/'
+  snapPath2   = workingPath + 'shocktube.tfac16/output.normaltimesteps/'
+  
+  colors = ['forest green','crimson']
+  
+  ; load (1)
+  h = loadSnapshotHeader(snapPath1,snapNum=snap,/verbose)
+  
+  pos_gas1    = loadSnapshotSubset(snapPath1,snapNum=snap,partType='gas',field='pos')  
+  dens_gas1   = loadSnapshotSubset(snapPath1,snapNum=snap,partType='gas',field='rho')
+  mass_gas1 =  loadSnapshotSubset(snapPath1,snapNum=snap,partType='gas',field='mass')
+  
+  pos_tracer1  = loadSnapshotSubset(snapPath1,snapNum=snap,partType='tracer',field='pos')
+  mass_tracer1 = replicate(total(mass_gas1) / h.nPartTot[2], h.nPartTot[2])
+
+  ; evaluate tracer density
+  eval_dens1 = estimateDensityTophat(pos_tracer1,mass_tracer1,ndims=ndims,$
+                                     filterSize=filterSize,useHSML=useHSML)
+  
+  ; sort on gas x-position
+  sort_ind_gas    = sort(pos_gas1[0,*])
+  sort_ind_tracer = sort(pos_tracer1[0,*])
+  
+  x_gas1    = reform(pos_gas1[0,sort_ind_gas])
+  x_tracer1 = reform(pos_tracer1[0,sort_ind_tracer])
+  y_tracer1 = reform(pos_tracer1[1,sort_ind_tracer])
+  
+  dens_gas1    = dens_gas1[sort_ind_gas]
+  dens_tracer1 = eval_dens1[sort_ind_tracer]
+  
+  ; load (2)
+  h = loadSnapshotHeader(snapPath2,snapNum=snap,/verbose)
+  
+  pos_gas2    = loadSnapshotSubset(snapPath2,snapNum=snap,partType='gas',field='pos')  
+  dens_gas2   = loadSnapshotSubset(snapPath2,snapNum=snap,partType='gas',field='rho')
+  mass_gas2 =  loadSnapshotSubset(snapPath2,snapNum=snap,partType='gas',field='mass')
+  
+  pos_tracer2  = loadSnapshotSubset(snapPath2,snapNum=snap,partType='tracer',field='pos')
+  mass_tracer2 = replicate(total(mass_gas2) / h.nPartTot[2], h.nPartTot[2])
+
+  ; evaluate tracer density
+  eval_dens2 = estimateDensityTophat(pos_tracer2,mass_tracer2,ndims=ndims,$
+                                     filterSize=filterSize,useHSML=useHSML)
+  
+  ; sort on gas x-position
+  sort_ind_gas    = sort(pos_gas2[0,*])
+  sort_ind_tracer = sort(pos_tracer2[0,*])
+  
+  x_gas2    = reform(pos_gas2[0,sort_ind_gas])
+  x_tracer2 = reform(pos_tracer2[0,sort_ind_tracer])
+  y_tracer2 = reform(pos_tracer2[1,sort_ind_tracer])
+  
+  dens_gas2    = dens_gas2[sort_ind_gas]
+  dens_tracer2 = eval_dens2[sort_ind_tracer]
+  
+  ; gas and tracer density differences
+  gas_dens_diff    = abs(dens_gas1 - dens_gas2) / dens_gas1
+  tracer_dens_diff = abs(dens_tracer1 - dens_tracer2) / dens_tracer1
+  
+  ; tracer selection to avoid vertical edges (CalcHSML not doing periodic correctly)
+  wTracer1 = where(y_tracer1 ge 0.4 and y_tracer1 le 1.6,count1)
+  wTracer2 = where(y_tracer2 ge 0.4 and y_tracer2 le 1.6,count2)
+  wTracer  = where(y_tracer1 ge 0.4 and y_tracer2 ge 0.4 and $
+                   y_tracer1 lt 1.6 and y_tracer2 lt 1.6 and tracer_dens_diff ne 0.0,count3)
+  
+  ; plot comparison (gas)
+  start_PS, workingPath + 'shocktube_2d_twosims_gas_'+string(snap,format='(I3.3)')+'.'+$
+            str(useHSML)+'.eps'
+  
+    psym = 4
+    line = 0
+    thick = 0.5
+  
+    ; main plot
+    yrange = [min(dens_gas1)*0.9,max(dens_gas1)*1.1]
+    
+    fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+              xtitle="",ytitle="Gas Rho [Code]",$
+              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+"",$
+              position=[0.25,0.4,0.95,0.9],xtickname=replicate(' ',10)
+
+    fsc_plot, x_gas1,dens_gas1,psym=-psym,line=line,thick=thick,$
+              symsize=0.4,/overplot,color=fsc_color(colors[0])   
+    fsc_plot, x_gas2,dens_gas2,psym=-psym,line=line,thick=thick,$
+              symsize=0.4,/overplot,color=fsc_color(colors[1])    
+    
+    legend,['original','16x smaller timestep'],textcolors=colors,box=0,margin=0.25,/right
+    
+    ; residuals
+    w = where(gas_dens_diff ne 0.0)
+    yrange = alog10([min(gas_dens_diff[w])*0.9,max(gas_dens_diff[w])*1.1])
+    
+    fsc_plot,[0],[0],ytitle="log(Frac Error)",xtitle="Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
+              xticklen=0.05,/nodata,position=[0.25,0.15,0.95,0.4],/noerase,yticks=3
+             
+    fsc_plot,x_gas1[w],alog10(gas_dens_diff[w]),psym=-4,line=line,thick=thick,symsize=0.2,/overplot  
+    
+  end_PS, pngResize=40
+  
+    if (filterSize ne 0) then tag = "filterSize="+string(filterSize,format='(f3.1)')
+    if (useHSML ne 0)    then tag = "useHSML="+str(useHSML)  
+  
+  ; plot comparison (tracer)
+  start_PS, workingPath + 'shocktube_2d_twosims_tracer_'+string(snap,format='(I3.3)')+'.'+$
+            str(useHSML)+'.eps'
+  
+    ; main plot
+    yrange = [min(dens_tracer1)*0.9,max(dens_tracer1)*1.1]
+    
+    fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+              xtitle="",ytitle="Tracer Rho [Code]",$
+              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+" ("+tag+")",$
+              position=[0.25,0.4,0.95,0.9],xtickname=replicate(' ',10)
+    
+    fsc_plot, x_tracer1[wTracer1],dens_tracer1[wTracer1],psym=psym,line=line,thick=thick,$
+              symsize=0.2,/overplot,color=fsc_color(colors[0])
+              
+    fsc_plot, x_tracer2[wTracer2],dens_tracer2[wTracer2],psym=psym,line=line,thick=thick,$
+              symsize=0.2,/overplot,color=fsc_color(colors[1])
+              
+    legend,['original','16x smaller timestep'],textcolors=colors,box=0,margin=0.25,/right
+    
+    ; residuals
+    ;yrange = alog10([min(tracer_dens_diff[wTracer])*0.9,max(tracer_dens_diff[wTracer])*1.1])
+    yrange = [-3.0,-1.0]
+    
+    fsc_plot,[0],[0],ytitle="log(Frac Error)",xtitle="Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
+              xticklen=0.05,/nodata,position=[0.25,0.15,0.95,0.4],/noerase,yticks=4
+              
+    fsc_plot,xrange,[-2.0,-2.0],line=0,color=fsc_color('gray'),thick=!p.thick-1.0,/overplot
+              
+    fsc_plot,x_tracer1[wTracer],alog10(tracer_dens_diff[wTracer]),$
+             psym=4,line=line,thick=thick,symsize=0.2,/overplot  
+    
+  end_PS, pngResize=40
+  
+  stop
+
+end
+
