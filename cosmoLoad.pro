@@ -414,14 +414,14 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
 
   ; set filename
   if (str(m) eq 'none') then begin
-    f = fBase
+    f = fileBase
   endif else begin  
     ext = string(m,format='(I3.3)')
     f = fileBase + 'snapdir_' + ext + '/snap_' + ext
   endelse
   
   ; check for single (non-split)
-  if file_test(fileBase+'/snap_'+ext+'.hdf5') then begin
+  if file_test(fileBase+'snap_'+ext+'.hdf5') then begin
     f = fileBase + 'snap_' + ext
   endif
   
@@ -477,16 +477,16 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
   
   if (field eq 'center_of_mass' or field eq 'centerofmass' or field eq 'com' or field eq 'cm' or $
       field eq 'cmx' or field eq 'cmy' or field eq 'cmz') then begin
-    r = dblarr(3,nPartTot[partType])
     fieldName = 'Center-of-Mass'
     rDims = 3
+    r = dblarr(rDims,nPartTot[partType])
     if (partType ne 0) then begin & print,'Error: CoM is gas only!' & return,0 & endif
   endif
   if (field eq 'coordinates' or field eq 'xyz' or field eq 'positions' or field eq 'pos' or $
       field eq 'x' or field eq 'y' or field eq 'z') then begin
-    r = fltarr(3,nPartTot[partType])
     fieldName = 'Coordinates'
     rDims = 3
+    r = fltarr(rDims,nPartTot[partType])
   endif
   if (field eq 'coolingrate' or field eq 'coolrate') then begin
     r = fltarr(nPartTot[partType])
@@ -504,10 +504,10 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
     if (partType ne 0) then begin & print,'Error: NE is gas only!' & return,0 & endif
   endif
   if (field eq 'properties' or field eq 'quants' or field eq 'quantities' or $
-      field eq 'tracer_rho' or field eq 'tracer_temp') then begin
-    r = fltarr(2,nPartTot[partType])
+      field eq 'tracer_rho' or field eq 'tracer_temp' or field eq 'tracer_maxtemp') then begin
     fieldName = 'FluidQuantities'
-    rDims = 2 ; TODO
+    rDims = 3 ; WARNING: must match to Arepo run (currently: Density,CurTemp,MaxTemp)
+    r = fltarr(rDims,nPartTot[partType])
     if (partType ne 2) then begin & print,'Error: Fluid quantities are tracer only!' & return,0 & endif
   endif
   if (field eq 'internalenergy' or field eq 'u') then begin
@@ -576,9 +576,9 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
   endif
   if (field eq 'velocities' or field eq 'vel' or $
       field eq 'velx' or field eq 'vely' or field eq 'velz') then begin
-    r = dblarr(3,nPartTot[partType])
     fieldName = 'Velocities'
     rDims = 3
+    r = dblarr(rDims,nPartTot[partType])
   endif
   if (field eq 'volume' or field eq 'vol') then begin
     r = fltarr(nPartTot[partType])
@@ -636,7 +636,7 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
   if (field eq 'x' or field eq 'y' or field eq 'z' or $
       field eq 'velx' or field eq 'vely' or field eq 'velz' or $
       field eq 'cmx' or field eq 'cmy' or field eq 'cmz' or $
-      field eq 'tracer_rho' or field eq 'tracer_temp') then begin
+      field eq 'tracer_rho' or field eq 'tracer_temp' or field eq 'tracer_maxtemp') then begin
     case field of
       'x'   : fN = 0
       'velx': fN = 0
@@ -648,8 +648,9 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
       'velz': fN = 2
       'cmz' : fN = 2
       
-      'tracer_rho'  : fN = 0
-      'tracer_temp' : fN = 1
+      'tracer_rho'     : fN = 0
+      'tracer_temp'    : fN = 1
+      'tracer_maxtemp' : fN = 2
     endcase
     r = reform(r[fN,*])
   endif

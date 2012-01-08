@@ -1,6 +1,6 @@
 ; arepoTests_ICs.pro
 ; dnelson
-; 03.2011
+; jan 2012
 
 @helper
 
@@ -212,7 +212,7 @@ pro gen_TS_BlastWave_3D_ICs
 end
 
 ; 3D shocktube with tracer particles
-; BoxSize=2.0 PERIODIC LONG_X=10.0 GAMMA=1.4
+; BoxSize=2.0 PERIODIC REFLECTIVE_X=1 LONG_X=10.0 GAMMA=1.4
 
 pro gen_shocktube_tracer_3D_ICs
 
@@ -234,7 +234,7 @@ pro gen_shocktube_tracer_3D_ICs
   Ny   = 10L
   Nz   = 10L
   
-  tfac = 1L
+  tfac = 8L
   
   ; deriv
   if (( round(Nx*Ny*Nz/4) ne (Nx*Ny*Nz/4) ) or ( round(tfac^(1.0/3.0)) ne (tfac^(1.0/3.0)) ) ) then begin
@@ -377,9 +377,9 @@ pro gen_shocktube_tracer_3D_ICs
 end
 
 ; 2D shocktube with tracer particles
-; BoxSize=2.0 PERIODIC TWODIMS LONG_X=10.0 GAMMA=1.4
+; BoxSize=2.0 PERIODIC REFLECTIVE_X=1 TWODIMS LONG_X=10.0 GAMMA=1.4
 
-pro gen_shocktube_tracer_2D_ICs
+pro gen_shocktube_tracer_2D_ICs, gasOnly=gasOnly
 
   ; config
   fOut = "ics.dat"
@@ -440,6 +440,8 @@ pro gen_shocktube_tracer_2D_ICs
       
     endfor
   endfor
+  
+  if (not keyword_set(gasOnly)) then begin
   
   ; create tracer arrays
   nTrLeft  = tfac*Nx*Ny
@@ -520,17 +522,23 @@ pro gen_shocktube_tracer_2D_ICs
   print, n_elements(vel(0,*)) + n_elements(vel2(1,*))
   print, n_elements(id) + n_elements(id2)
   
-  ; write
-  gas    = {pos:pos,vel:vel,id:id,mass:mass,u:u}
   tracer = {pos:pos2,vel:vel2,id:id2,mass:mass2}
   
-  writeICFile,fOut,part0=gas,part2=tracer
+  endif ;gasOnly
+  
+  ; write
+  gas    = {pos:pos,vel:vel,id:id,mass:mass,u:u}
+  
+  if (not keyword_set(gasOnly)) then $
+    writeICFile,fOut,part0=gas,part2=tracer
+  if (keyword_set(gasOnly)) then $
+    writeICFile,fOut,part0=gas
   
 end
 
 ; 1D shocktube with tracer particles
 ; BoxSize=2.0
-; PERIODIC ONEDIMS LONG_X=10.0 GAMMA=1.4
+; PERIODIC REFLECTIVE_X=1 ONEDIMS LONG_X=10.0 GAMMA=1.4
 
 pro gen_shocktube_tracer_1D_ICs
 
