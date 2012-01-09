@@ -348,7 +348,8 @@ function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
 
   ; set filename
   if (str(m) eq 'none') then begin
-    f = fBase
+    ext = ''
+    f = fileBase
   endif else begin  
     ext = string(m,format='(I3.3)')
     f = fileBase + 'snapdir_' + ext + '/snap_' + ext
@@ -414,6 +415,7 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
 
   ; set filename
   if (str(m) eq 'none') then begin
+    ext = ''
     f = fileBase
   endif else begin  
     ext = string(m,format='(I3.3)')

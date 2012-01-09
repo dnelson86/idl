@@ -270,16 +270,16 @@ pro writeICFileHDF5, fOut, boxSize, pos, vel, id, massOrDens, u
   s.HEADER.FLAG_DOUBLEPRECISION._DATA = 0
   
   s.HEADER.COMPOSITION_VECTOR_LENGTH._DATA = 0 ;?
-  
-  ; remove non-IC data (for some reason these are expected IO blocks even for ICs, just zero them)
-  ;s1 = mod_struct(s.PARTTYPE0,'DENSITY',/delete)
-  ;s1 = mod_struct(s1,'SMOOTHINGLENGTH',/delete)
-  ;s1 = mod_struct(s1,'VOLUME',/delete)
-  ;s = mod_struct(s,'PARTTYPE0',s1)
-  
-  s.PARTTYPE0.DENSITY._DATA[*]         = 0.0
-  s.PARTTYPE0.SMOOTHINGLENGTH._DATA[*] = 0.0
-  s.PARTTYPE0.VOLUME._DATA[*]          = 0.0
+
+  ; for some reason these are expected IO blocks even for ICs
+  s1 = mod_struct(s.PARTTYPE0,'DENSITY',/delete)
+  s1 = mod_struct(s1,'SMOOTHINGLENGTH',/delete)
+  s1 = mod_struct(s1,'VOLUME',/delete)
+  s = mod_struct(s,'PARTTYPE0',s1)
+
+  ;s.PARTTYPE0.DENSITY._DATA[*]         = 0.0
+  ;s.PARTTYPE0.SMOOTHINGLENGTH._DATA[*] = 0.0
+  ;s.PARTTYPE0.VOLUME._DATA[*]          = 0.0
   
   ; modify data parameters
   s.PARTTYPE0._FILE                = fOut
