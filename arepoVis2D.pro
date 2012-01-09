@@ -10,29 +10,39 @@
 ; plotVoronoi2D(): plot "voronoi_mesh"
 ;
 
-pro plotVoronoi2D, fBase, boxSize, i, oPlot=oPlot, fillWindow=fillWindow
+pro plotVoronoi2D, fBase, boxSize, i, oPlot=oPlot, fillWindow=fillWindow, zoom=zoom
 
   ;config
   nDims   = 2
   color   = fsc_color('dark gray')
+  thick   = !p.thick-1.5
   
   ;load
   nLoad = loadVoronoi2D(fBase,nDims,i,nEdges,nEdgesOffset,edgeList,xyzEdges)
   nGas = nLoad[0]
 
+  ; set ranges
+  if (not keyword_set(zoom)) then begin
+    xrange = [0,boxSize[0]]
+    yrange = [0,boxSize[1]]
+  endif else begin
+    xrange = [boxSize[0]/2.0-boxSize[0]/zoom,boxSize[0]/2.0+boxSize[0]/zoom]
+    yrange = [boxSize[1]/2.0-boxSize[1]/zoom,boxSize[1]/2.0+boxSize[1]/zoom]
+  endelse
+
   ;plot
   if keyword_set(fillWindow) then $
-    plot,[0],[0],/nodata,xrange=[0,boxSize[0]],yrange=[0,boxSize[1]], $
+    plot,[0],[0],/nodata,xrange=xrange,yrange=yrange, $
          xstyle=5,ystyle=5,position=[0.0,0.0,1.0,1.0],noerase=oPlot ;5=1+4 bitwise, exact+supressed
   if not keyword_set(fillWindow) then $
-    plot,[0],[0],/nodata,xrange=[0,boxSize[0]],yrange=[0,boxSize[1]], $
-         xstyle=1,ystyle=1,noerase=oPlot
+    plot,[0],[0],/nodata,xrange=xrange,yrange=yrange, $
+         xstyle=1,ystyle=1,position=[0.05,0.05,0.95,0.95],charsize=!p.charsize-1.0,noerase=oPlot
 
   for j=0L, nGas-1 do begin
       x = transpose(xyzEdges[0, edgeList[nEdgesOffset[j]:nEdgesOffset[j]+nEdges[j]-1]])
       y = transpose(xyzEdges[1, edgeList[nEdgesOffset[j]:nEdgesOffset[j]+nEdges[j]-1]])
 
-      plots,[x,x(0)],[y,y(0)],noclip=0,color=color
+      plots,[x,x(0)],[y,y(0)],noclip=0,color=color,thick=thick
    endfor
 
 end
@@ -41,7 +51,7 @@ end
 ;
 
 pro plotDensityField2D, fBase, i, writePNG=writePNG, writeJPG=writeJPG, $
-                        tvOut=tvOut, psOut=psOut, xyScaleFac=xyScaleFac, $
+                        psOut=psOut, xyScaleFac=xyScaleFac, $
                         dens=dens, colorMinMax=colorMinMax, plotHist=plotHist
   
   ;load
@@ -60,7 +70,7 @@ pro plotDensityField2D, fBase, i, writePNG=writePNG, writeJPG=writeJPG, $
     colorMinMax = minmax(dens)
   endif
   
-  print,'minmax:',colorMinMax
+  print,' dens minmax:',colorMinMax
 
   if keyword_set(plotHist) then begin
     ext = string(i,format='(i3.3)')
@@ -121,13 +131,6 @@ pro plotDensityField2D, fBase, i, writePNG=writePNG, writeJPG=writeJPG, $
     endelse
   endif
   
-  ;output to window
-  if keyword_set(tvOut) then begin
-    if ( !d.x_size ne (size(pic))[2] ) or ( !d.y_size ne (size(pic))[3] ) or ( !d.window eq -1 ) then $
-      window,1,xs=(size(pic))[2],ys=(size(pic))[3] ;size(pic) = [ndims,dim1,dim2,dim3,type,nelements]
-    tv,pic,true=1
-  endif
-  
   ;output PS
   if keyword_set(psOut) then begin
     ;assume the ps device is already open
@@ -139,36 +142,44 @@ end
 ;plot voronoi over density
 pro plotMeshOverDensity
 
-  filePath    = '/n/home07/dnelson/ArepoTests/KH_Instability_45/output/'
-  workingPath = '/n/home07/dnelson/ArepoTests/KH_Instability_45/output2/'
+  workingPath = '/n/home07/dnelson/dev.tracer/'
+  filePath    = workingPath + 'disk2d.128/output/'
 
   ; config
-  meshBase   = filePath+"voronoi_mesh_"
-  densBase   = filePath+"density_field_"
-  snapBase   = filePath+"snap_"
+  meshBase   = filePath + "voronoi_mesh_"
+  densBase   = filePath + "density_field_"
+  snapBase   = filePath + "snap_"
   
-  boxSize    = [1.0,1.0]   ;x,y (code)
+  boxSize    = [6.0,6.0]   ;x,y (code)
   xyScaleFac = 1.0
-            
-  ; get global scaling factor for movies
-  colorMinMax = [-2.0,5.0]
   
   nSnaps = n_elements(file_search(densBase+"*"))
   
   for i=0,nSnaps-1 do begin
-    
     print,i
     
-    fileBase = workingPath+'meshdens_'+string(i,format='(I04)')  
-  
-    ; plot
-    PS_Start, FILENAME=fileBase+".eps", /nomatch, /quiet, font=1, bits_per_pixel=8,color=1, $
-              /encapsulated,decomposed=0, xs=4.0, ys=4.0, /inches
-  
+    ; plots
+    if (file_test(workingPath + 'mesh_'+string(i,format='(I04)')  +".png")) then begin
+      print,' skip'
+      ;continue
+    endif
+    
+    ;start_PS, workingPath + 'meshdens_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
+    ;  plotDensityField2D, densBase, i, /psOut, xyScaleFac=xyScaleFac
+    ;  plotVoronoi2D, meshBase, boxSize, i, /oPlot, /fillWindow
+    ;end_PS, pngResize=68, /deletePS
+    
+    ;start_PS, workingPath + 'mesh_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
+    ;  plotVoronoi2D, meshBase, boxSize, i
+    ;end_PS, pngResize=78, /deletePS
+    
+    ;start_PS, workingPath + 'meshzoom_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
+    ;  plotVoronoi2D, meshBase, boxSize, i, zoom=10
+    ;end_PS, pngResize=78, /deletePS
+    
+    start_PS, workingPath + 'dens_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
       plotDensityField2D, densBase, i, /psOut, xyScaleFac=xyScaleFac
-      plotVoronoi2D, meshBase, boxSize, i, /oPlot, /fillWindow
-     
-    PS_End, /PNG, /Delete_PS, Resize=68 ;PNG size=[xs,ys]*300*(resize/100)
+    end_PS, pngResize=78, /deletePS
 
   endfor
 
