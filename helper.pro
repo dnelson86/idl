@@ -57,8 +57,8 @@ function getUnits
 
   ; color list
   units.colors = ['black','blue','green','red','cyan','magenta','gray','orange', $
-                  'brown','black','sienna','chartreuse','violet','papaya','yellow','aquamarine', $
-                  'firebrick', 'rosy brown', 'gold', 'olive', 'saddle brown']
+                  'brown','chartreuse','violet','papaya','yellow','aquamarine', $
+                  'firebrick', 'rosy brown', 'gold', 'olive']
 
   return, units
 end

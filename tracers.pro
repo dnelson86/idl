@@ -7,6 +7,7 @@
 @helper
 @cosmoUtil
 @cosmoLoad
+@arepoVis2D
 
 function interpNN, pos_src, pos_dest, val_src
 
