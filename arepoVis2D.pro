@@ -8,14 +8,14 @@
 @arepoLoad
 
 ; plotVoronoi2D(): plot "voronoi_mesh"
-;
 
-pro plotVoronoi2D, fBase, boxSize, i, oPlot=oPlot, fillWindow=fillWindow, zoom=zoom
+pro plotVoronoi2D, fBase, boxSize, i, oPlot=oPlot, fillWindow=fillWindow, $
+                   zoom=zoom, pos=pos, ids=ids
 
   ;config
   nDims   = 2
   color   = fsc_color('dark gray')
-  thick   = !p.thick-1.5
+  thick   = !p.thick-2.0
   
   ;load
   nLoad = loadVoronoi2D(fBase,nDims,i,nEdges,nEdgesOffset,edgeList,xyzEdges)
@@ -31,12 +31,15 @@ pro plotVoronoi2D, fBase, boxSize, i, oPlot=oPlot, fillWindow=fillWindow, zoom=z
   endelse
 
   ;plot
-  if keyword_set(fillWindow) then $
-    plot,[0],[0],/nodata,xrange=xrange,yrange=yrange, $
-         xstyle=5,ystyle=5,position=[0.0,0.0,1.0,1.0],noerase=oPlot ;5=1+4 bitwise, exact+supressed
-  if not keyword_set(fillWindow) then $
-    plot,[0],[0],/nodata,xrange=xrange,yrange=yrange, $
-         xstyle=1,ystyle=1,position=[0.05,0.05,0.95,0.95],charsize=!p.charsize-1.0,noerase=oPlot
+  if (not keyword_set(oPlot)) then begin
+    if keyword_set(fillWindow) then $
+      plot,[0],[0],/nodata,xrange=xrange,yrange=yrange, $
+           xstyle=5,ystyle=5,position=[0.0,0.0,1.0,1.0] ;5=1+4 bitwise, exact+supressed
+    if not keyword_set(fillWindow) then $
+      plot,[0],[0],/nodata,xrange=xrange,yrange=yrange, $
+           xstyle=1,ystyle=1,position=[0.05,0.05,0.95,0.95],charsize=!p.charsize-1.0,$
+           ticklen=0.0001,title="snap ["+str(i)+"]"
+  endif
 
   for j=0L, nGas-1 do begin
       x = transpose(xyzEdges[0, edgeList[nEdgesOffset[j]:nEdgesOffset[j]+nEdges[j]-1]])
@@ -44,6 +47,18 @@ pro plotVoronoi2D, fBase, boxSize, i, oPlot=oPlot, fillWindow=fillWindow, zoom=z
 
       plots,[x,x(0)],[y,y(0)],noclip=0,color=color,thick=thick
    endfor
+   
+   ; if pos set, overplot positions of gas particles, color code by id
+   if (keyword_set(pos) and keyword_set(ids)) then begin
+     w1 = where(ids eq -1)
+     w2 = where(ids eq -2)
+     w3 = where(ids eq -3)
+     
+     fsc_plot,pos[0,w1],pos[1,w1],psym=4,symsize=0.1,color=fsc_color('crimson'),/overplot
+     fsc_plot,pos[0,w2],pos[1,w2],psym=4,symsize=0.1,color=fsc_color('slate blue'),/overplot
+     fsc_plot,pos[0,w3],pos[1,w3],psym=4,symsize=0.1,color=fsc_color('forest green'),/overplot
+     
+   endif
 
 end
 
@@ -143,7 +158,7 @@ end
 pro plotMeshOverDensity
 
   workingPath = '/n/home07/dnelson/dev.tracer/'
-  filePath    = workingPath + 'disk2d.128/output/'
+  filePath    = workingPath + 'disk2d.test.VTS/output/'
 
   ; config
   meshBase   = filePath + "voronoi_mesh_"
@@ -153,7 +168,7 @@ pro plotMeshOverDensity
   boxSize    = [6.0,6.0]   ;x,y (code)
   xyScaleFac = 1.0
   
-  nSnaps = n_elements(file_search(densBase+"*"))
+  nSnaps = n_elements(file_search(snapBase+"*"))
   
   for i=0,nSnaps-1 do begin
     print,i
@@ -161,21 +176,25 @@ pro plotMeshOverDensity
     ; plots
     if (file_test(workingPath + 'mesh_'+string(i,format='(I04)')  +".png")) then begin
       print,' skip'
-      ;continue
+      continue
     endif
     
+    ; load gas positions for plotting
+    pos = loadSnapshotSubset(filePath,snapNum=i,partType='gas',field='pos')
+    ids = loadSnapshotSubset(filePath,snapNum=i,partType='gas',field='ids')
+
     ;start_PS, workingPath + 'meshdens_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
     ;  plotDensityField2D, densBase, i, /psOut, xyScaleFac=xyScaleFac
     ;  plotVoronoi2D, meshBase, boxSize, i, /oPlot, /fillWindow
     ;end_PS, pngResize=68, /deletePS
     
-    ;start_PS, workingPath + 'mesh_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
-    ;  plotVoronoi2D, meshBase, boxSize, i
-    ;end_PS, pngResize=78, /deletePS
+    start_PS, workingPath + 'mesh_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
+      plotVoronoi2D, meshBase, boxSize, i
+    end_PS, pngResize=78, /deletePS
     
-    ;start_PS, workingPath + 'meshzoom_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
-    ;  plotVoronoi2D, meshBase, boxSize, i, zoom=10
-    ;end_PS, pngResize=78, /deletePS
+    start_PS, workingPath + 'meshzoom_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
+      plotVoronoi2D, meshBase, boxSize, i, zoom=10, pos=pos, ids=ids
+    end_PS, pngResize=78, /deletePS
     
     start_PS, workingPath + 'dens_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
       plotDensityField2D, densBase, i, /psOut, xyScaleFac=xyScaleFac

@@ -358,20 +358,22 @@ function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
   ; check for single (non-split)
   if file_test(fileBase+'/snap_'+ext+'.hdf5') then begin
     f = fileBase + 'snap_' + ext
-  endif  
+  endif else begin
   
-  ; check existance and multiple outputs
-  if not file_test(f+'.hdf5') then begin
-    if (file_test(f+'.0.hdf5')) then begin
-      ; split into multiples, get count
-      nFiles = n_elements(file_search(f+".*.hdf5"))
-    endif else begin
-      print, 'ERROR: snapshot file ' + f + ' does not exist!'
-      return,0
-    endelse
-  endif
+    ; check existance and multiple outputs
+    if not file_test(f+'.hdf5') then begin
+      if (file_test(f+'.0.hdf5')) then begin
+        ; split into multiples, get count
+        nFiles = n_elements(file_search(f+".*.hdf5"))
+      endif else begin
+        print, 'ERROR: snapshot file ' + f + ' does not exist!'
+        return,0
+      endelse
+    endif
+    
+  endelse
   
-  fileList = file_search(f+"*.hdf5")
+  fileList = file_search(f+".*hdf5")
   
   ; read header from first part
   fileID   = h5f_open(fileList[0])
@@ -425,17 +427,19 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
   ; check for single (non-split)
   if file_test(fileBase+'snap_'+ext+'.hdf5') then begin
     f = fileBase + 'snap_' + ext
-  endif
+  endif else begin
   
-  ; check existance and for multiple outputs
-  if (not file_test(f+'.hdf5')) then begin
-    if (not file_test(f+'.0.hdf5')) then begin
-      print, 'ERROR: snapshot file ' + f + ' does not exist!'
-      return,0
+    ; check existance and for multiple outputs
+    if (not file_test(f+'.hdf5')) then begin
+      if (not file_test(f+'.0.hdf5')) then begin
+        print, 'ERROR: snapshot file ' + f + ' does not exist!'
+        return,0
+      endif
     endif
-  endif
   
-  fileList = file_search(f+"*.hdf5")
+  endelse
+  
+  fileList = file_search(f+".*hdf5")
   nFiles = n_elements(fileList)
   
   ; input config: set partType number if input in string
