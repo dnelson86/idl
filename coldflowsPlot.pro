@@ -1,6 +1,13 @@
 ; coldflowsPlot.pro
 ; cold flows - plots derived from intermediate datafiles
-; dnelson oct.2011
+; dnelson nov.2011
+
+; ---------------------------------------------------------------------------------
+; ---------------------------------------------------------------------------------
+; NOTE: Nothing in this file is still in use and may be out of date and/or buggy.
+;       Only still around for ideas when working on cosmo* codebase.
+; ---------------------------------------------------------------------------------
+; ---------------------------------------------------------------------------------
 
 ; plotRedshiftSpacings(): plot output snapshot spacings in redshift for K05, K09, V11
 

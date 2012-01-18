@@ -1,6 +1,6 @@
 ; arepoTests_ICs.pro
-; dnelson
-; jan 2012
+; initial condition generation
+; dnelson jan.2012
 
 @helper
 

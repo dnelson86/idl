@@ -1,6 +1,6 @@
 ; cosmoUtil.pro
 ; cosmological simulations - utility functions
-; dnelson nov.2011
+; dnelson jan.2012
 
 ; simParams(): return structure of simulation parameters
 
@@ -12,6 +12,7 @@ function simParams, res=res, run=run
   endif
 
   r = {simPath:      '',$    ; root path to simulation snapshots and group catalogs
+       arepoPath:    '',$    ; root path to Arepo and param.txt for e.g. projections/fof
        savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
        boxSize:      0.0,$   ; boxsize of simulation, kpc
        snapRange:    [0,0],$ ; snapshot range of simulation
@@ -25,23 +26,51 @@ function simParams, res=res, run=run
        run:          '',$    ; copied from input
        minNumGasPart: 0}     ; minimum number of gas particles in a galaxy to include in e.g. mass func
        
-  r.boxSize       = 20000.0
-  r.snapRange     = [0,314]
-  r.groupCatRange = [50,314]
-  r.minNumGasPart = 100
-  
   if (isnumeric(res)) then $
     r.res = res
   r.run = run
-  
-  r.plotPath   = '/n/home07/dnelson/coldflows/'
-  r.galCatPath = '/n/home07/dnelson/coldflows/galaxycat/'
-  r.thistPath  = '/n/home07/dnelson/coldflows/thermhist/'
-  r.derivPath  = '/n/home07/dnelson/coldflows/data.files/'
-       
+ 
   if (run eq 'gadget') then begin
+    r.boxSize       = 20000.0
+    r.snapRange     = [0,314]
+    r.groupCatRange = [50,314]
+    r.minNumGasPart = 100
+  
     r.simPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
     r.savPrefix = 'G'
+    
+    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.galCatPath = '/n/home07/dnelson/coldflows/galaxycat/'
+    r.thistPath  = '/n/home07/dnelson/coldflows/thermhist/'
+    r.derivPath  = '/n/home07/dnelson/coldflows/data.files/'
+    
+    return,r
+  endif
+  
+  if (run eq 'dev.tracer') then begin
+    r.boxSize       = 20000.0
+    r.snapRange     = [0,64]
+    r.groupCatRange = [25,64]
+  
+    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/'
+    r.savPrefix  = 'D'
+    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/data.files/'
+    
+    return,r
+  endif
+  
+  if (run eq 'mark.trtest') then begin
+    r.boxSize       = 20000.0
+    r.snapRange     = [0,313]
+    r.groupCatRange = [0,0]
+  
+    r.simPath    = '/n/hernquistfs1/mvogelsberger/Development/TRACER_PARTICLE/cosmo/output/'
+    r.savPrefix  = 'M'
+    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracer/'
+    
     return,r
   endif
 
@@ -393,32 +422,34 @@ end
 ; correctPeriodicDistVecs(): enforce periodic B.C. for distance vecotrs (effectively component by 
 ;                            component), input vecs in format fltarr[3,n]
 
-pro correctPeriodicDistVecs, vecs
+pro correctPeriodicDistVecs, vecs, sP=sP
 
-  boxSize = 20000.0 ;kpc, valid for ComparisonProject
-  
-  w = where(vecs gt boxSize*0.5,count)
+  w = where(vecs gt sP.boxSize*0.5,count)
   if (count ne 0) then $
-    vecs[w] = vecs[w] - boxSize
+    vecs[w] = vecs[w] - sP.boxSize
     
-  w = where(vecs lt -boxSize*0.5,count)
+  w = where(vecs lt -sP.boxSize*0.5,count)
   if (count ne 0) then $
-    vecs[w] = boxSize + vecs[w]
+    vecs[w] = sP.boxSize + vecs[w]
 
 end
 
 ; redshiftToSnapNum(): convert redshift to the nearest snapshot number
 
-function redshiftToSnapNum, redshiftList, verbose=verbose
+function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose
 
   if not keyword_set(verbose) then verbose = 0
   
-  gadgetPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/128_20Mpc/Gadget/output/'
-  saveFileName = '/n/home07/dnelson/coldflows/snapnum.redshift.sav'
+  saveFileName = sP.derivPath + sP.savPrefix + '_snapnum.redshift.sav'
 
   if not (file_test(saveFileName)) then begin
 
-    nSnaps = n_elements(file_search(gadgetPath+'snapdir_*'))
+    ; multiple files per group catalog
+    ret = file_search(sP.simPath+'snapdir_*', count=nSnaps)
+    
+    ; single file per group catalog
+    if (nSnaps eq 0) then $
+      ret = file_search(sP.simPath+'snap_*.hdf5', count=nSnaps)
     
     redshifts = fltarr(nSnaps)
     times     = fltarr(nSnaps)
@@ -426,7 +457,11 @@ function redshiftToSnapNum, redshiftList, verbose=verbose
     for m=0,nSnaps-1 do begin
       ; format filename
       ext = str(string(m,format='(I3.3)'))
-      f = gadgetPath + 'snapdir_' + ext + '/snap_' + ext + '.0.hdf5'
+      f = sP.simPath + 'snapdir_' + ext + '/snap_' + ext + '.0.hdf5'
+      
+      ; single file per group catalog
+      if (not file_test(f)) then $
+        f = sP.simPath + 'snap_' + ext + '.hdf5'
     
       ; load hdf5 header and save time+redshift
       fileID   = h5f_open(f)
@@ -440,7 +475,7 @@ function redshiftToSnapNum, redshiftList, verbose=verbose
     endfor
   
     ; save/restore
-    save,gadgetPath,nSnaps,redshifts,times,filename=saveFileName
+    save,sP,nSnaps,redshifts,times,filename=saveFileName
   endif else begin
     restore,saveFileName
   endelse
@@ -453,7 +488,7 @@ function redshiftToSnapNum, redshiftList, verbose=verbose
   
   foreach redshift,redshiftList,i do begin
     if (redshift eq 0.0) then begin
-      snapNum[i] = 314
+      snapNum[i] = sP.snapRange[1]
     endif else begin
       w = where(abs(redshifts - redshift) eq min(abs(redshifts - redshift)),count)
       if (count eq 2) then w = w[0]

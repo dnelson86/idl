@@ -1,6 +1,6 @@
 ; cosmoPlot.pro
 ; gas accretion project - plots
-; dnelson nov.2011
+; dnelson jan.2012
 
 pro plotGalCatRedshift, res=res, run=run
 

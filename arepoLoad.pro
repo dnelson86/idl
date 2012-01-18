@@ -4,23 +4,23 @@
 ;
 ; loading functions for various Arepo outputs
 
-; loadVoronoi2D(): load "voronoi_mesh_" output
-;
-; inputs:  fBase, nDims, i
-; outputs: [nGas,nEl,nDt] returned
-;          nEdges,nEdgesOffset,edgeList,xyzEdges are overwritten with data
+; loadVoronoiMesh(): load "voronoi_mesh_" output
 
-function loadVoronoi2D, fBase, nDims, i, $
-                        nEdges, nEdgesOffset, edgeList, xyzEdges
+function loadVoronoiMesh, fileBase, m, nDims
 
   ;set filename
-  if (str(i) eq 'none') then begin
-    f = fBase
+  if (str(m) eq 'none') then begin
+    f = fileBase
   endif else begin  
-    ext = string(i,format='(i3.3)')
-    f = fBase + ext
+    ext = string(m,format='(i3.3)')
+    f = fileBase + ext
   endelse
 
+  if (not file_test(f)) then begin
+    print, 'ERROR: voronoi mesh [' + str(m) + '] at ' + fileBase + ' does not exist!'
+    stop
+  endif
+  
   openr,1,f
     ;read header
     nGas   = 0L
@@ -43,19 +43,45 @@ function loadVoronoi2D, fBase, nDims, i, $
     
   close,1
 
-  return,[nGas,nEl,nDt]
+  r = {nGas:nGas,nEl:nEl,nDt:nDt,nEdges:nEdges,$
+       nEdgesOffset:nEdgesOffset,edgeList:edgeList,xyzEdges:xyzEdges}
+  return,r
   
 end
 
-; loadDensityField2D():
-;
+; loadDensityField(): load "density_field_" or "proj_density_field" output file
 
-function loadDensityField2D, fBase, i, dens
+function loadDensityField, fileBase, m, axes=axes
 
-  ;set filename
-  ext = string(i,format='(i3.3)')
-  f = fBase + ext
+  ; set filename
+  if (str(m) eq 'none') then begin
+    ext = ''
+    f = fileBase
+  endif else begin
+    ext = string(m,format='(I3.3)')
+    f = fileBase + ext
+  endelse
+  
+  ; check for subdirectories
+  if file_test(fileBase + 'proj_density_field/',/directory) then $
+    fileBase = fileBase + 'proj_density_field/'
+   
+  if file_test(fileBase+'density_field_'+ext) then $
+    f = fileBase + 'density_field_' + ext
+  if file_test(fileBase+'proj_density_field_'+ext) then $
+    f = fileBase + 'proj_density_field_' + ext
 
+  if (not file_test(f)) then begin
+    ; check for multiple density fields (projections along different axes)
+    f = fileBase + 'proj_density_field_' + ext + '.' + str(axes) + '.dat'
+      
+    if (not file_test(f)) then begin
+      print,'ERROR: snap ['+str(m)+'] axes ['+str(axes)+'] at ' + fileBase + ' not found!'
+      stop
+    endif
+  endif
+
+  ; load
   openr,1,f
     ;read header
     nPixelsX = 0L
@@ -65,14 +91,15 @@ function loadDensityField2D, fBase, i, dens
     readu,1,nPixelsY
 
     ;read density field
-    dens= fltarr(nPixelsY, nPixelsX)
+    dens = fltarr(nPixelsY, nPixelsX)
     readu,1,dens
     
   close,1
 
   dens = transpose(dens)
-
-  return,[nPixelsX,nPixelsY]
+ 
+  r = {nPixelsXY:[nPixelsX,nPixelsY],dens:dens}
+  return,r
 
 end
 

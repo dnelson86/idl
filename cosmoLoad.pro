@@ -1,6 +1,6 @@
 ; cosmoLoad.pro
 ; cosmological simulations - loading procedures (snapshots, fof/subhalo group cataloges)
-; dnelson nov.2011
+; dnelson jan.2012
 
 ; loadSubhaloGroups(): load complete subfind group catalog for a given snapshot
 ;
@@ -340,21 +340,27 @@ function loadSubhaloGroups, fileBase, m, verbose=verbose, skipIDs=skipIDs
   return,sf
 end
 
-; loadSnapshotHeader(): load header
+; getSnapFilename(): take input path and snapshot number and find snapshot filename
 
-function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
+function getSnapFilename, fileBase, snapNum=m
 
-  if not keyword_set(verbose) then verbose = 0
+  ; check for '/' on end of fileBase
+  lastChar = strmid(fileBase,strlen(fileBase)-1,1)
+  if (lastChar ne '/') then fileBase += '/'
 
-  ; set filename
+  ; format snapNum and initial guess
   if (str(m) eq 'none') then begin
     ext = ''
     f = fileBase
-  endif else begin  
-    ext = string(m,format='(I3.3)')
+  endif else begin
+    if (m le 999) then $
+      ext = string(m,format='(I3.3)')
+    if (m gt 999) then $
+      ext = string(m,format='(I4.4)')
+      
     f = fileBase + 'snapdir_' + ext + '/snap_' + ext
   endelse
-  
+
   ; check for single (non-split)
   if file_test(fileBase+'/snap_'+ext+'.hdf5') then begin
     f = fileBase + 'snap_' + ext
@@ -362,17 +368,26 @@ function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
   
     ; check existance and multiple outputs
     if not file_test(f+'.hdf5') then begin
-      if (file_test(f+'.0.hdf5')) then begin
-        ; split into multiples, get count
-        nFiles = n_elements(file_search(f+".*.hdf5"))
-      endif else begin
-        print, 'ERROR: snapshot file ' + f + ' does not exist!'
-        return,0
-      endelse
+      if not file_test(f+'.0.hdf5') then begin
+        print, 'ERROR: snapshot [' + str(m) + '] at ' + fileBase + ' does not exist!'
+        stop
+      endif
     endif
     
   endelse
   
+  return, f
+
+end
+
+; loadSnapshotHeader(): load header
+
+function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
+
+  if not keyword_set(verbose) then verbose = 0
+
+  f = getSnapFileName(fileBase,snapNum=m)
+
   fileList = file_search(f+".*hdf5")
   
   ; read header from first part
@@ -411,33 +426,12 @@ end
 ;                       partType = [0,1,2,4] or ('gas','dm','tracer','stars') (case insensitive)
 ;                       field    = ['ParticleIDs','coordinates','xyz',...] (case insensitive)
 
-function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field, verbose=verbose
+function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verbose=verbose
 
   if not keyword_set(verbose) then verbose = 0
+  partType = PT ; so we don't change the input
 
-  ; set filename
-  if (str(m) eq 'none') then begin
-    ext = ''
-    f = fileBase
-  endif else begin  
-    ext = string(m,format='(I3.3)')
-    f = fileBase + 'snapdir_' + ext + '/snap_' + ext
-  endelse
-  
-  ; check for single (non-split)
-  if file_test(fileBase+'snap_'+ext+'.hdf5') then begin
-    f = fileBase + 'snap_' + ext
-  endif else begin
-  
-    ; check existance and for multiple outputs
-    if (not file_test(f+'.hdf5')) then begin
-      if (not file_test(f+'.0.hdf5')) then begin
-        print, 'ERROR: snapshot file ' + f + ' does not exist!'
-        return,0
-      endif
-    endif
-  
-  endelse
+  f = getSnapFileName(fileBase,snapNum=m)
   
   fileList = file_search(f+".*hdf5")
   nFiles = n_elements(fileList)
@@ -445,7 +439,7 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=partType, field=field
   ; input config: set partType number if input in string
   if (strlowcase(str(partType)) eq 'gas' or strlowcase(str(partType)) eq 'hydro')      then partType = 0
   if (strlowcase(str(partType)) eq 'dm' or strlowcase(str(partType)) eq 'darkmatter')  then partType = 1
-  if (strlowcase(str(partType)) eq 'tracer' or strlowcase(str(partType)) eq 'tracers') then partType = 2
+  if (strlowcase(str(partType)) eq 'tracer' or strlowcase(str(partType)) eq 'tracers') then partType = 3
   if (strlowcase(str(partType)) eq 'stars' or strlowcase(str(partType)) eq 'star')     then partType = 4
   
   ; error checking
