@@ -336,9 +336,12 @@ function isnumeric, input
   false: return, 0
 end
 
-function getColor, i
+function getColor, i, name=name
   units = getUnits()
-  return,fsc_color(units.colors[(i) mod (n_elements(units.colors)-1)])
+  ind = (i) mod (n_elements(units.colors)-1)
+  
+  if keyword_set(name) then return,units.colors[ind]
+  return,fsc_color(units.colors[ind])
 end
 
 ; startPS, endPS: my version

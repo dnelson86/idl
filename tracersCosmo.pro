@@ -302,19 +302,15 @@ end
 
 ; cosmoTracerGasDensComp(): compare spatially estimated tracer density to parent cell gas density
 
-pro cosmoTracerGasDensComp
+pro cosmoTracerGasDensComp, redshift=redshift, nNGB=nNGB
 
   ; config
   res = 128
   run = 'dev.tracer'
   
-  sP      = simParams(res=res,run=run)
-  sP.snap = 64
-  
-  nNGB = 64
-  
+  sP    = simParams(res=res,run=run,redshift=redshift)
   units = getUnits() ;colors
-  
+
   ; load
   h = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
 
@@ -324,11 +320,17 @@ pro cosmoTracerGasDensComp
   mass_gas = !NULL
   
   ; estimate tracer densities
-  tr_pos = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='pos', partType='tracer')
-  tr_dens = estimateDensityTophat(tr_pos,mass=tr_mass,ndims=3,nNGB=nNGB,boxSize=h.boxSize)
-  tr_pos = !NULL
-  save,tr_dens,filename='temp3.sav'
-  ;restore,'temp2.sav',/verbose
+  saveFilename = sP.derivPath + sP.savPrefix + str(res) + '.trDens.nNGB=' + str(nNGB) + '.snap=' + $
+                 str(sP.snap) + '.sav'
+                 
+  if file_test(saveFilename) then begin
+    restore,saveFilename,/verbose
+  endif else begin
+    tr_pos = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='pos', partType='tracer')
+    tr_dens = estimateDensityTophat(tr_pos,mass=tr_mass,ndims=3,nNGB=nNGB,boxSize=h.boxSize)
+    tr_pos = !NULL
+    save,tr_dens,filename=saveFilename
+  endelse
   
   ; load tracer parents and gas densities
   tr_par_ind = cosmoTracerParents(sP=sP, /getInds)
@@ -339,8 +341,8 @@ pro cosmoTracerGasDensComp
   gas_dens = gas_dens[tr_par_ind]
 
   ; plot
-  ;if 0 then begin
-  start_PS, sP.plotPath + run + '_' + str(res) + '.densComp_' + str(sP.snap) + '.eps'
+  if 0 then begin
+  start_PS, sP.plotPath+sP.savPrefix+str(res)+'.densComp1.nNGB='+str(nNGB)+'.snap='+str(sP.snap)+'.eps'
   
     xrange = [1e-12,1e-8]
     yrange = xrange
@@ -355,11 +357,9 @@ pro cosmoTracerGasDensComp
          
     fsc_plot,tr_dens[w],ypts[w],psym=3,/overplot
          
-  end_PS, pngResize=50
-  ;endif
-  
-  ;if 0 then begin
-  start_PS, sP.plotPath + run + '_' + str(res) + '.densComp2_' + str(sP.snap) + '.eps'
+  end_PS, pngResize=50, /deletePS
+
+  start_PS, sP.plotPath+sP.savPrefix+str(res)+'.densComp2.nNGB='+str(nNGB)+'.snap='+str(sP.snap)+'.eps'
   
     xrange = [1e-12,1e-7]
     yrange = [0.0,5.0]
@@ -373,15 +373,13 @@ pro cosmoTracerGasDensComp
          
     fsc_plot,gas_dens[w],ypts[w],psym=3,/overplot
          
-  end_PS, pngResize=50
-  ;endif
+  end_PS, pngResize=50, /deletePS
   
   ; ratio to critical at z=3 and alog
   gas_dens2 = rhoRatioToCrit(gas_dens,redshift=3.0)
   gas_dens2 = alog10(gas_dens2)
   
-  ;if 0 then begin
-  start_PS, sP.plotPath + run + '_' + str(res) + '.densComp3_' + str(sP.snap) + '.eps'
+  start_PS, sP.plotPath+sP.savPrefix+str(res)+'.densComp3.nNGB='+str(nNGB)+'.snap='+str(sP.snap)+'.eps'
   
     xrange = [-2.0,8.0]
     yrange = [0.0,8.0]
@@ -395,10 +393,11 @@ pro cosmoTracerGasDensComp
          
     fsc_plot,gas_dens2[w],ypts[w],psym=3,/overplot
          
-  end_PS, pngResize=50
-  ;endif
+  end_PS, pngResize=50, /deletePS
   
-  start_PS, sP.plotPath + run + '_' + str(res) + '.densComp4_' + str(sP.snap) + '.eps'
+  endif ;0
+  
+  start_PS, sP.plotPath+sP.savPrefix+str(res)+'.densComp4.nNGB='+str(nNGB)+'.snap='+str(sP.snap)+'.eps'
   
     xrange = [0.0,5.0]
     yrange = [1e2,1e5]
@@ -406,7 +405,7 @@ pro cosmoTracerGasDensComp
     w = where(tr_dens ge xrange[0] and tr_dens le xrange[1])
     
     ypts = tr_dens / gas_dens
-    ypts = ypts[where(ypts le 5)]
+    ypts = ypts[where(ypts le xrange[1])]
   
     fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,charsize=!p.charsize-0.5,$
          xtitle="tracer density / parent cell gas density",ytitle="N tracers",/ylog
@@ -419,6 +418,177 @@ pro cosmoTracerGasDensComp
     
     fsc_plot,loc+binsize/2.0,hist,line=0,/overplot
          
-  end_PS, pngResize=50
-  stop
+  end_PS
+  
+end
+
+; cosmoTracerGasDensCompNGB(): compare spatially estimated tracer density to parent cell gas density
+;                              as a function of nNGB used to calculate tracer densities
+
+pro cosmoTracerGasDensCompNGB, redshift=redshift
+
+  if not keyword_set(redshift) then stop
+
+  ; config
+  res = 128
+  run = 'dev.tracer'
+  
+  nNGBs = [32,64,128,256]
+  
+  binsize = 0.02
+  
+  sP    = simParams(res=res,run=run,redshift=redshift)
+  units = getUnits() ;colors
+
+  ; load
+  h = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+
+  ; tracer mass estimate (uniform density ICs assumption)
+  mass_gas = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='mass',/verbose)
+  tr_mass = total(mass_gas) / h.nPartTot[3]
+  mass_gas = !NULL
+  
+  ; load tracer parents and gas densities
+  tr_par_ind = cosmoTracerParents(sP=sP, /getInds)
+  
+  gas_dens = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='density',/verbose)  
+  
+  ; reorder gas densities to correspond to tr_dens parents
+  gas_dens = gas_dens[tr_par_ind]  
+  
+  ; start plot
+  start_PS, sP.plotPath+sP.savPrefix+str(res)+'.densCompNGB.snap='+str(sP.snap)+'.eps'
+  
+    xrange = [0.0,5.0]
+    yrange = [1e2,1e5]
+  
+    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,charsize=!p.charsize-0.5,$
+         xtitle="tracer density / parent cell gas density",ytitle="N tracers",/ylog,$
+         title=run+" "+str(res)+" z="+string(redshift,format='(f3.1)')
+        
+    fsc_plot,[1.0,1.0],yrange,color=fsc_color('light gray'),/overplot
+         
+    legendColors = []
+    legendStrs   = []
+  
+    foreach nNGB,nNGBs,i do begin
+
+      ; estimate tracer densities
+      saveFilename = sP.derivPath + sP.savPrefix + str(res) + '.trDens.nNGB=' + str(nNGB) + '.snap=' + $
+                     str(sP.snap) + '.sav'
+                     
+      if file_test(saveFilename) then begin
+        restore,saveFilename,/verbose
+      endif else begin
+        tr_pos = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='pos', partType='tracer')
+        tr_dens = estimateDensityTophat(tr_pos,mass=tr_mass,ndims=3,nNGB=nNGB,boxSize=h.boxSize)
+        tr_pos = !NULL
+        save,tr_dens,filename=saveFilename
+      endelse
+      
+      ypts = tr_dens / gas_dens
+      ypts = ypts[where(ypts le xrange[1])]
+      
+      ; plot
+      hist = histogram(ypts,binsize=binsize,min=xrange[0],max=xrange[1],loc=loc)
+      
+      fsc_plot,loc+binsize/2.0,hist,line=0,/overplot,color=getColor(i)
+      
+      legendStrs   = [legendStrs,'nNGB = '+str(nNGB)]
+      legendColors = [legendColors,getColor(i,/name)]
+      
+    endforeach
+    
+    ; legend
+    legend,legendStrs,textcolors=legendColors,/right,margin=0.25,charsize=!p.charsize-0.5,box=0
+  
+  ; end plot
+  end_PS
+
+end
+
+; cosmoTracerGasDensCompRedshift(): compare spatially estimated tracer density to parent cell gas density
+;                                   as a function of redshift
+
+pro cosmoTracerGasDensCompRedshift
+
+  ; config
+  res = 128
+  run = 'dev.tracer'
+  
+  nNGB = 32
+  
+  redshifts = [3.0,4.0,6.0,10.0,22.0]
+  
+  binsize = 0.02
+  
+  units = getUnits() ;colors
+  
+  ; start plot
+  start_PS, sP.plotPath+sP.savPrefix+str(res)+'.densCompNGB.snap='+str(sP.snap)+'.eps'
+  
+    xrange = [0.0,5.0]
+    yrange = [1e2,1e5]
+  
+    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,charsize=!p.charsize-0.5,$
+         xtitle="tracer density / parent cell gas density",ytitle="N tracers",/ylog,$
+         title=run+" "+str(res)+" z="+string(redshift,format='(f3.1)')
+        
+    fsc_plot,[1.0,1.0],yrange,color=fsc_color('light gray'),/overplot
+         
+    legendColors = []
+    legendStrs   = []  
+  
+  ; loop over redshifts
+  foreach redshift,redshifts,i do begin
+  
+    sP = simParams(res=res,run=run,redshift=redshift)
+    
+    ; load
+    h = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+  
+    ; tracer mass estimate (uniform density ICs assumption)
+    mass_gas = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='mass',/verbose)
+    tr_mass = total(mass_gas) / h.nPartTot[3]
+    mass_gas = !NULL
+    
+    ; load tracer parents and gas densities
+    tr_par_ind = cosmoTracerParents(sP=sP, /getInds)
+    
+    gas_dens = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='density',/verbose)  
+    
+    ; reorder gas densities to correspond to tr_dens parents
+    gas_dens = gas_dens[tr_par_ind]  
+  
+
+    ; estimate tracer densities
+    saveFilename = sP.derivPath + sP.savPrefix + str(res) + '.trDens.nNGB=' + str(nNGB) + '.snap=' + $
+                   str(sP.snap) + '.sav'
+                   
+    if file_test(saveFilename) then begin
+      restore,saveFilename,/verbose
+    endif else begin
+      tr_pos = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='pos', partType='tracer')
+      tr_dens = estimateDensityTophat(tr_pos,mass=tr_mass,ndims=3,nNGB=nNGB,boxSize=h.boxSize)
+      tr_pos = !NULL
+      save,tr_dens,filename=saveFilename
+    endelse
+      
+    ypts = tr_dens / gas_dens
+    ypts = ypts[where(ypts le xrange[1])]
+    
+    ; plot
+    hist = histogram(ypts,binsize=binsize,min=xrange[0],max=xrange[1],loc=loc)
+    
+    fsc_plot,loc+binsize/2.0,hist,line=0,/overplot,color=getColor(i)
+    
+    legendStrs   = [legendStrs,'z = '+string(redshift,format='(f4.1)')]
+    legendColors = [legendColors,getColor(i,/name)]
+
+  endforeach
+  
+  ; end plot
+  legend,legendStrs,textcolors=legendColors,/right,margin=0.25,charsize=!p.charsize-0.5,box=0
+  end_PS
+
 end
