@@ -55,7 +55,7 @@ pro makeArepoFoFBsub
     printf,lun,''
       
     ; write projection commands
-    strArray = ['mpirun.lsf ./Arepo_fof_2 '+paramFile,$
+    strArray = ['mpirun.lsf ./Arepo_fof '+paramFile,$
                 str(cmdCode),$
                 str(snap),$
                 '>> run_fof.txt']
@@ -72,7 +72,7 @@ pro makeArepoFoFBsub
       
       ; file cleanup
       wait,0.5
-      spawn, 'rm ' + sP.plotPath + 'job_fof.bsub'
+      ;spawn, 'rm ' + sP.plotPath + 'job_fof.bsub'
     endif
   
   endfor ;snapRange
@@ -199,39 +199,36 @@ pro makeArepoProjBsub
 end
 
 ; sphMapBox: run sph kernel density projection on whole box
+;
 
 pro sphMapBox, res=res, run=run, partType=partType
 
-  if (not keyword_set(res) or not keyword_set(run)) then begin
-    print,'Error: Must specify resolution and run.'
-    return
-  endif
-  
   sP = simParams(res=res,run=run)
   
   ; config
   redshift = 3.0 ;5.0
   snap     = redshiftToSnapNum(redshift,sP=sP)
   
-  imgSize = [800,800] ;px
-  
-  ;partType = 'tracer' ;gas,tracer
-  axis0 = 0 ;x
-  axis1 = 1 ;y
-  mode  = 1 ;1=col mass, 2=mass-weighted quantity, 3=col density  
+  nPixels = [800,800] ;px
+
+  zoomFac = 1    ; only in axes, not along projection direction
+  nNGB    = 256    ; use CalcHSML for HSML with nNGB
+  axes    = [0,1] ; x,y
 
   ; paths and render config
   h = loadSnapshotHeader(sP.simPath,snapNum=snap)
   
-  boxSize = [h.boxSize,h.boxSize,h.boxSize]             ;kpc
-  boxCen  = [h.boxSize/2.0,h.boxSize/2.0,h.boxSize/2.0] ;kpc
+  boxSize = [h.boxSize,h.boxSize,h.boxSize]              ;kpc
+  boxCen  = [h.boxSize/2.0,h.boxSize/2.0,h.boxSize/2.0]  ;kpc
   
-  outFilename = 'sphmap.box.snap='+str(snap)+'.box.axis0='+str(axis0)+$
-                '.axis1='+str(axis1)+'.'+partType
+  foreach k,axes do boxSize[k] /= zoomFac
+  
+  outFilename = 'sphmap.box_'+str(zoomFac)+'.nNGB='+str(nNGB)+'.snap='+str(snap)+$
+                '.box.axis0='+str(axes[0])+'.axis1='+str(axes[0])+'.'+partType
 
   ; save/restore
-  if (file_test(sP.plotPath + outFilename + '.sav')) then begin
-    restore,sP.plotPath + outFilename + '.sav',/verbose
+  if (file_test(sP.derivPath + outFilename + '.sav')) then begin
+    restore,sP.derivPath + outFilename + '.sav',/verbose
   endif else begin
 
     if (partType eq 'gas') then begin
@@ -240,30 +237,29 @@ pro sphMapBox, res=res, run=run, partType=partType
     
     if (partType eq 'tracer') then begin
        mass_gas = loadSnapshotSubset(sP.simPath,snapNum=snap,partType='gas',field='mass',/verbose)
-       mass = replicate(total(mass_gas) / h.nPartTot[2], h.nPartTot[2])
+       mass = replicate(total(mass_gas) / h.nPartTot[3], h.nPartTot[3])
     endif
     
     ; load positions from snapshot
     pos  = loadSnapshotSubset(sP.simPath,snapNum=snap,partType=partType,field='pos',/verbose) 
     
-    ; use CalcHSML for HSML
-    nNGB = 32
-    
-    hsml = calcHSML(pos,mass,ndims=3,nNGB=nNGB)
-    print,'hsml done.'
+    hsml = calcHSML(pos,ndims=3,nNGB=nNGB,boxSize=boxSize[0])
 
     ; OR: load HSML from snapshot (only stored for gas)
     ;hsml = loadSnapshotSubset(sP.simPath,snapNum=snap,partType='gas',field='hsml',/verbose)
       
-    colMassMap = sphDensityProjection(pos, hsml, mass, imgSize=imgSize, boxSize=boxSize,$
-                                      boxCen=boxCen, axis0=axis0, axis1=axis1, mode=mode, periodic=0)
-                                      
-    save,colMassMap,hsml,filename=sP.plotPath + outFilename + '.sav'
+    colMassMap = calcSphMap(pos,hsml,mass,boxSize=boxSize,boxCen=boxCen,nPixels=nPixels,$
+                            axes=axes,ndims=3)
+              
+    save,colMassMap,hsml,filename=sP.derivPath + outFilename + '.sav'
   endelse
 
   ; rescale
-  maxVal = max(colMassMap)/2.0
+  ;maxVal = max(colMassMap)/2.0
+  maxVal = 0.5
   minVal = maxVal / 1e4
+  
+  print,'min max val: ',minVal,maxVal
   
   w = where(colMassMap eq 0, count, complement=ww)
   if (count ne 0) then colMassMap[w] = min(colMassMap[ww])
@@ -282,7 +278,7 @@ pro sphMapBox, res=res, run=run, partType=partType
   start_PS, sP.plotPath + outFilename + '.eps'
     loadct, 4, bottom=1, /silent
     tvim,colMassMap,xrange=xMinMax,yrange=yMinMax,pcharsize=0.0001
-  end_PS, pngResize=68
+  end_PS, pngResize=68, /deletePS
   
 end
 

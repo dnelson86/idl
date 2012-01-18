@@ -2,9 +2,81 @@
 ; cosmological simulations - utility functions
 ; dnelson jan.2012
 
+; redshiftToSnapNum(): convert redshift to the nearest snapshot number
+
+function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose
+
+  if not keyword_set(verbose) then verbose = 0
+  
+  saveFileName = sP.derivPath + sP.savPrefix + '_snapnum.redshift.sav'
+
+  if not (file_test(saveFileName)) then begin
+
+    ; multiple files per group catalog
+    ret = file_search(sP.simPath+'snapdir_*', count=nSnaps)
+    
+    ; single file per group catalog
+    if (nSnaps eq 0) then $
+      ret = file_search(sP.simPath+'snap_*.hdf5', count=nSnaps)
+    
+    redshifts = fltarr(nSnaps)
+    times     = fltarr(nSnaps)
+    
+    for m=0,nSnaps-1 do begin
+      ; format filename
+      ext = str(string(m,format='(I3.3)'))
+      f = sP.simPath + 'snapdir_' + ext + '/snap_' + ext + '.0.hdf5'
+      
+      ; single file per group catalog
+      if (not file_test(f)) then $
+        f = sP.simPath + 'snap_' + ext + '.hdf5'
+    
+      ; load hdf5 header and save time+redshift
+      fileID   = h5f_open(f)
+      headerID = h5g_open(fileID,"Header")
+      
+      redshifts[m] = h5a_read(h5a_open_name(headerID,"Redshift"))
+      times[m]     = h5a_read(h5a_open_name(headerID,"Time"))
+      
+      h5g_close, headerID
+      h5f_close, fileID
+    endfor
+  
+    ; save/restore
+    save,sP,nSnaps,redshifts,times,filename=saveFileName
+  endif else begin
+    restore,saveFileName
+  endelse
+
+  ; for -1 return !NULL
+  if (total(redshiftList) eq -1) then return,!NULL
+  
+  ; return array
+  snapNum = intarr(n_elements(redshiftList))
+  
+  foreach redshift,redshiftList,i do begin
+    if (redshift eq 0.0) then begin
+      ; for redshift zero hard select #314 (ComparisonProject)
+      snapNum[i] = sP.snapRange[1]
+    endif else begin
+      w = where(abs(redshifts - redshift) eq min(abs(redshifts - redshift)),count)
+      if (count eq 2) then w = w[0]
+      if (count eq 0) then return,-1
+      snapNum[i] = w[0]
+    endelse
+  
+    if (verbose) then $
+      print,'Found nearest snapshot to z = ' + str(redshift) + ' (num = ' + str(snapNum) + ')'
+  endforeach
+
+  if (n_elements(snapNum) eq 1) then snapNum = snapNum[0]
+
+  return,snapNum
+end
+
 ; simParams(): return structure of simulation parameters
 
-function simParams, res=res, run=run
+function simParams, res=res, run=run, redshift=redshift
 
   if not keyword_set(res) or not keyword_set(run) then begin
      print,'Error: simParams: arguments not specified.'
@@ -58,6 +130,12 @@ function simParams, res=res, run=run
     r.plotPath   = '/n/home07/dnelson/dev.tracer/'
     r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/data.files/'
     
+    ; if redshift passed in, convert to snapshot number and save
+    if keyword_set(redshift) then begin
+      snap = redshiftToSnapNum(redshift,sP=r)
+      r.snap = snap
+    endif
+    
     return,r
   endif
   
@@ -73,7 +151,7 @@ function simParams, res=res, run=run
     
     return,r
   endif
-
+  
   print,'simParams: ERROR.'
   exit
 end
@@ -434,77 +512,6 @@ pro correctPeriodicDistVecs, vecs, sP=sP
 
 end
 
-; redshiftToSnapNum(): convert redshift to the nearest snapshot number
-
-function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose
-
-  if not keyword_set(verbose) then verbose = 0
-  
-  saveFileName = sP.derivPath + sP.savPrefix + '_snapnum.redshift.sav'
-
-  if not (file_test(saveFileName)) then begin
-
-    ; multiple files per group catalog
-    ret = file_search(sP.simPath+'snapdir_*', count=nSnaps)
-    
-    ; single file per group catalog
-    if (nSnaps eq 0) then $
-      ret = file_search(sP.simPath+'snap_*.hdf5', count=nSnaps)
-    
-    redshifts = fltarr(nSnaps)
-    times     = fltarr(nSnaps)
-    
-    for m=0,nSnaps-1 do begin
-      ; format filename
-      ext = str(string(m,format='(I3.3)'))
-      f = sP.simPath + 'snapdir_' + ext + '/snap_' + ext + '.0.hdf5'
-      
-      ; single file per group catalog
-      if (not file_test(f)) then $
-        f = sP.simPath + 'snap_' + ext + '.hdf5'
-    
-      ; load hdf5 header and save time+redshift
-      fileID   = h5f_open(f)
-      headerID = h5g_open(fileID,"Header")
-      
-      redshifts[m] = h5a_read(h5a_open_name(headerID,"Redshift"))
-      times[m]     = h5a_read(h5a_open_name(headerID,"Time"))
-      
-      h5g_close, headerID
-      h5f_close, fileID
-    endfor
-  
-    ; save/restore
-    save,sP,nSnaps,redshifts,times,filename=saveFileName
-  endif else begin
-    restore,saveFileName
-  endelse
-  
-  ; for -1 return !NULL
-  if (total(redshiftList) eq -1) then return,!NULL
-  
-  ; for redshift zero hard select #314
-  snapNum = intarr(n_elements(redshiftList))
-  
-  foreach redshift,redshiftList,i do begin
-    if (redshift eq 0.0) then begin
-      snapNum[i] = sP.snapRange[1]
-    endif else begin
-      w = where(abs(redshifts - redshift) eq min(abs(redshifts - redshift)),count)
-      if (count eq 2) then w = w[0]
-      if (count eq 0) then return,-1
-      snapNum[i] = w[0]
-    endelse
-  
-    if (verbose) then $
-      print,'Found nearest snapshot to z = ' + str(redshift) + ' (num = ' + str(snapNum) + ')'
-  endforeach
-
-  if (n_elements(snapNum) eq 1) then snapNum = snapNum[0]
-
-  return,snapNum
-end
-
 ; snapNumToRedshift(): convert snapshot number to redshift or time
 
 function snapNumToRedshift, snapNum=snapNum, time=time, all=all
@@ -831,15 +838,19 @@ pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted
 end
 
 ; sphDensityProjection(): make density projection using SPH kernel (inspired by Mark's sphMap)
+;                         NOTE: kernel coeffs only valid for 3D!
 
 function sphDensityProjection, pos, hsml, mass, quantity=quantity, imgSize=imgSize, boxSize=boxSize,$
                                boxCen=boxCen, axis0=axis0, axis1=axis1, mode=mode, periodic=periodic,$
                                verbose=verbose
 
+  print,'You should switch this to the calcSphMap C-routine.'
+  stop
+
   ; config
   if not keyword_set(axis0) then axis0 = 0
   if not keyword_set(axis1) then axis1 = 1
-  if not keyword_set(verboses) then verbose = 0
+  if not keyword_set(verbose) then verbose = 0
   
   if keyword_set(periodic) then begin
     print,'ERROR: PERIODIC not supported.'
@@ -878,7 +889,7 @@ function sphDensityProjection, pos, hsml, mass, quantity=quantity, imgSize=imgSi
   for part=0, npart-1, 1 do begin
     ; progress report
     if (part mod round(npart/10.0) eq 0 and verbose) then $
-      print,'Progress: '+str(100.0*part/npart)+'%'
+      print,'Progress: '+string(100.0*part/npart,format='(I3)')+'%'
       
     ; get particle data
     p[0] = pos[0,part]
