@@ -1,6 +1,8 @@
 ; helper.pro
 ; helper functions
 ; dnelson feb.2011
+;
+; NOTE: all my IDL routines loaded at bottom of this file
 
 ; getUnits(): return a structure of useful units
 
@@ -32,7 +34,7 @@ function getUnits
             rhoCrit : 0.0D                                    ,$
             
             ; color list
-            colors : strarr(21)                               ,$
+            colors : strarr(17)                               ,$
             
             ; unit conversions
             s_in_Myr  : 3.156e13                              ,$
@@ -57,7 +59,7 @@ function getUnits
 
   ; color list
   units.colors = ['black','blue','green','red','cyan','magenta','gray','orange', $
-                  'brown','chartreuse','violet','papaya','yellow','aquamarine', $
+                  'brown','chartreuse','violet','papaya','aquamarine', $
                   'firebrick', 'rosy brown', 'gold', 'olive']
 
   return, units
@@ -334,6 +336,11 @@ function isnumeric, input
   false: return, 0
 end
 
+function getColor, i
+  units = getUnits()
+  return,fsc_color(units.colors[(i) mod (n_elements(units.colors)-1)])
+end
+
 ; startPS, endPS: my version
 
 pro start_PS, filename, xs=xs, ys=ys
@@ -474,3 +481,21 @@ function removeIntersectionFromB, A, B, union=union
       return, B
     endelse
 end
+
+; load routines for use
+; ---------------------
+@cosmoUtil
+@cosmoLoad
+
+@tracers
+@tracersCosmo
+;@tracersDisks
+;@tracersShocktube
+
+@cosmoVis
+;@cosmoPlot
+;@cosmoAnalysis
+
+@arepoLoad
+@arepoVis2D
+;@arepoSphSym

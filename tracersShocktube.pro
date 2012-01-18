@@ -1,8 +1,6 @@
 ; tracersShocktube.pro
-; dnelson
-; jan 2012
-;
 ; dev for tracer particles (shocktube tests)
+; dnelson jan.2012
 
 ; plotShocktube():
 

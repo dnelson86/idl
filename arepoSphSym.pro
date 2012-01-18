@@ -1,10 +1,6 @@
 ; arepoSphSym.pro
-; dnelson
-; 7/7/10
-;
 ; snapshot analysis for spherically symmetric cases
-
-@arepoLoad
+; dnelson 7/7/10
 
 ; temp TS blastwave
 pro temp2D

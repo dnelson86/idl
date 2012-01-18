@@ -1,10 +1,6 @@
 ; cosmoAnalysis.pro
 ; gas accretion project - main
-; dnelson nov.2011
-
-@helper
-@cosmoUtil
-@cosmoLoad
+; dnelson jan.2012
 
 ; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
 ;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)

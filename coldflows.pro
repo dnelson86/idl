@@ -1,6 +1,13 @@
 ; coldflows.pro
 ; cold flows - main
-; dnelson oct.2011
+; dnelson nov.2011
+
+; ---------------------------------------------------------------------------------
+; ---------------------------------------------------------------------------------
+; NOTE: Nothing in this file is still in use and may be out of date and/or buggy.
+;       Only still around for ideas when working on cosmo* codebase.
+; ---------------------------------------------------------------------------------
+; ---------------------------------------------------------------------------------
 
 @helper
 @cosmoUtil

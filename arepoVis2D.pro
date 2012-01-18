@@ -1,15 +1,10 @@
 ; arepoVis2D.pro
-; dnelson
-; dec 2011
-;
 ; visualization for 2D arepo runs
+; dnelson jan.2012
 
-@helper
-@arepoLoad
+; plotVoronoi2D(): plot "voronoi_mesh" output file
 
-; plotVoronoi2D(): plot "voronoi_mesh"
-
-pro plotVoronoi2D, fBase, boxSize, i, oPlot=oPlot, fillWindow=fillWindow, $
+pro plotVoronoi2D, fileBase, boxSize, m, oPlot=oPlot, fillWindow=fillWindow, $
                    zoom=zoom, pos=pos, ids=ids
 
   ;config
@@ -18,8 +13,9 @@ pro plotVoronoi2D, fBase, boxSize, i, oPlot=oPlot, fillWindow=fillWindow, $
   thick   = !p.thick-2.0
   
   ;load
-  nLoad = loadVoronoi2D(fBase,nDims,i,nEdges,nEdgesOffset,edgeList,xyzEdges)
-  nGas = nLoad[0]
+  vor = loadVoronoiMesh(fileBase,m,nDims)
+  
+  nGas = vor.nLoad[0]
 
   ; set ranges
   if (not keyword_set(zoom)) then begin
@@ -30,7 +26,7 @@ pro plotVoronoi2D, fBase, boxSize, i, oPlot=oPlot, fillWindow=fillWindow, $
     yrange = [boxSize[1]/2.0-boxSize[1]/zoom,boxSize[1]/2.0+boxSize[1]/zoom]
   endelse
 
-  ;plot
+  ; start plot
   if (not keyword_set(oPlot)) then begin
     if keyword_set(fillWindow) then $
       plot,[0],[0],/nodata,xrange=xrange,yrange=yrange, $
@@ -38,123 +34,230 @@ pro plotVoronoi2D, fBase, boxSize, i, oPlot=oPlot, fillWindow=fillWindow, $
     if not keyword_set(fillWindow) then $
       plot,[0],[0],/nodata,xrange=xrange,yrange=yrange, $
            xstyle=1,ystyle=1,position=[0.05,0.05,0.95,0.95],charsize=!p.charsize-1.0,$
-           ticklen=0.0001,title="snap ["+str(i)+"]"
+           ticklen=0.0001,title="snap ["+str(m)+"]"
   endif
 
+  ; for each cell, plot edges of cell
   for j=0L, nGas-1 do begin
-      x = transpose(xyzEdges[0, edgeList[nEdgesOffset[j]:nEdgesOffset[j]+nEdges[j]-1]])
-      y = transpose(xyzEdges[1, edgeList[nEdgesOffset[j]:nEdgesOffset[j]+nEdges[j]-1]])
+    x = transpose(vor.xyzEdges[0, vor.edgeList[vor.nEdgesOffset[j]:vor.nEdgesOffset[j]+vor.nEdges[j]-1]])
+    y = transpose(vor.xyzEdges[1, vor.edgeList[vor.nEdgesOffset[j]:vor.nEdgesOffset[j]+vor.nEdges[j]-1]])
 
-      plots,[x,x(0)],[y,y(0)],noclip=0,color=color,thick=thick
-   endfor
+    plots,[x,x(0)],[y,y(0)],noclip=0,color=color,thick=thick
+  endfor
    
-   ; if pos set, overplot positions of gas particles, color code by id
-   if (keyword_set(pos) and keyword_set(ids)) then begin
-     w1 = where(ids eq -1)
-     w2 = where(ids eq -2)
-     w3 = where(ids eq -3)
+  ; if pos set, overplot positions of gas particles, color code by id
+  if (keyword_set(pos) and keyword_set(ids)) then begin
+    w1 = where(ids eq -1)
+    w2 = where(ids eq -2)
+    w3 = where(ids eq -3)
      
-     fsc_plot,pos[0,w1],pos[1,w1],psym=4,symsize=0.1,color=fsc_color('crimson'),/overplot
-     fsc_plot,pos[0,w2],pos[1,w2],psym=4,symsize=0.1,color=fsc_color('slate blue'),/overplot
-     fsc_plot,pos[0,w3],pos[1,w3],psym=4,symsize=0.1,color=fsc_color('forest green'),/overplot
-     
-   endif
+    fsc_plot,pos[0,w1],pos[1,w1],psym=4,symsize=0.1,color=fsc_color('crimson'),/overplot
+    fsc_plot,pos[0,w2],pos[1,w2],psym=4,symsize=0.1,color=fsc_color('slate blue'),/overplot
+    fsc_plot,pos[0,w3],pos[1,w3],psym=4,symsize=0.1,color=fsc_color('forest green'),/overplot
+  endif
 
 end
 
-; plotDensityField2D(): plot "density_field_"
-;
+; plotDensityField(): plot "density_field_" or "proj_density_field_" output file
 
-pro plotDensityField2D, fBase, i, writePNG=writePNG, writeJPG=writeJPG, $
-                        psOut=psOut, xyScaleFac=xyScaleFac, $
-                        dens=dens, colorMinMax=colorMinMax, plotHist=plotHist
+pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=writeJPG, psOut=psOut, $
+                        xyScaleFac=xyScaleFac, minMax=minMax, log=log
   
-  ;load
-  if not keyword_set(dens) then begin
-    nPixelsXY = loadDensityField2D(fBase,i,dens)
-  endif else begin
-    nPixelsXY = [ (size(dens))[1],(size(dens))[2] ]
-  endelse
-
-  ;color tables and scaling
-  loadct, 11, /silent
-  loadct, 11, rgb_table=rgbTable
-  tvlct, r, g, b, /get
-  
-  if not keyword_set(colorMinMax) then begin
-    colorMinMax = minmax(dens)
+  if (not keyword_set(writePNG) and not keyword_set(writeJPG) and not keyword_set(psOut)) then begin
+    print,'ERROR: No output method specified.'
+    stop
   endif
   
-  print,' dens minmax:',colorMinMax
+  ; if m is an array, treat as list of snapshot numbers and loop over each
+  foreach m,snaps do begin
 
-  if keyword_set(plotHist) then begin
-    ext = string(i,format='(i3.3)')
-    f = fBase + ext + ".eps"
-    w = where(dens gt colorMinMax[0] and dens lt colorMinMax[1])
-    start_PS,f
-      plothist,dens[w],/auto
-    end_PS
-  endif
-
-  colindex= (dens - colorMinMax[0])/(colorMinMax[1]-colorMinMax[0])*255.0
+    ; load
+    df = loadDensityField(filePath,m,axes=axes)
   
-  ind = where(colindex ge 256.0)
-  if ind(0) ne -1 then colindex(ind) = 255.9
+    ; log scaling of density
+    if keyword_set(log) then begin
+      w = where(df.dens ne 0.0)
+      df.dens[w] = alog10(df.dens[w])
+    endif
   
-  ind = where(colindex lt 0)
-  if ind(0) ne -1 then colindex(ind) = 0
+    ; color tables and scaling
+    loadct, 11, /silent ;11=blue-red
+    loadct, 11, rgb_table=rgbTable
+    tvlct, r, g, b, /get
+    
+    if not keyword_set(minMax) then $
+      colorMinMax = minmax(df.dens)
+    if keyword_set(minMax) then $
+      colorMinMax = minMax
+    
+    print,' dens minmax:',colorMinMax
   
-  colindex = byte(colindex)
+    colindex = (df.dens - colorMinMax[0])/(colorMinMax[1]-colorMinMax[0])*255.0
+    
+    ind = where(colindex ge 256.0)
+    if ind(0) ne -1 then colindex(ind) = 255.9
+    
+    ind = where(colindex lt 0)
+    if ind(0) ne -1 then colindex(ind) = 0
+    
+    colindex = byte(colindex)
+    
+    ;create image
+    pic=bytarr(3,df.nPixelsXY[0],df.nPixelsXY[1])
   
-  ;create image
-  pic=bytarr(3,nPixelsXY[0],nPixelsXY[1])
-
-  pic[0,*,*] = r[colindex]
-  pic[1,*,*] = g[colindex]
-  pic[2,*,*] = b[colindex]
+    pic[0,*,*] = r[colindex]
+    pic[1,*,*] = g[colindex]
+    pic[2,*,*] = b[colindex]
+    
+    ;rescale image
+    if keyword_set(xyScaleFac) then begin
+      pic = rebin(pic,3,xyScaleFac*df.nPixelsXY[0],xyScaleFac*df.nPixelsXY[1])
+    endif
   
-  ;rescale image
-  if keyword_set(xyScaleFac) then begin
-    pic = rebin(pic,3,xyScaleFac*nPixelsXY[0],xyScaleFac*nPixelsXY[1])
-  endif
-
-  ;write JPG
-  if keyword_set(writeJPG) then begin
-    if ( writeJPG eq '1' ) then begin
-      ext = string(i,format='(i3.3)')
-      fName = fBase + ext + ".jpg"
+    ;output filename
+    if not keyword_set(axes) then axes = 0
+    
+    outputFilename = filePath + 'density_' + string(m,format='(i3.3)') + '.' + str(axes)
+    
+    ;write JPG
+    if keyword_set(writeJPG) then begin
+      if ( writeJPG eq '1' ) then begin
+        write_jpeg, outputFilename + ".jpg", pic, true=1, quality=100
+      endif else begin
+        write_jpeg, writeJPG, pic, true=1, quality=100
+      endelse
+    endif
       
-      write_jpeg, fName, pic, true=1, quality=100
-    endif else begin
-      write_jpeg, writeJPG, pic, true=1, quality=100
-    endelse
-  endif
+    ;write PNG
+    if keyword_set(writePNG) then begin
+      if ( writePNG eq '1' ) then begin
+        write_png, outputFilename + ".png", pic
+      endif else begin
+        write_png, writePNG, pic
+      endelse
+    endif
     
-  ;write PNG
-  if keyword_set(writePNG) then begin
-    if ( writePNG eq '1' ) then begin
-      ext = string(i,format='(i3.3)')
-      fName = fBase + ext + ".png"
+    ;output PS - assume the ps device is already open
+    if keyword_set(psOut) then begin
+      tvimage,pic,true=1,position=[0.0,0.0,1.0,1.0]
+    endif
     
-      write_png, fName, pic
-      ;write_png, ext+".png", rebin(pic,3,3*nPixelsXY[0],3*nPixelsXY[1])
-      ;write_png, fName+".2.png", congrid(pic,3,4*nPixelsXY[0],4*nPixelsXY[1],cubic=-0.5)
-      ;write_png, fName+".3.png", congrid(pic,3,4*nPixelsXY[0],4*nPixelsXY[1])
-      ;write_png, fName+".4.png", rebin(pic,3,4*nPixelsXY[0],4*nPixelsXY[1], /sample)
-    endif else begin
-      write_png, writePNG, pic
-    endelse
-  endif
+    df = !NULL
   
-  ;output PS
-  if keyword_set(psOut) then begin
-    ;assume the ps device is already open
-    tvimage,pic,true=1,position=[0.0,0.0,1.0,1.0]
-  endif
+  endforeach ;m
 
 end
 
-;plot voronoi over density
+; contourGasSurfDens(): make a contour plot of the gas surface density
+
+pro contourGasSurfDens, filePath=filePath, snapNum=snapNum, zoomSize=zoomSize, gridSize=gridSize
+
+  ; config
+  h = loadSnapshotHeader(filePath,snapNum=snapNum)
+  
+  if keyword_set(zoomSize) then $
+    boxSize = [zoomSize,zoomSize,h.boxSize]
+  if (not keyword_set(zoomSize)) then $
+    boxSize = [h.boxSize,h.boxSize,h.boxSize] ;kpc
+    
+  boxCen  = [h.boxSize/2.0,h.boxSize/2.0,h.boxSize/2.0] ;kpc
+  imgSize = [gridSize,gridSize]  ;px
+  
+  ; unused
+  if 0 then begin
+
+    axis0 = 0 ;x
+    axis1 = 1 ;y
+    mode  = 1 ;1=col mass, 2=mass-weighted quantity, 3=col density
+
+    ; load positions and densities
+    pos  = loadSnapshotSubset(filePath,snapNum=snapNum,partType='gas',field='pos')
+    hsml = loadSnapshotSubset(filePath,snapNum=snapNum,partType='gas',field='hsml')
+    mass = loadSnapshotSubset(filePath,snapNum=snapNum,partType='gas',field='mass')
+  
+    ; make spatial subset
+    if keyword_set(zoomSize) then begin
+      bc = boxCen[0]
+      w = where(abs(pos[0,*]-bc) le zoomSize*1.5 and abs(pos[1,*]-bc) le zoomSize*1.5,count)
+  
+      print,'Found ['+str(count)+'] of ['+str(n_elements(mass))+'] particles inside zoomBox.'
+      
+      pos = pos[*,w]
+      hsml = hsml[w]
+      mass = mass[w]
+    endif
+  
+    ; run sph kernel based density projection
+    print,'Running sphDensityProjection().'
+  
+    colMassMap = sphDensityProjection(pos, hsml, mass, imgSize=imgSize, boxSize=boxSize,$
+                                      boxCen=boxCen, axis0=axis0, axis1=axis1, mode=mode, periodic=0)
+               
+  endif
+         
+            
+  ; contour and plot
+  xy = findgen(gridSize)/gridSize * zoomSize + h.boxSize/2.0 - zoomSize/2.0
+
+  levels = [1e-3,2e-3,3e-3,4e-3]
+ 
+  fsc_contour,colMassMap,xy,xy,levels=levels,/overplot
+
+end
+
+; scatterPlotPos(): make a simple scatter plot of particle positions for one species
+
+pro scatterPlotPos
+
+  ; config
+  workingPath = '/n/home07/dnelson/dev.tracer/'
+  filePath    = workingPath + 'cosmobox.64_10Mpc/output.old/'
+  
+  zoomSize = 1000.0 ;kpc
+  partType = 'gas'
+
+  ; find number of snapshots and loop
+  ;nSnaps = n_elements(file_search(filepath+'snap_*'))
+  snapRange = [25,95,20]
+  
+  for snap=snapRange[0],snapRange[1],snapRange[2] do begin
+    ; sizes
+    h = loadSnapshotHeader(filePath,snapNum=snap)
+      
+    boxCen = h.boxSize/2.0 ;kpc
+    
+    ; load positions and densities
+    pos  = loadSnapshotSubset(filePath,snapNum=snap,partType=partType,field='pos')
+  
+    ; make spatial subset
+    if keyword_set(zoomSize) then begin
+      w = where(abs(pos[0,*]-boxCen) le zoomSize*1.0 and abs(pos[1,*]-boxCen) le zoomSize*1.0,count)
+  
+      print,'['+str(snap)+'] Found ['+str(count)+'] of ['+str((size(pos))[2])+'] particles inside zoomBox.'
+      
+      x = pos[0,w]; - boxCen
+      y = pos[1,w]; - boxCen
+    endif
+    
+    ; start plot
+    start_PS, workingPath + 'scatter_snap='+str(snap)+'_'+str(partType)+'.eps'
+    
+      xyrange = [boxCen-zoomSize,boxCen+zoomSize]
+    
+      fsc_plot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,xstyle=1,ystyle=1,$
+           xtitle="x [kpc]",ytitle="y [kpc]",aspect=1.0,charsize=!p.charsize-1.0,$
+           title="particle scatterplot - part ["+str(partType)+"] snap ["+str(snap)+"]"
+    
+      fsc_plot,x,y,psym=3,/overplot
+    
+    end_PS, pngResize=60, /deletePS
+  
+  endfor ;i
+
+end
+
+; plotMeshOverDensity(): plot voronoi over density for a sequence of snapshots (2D only)
+
 pro plotMeshOverDensity
 
   workingPath = '/n/home07/dnelson/dev.tracer/'
@@ -162,7 +265,6 @@ pro plotMeshOverDensity
 
   ; config
   meshBase   = filePath + "voronoi_mesh_"
-  densBase   = filePath + "density_field_"
   snapBase   = filePath + "snap_"
   
   boxSize    = [6.0,6.0]   ;x,y (code)
@@ -184,7 +286,7 @@ pro plotMeshOverDensity
     ids = loadSnapshotSubset(filePath,snapNum=i,partType='gas',field='ids')
 
     ;start_PS, workingPath + 'meshdens_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
-    ;  plotDensityField2D, densBase, i, /psOut, xyScaleFac=xyScaleFac
+    ;  plotDensityField2D, filePath, i, /psOut, xyScaleFac=xyScaleFac
     ;  plotVoronoi2D, meshBase, boxSize, i, /oPlot, /fillWindow
     ;end_PS, pngResize=68, /deletePS
     
@@ -197,7 +299,7 @@ pro plotMeshOverDensity
     end_PS, pngResize=78, /deletePS
     
     start_PS, workingPath + 'dens_'+string(i,format='(I04)')  +".eps", xs=4.0, ys=4.0
-      plotDensityField2D, densBase, i, /psOut, xyScaleFac=xyScaleFac
+      plotDensityField2D, filePath, i, /psOut, xyScaleFac=xyScaleFac
     end_PS, pngResize=78, /deletePS
 
   endfor

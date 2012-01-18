@@ -49,7 +49,7 @@ int CalcHSML_natural(int NumPart, float* data_pos, float* data_mass, int DesNumN
   }
 
   // allocate and build tree
-  tree_treeallocate(2.0 * NumPart, NumPart);
+  tree_treeallocate(4.0 * NumPart, NumPart);
   nNodes = tree_treebuild();
 	
 #ifdef VERBOSE
