@@ -8,14 +8,14 @@ pro makeArepoFoFBsub
 
   ; config
   res = 128
-  run = 'dev.tracer'
+  run = 'dev.tracer.nonrad'
   
   sP = simParams(res=res,run=run)
   
   ;redshift = 3.0
   ;snap     = redshiftToSnapNum(redshift,sP=sP)
   
-  snapRange = [64,64,1]
+  snapRange = [0,75,1]
   ;snapRange = [25,63,1]
 
   ; job config
@@ -72,7 +72,7 @@ pro makeArepoFoFBsub
       
       ; file cleanup
       wait,0.5
-      ;spawn, 'rm ' + sP.plotPath + 'job_fof.bsub'
+      spawn, 'rm ' + sP.plotPath + 'job_fof.bsub'
     endif
   
   endfor ;snapRange
@@ -86,14 +86,14 @@ pro makeArepoProjBsub
 
   ; config - path and snapshot 
   workingPath = '/n/home07/dnelson/dev.tracer/'
-  basePath    = workingPath + 'cosmobox.128_20Mpc/'
-  snapPath    = workingPath + 'cosmobox.128_20Mpc/output/'
+  basePath    = workingPath + 'gasSphere.gasonly.2e5.cooling/'
+  snapPath    = workingPath + 'gasSphere.gasonly.2e5.cooling/output/'
 
   ;redshift = 3.0
   ;snap     = redshiftToSnapNum(redshift,sP=sP)
 
   ;snapRange = [1,1,1]
-  snapRange = [0,64,1]
+  snapRange = [0,11,1]
 
   ; config - viewsize / object
   h = loadSnapshotHeader(basePath+'output/',snapNum=snapRange[0])
@@ -212,7 +212,7 @@ pro sphMapBox, res=res, run=run, partType=partType
   nPixels = [800,800] ;px
 
   zoomFac = 1    ; only in axes, not along projection direction
-  nNGB    = 256    ; use CalcHSML for HSML with nNGB
+  nNGB    = 64   ; use CalcHSML for HSML with nNGB
   axes    = [0,1] ; x,y
 
   ; paths and render config
