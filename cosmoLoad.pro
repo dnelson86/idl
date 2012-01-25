@@ -2,7 +2,254 @@
 ; cosmological simulations - loading procedures (snapshots, fof/subhalo group cataloges)
 ; dnelson jan.2012
 
-; loadSubhaloGroups(): load complete subfind group catalog for a given snapshot
+; getGroupCatFilename(): take input path and snapshot number and find fof/subfind group catalog filename
+
+function getGroupCatFilename, fileBase, snapNum=m
+
+  flag = 0
+  
+  ; m='none' if directly specifying file name
+  if (str(m) eq 'none') then begin
+    ext = ''
+    f = fileBase
+    
+    if file_test(f) then return,f
+  endif else begin
+    ; check for '/' on end of fileBase
+    lastChar = strmid(fileBase,strlen(fileBase)-1,1)
+    if (lastChar ne '/') then fileBase += '/'
+    
+    ; format snap number
+    if (m le 999) then $
+      ext = string(m,format='(I3.3)')
+    if (m gt 999) then $
+      ext = string(m,format='(I4.4)')
+      
+    f = fileBase + 'groups_' + ext + '/fof_subhalo_tab_' + ext
+  endelse
+
+  ; check for single (non-split)
+  if file_test(fileBase+'/fof_subhalo_tab_'+ext+'.hdf5') then begin
+    f = fileBase + 'fof_subhalo_tab_' + ext + '.hdf5'
+  endif else begin
+  
+    ; check existance and multiple outputs
+    if not file_test(f+'.hdf5') then begin
+      if not file_test(f+'.0.hdf5') then begin
+        ;print, 'ERROR: group catalog [' + str(m) + '] at ' + fileBase + ' does not exist!'
+        flag = 1
+      endif
+    endif
+    
+    f = f + '.*hdf5'
+    
+  endelse
+  
+  ; look for FoF only results (no subhalos)
+  if (flag eq 1) then begin
+    f = fileBase + 'groups_' + ext + '/fof_tab_' + ext
+  
+    ; check for single (non-split)
+    if file_test(fileBase+'/fof_tab_'+ext+'.hdf5') then begin
+      f = fileBase + 'fof_tab_' + ext + '.hdf5'
+    endif else begin
+    
+      ; check existance and multiple outputs
+      if not file_test(f+'.hdf5') then begin
+        if not file_test(f+'.0.hdf5') then begin
+          print, 'ERROR: group catalog [' + str(m) + '] at ' + fileBase + ' does not exist!'
+          stop
+        endif
+      endif
+      
+    endelse
+  endif ;flag
+  
+  return, file_search(f)
+
+end
+
+; loadGroupCat(): load new HDF5 fof/subfind group catalog for a given snapshot
+;                 construct offset tables and return structure
+;                     
+; readIDs=1 : by default, skip IDs since we operate under the group ordered snapshot assumption, but
+;             if this flag is set then read IDs and include them (if they exist)
+
+function loadGroupCat, fileBase, m, verbose=verbose
+
+  if not keyword_set(verbose) then verbose = 0
+  !except = 0 ;suppress floating point underflow/overflow errors
+
+  fileList = getGroupCatFileName(fileBase,snapNum=m)
+
+  nFiles = n_elements(fileList)
+  
+  ; load number of split files from header of first part
+  hdf5s    = h5_parse(fileList[0]) ;structure only
+  NumFiles = hdf5s.Header.NumFiles._DATA
+  SubfindExistsFlag = tag_exist(hdf5s,'SubhaloLen')
+  
+  if (NumFiles ne nFiles) then begin
+    print,'ERROR: NumFiles ['+str(NumFiles)+'] differs from number of files found ['+str(nFiles)+'].'
+    stop
+  endif
+  
+  if (verbose) then $
+    print,'Loading group catalog from snapshot ('+str(m)+') in [' + str(NumFiles) + '] files.'  
+  
+  ; counters
+  nGroupsTot    = 0L
+  ;nIDsTot       = 0L
+  nSubgroupsTot = 0L
+  
+  skip    = 0L
+  skipSub = 0L
+  
+  ; load across all file parts
+  for i=0,nFiles-1 do begin
+    ; load header
+    fileID = h5f_open(fileList[i])
+    
+    s = h5_parse(fileID,"Header")
+    
+    h = {                                                          $
+          nGroups             : s.nGroups_ThisFile._DATA          ,$
+          nGroupsTot          : s.nGroups_Total._DATA             ,$
+          nIDs                : s.nIDs_ThisFile._DATA             ,$
+          nIDsTot             : s.nIDs_Total._DATA                ,$
+          nSubgroups          : s.nSubgroups_ThisFile._DATA       ,$
+          nSubgroupsTot       : s.nSubgroups_Total._DATA          ,$
+          numFiles            : s.NumFiles._DATA                  ,$
+          flagDoublePrecision : s.flagDoublePrecision._DATA       $
+        }
+         
+    ; add counters
+    nGroupsTot    += h.nGroups
+    ;nIDsTot       += h.nIDs
+    nSubgroupsTot += h.nSubgroups
+          
+    ; allocate storage if this is the first iteration
+    if (i eq 0) then begin
+      sf  = {                                      $
+        GroupLen        : ulonarr(h.nGroupsTot)   ,$
+        GroupLenType    : ulonarr(6,h.nGroupsTot) ,$
+        GroupMass       : fltarr(h.nGroupsTot)    ,$
+        GroupMassType   : fltarr(6,h.nGroupsTot)  ,$   
+        GroupPos        : fltarr(3,h.nGroupsTot)  ,$
+        GroupVel        : fltarr(3,h.nGroupsTot)  ,$
+        GroupSFR        : fltarr(h.nGroupsTot)    ,$
+                                                   $
+        GroupOffset     : ulonarr(h.nGroupsTot)   ,$
+        GroupOffsetType : ulonarr(6,h.nGroupsTot) ,$
+                                                   $
+        nGroupsTot          : h.nGroupsTot                ,$
+        nSubgroupsTot       : h.nSubgroupsTot             ,$
+        nIDsTot             : h.nIDsTot                    $
+      }
+      
+      if (SubfindExistsFlag eq 1) then begin
+        sfsub = {                                  $
+        Group_M_Mean200 : fltarr(h.nGroupsTot)    ,$
+        Group_R_Mean200 : fltarr(h.nGroupsTot)    ,$
+        Group_M_Crit200 : fltarr(h.nGroupsTot)    ,$
+        Group_R_Crit200 : fltarr(h.nGroupsTot)    ,$
+        Group_M_TH200   : fltarr(h.nGroupsTot)    ,$
+        Group_R_TH200   : fltarr(h.nGroupsTot)    ,$
+        GroupNsubs      : ulonarr(h.nGroupsTot)   ,$
+        GroupFirstSub   : ulonarr(h.nGroupsTot)   ,$
+                                                   $
+        SubgroupLen         : ulonarr(h.nSubgroupsTot)    ,$
+        SubgroupLenType     : ulonarr(6,h.nSubgroupsTot)  ,$  
+        SubgroupMass        : fltarr(h.nSubgroupsTot)     ,$
+        SubgroupMassType    : fltarr(6,h.nSubgroupsTot)   ,$  
+        SubgroupPos         : fltarr(3,h.nSubgroupsTot)   ,$
+        SubgroupVel         : fltarr(3,h.nSubgroupsTot)   ,$
+        SubgroupCM          : fltarr(3,h.nSubgroupsTot)   ,$
+        SubgroupSpin        : fltarr(3,h.nSubgroupsTot)   ,$
+        SubgroupVelDisp     : fltarr(h.nSubgroupsTot)     ,$
+        SubgroupVmax        : fltarr(h.nSubgroupsTot)     ,$
+        SubgroupVmaxRad     : fltarr(h.nSubgroupsTot)     ,$
+        SubgroupHalfMassRad : fltarr(h.nSubgroupsTot)     ,$
+        SubgroupIDMostBound : ulonarr(h.nSubgroupsTot)    ,$
+        SubgroupGrNr        : lonarr(h.nSubgroupsTot)     ,$
+        SubgroupParent      : ulonarr(h.nSubgroupsTot)     $
+      }
+        sf = create_struct(sf,sfsub) ;concat
+      endif
+    endif
+    
+    ; fill sf with group data from this part
+    sf.GroupLen        [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/GroupLen"))
+    sf.GroupLenType    [*,skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupLenType"))
+    sf.GroupMass       [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/GroupMass"))
+    sf.GroupMassType   [*,skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupMassType"))
+    sf.GroupPos        [*,skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupPos"))
+    sf.GroupVel        [*,skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupVel"))
+    if tag_exist(hdf5s,'GroupSFR') then $
+      sf.GroupSFR        [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/GroupSFR"))
+    
+    if (SubfindExistsFlag eq 1) then begin
+      ; these group properties only exist if subfind was run
+      sf.Group_M_Mean200 [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/Group_M_Mean200"))
+      sf.Group_R_Mean200 [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/Group_R_Mean200"))
+      sf.Group_M_Crit200 [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/Group_M_Crit200"))
+      sf.Group_R_Crit200 [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/Group_R_Crit200"))
+      sf.Group_M_TH200   [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/Group_M_TopHat200"))
+      sf.Group_R_TH200   [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/Group_R_TopHat200"))
+      
+      sf.GroupNsubs      [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/GroupNsubs"))
+      sf.GroupFirstsub   [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/GroupFirstSub"))
+    endif
+    
+    skip += h.nGroups
+    
+    ; fill sf with subhalo data from this part
+    if (SubfindExistsFlag eq 1) then begin
+  sf.SubgroupLen     [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloLen"))
+  sf.SubgroupLenType [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloLenType"))
+  sf.SubgroupMass    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloMass"))
+  sf.SubgroupMassType[*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloMassType"))
+  sf.SubgroupPos     [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloPos"))
+  sf.SubgroupVel     [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVel"))
+  sf.SubgroupCM      [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloCM"))
+  sf.SubgroupSpin    [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloSpin"))
+  
+  sf.SubgroupVelDisp [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVelDisp"))
+  sf.SubgroupVmax    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVmax"))
+  sf.SubgroupVmaxRad [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVmaxRad"))
+  sf.SubgroupVelDisp [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloHalfmassRad"))
+  sf.SubgroupVelDisp [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloIDMostbound"))
+  
+  sf.SubgroupGrnr    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloGrNr"))
+  sf.SubgroupParent  [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloParent"))
+  
+  skipSub += h.nSubgroups
+    endif
+    
+    ; close file
+    h5f_close, fileID
+  
+  endfor
+  
+  ; create offset tables
+  for i=1L, h.nGroupsTot-1 do begin
+    sf.GroupOffset[i]       = sf.GroupOffset[i-1]       + sf.GroupLen[i-1]
+    sf.GroupOffsetType[*,i] = sf.GroupOffsetType[*,i-1] + sf.GroupOffsetType[*,i-1]
+  endfor
+
+  ; verify accumulated totals with last header totals
+  if ((nGroupsTot ne h.nGroupsTot) or (nSubgroupsTot ne h.nSubgroupsTot)) then begin
+      ;(nIDsTot ne h.nIDsTot and keyword_set(readIDs)) or $
+    print,'ERROR: Totals do not add up.'
+    stop
+  endif
+  
+  !except = 1
+  
+  return,sf
+end
+
+; loadSubhaloGroups(): load (OLD) complete subfind group catalog for a given snapshot
 ;
 ; skipIDs=1 : don't load actual group member particle IDs
 
@@ -340,9 +587,9 @@ function loadSubhaloGroups, fileBase, m, verbose=verbose, skipIDs=skipIDs
   return,sf
 end
 
-; getSnapFilename(): take input path and snapshot number and find snapshot filename
+; getSnapFilelist(): take input path and snapshot number and find snapshot filename
 
-function getSnapFilename, fileBase, snapNum=m
+function getSnapFilelist, fileBase, snapNum=m
 
   ; check for '/' on end of fileBase
   lastChar = strmid(fileBase,strlen(fileBase)-1,1)
@@ -365,18 +612,22 @@ function getSnapFilename, fileBase, snapNum=m
   if file_test(fileBase+'/snap_'+ext+'.hdf5') then begin
     f = fileBase + 'snap_' + ext
   endif else begin
+    ; check for single groupordered
+    if file_test(fileBase+'/snap-groupordered_'+ext+'.hdf5') then begin
+      f = fileBase + 'snap-groupordered_' + ext
+    endif else begin
   
-    ; check existance and multiple outputs
-    if not file_test(f+'.hdf5') then begin
-      if not file_test(f+'.0.hdf5') then begin
-        print, 'ERROR: snapshot [' + str(m) + '] at ' + fileBase + ' does not exist!'
-        stop
+      ; check existance and multiple outputs
+      if not file_test(f+'.hdf5') then begin
+        if not file_test(f+'.0.hdf5') then begin
+          print, 'ERROR: snapshot [' + str(m) + '] at ' + fileBase + ' does not exist!'
+          stop
+        endif
       endif
-    endif
-    
-  endelse
+    endelse ;groupordered
+  endelse ;single
   
-  return, f
+  return, file_search(f+".*hdf5")
 
 end
 
@@ -386,9 +637,7 @@ function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
 
   if not keyword_set(verbose) then verbose = 0
 
-  f = getSnapFileName(fileBase,snapNum=m)
-
-  fileList = file_search(f+".*hdf5")
+  fileList = getSnapFilelist(fileBase,snapNum=m)
   
   ; read header from first part
   fileID   = h5f_open(fileList[0])
@@ -431,9 +680,8 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
   if not keyword_set(verbose) then verbose = 0
   partType = PT ; so we don't change the input
 
-  f = getSnapFileName(fileBase,snapNum=m)
+  fileList = getSnapFilelist(fileBase,snapNum=m)
   
-  fileList = file_search(f+".*hdf5")
   nFiles = n_elements(fileList)
   
   ; input config: set partType number if input in string

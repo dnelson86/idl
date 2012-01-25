@@ -24,6 +24,9 @@ function getUnits
             UnitPressure_in_cgs : 0.0D                        ,$
             UnitEnergy_in_cgs   : 0.0D                        ,$
             
+            ; non-cgs units
+            UnitMass_in_Msun    : 0.0D                        ,$
+            
             ; constants
             boltzmann   : double(1.38066e-16)                 ,$ ;cgs
             mass_proton : double(1.6727e-24)                  ,$ ;cgs
@@ -44,11 +47,14 @@ function getUnits
             kpc_in_km : 3.0856e16                              $
       }
       
-   ; derived units
-  units.UnitTime_in_s = units.UnitLength_in_cm / units.UnitVelocity_in_cm_per_s
+  ; derived units
+  units.UnitTime_in_s       = units.UnitLength_in_cm / units.UnitVelocity_in_cm_per_s
   units.UnitDensity_in_cgs  = units.UnitMass_in_g / units.UnitLength_in_cm^3.0
   units.UnitPressure_in_cgs = units.UnitMass_in_g / units.UnitLength_in_cm / units.UnitTime_in_s^2.0
   units.UnitEnergy_in_cgs   = units.UnitMass_in_g * units.UnitLength_in_cm^2.0 / units.UnitTime_in_s^2.0
+  
+  ; non-cgs units
+  units.UnitMass_in_Msun = units.UnitMass_in_g / units.Msun_in_g
   
   ; derived constants (in code units)
   units.H0 = Hubble * 100 * 1e5 / (units.Mpc_in_cm) / $
@@ -166,7 +172,7 @@ end
 ; writeICFile(): write old Gadget format IC file with gas particles and tracers
 ;                each partX struct should contain {id,pos,vel,mass,u} in the usual format
 
-pro writeICFile, fOut, part0=part0, part1=part1, part2=part2
+pro writeICFile, fOut, part0=part0, part1=part1, part2=part2, massarr=massarr
 
   ; arrays
   pos  = []
@@ -175,9 +181,13 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2
   mass = []
   u    = []
 
+  ; quick type checking (type code 4 = FLOAT precision, 3 = LONG)
+  if keyword_set(massarr) then $
+    if ( (size(massarr))[2] ne 4 ) then print,'WARNING: massarr type.'
+
   ; create header
   npart    = lonarr(6)  
-  massarr  = dblarr(6)
+  if not keyword_set(massarr) then massarr  = dblarr(6)
   npartall = lonarr(6)
 
   ; add to particle counts and concat arrays
@@ -186,14 +196,23 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2
     npart(0)    = n_elements(part0.id)
     npartall(0) = n_elements(part0.id)
     
+    if (size(part0.pos))[3] ne 4 then print,'WARNING: part0 pos type.'
+    if (size(part0.vel))[3] ne 4 then print,'WARNING: part0 vel type.'
+    if (size(part0.id))[2] ne 3 then print,'WARNING: part0 id type.'
+    if (size(part0.u))[2] ne 4 then print,'WARNING: part0 u type.'
+    
     pos  = [[pos], [part0.pos]]
     vel  = [[vel], [part0.vel]]
     id   = [id,    part0.id]
-    mass = [mass,  part0.mass]
+    if (massarr[0] eq 0.0) then begin ; if massTable[partType]=0 then expect mass block in ICs
+      if (size(part0.mass))[2] ne 4 then print,'WARNING: part0 mass type.'
+      mass = [mass,  part0.mass]
+    endif
     u    = [u,     part0.u]
   endif
-  
+
   if keyword_set(part1) then begin
+    ; DM
     npart(1)    = n_elements(part1.id)
     npartall(1) = n_elements(part1.id)
     
@@ -226,13 +245,14 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2
 
   ; write IC file
   openw,1,fOut,/f77_unformatted
-  writeu,1,npart,massarr,time,redshift,flag_sfr,flag_feedback,npartall,la
+  writeu,1,npart,double(massarr),time,redshift,flag_sfr,flag_feedback,npartall,la
 
-  writeu,1, pos
-  writeu,1, vel
-  writeu,1, id
-  writeu,1, mass
-  writeu,1, u                       ; internal energy per unit mass
+  writeu,1, float(pos)
+  writeu,1, float(vel)
+  writeu,1, long(id)
+  if (n_elements(mass) gt 0) then $
+    writeu,1, float(mass)
+  writeu,1, float(u)                       ; internal energy per unit mass
   close,1
   
   print,'wrote ',fOut
@@ -355,7 +375,7 @@ pro start_PS, filename, xs=xs, ys=ys
             /encapsulated, decomposed=0, xs=xs, ys=ys, /inches, font=0, tt_font='Times' ;3/2  
  
   !p.charsize = 1.5
-  !p.thick    = 3.0          
+  !p.thick    = 4.0          
             
 end
 

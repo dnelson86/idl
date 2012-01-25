@@ -12,15 +12,10 @@ function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose
 
   if not (file_test(saveFileName)) then begin
 
-    ; multiple files per group catalog
-    ret = file_search(sP.simPath+'snapdir_*', count=nSnaps)
+    nSnaps = 400 ; maximum
     
-    ; single file per group catalog
-    if (nSnaps eq 0) then $
-      ret = file_search(sP.simPath+'snap_*.hdf5', count=nSnaps)
-    
-    redshifts = fltarr(nSnaps)
-    times     = fltarr(nSnaps)
+    redshifts = fltarr(nSnaps) - 1
+    times     = fltarr(nSnaps) - 1
     
     for m=0,nSnaps-1 do begin
       ; format filename
@@ -30,6 +25,13 @@ function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose
       ; single file per group catalog
       if (not file_test(f)) then $
         f = sP.simPath + 'snap_' + ext + '.hdf5'
+        
+      ; single groupordered file per group catalog
+      if (not file_test(f)) then $
+        f = sP.simPath + 'snap-groupordered_' + ext + '.hdf5'
+      
+      ; if file doesn't exist yet, skip (e.g. every other file deleted)
+      if (not file_test(f)) then continue
     
       ; load hdf5 header and save time+redshift
       fileID   = h5f_open(f)
@@ -43,7 +45,7 @@ function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose
     endfor
   
     ; save/restore
-    save,sP,nSnaps,redshifts,times,filename=saveFileName
+    save,nSnaps,redshifts,times,filename=saveFileName
   endif else begin
     restore,saveFileName
   endelse
@@ -87,13 +89,14 @@ function simParams, res=res, run=run, redshift=redshift
        arepoPath:    '',$    ; root path to Arepo and param.txt for e.g. projections/fof
        savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
        boxSize:      0.0,$   ; boxsize of simulation, kpc
+       trMassConst:  0.0,$   ; mass per tracer under equal mass assumption (=total(mass_gas)/numTracers)
        snapRange:    [0,0],$ ; snapshot range of simulation
        groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
        plotPath:     '',$    ; path to put plots
        galCatPath:   '',$    ; path to galaxy catalog files
        thistPath:    '',$    ; path to thermal history files
        derivPath:    '',$    ; path to put derivative (data) files
-       snap:         0,$     ; convenience for passing between functions
+       snap:         -1,$     ; convenience for passing between functions
        res:          0,$     ; copied from input
        run:          '',$    ; copied from input
        minNumGasPart: 0}     ; minimum number of gas particles in a galaxy to include in e.g. mass func
@@ -121,8 +124,9 @@ function simParams, res=res, run=run, redshift=redshift
   
   if (run eq 'dev.tracer') then begin
     r.boxSize       = 20000.0
-    r.snapRange     = [0,64]
-    r.groupCatRange = [25,64]
+    r.trMassConst   = 0.0047645
+    r.snapRange     = [0,76]
+    r.groupCatRange = [25,76]
   
     r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/output/'
     r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/'
@@ -131,23 +135,43 @@ function simParams, res=res, run=run, redshift=redshift
     r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/data.files/'
     
     ; if redshift passed in, convert to snapshot number and save
-    if keyword_set(redshift) then begin
-      snap = redshiftToSnapNum(redshift,sP=r)
-      r.snap = snap
-    endif
+    if keyword_set(redshift) then r.snap = redshiftToSnapNum(redshift,sP=r)
     
     return,r
   endif
   
-  if (run eq 'mark.trtest') then begin
+  if (run eq 'dev.tracer.nonrad') then begin
     r.boxSize       = 20000.0
-    r.snapRange     = [0,313]
-    r.groupCatRange = [0,0]
+    r.trMassConst   = 0.0047645
+    r.snapRange     = [0,75]
+    r.groupCatRange = [25,75]
   
-    r.simPath    = '/n/hernquistfs1/mvogelsberger/Development/TRACER_PARTICLE/cosmo/output/'
-    r.savPrefix  = 'M'
+    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/'
+    r.savPrefix  = 'N'
     r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if keyword_set(redshift) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
+  
+  if (run eq 'dev.tracer.noref') then begin
+    r.boxSize       = 20000.0
+    r.trMassConst   = 0.0047645
+    r.snapRange     = [0,38]
+    r.groupCatRange = [15,38]
+  
+    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_noref/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_noref/'
+    r.savPrefix  = 'R'
+    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_noref/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if keyword_set(redshift) then r.snap = redshiftToSnapNum(redshift,sP=r)
     
     return,r
   endif
@@ -514,29 +538,25 @@ end
 
 ; snapNumToRedshift(): convert snapshot number to redshift or time
 
-function snapNumToRedshift, snapNum=snapNum, time=time, all=all
+function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap
 
-  saveFileName = '/n/home07/dnelson/coldflows/snapnum.redshift.sav'
-  
-  if not (file_test(saveFileName)) then begin
-    print,'ERROR: Save missing.'
-    return,0
-  endif
-  
-  if not keyword_set(snapNum) then snapNum = -1
+  saveFileName = sP.derivPath + sP.savPrefix + '_snapnum.redshift.sav'
+
+  if not file_test(saveFileName) then stop
+  if not keyword_set(snap) then snap = -1
   
   ; restore
   restore,saveFilename
 
   if (not keyword_set(time)) then begin
-    if (snapNum ge 0 and snapNum lt n_elements(redshifts)) then $
-      return,redshifts[snapNum]
+    if (snap ge 0 and snap lt n_elements(redshifts)) then $
+      return,redshifts[snap]
       
     if (keyword_set(all)) then $
       return,redshifts
   endif else begin
-    if (snapNum ge 0 and snapNum lt n_elements(redshifts)) then $
-      return,times[snapNum]
+    if (snap ge 0 and snap lt n_elements(redshifts)) then $
+      return,times[snap]
       
     if (keyword_set(all)) then $
       return,times
