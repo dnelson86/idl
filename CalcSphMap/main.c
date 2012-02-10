@@ -190,12 +190,7 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
   return 0;
 }
 
-/* IDL glue routine
- 
-  example:
-    
-*/
-
+// IDL glue routine
 int CalcSphMap(int argc, void* argv[])
 {	
   float *data_pos, *data_hsml, *data_mass, *grid_out;

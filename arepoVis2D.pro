@@ -211,14 +211,14 @@ pro scatterPlotPos
 
   ; config
   workingPath = '/n/home07/dnelson/dev.tracer/'
-  filePath    = workingPath + 'cosmobox.64_10Mpc/output.old/'
+  filePath    = workingPath + 'gasSphere.gasonly.2e5/output/'
   
   zoomSize = 1000.0 ;kpc
   partType = 'gas'
 
   ; find number of snapshots and loop
   ;nSnaps = n_elements(file_search(filepath+'snap_*'))
-  snapRange = [25,95,20]
+  snapRange = [0,10,1]
   
   for snap=snapRange[0],snapRange[1],snapRange[2] do begin
     ; sizes
@@ -242,7 +242,7 @@ pro scatterPlotPos
     ; start plot
     start_PS, workingPath + 'scatter_snap='+str(snap)+'_'+str(partType)+'.eps'
     
-      xyrange = [boxCen-zoomSize,boxCen+zoomSize]
+      xyrange = [boxCen-zoomSize/2.0,boxCen+zoomSize/2.0]
     
       fsc_plot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,xstyle=1,ystyle=1,$
            xtitle="x [kpc]",ytitle="y [kpc]",aspect=1.0,charsize=!p.charsize-1.0,$
