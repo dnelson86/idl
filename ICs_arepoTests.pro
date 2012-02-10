@@ -4,6 +4,64 @@
 
 @helper
 
+; add background grid of specified resolution to gas ICs
+function addICBackgroundGrid, gas, boxSize=boxSize, nBackGrid=nBackGrid
+
+  ; if not requested, return un-altered
+  if (nBackGrid eq 0) then return, gas
+  
+  if (n_elements(boxSize) eq 0 or n_elements(gas) eq 0) then stop
+
+  ; config
+  massBackGrid   = 1e-20
+  uthermBackGrid = 0.0
+
+  backCellSize = boxSize / nBackGrid
+  
+  xyz_back = findgen(nBackGrid)/nBackGrid * boxSize + backCellSize/2.0
+  
+  nBackKeep = 0
+  pos_back = []
+  
+  ; find empty background grid cells
+  for i=0,nBackGrid-1 do begin
+    for j=0,nBackGrid-1 do begin
+      for k=0,nBackGrid-1 do begin
+        cenBackCell = [xyz_back[i],xyz_back[j],xyz_back[k]]
+        min_xyz = cenBackCell - backCellSize/2.0
+        max_xyz = cenBackCell + backCellSize/2.0
+        
+        w = where(gas.pos[0,*] ge min_xyz[0] and gas.pos[0,*] le max_xyz[0] and $
+                  gas.pos[1,*] ge min_xyz[1] and gas.pos[1,*] le max_xyz[1] and $
+                  gas.pos[2,*] ge min_xyz[2] and gas.pos[2,*] le max_xyz[2], count)
+        
+        ; keep background point
+        if (count eq 0) then begin
+          nBackKeep += 1
+          pos_back = [[pos_back],[cenBackCell]]
+        endif
+      endfor
+    endfor
+  endfor
+  
+  ; create other arrays
+  vel_back  = fltarr(3,nBackKeep)
+  mass_back = fltarr(nBackKeep) + massBackGrid
+  u_back    = fltarr(nBackKeep) + uthermBackGrid
+  id_back   = lindgen(nBackKeep) + max(id) + 1
+  
+  ; concat background grid and primary cells
+  pos  = [[gas.pos],[pos_back]]
+  vel  = [[gas.vel],[vel_back]]
+  mass = [gas.mass,mass_back]
+  u    = [gas.u,u_back]
+  id   = [gas.id,id_back]
+
+  r = {pos:pos,vel:vel,mass:mass,u:u,id:id}
+  return, r
+  
+end
+
 ; 2D arepo.cuda input
 pro gen_arepo_cuda_2D_input
 
@@ -211,6 +269,99 @@ pro gen_TS_BlastWave_3D_ICs
   
 end
 
+
+; original 3D Evrard collapse: BoxSize=10.0 PERIODIC GAMMA=1.4
+pro gen_evrard_collapse_3D_ICs
+
+  ; config
+  fOut = "evrard_3D_24k.dat"
+  
+  Lx = 10.0
+  Ly = 10.0
+  Lz = 10.0
+  
+  ga       = 5.0/3.0
+  rho_hot  = 1.0
+  rho_cold = 10.0
+  P        = 1.0
+  
+  Machnumber = 2.7
+  
+  R_cold = 1.0  
+  N_cold = 24000L
+  
+  ; derived
+  xc = Lx/2
+  yc = Ly/2
+  zc = Lz/2
+  
+  cs   = sqrt(ga*P/rho_hot)
+  vext = Machnumber*cs
+  
+  vol_hot  = Lx*Ly*Lz - 4.0*!pi/3.0*R_cold^3.0
+  vol_cold = 4.0*!pi/3.0*R_cold^3.0
+  
+  mPart = rho_cold*vol_cold/N_cold
+  
+  N_hot   = round(rho_hot*vol_hot/mPart)
+  N_total = N_cold + N_hot
+  
+  print,'num cold hot total',N_cold,N_hot,N_total
+  
+  ; arrays
+  pos  = fltarr(3,N_total)
+  vel  = fltarr(3,N_total)
+  mass = fltarr(N_total)
+  u    = fltarr(N_total)
+  id   = lindgen(N_total)+1L
+  
+  mass += mPart
+  
+  seed = 42L
+  
+  ; generate hot component
+  for n=0L, N_hot-1 do begin
+    repeat begin
+     x = Lx*randomu(seed,1)
+     y = Ly*randomu(seed,1)
+     z = Lz*randomu(seed,1)
+     r = sqrt((x-xc)^2.0 + (y-yc)^2.0 + (z-zc)^2.0)
+    endrep until r gt R_cold
+  
+    pos[0,n] = x
+    pos[1,n] = y
+    pos[2,n] = z
+    u[n]     = P/rho_hot/(ga-1.0)
+    vel[0,n] = vext
+  endfor
+  
+  ; generate cold component
+  for n=0L, N_cold-1 do begin
+    repeat begin
+     x = xc+R_cold*(randomu(seed,1)-0.5)*2.0
+     y = yc+R_cold*(randomu(seed,1)-0.5)*2.0
+     z = zc+R_cold*(randomu(seed,1)-0.5)*2.0
+     r = sqrt((x-xc)^2.0 + (y-yc)^2.0 + (z-zc)^2.0)
+    endrep until r lt R_cold
+  
+    pos[0,n+N_hot] = x
+    pos[1,n+N_hot] = y
+    pos[2,n+N_hot] = z
+    u[n+N_hot]     = P/rho_cold/(ga-1.0)
+  endfor
+  
+  ; add background grid
+  gas = {pos:pos,vel:vel,id:id,mass:mass,u:u}
+  
+  nBackGrid = 0
+  
+  gasWithBack = addICBackgroundGrid(gas,boxSize=Lx,nBackGrid=nBackGrid)
+  
+  ; write
+  writeICFile,fOut,part0=gasWithBack
+  
+end
+
 ; ---------------------------------------------------------------------
 ; original 2D KH:
 ; ---------------------------------------------------------------------
@@ -322,73 +473,3 @@ end
 ;   endfor
 ;  endfor
 
-; ---------------------------------------------------------------------
-; original 3D Evrard collapse:
-; BoxSize=10.0 PERIODIC GAMMA=1.4
-; ---------------------------------------------------------------------
-; 
-;  Lx=10.
-;  Ly=10.
-;  Lz=10.
-;  xc=5.
-;  yc=5.
-;  zc=5.
-;  ga=1.4
-;  rho_hot=1.
-;  rho_cold=10.
-;  P=1.
-;  
-;  Machnumber=2.7
-;  cs=sqrt(ga*P/rho_hot)
-;  vext=Machnumber*cs
-;  
-;  R_cold=1.
-;  
-;  vol_hot=Lx*Ly*Lz - 4.*!PI/3.*R_cold^3.
-;  vol_cold=4.*!PI/3.*R_cold^3.
-;  
-;  N_cold=2000L
-;  mpart=rho_cold*vol_cold/N_cold
-;  N_hot=round(rho_hot*vol_hot/mpart)
-;  
-;  N_total=N_cold + N_hot
-;  
-;  pos=fltarr(3,N_total)
-;  vel=fltarr(3,N_total)
-;  mass=fltarr(N_total)
-;  u=fltarr(N_total)
-;  id=lindgen(N_total)+1L
-;  
-;  mass+=mpart
-;  
-;  seed=42L
-;  for n=0L, N_hot-1 do begin
-;    repeat begin
-;     x=Lx*randomu(seed,1)
-;     y=Ly*randomu(seed,1)
-;     z=Lz*randomu(seed,1)
-;     r=sqrt((x-xc)^2. + (y-yc)^2. + (z-zc)^2.)
-;    endrep until r gt R_cold
-;  
-;    pos(0,n)=x
-;    pos(1,n)=y
-;    pos(2,n)=z
-;    u(n)=P/rho_hot/(ga-1.0)
-;  
-;    vel(0,n)=vext
-;  
-;  endfor
-;  
-;  for n=0L, N_cold-1 do begin
-;    repeat begin
-;     x=xc+R_cold*(randomu(seed,1)-0.5)*2.
-;     y=yc+R_cold*(randomu(seed,1)-0.5)*2.
-;     z=zc+R_cold*(randomu(seed,1)-0.5)*2.
-;     r=sqrt((x-xc)^2. + (y-yc)^2. + (z-zc)^2.)
-;    endrep until r lt R_cold
-;  
-;    pos(0,n+N_hot)=x
-;    pos(1,n+N_hot)=y
-;    pos(2,n+N_hot)=z
-;    u(n+N_hot)=P/rho_cold/(ga-1.0)
-;  endfor

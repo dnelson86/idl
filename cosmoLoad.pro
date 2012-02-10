@@ -171,6 +171,7 @@ function loadGroupCat, fileBase, m, verbose=verbose
         SubgroupVmaxRad     : fltarr(h.nSubgroupsTot)     ,$
         SubgroupHalfMassRad : fltarr(h.nSubgroupsTot)     ,$
         SubgroupIDMostBound : ulonarr(h.nSubgroupsTot)    ,$
+        ;SubgroupIDMostBound : ulon64arr(h.nSubgroupsTot)  ,$ ; LONGIDS maybe? >4B
         SubgroupGrNr        : lonarr(h.nSubgroupsTot)     ,$
         SubgroupParent      : ulonarr(h.nSubgroupsTot)     $
       }
@@ -217,8 +218,8 @@ function loadGroupCat, fileBase, m, verbose=verbose
   sf.SubgroupVelDisp [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVelDisp"))
   sf.SubgroupVmax    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVmax"))
   sf.SubgroupVmaxRad [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVmaxRad"))
-  sf.SubgroupVelDisp [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloHalfmassRad"))
-  sf.SubgroupVelDisp [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloIDMostbound"))
+  sf.SubgroupHalfMassRad[skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloHalfmassRad"))
+  sf.SubgroupIDMostBound[skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloIDMostbound"))
   
   sf.SubgroupGrnr    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloGrNr"))
   sf.SubgroupParent  [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloParent"))
@@ -609,26 +610,22 @@ function getSnapFilelist, fileBase, snapNum=m
   endelse
 
   ; check for single (non-split)
-  if file_test(fileBase+'/snap_'+ext+'.hdf5') then begin
-    f = fileBase + 'snap_' + ext
-  endif else begin
-    ; check for single groupordered
-    if file_test(fileBase+'/snap-groupordered_'+ext+'.hdf5') then begin
-      f = fileBase + 'snap-groupordered_' + ext
-    endif else begin
-  
-      ; check existance and multiple outputs
-      if not file_test(f+'.hdf5') then begin
-        if not file_test(f+'.0.hdf5') then begin
-          print, 'ERROR: snapshot [' + str(m) + '] at ' + fileBase + ' does not exist!'
-          stop
-        endif
-      endif
-    endelse ;groupordered
-  endelse ;single
-  
-  return, file_search(f+".*hdf5")
+  if file_test(fileBase+'snap_'+ext+'.hdf5') then $
+    return, file_search(fileBase + 'snap_' + ext + ".*hdf5")
 
+  ; check for single groupordered
+  if file_test(fileBase+'snap-groupordered_'+ext+'.hdf5') then $
+    return, file_search(fileBase + 'snap-groupordered_' + ext+".*hdf5")
+  
+  ; check for multiple groupordered
+  if file_test(fileBase+'snapdir_'+ext+'/snap-groupordered_'+ext+'.0.hdf5') then $
+    return, file_search(fileBase + 'snapdir_' + ext + '/snap-groupordered_' + ext+".*hdf5")
+  
+  ; check for exact name or multiple outputs
+  if (file_test(f+'.hdf5') or file_test(f+'.0.hdf5')) then $
+    return, file_search(f+".*hdf5")
+
+  return,-1
 end
 
 ; loadSnapshotHeader(): load header
@@ -637,7 +634,10 @@ function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
 
   if not keyword_set(verbose) then verbose = 0
 
+  ; get matching filename (return -1 if not found)
   fileList = getSnapFilelist(fileBase,snapNum=m)
+
+  if ((size(fileList))[0] eq 0) then if (fileList eq -1) then return,-1
   
   ; read header from first part
   fileID   = h5f_open(fileList[0])
@@ -681,7 +681,7 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
   partType = PT ; so we don't change the input
 
   fileList = getSnapFilelist(fileBase,snapNum=m)
-  
+
   nFiles = n_elements(fileList)
   
   ; input config: set partType number if input in string
@@ -741,7 +741,7 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
     fieldName = 'CoolingRate'
     if (partType ne 0) then begin & print,'Error: CoolingRate is gas only!' & return,0 & endif
   endif
-  if (field eq 'density' or field eq 'rho') then begin
+  if (field eq 'density' or field eq 'rho' or field eq 'dens') then begin
     r = fltarr(nPartTot[partType])
     fieldName = 'Density'
     if (partType ne 0) then begin & print,'Error: Density is gas only!' & return,0 & endif
@@ -752,11 +752,11 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
     if (partType ne 0) then begin & print,'Error: NE is gas only!' & return,0 & endif
   endif
   if (field eq 'properties' or field eq 'quants' or field eq 'quantities' or $
-      field eq 'tracer_rho' or field eq 'tracer_temp' or field eq 'tracer_maxtemp') then begin
+      field eq 'tracer_cumsfr' or field eq 'tracer_maxtemp_nosf' or field eq 'tracer_maxtemp') then begin
     fieldName = 'FluidQuantities'
-    rDims = 3 ; WARNING: must match to Arepo run (currently: Density,CurTemp,MaxTemp)
+    rDims = 3 ; WARNING: must match to Arepo run (currently: CumSFR,MaxTempNoSF,MaxTemp)
     r = fltarr(rDims,nPartTot[partType])
-    if (partType ne 2) then begin & print,'Error: Fluid quantities are tracer only!' & return,0 & endif
+    if (partType ne 3) then begin & print,'Error: Fluid quantities are tracer only!' & return,0 & endif
   endif
   if (field eq 'internalenergy' or field eq 'u') then begin
     r = fltarr(nPartTot[partType])
@@ -884,7 +884,7 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
   if (field eq 'x' or field eq 'y' or field eq 'z' or $
       field eq 'velx' or field eq 'vely' or field eq 'velz' or $
       field eq 'cmx' or field eq 'cmy' or field eq 'cmz' or $
-      field eq 'tracer_rho' or field eq 'tracer_temp' or field eq 'tracer_maxtemp') then begin
+      field eq 'tracer_cumsfr' or field eq 'tracer_maxtemp_nosf' or field eq 'tracer_maxtemp') then begin
     case field of
       'x'   : fN = 0
       'velx': fN = 0
@@ -896,9 +896,9 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
       'velz': fN = 2
       'cmz' : fN = 2
       
-      'tracer_rho'     : fN = 0
-      'tracer_temp'    : fN = 1
-      'tracer_maxtemp' : fN = 2
+      'tracer_cumsfr'       : fN = 0
+      'tracer_maxtemp_nosf' : fN = 1
+      'tracer_maxtemp'      : fN = 2
     endcase
     r = reform(r[fN,*])
   endif

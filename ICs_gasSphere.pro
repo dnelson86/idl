@@ -51,7 +51,8 @@ function Sigma, r
   COMMON gv
   ;sqrt(quad(Sigma_Integrand, r, INTERPOL_R_MAX_GAS, epsrel=0.1)[0]/Rho(r))
   val = qpint1d('Sigma_Integrand', r, INTERPOL_R_MAX_GAS, epsrel=0.1)
-  return,sqrt(val / Rho(r))
+  test = sqrt(val/Rho(r))
+  return,test
 end
 
 pro gen_ICs_gasSphere
@@ -71,7 +72,7 @@ pro gen_ICs_gasSphere
   add_gas  = 1                           ; add gas particles?
 
   ; Hernquist profile
-  HQ_M = 1e2
+  HQ_M = 1e3
   HQ_c = 7.0
 
   ; bounds
@@ -81,6 +82,10 @@ pro gen_ICs_gasSphere
   R_min_gas  = 1e-5                      ; minimum gas sampling radius [HQ_a]
   R_max_gas  = 5.0                       ; maximum gas sampling radius [HQ_a]
   R_bins     = 1000                      ; number of interpolation points for function evaluation/inversion
+
+  ; rotation
+  Lambda  = 0.0                          ; 0.0 for no rotation
+  S_omega = 1.0                          ; 0.0 for rigid body rotation
 
   ; random seed
   seed = 424242L
@@ -117,11 +122,12 @@ pro gen_ICs_gasSphere
   mass_bins_halo = HaloMass(radial_bins)
   radius_halo = interpol(radial_bins,mass_bins_halo,randomu(seed,N_halo)*max(mass_bins_halo))
   
-  ; interpoalte sigma and set utherm
+  ; interpolate sigma and set utherm
   radial_bins = exp(findgen(INTERPOL_BINS)*alog(INTERPOL_R_MAX_GAS/INTERPOL_R_MIN_GAS) / $
                 INTERPOL_BINS + alog(INTERPOL_R_MIN_GAS))
   sigma_bins = Sigma(radial_bins)
-  utherm = 1.5 * interpol(sigma_bins,radial_bins,radius_gas)^2.0
+  sigma_interp = interpol(sigma_bins,radial_bins,radius_gas)
+  utherm = 1.5 * sigma_interp^2.0
 
   print,'Random positions.'
   ; generate random positions (gas)
@@ -140,12 +146,18 @@ pro gen_ICs_gasSphere
   y_halo = radius_halo * cos(theta_halo) * sin(phi_halo)
   z_halo = radius_halo * sin(theta_halo)
 
+  ; rotation
+  if (Lambda ne 0.0) then begin
+    print,'Velocities.'
+    
+  endif
+
   ; prepare for snapshot
   pos_gas  = transpose([[x_gas],[y_gas],[z_gas]])
   vel_gas  = fltarr(3,N_gas)
   id_gas   = lindgen(N_gas)+1
   
-  gas = {pos:pos_gas,vel:vel_gas,id:id_gas,u:utherm}
+  gas = {pos:pos_gas,vel:vel_gas,id:id_gas,u:float(utherm)}
   
   pos_dm  = transpose([[x_halo],[y_halo],[z_halo]])
   vel_dm  = fltarr(3,N_halo)

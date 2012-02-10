@@ -89,7 +89,8 @@ function simParams, res=res, run=run, redshift=redshift
        arepoPath:    '',$    ; root path to Arepo and param.txt for e.g. projections/fof
        savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
        boxSize:      0.0,$   ; boxsize of simulation, kpc
-       trMassConst:  0.0,$   ; mass per tracer under equal mass assumption (=total(mass_gas)/numTracers)
+       trMassConst:  0.0,$   ; mass per tracer under equal mass assumption (=TargetGasMass)
+       gravSoft:     0.0,$   ; gravitational softening length (ckpc)
        snapRange:    [0,0],$ ; snapshot range of simulation
        groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
        plotPath:     '',$    ; path to put plots
@@ -111,6 +112,10 @@ function simParams, res=res, run=run, redshift=redshift
     r.groupCatRange = [50,314]
     r.minNumGasPart = 100
   
+    if (res eq 128) then r.gravSoft = 4.0
+    if (res eq 256) then r.gravSoft = 2.0
+    if (res eq 512) then r.gravSoft = 1.0
+  
     r.simPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
     r.savPrefix = 'G'
     
@@ -122,11 +127,41 @@ function simParams, res=res, run=run, redshift=redshift
     return,r
   endif
   
+  if (run eq 'tracer') then begin
+    r.boxSize       = 20000.0
+    r.snapRange     = [0,313]
+    r.groupCatRange = [50,313]
+    r.minNumGasPart = 100
+    
+    if (res eq 128) then r.trMassConst = 4.76446157e-03
+    if (res eq 256) then r.trMassConst = 5.95556796e-04
+    if (res eq 512) then r.trMassConst = 7.44447120e-05
+    
+    if (res eq 128) then r.gravSoft = 4.0
+    if (res eq 256) then r.gravSoft = 2.0
+    if (res eq 512) then r.gravSoft = 1.0
+  
+    r.simPath   = '/n/home07/dnelson/sims.tracers/'+str(res)+'_20Mpc/output/'
+    r.arepoPath = '/n/home07/dnelson/sims.tracers/'+str(res)+'_20Mpc/'
+    r.savPrefix = 'T'
+    
+    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.galCatPath = '/n/home07/dnelson/coldflows/galaxycat/'
+    r.thistPath  = '/n/home07/dnelson/coldflows/thermhist/'
+    r.derivPath  = '/n/home07/dnelson/coldflows/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
+  
   if (run eq 'dev.tracer') then begin
     r.boxSize       = 20000.0
-    r.trMassConst   = 0.0047645
+    r.trMassConst   = 4.76446157e-03
     r.snapRange     = [0,76]
     r.groupCatRange = [25,76]
+    r.gravSoft      = 4.0
   
     r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/output/'
     r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/'
@@ -135,34 +170,40 @@ function simParams, res=res, run=run, redshift=redshift
     r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/data.files/'
     
     ; if redshift passed in, convert to snapshot number and save
-    if keyword_set(redshift) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
     
     return,r
   endif
   
   if (run eq 'dev.tracer.nonrad') then begin
     r.boxSize       = 20000.0
-    r.trMassConst   = 0.0047645
-    r.snapRange     = [0,75]
-    r.groupCatRange = [25,75]
+    r.snapRange     = [0,38]
+    r.groupCatRange = [15,38]
   
-    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/output/'
+    if (res eq 128) then r.trMassConst = 4.76446157e-03
+    if (res eq 256) then r.trMassConst = 5.95556796e-04
+    
+    if (res eq 128) then r.gravSoft = 4.0
+    if (res eq 256) then r.gravSoft = 2.0
+  
+    r.simPath    = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/output/'
     r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/'
     r.savPrefix  = 'N'
     r.plotPath   = '/n/home07/dnelson/dev.tracer/'
     r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/data.files/'
     
     ; if redshift passed in, convert to snapshot number and save
-    if keyword_set(redshift) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
     
     return,r
   endif
   
   if (run eq 'dev.tracer.noref') then begin
     r.boxSize       = 20000.0
-    r.trMassConst   = 0.0047645
+    r.trMassConst   = 4.76446157e-03
     r.snapRange     = [0,38]
     r.groupCatRange = [15,38]
+    r.gravSoft      = 4.0
   
     r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_noref/output/'
     r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_noref/'
@@ -171,8 +212,45 @@ function simParams, res=res, run=run, redshift=redshift
     r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_noref/data.files/'
     
     ; if redshift passed in, convert to snapshot number and save
-    if keyword_set(redshift) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
     
+    return,r
+  endif
+  
+  if (run eq 'dev.tracer.nopm') then begin
+    r.boxSize       = 20000.0
+    r.trMassConst   = 4.76446157e-03
+    r.snapRange     = [0,38]
+    r.groupCatRange = [15,38]
+    r.gravSoft      = 4.0
+  
+    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nopm/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nopm/'
+    r.savPrefix  = 'P'
+    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nopm/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
+  
+  if (run eq 'dev.tracer.gassphere') then begin
+    r.boxSize       = 5000.0
+    r.trMassConst   = 0.00020755
+    r.snapRange     = [0,10]
+    r.groupCatRange = [0,0]
+  
+    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/gasSphere.gasonly.2e5/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.tracer/gasSphere.gasonly.2e5/'
+    r.savPrefix  = 'S'
+    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracer/gasSphere.gasonly.2e5/data.files/'
+    
+    ; if redshift passed in, treat as snapshot number
+    if (n_elements(redshift) eq 1) then r.snap = redshift
+
     return,r
   endif
   
@@ -195,14 +273,14 @@ function sgIDList, sP=sP, sg=sg, select=select, minNumPart=minNumPart
 
   if (not keyword_set(select)) then begin
     print,'Error: Must specify select.'
-    return,0
+    stop
   endif
     
   ; load galaxy cat if necessary
   if not keyword_set(sg) then begin
     if not keyword_set(sP) then begin
       print,'Error: Must specify sg or sP.'
-      return,0
+      stop
     endif
     sg = loadSubhaloGroups(sP.simPath,sP.snap)
   endif
@@ -469,56 +547,196 @@ function gcINDList, sP=sP, gc=gc, sgIDList=sgIDList
   
 end
 
-; groupCenterPosByMostBoundID(): compute a "best" center position in space for all groups by using the 
-;                                position of the most bound particles, whose IDs are stored in the group
-;                                catalog but without knowing the particle types we have to load all
-;                                gas+dm+stars particle positions
+; groupCenterPosByMostBoundID(): compute a "best" center position in space for all subfind groups by 
+;                                using the position of the most bound particles, whose IDs are stored in 
+;                                the group catalog but without knowing the particle types we have to 
+;                                load all gas+dm+stars particle positions
 
-function groupCenterPosByMostBoundID, sP=sP, sg=sg
+function groupCenterPosByMostBoundID, sP=sP
 
-  forward_function loadSnapshotSubset
-
-  groupCen = fltarr(3,sg.nSubgroupsTot)
+  forward_function loadSnapshotSubset, loadGroupCat
   
-  ; load gas ids and pos, find matches
-  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='ids')
-  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count1,/sort
+  ; save/restore
+  saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.gCen.mbID.'+str(sP.snap)+'.sav'
+                 
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+  endif else begin 
   
-  ids_ind = ids_ind[sort(sg_ind)]
-  sg_ind  = sg_ind[sort(sg_ind)]
+    sg = loadGroupCat(sP.simPath,sP.snap)
   
-  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
+    groupCen = fltarr(3,sg.nSubgroupsTot)
+    
+    ; load gas ids and pos, find matches
+    ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='ids')
+    match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count1,/sort
+    
+    ids_ind = ids_ind[sort(sg_ind)]
+    sg_ind  = sg_ind[sort(sg_ind)]
+    
+    pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
+    
+    groupCen[*,sg_ind] = pos[*,ids_ind]
+    
+    ; load stars ids and pos, find matches
+    ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='ids')
+    
+    ; skip stars for non-radiative runs or early times
+    if (n_elements(ids) ne 1) then begin
+      match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count2,/sort
+      
+      ids_ind = ids_ind[sort(sg_ind)]
+      sg_ind  = sg_ind[sort(sg_ind)]
+      
+      pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
+      
+      groupCen[*,sg_ind] = pos[*,ids_ind]
+    endif else begin
+      count2 = 0
+    endelse
+    
+    ; load dm ids and pos, find matches
+    ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='ids')
+    match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count3,/sort
+    
+    ids_ind = ids_ind[sort(sg_ind)]
+    sg_ind  = sg_ind[sort(sg_ind)]
+    
+    pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
+    
+    groupCen[*,sg_ind] = pos[*,ids_ind]
   
-  groupCen[*,sg_ind] = pos[*,ids_ind]
+    if ((count1 + count2 + count3) ne sg.nSubgroupsTot) then begin
+      print,'ERROR'
+      stop
+    endif
   
-  ; load stars ids and pos, find matches
-  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='ids')
-  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count2,/sort
-  
-  ids_ind = ids_ind[sort(sg_ind)]
-  sg_ind  = sg_ind[sort(sg_ind)]
-  
-  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
-  
-  groupCen[*,sg_ind] = pos[*,ids_ind]
-  
-  ; load dm ids and pos, find matches
-  ids = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='ids')
-  match,sg.subgroupIdMostBound,ids,sg_ind,ids_ind,count=count3,/sort
-  
-  ids_ind = ids_ind[sort(sg_ind)]
-  sg_ind  = sg_ind[sort(sg_ind)]
-  
-  pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
-  
-  groupCen[*,sg_ind] = pos[*,ids_ind]
-
-  if ((count1 + count2 + count3) ne sg.nSubgroupsTot) then begin
-    print,'ERROR'
-    stop
-  endif
+    ; save
+    save,groupCen,filename=saveFilename
+  endelse
   
   return, groupCen
+end
+
+; groupCenterPosByIterativeCM(): compute a "better" center position in space for all FoF groups by
+;                                iteratively searching for the center of mass
+
+function groupCenterPosByIterativeCM, sP=sP, gc=gc, haloIDs=haloIDs
+
+  forward_function loadSnapshotSubset, loadSnapshotHeader
+
+  if not keyword_set(haloIDs) then stop
+
+  ; config
+  radStartStop = [1.0,0.2] ; fractions of r_vir
+  radStep      = 0.01 ; decrease search radius by this fraction each step
+
+  nSteps = fix((radStartStop[0]-radStartStop[1]) / radStep + 1)
+  radSteps = linspace(radStartStop[0],radStartStop[1],nSteps)
+  
+  iterDM  = fltarr(3,n_elements(haloIDs))
+  iterGAS = fltarr(3,n_elements(haloIDs))
+
+  ; load
+  h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+  
+  pos_gas   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
+  pos_dm    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
+  
+  gas_mass   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='mass')
+  dm_mass    = h.massTable[1]  
+  
+  ; locate halo
+  foreach haloID,haloIDs,j do begin
+    haloPos = gc.groupPos[*,haloID]
+    haloRad = gc.group_r_crit200[haloID]
+
+    ; calculate radii and make radial cut
+    rad = reform( sqrt( (pos_gas[0,*]-haloPos[0])*(pos_gas[0,*]-haloPos[0]) + $
+                        (pos_gas[1,*]-haloPos[1])*(pos_gas[1,*]-haloPos[1]) + $
+                        (pos_gas[2,*]-haloPos[2])*(pos_gas[2,*]-haloPos[2]) ) )
+
+    gas_ind = where(rad le haloRad*radStartStop[0],gas_count)
+    pos_gas_sub = pos_gas[*,gas_ind]
+
+    rad = reform( sqrt( (pos_dm[0,*]-haloPos[0])*(pos_dm[0,*]-haloPos[0]) + $
+                        (pos_dm[1,*]-haloPos[1])*(pos_dm[1,*]-haloPos[1]) + $
+                        (pos_dm[2,*]-haloPos[2])*(pos_dm[2,*]-haloPos[2]) ) )
+
+    dm_ind = where(rad le haloRad*radStartStop[0],dm_count)
+    pos_dm_sub = pos_dm[*,dm_ind]
+
+    rad = !NULL
+    
+    ;print,'('+str(haloID)+') Found ['+str(gas_count)+'] gas and ['+str(dm_count)+'] dm  stars inside cut.'
+                     
+    ; subselect gas masses
+    gas_mass_sub = gas_mass[gas_ind]
+  
+    cm_gas = fltarr(3,nSteps) ;xyz
+    cm_dm  = fltarr(3,nSteps) ;xyz
+    
+    cm_diffs = fltarr(2,nSteps) ;gas,dm
+    cm_drift = fltarr(2,nSteps) ;gas,dm
+    
+    ; compute a center of mass (gas) and compare to haloPos
+    foreach radCut,radSteps,k do begin
+
+      ; calculate radii based on last CM
+      rad_gas = reform( sqrt( (pos_gas_sub[0,*]-cm_gas[0,k-1>0])*(pos_gas_sub[0,*]-cm_gas[0,k-1>0]) + $
+                              (pos_gas_sub[1,*]-cm_gas[1,k-1>0])*(pos_gas_sub[1,*]-cm_gas[1,k-1>0]) + $
+                              (pos_gas_sub[2,*]-cm_gas[2,k-1>0])*(pos_gas_sub[2,*]-cm_gas[2,k-1>0]) ) )
+  
+      rad_dm = reform( sqrt( (pos_dm_sub[0,*]-cm_dm[0,k-1>0])*(pos_dm_sub[0,*]-cm_dm[0,k-1>0]) + $
+                             (pos_dm_sub[1,*]-cm_dm[1,k-1>0])*(pos_dm_sub[1,*]-cm_dm[1,k-1>0]) + $
+                             (pos_dm_sub[2,*]-cm_dm[2,k-1>0])*(pos_dm_sub[2,*]-cm_dm[2,k-1>0]) ) )
+
+      ; make selection inside this radial cut
+      w_gas = where(rad_gas le radCut*haloRad,count_gas)
+      w_dm  = where(rad_dm  le radCut*haloRad,count_dm)
+      
+      ;if (count_dm lt 100) then continue
+      
+      ; re-calculate center of mass and distance from FoF center
+      for i=0,2 do cm_gas[i,k] = total(gas_mass_sub[w_gas] * pos_gas_sub[i,w_gas]) / $
+                                 total(gas_mass_sub[w_gas])
+      for i=0,2 do cm_dm[i,k]  = mean(pos_dm_sub[i,w_dm])
+      
+      cm_diffs[*,k] = [sqrt(total((haloPos-cm_gas[*,k])^2.0)),sqrt(total((haloPos-cm_dm[*,k])^2.0))]
+      cm_drift[0,k] = sqrt(total((cm_gas[*,k-1>0]-cm_gas[*,k])^2.0))
+      cm_drift[1,k] = sqrt(total((cm_dm[*,k-1>0]-cm_dm[*,k])^2.0))
+      
+      ;print,k,radCut,count_gas,count_dm
+      ;print,'haloPos: ',haloPos
+      ;print,'gasCM:   ',cm_gas[*,k]
+      ;print,'dmCM:    ',cm_dm[*,k]
+      ;print,'cmDiffs:  ',cm_diffs[*,k]/haloRad
+    endforeach ;radSteps
+
+    ; save final
+    iterDM[*,j]  = cm_dm[*,nSteps-1]
+    iterGAS[*,j] = cm_gas[*,nSteps-1]
+  endforeach ;haloIDs
+  
+  ; debug
+  ;start_PS,'itercm_'+str(haloID)+'.eps'
+  ;  plotsym,0,/fill
+  ;  fsc_plot,[0],[0],/nodata,xrange=radStartStop,yrange=[0.0002,4.0],/xs,/ys,/ylog,$
+  ;    xtitle="radial search cut [r/"+textoidl("r_{vir}")+"]",$
+  ;    ytitle="difference [r/"+textoidl("r_{vir}")+"]",$
+  ;    title="iterative CoM convergence (haloID="+str(haloID)+")"
+  ;  
+  ;  fsc_plot,radSteps,cm_diffs[0,*]/haloRad,line=0,color=getColor(1),/overplot
+  ;  fsc_plot,radSteps,cm_diffs[1,*]/haloRad,line=0,color=getColor(2),/overplot
+  ;  fsc_plot,radSteps[1:*],cm_drift[0,1:*]/haloRad,line=0,color=getColor(3),/overplot
+  ;  fsc_plot,radSteps[1:*],cm_drift[1,1:*]/haloRad,line=0,color=getColor(7),/overplot
+  ;  
+  ;  legend,['gas FoF delta','dm FoF delta','gas drift','dm drift'],textcolors=getColor([1,2,3,7],/name),$
+  ;    box=0,/left,/top
+  ;end_PS
+  
+  r = {iterDM:iterDM,iterGAS:iterGAS}
+  return,r
 end
 
 ; correctPeriodicDistVecs(): enforce periodic B.C. for distance vecotrs (effectively component by 
@@ -534,6 +752,107 @@ pro correctPeriodicDistVecs, vecs, sP=sP
   if (count ne 0) then $
     vecs[w] = sP.boxSize + vecs[w]
 
+end
+
+; periodicRadialDists(): calculate radial distances from one point to a vector of other points [3,n]
+;                        correctly taking into account periodic B.C.
+
+function periodicRadialDists, pt, vecs, sP=sP
+
+  xDist = vecs[0,*]-pt[0]
+  yDist = vecs[1,*]-pt[1]
+  zDist = vecs[2,*]-pt[2]
+  
+  correctPeriodicDistVecs, xDist, sP=sP
+  correctPeriodicDistVecs, yDist, sP=sP
+  correctPeriodicDistVecs, zDist, sP=sP
+  
+  rad = reform( sqrt( xDist*xDist + yDist*yDist + zDist*zDist ) )
+  
+  return, rad
+
+end
+
+; findMatchedHalos(): cross-match halos between two group catalogs
+
+function findMatchedHalos, sP1=sP1, sP2=sP2
+
+  forward_function loadGroupCat
+
+  ; config
+  distTol = 10.0 ;kpc
+  massTol = 0.1  ;10%
+  
+  ; load group catalogs
+  gc1 = loadGroupCat(sP1.simPath, sP1.snap)
+  gc2 = loadGroupCat(sP2.simPath, sP2.snap)
+
+  ; matched Ind in groupcat2 for each FoF halo in groupcat1
+  matchedInds = lonarr(gc1.nGroupsTot) - 1
+  massDiffs   = fltarr(gc1.nGroupsTot)
+  posDiffs    = fltarr(gc1.nGroupsTot)
+  
+  targetPos   = fltarr(3,gc2.nGroupsTot)
+  
+  ; find ending points where firstsub and grnr don't agree
+  for i=0,gc1.nGroupsTot-1 do begin
+    sfInd = gc1.groupFirstSub[i]
+    if (sfInd gt gc1.nSubgroupsTot-1) then continue
+    grnr = gc1.subgroupGrNr[sfInd]
+    if (grnr eq i) then endingInd1 = i
+  endfor
+  
+  for i=0,gc2.nGroupsTot-1 do begin
+    sfInd = gc2.groupFirstSub[i]
+    if (sfInd gt gc2.nSubgroupsTot-1) then continue
+    grnr = gc2.subgroupGrNr[sfInd]
+    if (grnr eq i) then endingInd2 = i
+  endfor
+  
+  ; fill target positions with subfind CMs for each first subgroup of each FoF group in groupcat2
+  for i=0,endingInd2-1 do begin
+    sfInd = gc2.groupFirstSub[i]
+    targetPos[*,i] = gc2.subgroupCM[*,sfInd]
+  endfor
+
+  ; loop over all FoF halos in groupcat1
+  for i=0,endingInd1-1 do begin
+    ;if (i mod 100 eq 0) then print,i
+    ; compute distances from subfind CM center and cut at maximum
+    sfInd = gc1.groupFirstSub[i]
+    hPos  = gc1.subgroupCM[*,sfInd]
+    hMass = gc1.groupMass[i]
+    
+    dists = periodicRadialDists(hPos,targetPos,sP=sP1)
+    minDist = min(dists)
+    
+    if (minDist le distTol) then begin
+      ; select closest halo
+      w = where(dists eq minDist,count)
+      if (count eq 1) then begin 
+        ; check mass agreement
+        targInd = w[0]
+        massDiff = abs(hMass-gc2.groupMass[targInd]) / hMass
+        
+        massDiffs[i]   = massDiff
+        posDiffs[i]    = minDist        
+        
+        if (massDiff lt massTol) then begin
+          ; select halo
+          ;print,'['+str(i)+'] Matched ID ['+str(targInd)+'] at distance = '+string(minDist,format='(f5.2)')+$
+          ;      ' Mass Diff = '+string(massDiff,format='(f5.2)')+' '+str(massTol)
+          matchedInds[i] = targInd
+        endif else begin;mass
+          ;print,massDiff,massTol
+        endelse
+      endif ;count
+    endif ;dist
+  endfor
+  
+  wMatch = where(matchedInds ne -1,nMatched)
+
+  r = {matchedInds:matchedInds,massDiffs:massDiffs,posDiffs:posDiffs,wMatch:wMatch,nMatched:nMatched}
+  return,r
 end
 
 ; snapNumToRedshift(): convert snapshot number to redshift or time

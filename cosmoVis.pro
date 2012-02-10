@@ -1,28 +1,30 @@
 ; cosmoVis.pro
 ; cosmological boxes - 2d visualization
-; dnelson jan.2012
+; dnelson feb.2012
 
 ; makeArepoFoFBsub(): write bsub file to invoke FoF/Subfind group finder post-processing
 
 pro makeArepoFoFBsub
 
   ; config
-  res = 128
-  run = 'dev.tracer.nonrad'
+  res = 256
+  run = 'tracer'
   
   sP = simParams(res=res,run=run)
   
   ;redshift = 3.0
   ;snap     = redshiftToSnapNum(redshift,sP=sP)
   
-  snapRange = [0,75,1]
-  ;snapRange = [25,63,1]
+  ;snapRange = [267,267,1]
+  snapRange = [278,278,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 8 ; 
-  ptile     = 8 ; span[ptile=X]
+  nProcs    = 64
+  ptile     = 4 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
+  
+  excludeHosts = ['hero2701','hero1008','hero2405','hero1603'] ;leave empty otherwise
  
   paramFile = "param.txt"
 
@@ -38,15 +40,23 @@ pro makeArepoFoFBsub
     endif else begin
       print,'['+str(snap)+'] Writing: '+jobFilename
     endelse
+    
+    ; host exclusion string
+    selectStr = ''
+    if n_elements(excludeHosts) gt 0 then begin
+      selectStr = 'select['
+      for i=0,n_elements(excludeHosts)-1 do selectStr += 'hname!='+excludeHosts[i]+' '
+      selectStr = strmid(selectStr,0,strlen(selectStr)-1) + '] '
+    endif
       
     openW, lun, jobFilename, /GET_LUN
     
     ; write header
     printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q keck'
-    printf,lun,'#BSUB -J fof_' + str(snap)
+    printf,lun,'#BSUB -q nancy'
+    printf,lun,'#BSUB -J fof_' + str(snap) + ''
     printf,lun,'#BSUB -n ' + str(nProcs)
-    printf,lun,'#BSUB -R "rusage[mem=30000] span[ptile=' + str(ptile) + ']"'
+    printf,lun,'#BSUB -R "' + selectStr + 'rusage[mem=30000] span[ptile=' + str(ptile) + ']"'
     printf,lun,'#BSUB -x'
     printf,lun,'#BSUB -o run_fof.out'
     printf,lun,'#BSUB -g /dnelson/fof' ; 4 concurrent jobs limit automatically
@@ -86,14 +96,14 @@ pro makeArepoProjBsub
 
   ; config - path and snapshot 
   workingPath = '/n/home07/dnelson/dev.tracer/'
-  basePath    = workingPath + 'gasSphere.gasonly.2e5.cooling/'
-  snapPath    = workingPath + 'gasSphere.gasonly.2e5.cooling/output/'
+  basePath    = workingPath + 'gasSphere.gasonly.nfwrot.coolsf/'
+  snapPath    = workingPath + 'gasSphere.gasonly.nfwrot.coolsf/output/'
 
   ;redshift = 3.0
   ;snap     = redshiftToSnapNum(redshift,sP=sP)
 
   ;snapRange = [1,1,1]
-  snapRange = [0,11,1]
+  snapRange = [0,20,2]
 
   ; config - viewsize / object
   h = loadSnapshotHeader(basePath+'output/',snapNum=snapRange[0])
@@ -102,6 +112,7 @@ pro makeArepoProjBsub
   xyzCen = [h.boxSize/2.0,h.boxSize/2.0,h.boxSize/2.0]
 
   sliceWidth  = h.boxSize ; cube sidelength
+  zoomFac     = 10
 
   ; render config
   spawnJobs   = 1    ; execute bsub?
@@ -116,18 +127,17 @@ pro makeArepoProjBsub
  
   paramFile = "param.txt"
   
-  xMin = xyzCen[0] - sliceWidth/2.0
-  xMax = xyzCen[0] + sliceWidth/2.0
-  yMin = xyzCen[1] - sliceWidth/2.0
-  yMax = xyzCen[1] + sliceWidth/2.0
-  zMin = xyzCen[2] - sliceWidth/2.0
-  zMax = xyzCen[2] + sliceWidth/2.0  
+  xMin = xyzCen[0] - sliceWidth/2.0/zoomFac
+  xMax = xyzCen[0] + sliceWidth/2.0/zoomFac
+  yMin = xyzCen[1] - sliceWidth/2.0/zoomFac
+  yMax = xyzCen[1] + sliceWidth/2.0/zoomFac
+  zMin = xyzCen[2] - sliceWidth/2.0/zoomFac
+  zMax = xyzCen[2] + sliceWidth/2.0/zoomFac
   
   ; integration range for each axis depends on
   axesBB = [[xMin,xMax,yMin,yMax,zMin,zMax],$
             [xMin,xMax,zMin,zmax,yMin,yMax],$
             [yMin,yMax,zMin,zMax,xMin,xMax]]
-
  
   for snap=snapRange[0],snapRange[1],snapRange[2] do begin
  
@@ -147,7 +157,7 @@ pro makeArepoProjBsub
     ; write header
     printf,lun,'#!/bin/sh'
     printf,lun,'#BSUB -q keck'
-    printf,lun,'#BSUB -J proj_' + str(snap)
+    printf,lun,'#BSUB -J proj_' + str(snap) + "cs"
     printf,lun,'#BSUB -n ' + str(nProcs)
     printf,lun,'#BSUB -R "rusage[mem=30000] span[ptile=8]"'
     printf,lun,'#BSUB -o run_proj.out'

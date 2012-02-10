@@ -1,6 +1,6 @@
 ; tracersCosmo.pro
 ; dev for tracer particles related to cosmological boxes
-; dnelson jan.2012
+; dnelson feb.2012
 
 ; getTracerSpatialDens(): wrapper to do tophat density calculation for tracers and save result
 
@@ -108,14 +108,13 @@ end
 ; getCosmoTracerPos(): return time series of tracer positions for a given number of tracers nearest
 ;                      to a given ending position
 ;
-; targetPos  : select N tracers closest to the specified ending position
-; trackDegen : track all tracers with degenerate ending position
+; numTracers=1 : track N tracers closest to targetPos
+; maxDist=1    : track all tracers within minDist of targetPos
 
-function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, $
-                            targetPos=targetPos, trackDegen=trackDegen, verbose=verbose
+function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, numTracers=numTracers, $
+                            targetPos=targetPos, maxDist=maxDist, verbose=verbose
 
-  useMatch     = 0    ; use match for ID location instead of where loop
-  distDegenTol = 1e-2 ; distance tolerance for degenerate positions
+  useMatch     = 1    ; use match for ID location instead of where loop
 
   ; arrays
   nSnaps  = (snapRange[0]-snapRange[1]+1) / snapRange[2]
@@ -137,6 +136,13 @@ function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, $
     
     ; load header and store time
     h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
+    
+    ; skip over missing snapshots
+    if (n_tags(h) eq 0) then begin
+      if keyword_set(verbose) then if (snap mod verbose eq 0) then $
+        print,' skipped'
+      continue
+    endif
     times[k] = h.time  
       
     pos = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='pos')
@@ -145,41 +151,33 @@ function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, $
     ; make tracer selection on first snapshot
     if (snap eq snapRange[0]) then begin      
 
-      ; NORMAL = select nearest tracer to each targetPos
-      if not keyword_set(trackDegen) then begin
-        ; arrays
-        numTracers = (size(targetPos))[0]
-        trPos      = dblarr(nSnaps,numTracers,3)
-        trDist     = dblarr(nSnaps,numTracers)
+      ; make selection
+      dists = reform(abs(sqrt( (pos[0,*]-targetPos[0])*(pos[0,*]-targetPos[0]) + $
+                               (pos[1,*]-targetPos[1])*(pos[1,*]-targetPos[1]) + $
+                               (pos[2,*]-targetPos[2])*(pos[2,*]-targetPos[2]) )))
+
+      ; NUMTRACERS = select numTracers nearest to each targetPos
+      if keyword_set(numTracers) then begin
+       
+        w = (sort(dists))[0:numTracers-1]
         
+        ; arrays
+        trPos      = dblarr(nSnaps,numTracers,3)
         idTargets  = lonarr(numTracers)
         
         ; find IDs of targets
-        for j=0,numTracers-1 do begin
-          dists = abs( sqrt( (pos[0,*]-targetPos[0])*(pos[0,*]-targetPos[0]) + $
-                             (pos[1,*]-targetPos[1])*(pos[1,*]-targetPos[1]) + $
-                             (pos[2,*]-targetPos[2])*(pos[2,*]-targetPos[2]) ) )
-          w = where(dists eq min(dists),count)
+        idTargets = ids[w]
         
-          ; only one and get ID
-          if (count gt 1) then w = w[0]
-          idTargets[j] = ids[w]
-          
-          if keyword_set(verbose) then $
-            print,'selected id='+str(idTargets[j])+' rad='+str(rad[w])
-        endfor
+        print,'Minimum and maximum of located tracers: ',min(dists[w]),max(dists[w])
       endif
       
-      ; TRACKDEGEN = select tracers near (<1e-6) targetPos
-      if keyword_set(trackDegen) then begin
-        ; make selection
-        dists = abs( sqrt( (pos[0,*]-targetPos[0])*(pos[0,*]-targetPos[0]) + $
-                           (pos[1,*]-targetPos[1])*(pos[1,*]-targetPos[1]) + $
-                           (pos[2,*]-targetPos[2])*(pos[2,*]-targetPos[2]) ) )
-        w = where(dists le distDegenTol,count)
+      ; MAXDIST = select tracers near (<distDegenTol) targetPos
+      if keyword_set(maxDist) then begin
+
+        w = where(dists le maxDist,count)
         
         if (count eq 0) then begin
-          print,'Error: No tracers near specified targetPos.'
+          print,'Error: No tracers within maxDist of specified targetPos.'
           stop
         endif else begin
           print,'Found ['+str(count)+'] tracers near targetPos.'
@@ -188,8 +186,6 @@ function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, $
         ; arrays
         numTracers = count
         trPos      = dblarr(nSnaps,numTracers,3)
-        ;trDist     = dblarr(nSnaps,numTracers)
-        
         idTargets  = lonarr(numTracers)
         
         ; find IDs of targets
@@ -210,9 +206,7 @@ function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, $
       
     trPos[k,*,0] = pos[0,ids_ind]
     trPos[k,*,1] = pos[1,ids_ind]
-    trPos[k,*,2] = pos[2,ids_ind]
-    ;trDist[k,*]  = sqrt( (x[ids_ind]-boxCen)*(x[ids_ind]-boxCen) + $
-    ;                     (y[ids_ind]-boxCen)*(y[ids_ind]-boxCen) )      
+    trPos[k,*,2] = pos[2,ids_ind]    
     endif else begin
       ; locate IDs using where loop
       for j=0,numTracers-1 do begin
@@ -224,7 +218,6 @@ function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, $
         trPos[k,j,0] = pos[0,ind]
         trPos[k,j,1] = pos[1,ind]
         trPos[k,j,2] = pos[2,ind]
-        ;trDist[k,j]   = sqrt( (x[ind]-boxCen)*(x[ind]-boxCen) + (y[ind]-boxCen)*(y[ind]-boxCen) )
       endfor
     endelse
       
@@ -232,9 +225,81 @@ function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, $
     
   endfor ;snap
   
-  r = {trPos:trPos,idTargets:idTargets,times:times,boxSize:h.boxSize} ;trDist
+  w = where(times ne 0)
+
+  r = {trPos:trPos[w,*,*],idTargets:idTargets,times:times[w]} ;trDist
   return, r
 
+end
+
+; cosmoTracerTrajPretty(): make interesting image
+
+pro cosmoTracerTrajPretty
+
+  ; config
+  res = 128
+  run = 'dev.tracer'
+  redshift = 2.0
+  
+  numTracers = 2000
+  
+  ; load group catalog
+  sP    = simParams(res=res,run=run,redshift=redshift)
+  units = getUnits()
+
+  h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+  gc = loadGroupCat(sP.simPath,sP.snap,/verbose)
+  
+  haloIDs = [1]
+  
+  ; paths and snapshots  
+  snapRange = [sP.snap,sP.groupCatRange[0],1]
+  plotBase  = 'cosmoPretty_'+run+'_'
+  
+  ; start plot
+  start_PS, sP.plotPath + plotBase + string(snapRange[1],format='(I3.3)')+'_'+$
+            string(snapRange[0],format='(I3.3)')+'.eps', xs=7.0, ys=7.0
+
+  ;xrange = [0,sP.boxSize]
+  ;yrange = [0,sP.boxSize]
+  boxsize = 500.0
+  axes = [1,2]
+  xrange = [gc.groupPos[axes[0],1]-boxsize,gc.groupPos[axes[0],1]+boxsize]
+  yrange = [gc.groupPos[axes[1],1]-boxsize,gc.groupPos[axes[1],1]+boxsize]
+
+  fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xstyle=4,ystyle=4,charsize=!p.charsize-0.5,$
+       xtitle="",ytitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),$
+       xticklen=0.00001,yticklen=0.00001,position=[0.0,0.0,1.0,1.0]
+         
+  foreach haloID,haloIDs,k do begin
+    targetPos = gc.groupPos[*,haloID]
+    
+    ; get tracer positions
+    saveFilename = sP.derivPath + 'trTraj_B_'+sP.savPrefix + str(sP.res) + "_" + $
+              string(snapRange[1],format='(I3.3)')+'_'+string(snapRange[0],format='(I3.3)')+'_'+$
+              str(haloID)+'.sav'
+    
+    if file_test(saveFilename) then begin
+      restore,saveFilename,/verbose
+    endif else begin
+      tp = getCosmoTracerPos(snapPath=sP.simPath, snapRange=snapRange, targetPos=targetPos, $
+                             numTracers=numTracers, verbose=1)
+      save,tp,filename=saveFilename
+    endelse
+    
+    ; add to plot
+    for i=0,n_elements(tp.idTargets)-1 do begin
+      xPts = tp.trPos[*,i,axes[0]]
+      yPts = tp.trPos[*,i,axes[1]]
+      
+      fsc_plot, xPts, yPts, line=0, color=fsc_color('black'), thick=!p.thick-4.0, /overplot
+    endfor
+    
+  endforeach
+  
+  ; end plot
+  end_PS, pngResize=50, /deletePS
+  
 end
 
 ; cosmoTracerTraj(): plot a few individual tracer trajectories over contour of the disk gas density
@@ -243,89 +308,98 @@ pro cosmoTracerTraj
  
   ; config
   res = 128
-  run = 'dev.tracer'
+  run = 'dev.tracer.nonrad'
+  redshift = 1.0
   
-  ;targetPos = [2614.26,123.019,3410.30] ;ckpc ;orig @snap95
-  targetPos = [1731.88,3787.28,3495.91]  ;ckpc, _test2 @snap6
+  maxDist = 20.0 ;ckpc
+  
+  ; load group catalog
+  sP    = simParams(res=res,run=run,redshift=redshift)
+  units = getUnits()
 
-  ; paths and snapshots
-  sP    = simParams(res=res,run=run)
-  units = getUnits() ;colors
+  h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+  gc = loadGroupCat(sP.simPath,sP.snap,/verbose)
   
-  snapRange = [sP.snapRange[1],0,1]
-  plotBase  = 'cosmoRad_'+run+'_'
+  ; select target position
+  ;targetPos = [2614.26,123.019,3410.30] ;ckpc
+
+  haloID = 0
+  targetPos = gc.groupPos[*,haloID]
+ 
+  snapRange = [sP.snap,sP.groupCatRange[0],1]
   
   ; get tracer positions
-  saveFilename = sP.derivPath + plotBase + 'trTraj_'+string(snapRange[1],format='(I3.3)')+'_'+$
-            string(snapRange[0],format='(I3.3)')+'.sav'
+  saveFilename = sP.derivPath + 'trTraj_'+sP.savPrefix + str(sP.res) + ".haloID="+str(haloID)+"." + $
+            string(snapRange[1],format='(I3.3)')+'-'+string(snapRange[0],format='(I3.3)')+$
+            "."+str(maxDist*100)+'.sav'
   
   if file_test(saveFilename) then begin
     restore,saveFilename,/verbose
   endif else begin
     tp = getCosmoTracerPos(snapPath=sP.simPath, snapRange=snapRange, targetPos=targetPos, $
-                           /trackDegen, verbose=1)
+                           maxDist=maxDist, verbose=1)
     save,tp,filename=saveFilename
   endelse
+           
+  ; cKpc -> cMpc
+  tp.trPos /= 1000.0
+  targetPos /= 1000.0
             
   ; plots
-  start_PS, sP.plotPath + plotBase + 'trTraj_'+string(snapRange[1],format='(I3.3)')+'_'+$
+  start_PS, sP.plotPath + sP.savPrefix + str(res) + '.trTraj_'+string(snapRange[1],format='(I3.3)')+'_'+$
             string(snapRange[0],format='(I3.3)')+'.eps'
   
-    fsc_text,0.5,0.8,"tracer trajectory - cosmo "+run+"",/normal,alignment=0.5
+    fsc_text,0.5,0.8,"tracer trajectory - cosmo "+run+" (6.0 < z < "+string(redshift,format='(f3.1)')+")",$
+             /normal,alignment=0.5
     
     ; PLOT ONE - (x,y)
-    boxsize = 30.0 ;ckpc
-    xrange = minmax(tp.trPos[*,*,0])+[-boxsize,boxsize] > [0,0]
-    yrange = minmax(tp.trPos[*,*,1])+[-boxsize,boxsize] > [0,0]
-    zrange = minmax(tp.trPos[*,*,2])+[-boxsize,boxsize] > [0,0]
+    boxsize = 4.2 ;cMpc
+    ;xrange = minmax(tp.trPos[*,*,0])+[-boxsize,boxsize] > [0,0]
+    ;yrange = minmax(tp.trPos[*,*,1])+[-boxsize,boxsize] > [0,0]
+    ;zrange = minmax(tp.trPos[*,*,2])+[-boxsize,boxsize] > [0,0]
     
-    ;boxsize = 10.0 ;ckpc
-    ;xrange = [tp.trPos[n_elements(tp.times)-1,0,0] - boxsize, $
-    ;          tp.trPos[n_elements(tp.times)-1,0,0] + boxsize]
-    ;yrange = [tp.trPos[n_elements(tp.times)-1,0,1] - boxsize, $
-    ;          tp.trPos[n_elements(tp.times)-1,0,1] + boxsize]
-    ;zrange = [tp.trPos[n_elements(tp.times)-1,0,2] - boxsize, $
-    ;          tp.trPos[n_elements(tp.times)-1,0,2] + boxsize]
+    xrange = [targetPos[0]-boxsize/2.0,targetPos[0]+boxsize/2.0] > [0,0] < [sP.boxSize,sP.boxSize]
+    yrange = [targetPos[1]-boxsize/2.0,targetPos[1]+boxsize/2.0] > [0,0] < [sP.boxSize,sP.boxSize]
+    zrange = [targetPos[2]-boxsize/2.0,targetPos[2]+boxsize/2.0] > [0,0] < [sP.boxSize,sP.boxSize]
               
     fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xstyle=1,ystyle=1,charsize=!p.charsize-0.5,$
-         xtitle="x [ckpc]",ytitle="y [ckpc]",position=[0.1,0.2,0.45,0.75],/noerase
+         xtitle="x [cMpc]",ytitle="y [cMpc]",position=[0.1,0.2,0.45,0.75],/noerase
+
+    plotsym,0,/fill
 
     ; overplot tracer trajectories
     for i=0,n_elements(tp.idTargets)-1 do begin
       xPts = tp.trPos[*,i,0]
       yPts = tp.trPos[*,i,1]
       
-      ; underplot circles at targetPos
-      tvcircle,boxsize/20.0,targetPos[0],targetPos[1],color=fsc_color('light gray'),/data
-      
-      plotsym,0,/fill
-      fsc_plot, xPts, yPts, psym=-8, symsize=0.3, color=getColor(i), /overplot
-      
+      ;psym=-8,symsize=0.3
+      fsc_plot, xPts, yPts, line=0, color=getColor(i), thick=!p.thick-3.0, /overplot
     endfor
+    
+    ; underplot circles at targetPos
+    tvcircle,(xrange[1]-xrange[0])/80.0,targetPos[0],targetPos[1],color=fsc_color('black'),/data,/fill
     
     ; PLOT TWO (x,z)
     fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=zrange,xstyle=1,ystyle=1,charsize=!p.charsize-0.5,$
-         xtitle="x [ckpc]",ytitle="z [ckpc]",position=[0.55,0.2,0.95,0.75],/noerase
+         xtitle="x [cMpc]",ytitle="z [cMpc]",position=[0.55,0.2,0.95,0.75],/noerase
          
     for i=0,n_elements(tp.idTargets)-1 do begin
       xPts = tp.trPos[*,i,0]
       zPts = tp.trPos[*,i,2]
       
-      ; underplot circles at targetPos
-      tvcircle,boxsize/20.0,targetPos[0],targetPos[2],color=fsc_color('light gray'),/data
-      
-      plotsym,0,/fill
-      fsc_plot, xPts, zPts, psym=-8, symsize=0.3, color=getColor(i), /overplot
+      ;psym=-8,symsize=0.3
+      fsc_plot, xPts, zPts, line=0, color=getColor(i), thick=!p.thick-3.0, /overplot
       
       ; legend
-      zStrs = "z="+string(1.0/tp.times-1.0,format='(f4.1)')
-      legend,zStrs,textcolors=['black'],/right,$
-             margin=0.25,charsize=!p.charsize-0.5,box=0
-      
+      ;zStrs = "z="+string(1.0/tp.times-1.0,format='(f4.1)')
+      ;legend,zStrs,textcolors=['black'],/right,margin=0.25,charsize=!p.charsize-0.5,box=0
     endfor
   
-  end_PS, pngResize=50
-
+    ; underplot circles at targetPos
+    tvcircle,(xrange[1]-xrange[0])/80.0,targetPos[0],targetPos[2],color=fsc_color('black'),/data,/fill
+  
+  end_PS, pngResize=50, /deletePS
+stop
 end
 
 ; cosmoCompMassFunctions(): compare gas, tracer, and DM FoF mass functions
@@ -333,9 +407,9 @@ end
 pro cosmoCompMassFunctions
 
   ; config
-  res      = 128
-  run      = 'dev.tracer.noref'
-  redshift = 1.0
+  res      = 256
+  run      = 'tracer'
+  redshift = 3.0
   
   ; load group catalog
   sP    = simParams(res=res,run=run,redshift=redshift)
@@ -381,8 +455,8 @@ pro cosmoCompMassFunctions
   
   ; plot
   start_PS,sP.plotPath+sP.savPrefix+str(res)+'.massFuncs.snap='+str(sP.snap)+'.eps'
-    xrange = [2e7,4e12]
-    yrange = [1e-4,2e0]
+    xrange = [2e7,max(hm_dm)]
+    yrange = [1e-4,1e0]
     
     fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,/xlog,$
          xtitle="",xtickname=replicate(' ',10),$
@@ -401,7 +475,7 @@ pro cosmoCompMassFunctions
            textcolors=getColor([1,2,3,7,8],/name),/bottom,/left,box=0,margin=0.1
            
     ; gas/tr residual plot
-    yrange = [0.66,1.34]
+    yrange = [0.65,1.35]
     fsc_plot,[0],[0],/nodata,/noerase,xrange=xrange,yrange=yrange,/xs,/ys,/xlog,$
              xtitle="mass [h"+textoidl("^{-1}")+" M"+textoidl("_{sun}")+"]",$
              ytitle="ratio",ytickv=[0.8,1.0,1.2],yticks=2,$
@@ -409,26 +483,24 @@ pro cosmoCompMassFunctions
              
     ; just interpolate both onto a set of masses then compare
     nbins = 100
-    res_pts = 10.0^( findgen(nbins+1)/nbins * (10.9-7.5) + 7.5 )
+    res_pts = 10.0^( findgen(nbins+1)/nbins * (11.5-7.5) + 7.5 )
     gas_res = interpol(y_gas,hm_gas,res_pts)
     tr_res  = interpol(y_tr,hm_tr,res_pts)
     
     ; plot
     fsc_plot,xrange,[1.0,1.0],line=0,color=fsc_color('light gray'),/overplot
-    fsc_plot,xrange,[1.1,1.1],line=2,color=fsc_color('light gray'),/overplot
-    fsc_plot,xrange,[0.9,0.9],line=2,color=fsc_color('light gray'),/overplot
     fsc_plot,xrange,[1.2,1.2],line=1,color=fsc_color('light gray'),/overplot
     fsc_plot,xrange,[0.8,0.8],line=1,color=fsc_color('light gray'),/overplot
     fsc_plot,res_pts,tr_res/gas_res,line=0,color=getColor(3),/overplot
     
     ; do the same for the baryonic MF instead of just gas
-    res_pts = 10.0^( findgen(nbins+1)/nbins * (11.1-7.5) + 7.5 )
+    res_pts = 10.0^( findgen(nbins+1)/nbins * (11.5-7.5) + 7.5 )
     tr_res  = interpol(y_tr,hm_tr,res_pts)
     bar_res = interpol(y_bar,hm_bar,res_pts)
     fsc_plot,res_pts,tr_res/bar_res,line=0,color=getColor(8),/overplot
     
     ; legend
-    legend,['tr/gas','tr/bar'],textcolors=getColor([3,8],/name),/right,/top,box=0
+    legend,['tr/gas','tr/baryon'],textcolors=getColor([3,8],/name),/right,/top,box=0
     
   end_PS
   
@@ -436,177 +508,726 @@ pro cosmoCompMassFunctions
   
 end
 
-; cosmoCompRadProfiles(): compare gas, tracer, and DM radial profiles of halos
+;cosmoCompAxisProfiles(): compare gas, tracer, and DM profiles across a box axis
 
-pro cosmoCompRadProfiles, massBin=massBin
+pro cosmoCompAxisProfiles, redshift=redshift
 
-  if not keyword_set(massBin) then stop
-
+  if not keyword_set(redshift) then stop
+  
   ; config
-  res      = 128
+  resSet   = [128]
   run      = 'dev.tracer.nonrad'
-  redshift = 1.0
   
-  ; load group catalog
-  sP    = simParams(res=res,run=run,redshift=redshift)
-  units = getUnits() ;colors
-
-  h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
-  gc = loadGroupCat(sP.simPath,sP.snap,/verbose)
-
-  ; halo selection (manual)
-  ;haloIDs = [0]
+  ax = 0 ;x
+  range = [5000.0,5500.0] ;ckpc
   
-  ;plotTitle = str(res)+textoidl("^3")+" z="+string(redshift,format='(f3.1)')+" - haloID="+str(haloIDs[0])
-  ;saveTag   = 'halo='+str(haloIDs[0])
-
-  ; halo selection (mass bin)
-  haloIDs = where(gc.groupMass ge massBin[0] and gc.groupMass lt massBin[1],countMassBin)
-  print,'Found ['+str(countMassBin)+'] halos in mass bin.'
-
-  plotTitle = str(res)+textoidl("^3")+" z="+string(redshift,format='(f3.1)')+" ("+$
-              string(massBin[0],format='(f4.1)')+" < log(M) < "+string(massBin[1],format='(f4.1)')+")"
-  saveTag   = 'massbin='+string(massBin[0],format='(f4.1)')+"-"+string(massBin[1],format='(f4.1)')
-
-  ; setup binning
-  nbins  = 20
-  minmax = alog10([0.02,1.5]) ; ratio to r200
- 
-  rho_dm    = fltarr(nbins)
-  rho_gas   = fltarr(nbins)
-  rho_stars = fltarr(nbins)
-  rho_tr    = fltarr(nbins)
+  ; loop over resolutions
+  foreach res,resSet,k do begin
   
-  radBins = 10.0^( findgen(nbins+1)/nbins*(minmax[1]-minmax[0]) + minmax[0] )
-  midBins = 10.0^( (findgen(nbins)+0.5)/nbins*(minmax[1]-minmax[0]) + minmax[0] )
-
-  ; load gas,tr,dm,star positions
-  pos_gas   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
-  pos_tr    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='tracer',field='pos')
-  pos_dm    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
-  ;pos_stars = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
+    ; load snapshot info
+    sP = simParams(res=res,run=run,redshift=redshift)
+    h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
   
-  gas_mass   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='mass')
-  ;stars_mass = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='mass')
-  dm_mass    = h.massTable[1]  
-
-  ; locate halo
-  foreach haloID,haloIDs do begin
+    ; setup binning
+    nBins  = 100
+    
+    rho_dm    = fltarr(nbins)
+    rho_gas   = fltarr(nbins)
+    ;rho_stars = fltarr(nbins)
+    rho_tr    = fltarr(nbins)
+    
+    xBins   = linspace(range[0],range[1],nBins)
+    binSize = (range[1]-range[0])/nBins
+    midBins = xBins + binSize/2.0
+    
+    ; load gas,tr,dm,star positions
+    pos_gas   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
+    pos_tr    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='tracer',field='pos')
+    pos_dm    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
+    ;pos_stars = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
+    
+    gas_mass   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='mass')
+    ;stars_mass = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='mass')
+    dm_mass    = h.massTable[1]  
   
-    haloPos = gc.groupPos[*,haloID]
-    haloRad = gc.group_r_crit200[haloID]
+    ; do binning
+    rho_gas   = hist1d(pos_gas[ax,*],gas_mass,binsize=binSize,min=range[0],max=range[1],obin=obin)
+    ;rho_stars = hist1d(pos_stars[ax,*],stars_mass,binsize=binSize,min=0.0,max=h.boxSize,obin=obin)
+    rho_dm    = hist1d(pos_dm[ax,*],binsize=binSize,min=range[0],max=range[1],obin=obin)
+    rho_tr    = hist1d(pos_tr[ax,*],binsize=binSize,min=range[0],max=range[1],obin=obin)
     
-    ; calculate radii and make radial cut
-    rad = reform( sqrt( (pos_gas[0,*]-haloPos[0])*(pos_gas[0,*]-haloPos[0]) + $
-                        (pos_gas[1,*]-haloPos[1])*(pos_gas[1,*]-haloPos[1]) + $
-                        (pos_gas[2,*]-haloPos[2])*(pos_gas[2,*]-haloPos[2]) ) )
+    rho_gas = rho_gas[0:n_elements(rho_gas)-2]
+    ;rho_stars = rho_stars[0:n_elements(rho_stars)-2]
+    rho_dm = rho_dm[0:n_elements(rho_dm)-2]
+    rho_tr = rho_tr[0:n_elements(rho_tr)-2]
+    
+    ; slab volume normalization and mass->Msun
+    vol = h.boxSize * h.boxSize * binSize ;kpc^3
+    
+    rho_gas   = rho_gas / vol * 1e10
+    ;rho_stars = rho_stars / vol * 1e10
+    rho_dm    = rho_dm * dm_mass / vol * 1e10
+    rho_tr    = rho_tr * sP.trMassConst / vol * 1e10
+    
+    ; normalize DM density down for better plotting
+    ;rho_dm /= 4.0
 
-    gas_ind = where(rad le haloRad*2.0,gas_count)
-    rad_gas = rad[gas_ind]/haloRad
-    
-    rad = reform( sqrt( (pos_tr[0,*]-haloPos[0])*(pos_tr[0,*]-haloPos[0]) + $
-                        (pos_tr[1,*]-haloPos[1])*(pos_tr[1,*]-haloPos[1]) + $
-                        (pos_tr[2,*]-haloPos[2])*(pos_tr[2,*]-haloPos[2]) ) )
-    
-    tr_ind = where(rad le haloRad*2.0,tr_count)
-    rad_tr = rad[tr_ind]/haloRad
-    
-    rad = reform( sqrt( (pos_dm[0,*]-haloPos[0])*(pos_dm[0,*]-haloPos[0]) + $
-                        (pos_dm[1,*]-haloPos[1])*(pos_dm[1,*]-haloPos[1]) + $
-                        (pos_dm[2,*]-haloPos[2])*(pos_dm[2,*]-haloPos[2]) ) )
-    
-    dm_ind = where(rad le haloRad*2.0,dm_count)
-    rad_dm = rad[dm_ind]/haloRad
-    
-    ;rad = reform( sqrt( (pos_stars[0,*]-haloPos[0])*(pos_stars[0,*]-haloPos[0]) + $
-    ;                    (pos_stars[1,*]-haloPos[1])*(pos_stars[1,*]-haloPos[1]) + $
-    ;                    (pos_stars[2,*]-haloPos[2])*(pos_stars[2,*]-haloPos[2]) ) )
-    ;
-    ;stars_ind = where(rad le haloRad*2.0,stars_count)
-    ;rad_stars = rad[stars_ind]/haloRad
-    stars_count = 0
-    
-    ; check for degenerate radii
-    w = where(finite(rad_gas),comp=wc,ncomp=ncomp)
-    if (ncomp gt 0) then rad_gas[wc] = 0.0
-    w = where(finite(rad_tr),comp=wc,ncomp=ncomp)
-    if (ncomp gt 0) then rad_tr[wc] = 0.0
-    w = where(finite(rad_dm),comp=wc,ncomp=ncomp)
-    if (ncomp gt 0) then rad_dm[wc] = 0.0
-    ;w = where(finite(rad_stars),comp=wc,ncomp=ncomp)
-    ;if (ncomp gt 0) then rad_stars[wc] = 0.0
-    
-    print,'(' + str(haloID) + ') Found ['+str(gas_count)+'] gas ['+str(tr_count)+'] tracer ['+$
-          str(dm_count)+'] dm ['+str(stars_count)+'] stars inside cut.'
-                     
-    ; subselect gas,stars masses
-    gas_mass_sub   = gas_mass[gas_ind]
-    ;stars_mass_sub = stars_mass[stars_ind]
-    
-    ; do binning 
-    for i=0,nbins-1 do begin
-      ; shell volume normalization
-      vol = 4*!pi/3 * (radBins[i+1]^3.0 - radBins[i]^3.0) * haloRad^3.0
+    ; multi plot config
+    line  = k
+  
+    ; start plot
+    if (k eq 0) then begin
+      start_PS,sP.plotPath+sP.savPrefix+str(n_elements(resSet))+'.axisProf.'+str(ax)+$
+               '.snap='+str(sP.snap)+'.eps'
+
+      xrange = range
+      yrange = [min([rho_gas[where(rho_gas ne 0)],$
+                     rho_dm[where(rho_dm ne 0)]])/1.2,$
+                     max([rho_dm,rho_gas])*1.2]
       
-      w = where(rad_gas gt radBins[i] and rad_gas le radBins[i+1],count)
-      if (count gt 0) then rho_gas[i] += total(gas_mass_sub[w]) / vol
+      fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+           xtitle="x [kpc]",ytitle="density [h"+textoidl("^2")+" M"+textoidl("_{sun}")+$
+           " kpc"+textoidl("^{-3}")+"]",$
+           title="non-rad z="+string(redshift,format='(f3.1)')+" box density profile",/ylog
       
-      ;w = where(rad_gas gt radBins[i] and rad_stars le radBins[i+1],count)
-      ;if (count gt 0) then rho_stars[i] += total(stars_mass_sub[w]) / vol
-      
-      w = where(rad_dm gt radBins[i] and rad_dm le radBins[i+1],count)
-      if (count gt 0) then rho_dm[i] += dm_mass * count / vol
-      
-      w = where(rad_tr gt radBins[i] and rad_tr le radBins[i+1],count)
-      if (count gt 0) then rho_tr[i] += sP.trMassConst * count / vol
-    endfor
-  
-  endforeach
-  
-  ; normalize stacked profiles by number of halos
-  rho_gas   /= n_elements(haloIDs)
-  rho_tr    /= n_elements(haloIDs)
-  rho_dm    /= n_elements(haloIDs)
-  ;rho_stars /= n_elements(haloIDs)
-
-  ; plot
-  start_PS,sP.plotPath+sP.savPrefix+str(res)+'.'+saveTag+'.radProfiles.snap='+str(sP.snap)+'.eps'
-    xrange = 10.0^minmax
-    yrange = [1e-8,1e-2]
+      ; plot gas dens
+      fsc_plot,midBins,rho_gas,psym=-8,symsize=0.7,/overplot,color=getColor(1)
+    endif else begin
+      fsc_plot,midBins,rho_gas,line=line,/overplot,color=getColor(1)
+    endelse
     
-    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-         xtitle="r / r"+textoidl("_{vir}"),ytitle="density [h"+textoidl("^2")+" M"+textoidl("_{sun}")+$
-         " kpc"+textoidl("^{-3}")+"]",title=plotTitle,/ylog,/xlog
-         
-    fsc_plot,midBins,rho_gas,line=0,/overplot,color=getColor(1)
-    fsc_plot,midBins,rho_dm,line=0,/overplot,color=getColor(2)
-    fsc_plot,midBins,rho_tr,line=0,/overplot,color=getColor(3)
+    ; plot other densities
+    fsc_plot,midBins,rho_dm,line=line,/overplot,color=getColor(2)
+    fsc_plot,midBins,rho_tr,line=line,/overplot,color=getColor(3)
     ;fsc_plot,midBins,rho_stars,line=0,/overplot,color=getColor(7)
     ;fsc_plot,midBins,rho_gas+rho_stars,line=0,/overplot,color=getColor(8)
-    
-    ; legend
-    legend,['gas','dm','tracer','stars','gas+stars','('+str(n_elements(haloIDs))+' halos)'],$
-           textcolors=[getColor([1,2,3,7,8],/name),'black'],$
-           /right, box=0, margin=0.25
-  end_PS
+             
+  endforeach ;resSet
   
+  ; legend
+  strs = ['gas ','dm ',' tracer ','gas ','dm ',' tracer '] + $
+         [textoidl('128^3'),textoidl('128^3'),textoidl('128^3'), $
+          textoidl('256^3'),textoidl('256^3'),textoidl('256^3')]
+  colors = getColor([1,2,3,1,2,3],/name)
+  styles = [1,1,1,0,0,0]
+  legend, strs, textcolors=colors, linestyle=styles, $
+    /right, box=0, margin=0.25, linesize=0.25, charsize=!p.charsize-0.4
+  
+  end_PS;, pngResize=50
   stop
 end
 
-; cosmoTracerParentHisto():
+; cosmoStackGroupsRad(): stack radial properties of groups in mass bins and save
 
-pro cosmoTracerParentHisto
+function cosmoStackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs, stars=stars
+
+  ; load snapshot info and group catalog
+  h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+  gc = loadGroupCat(sP.simPath,sP.snap)
+
+  ;nbins = 20
+  nbins = 10 ;CUSTOM
+
+  if (n_elements(hIDs) gt 0) then begin
+    haloIDs = hIDs ; to prevent overwriting input
+    
+    ; halo selection (manual)
+    ;print,'Using ['+str(n_elements(haloIDs))+'] specified halo IDs.'
+    haloRadii = gc.group_r_crit200[haloIDs]
+    
+    ; setup binning
+    logminmax = alog10([1.0,500.0])
+    
+    saveTag = 'halo='+str(haloIDs[0])+'.'+str(n_elements(haloIDs))+$
+              '.snap='+str(sP.snap)+'.nBins='+str(nbins)
+    
+  endif else begin
+    ; halo selection (mass bin)
+    massBin = 10.0^massBinLog / 1e10
+    haloIDs = where(gc.groupMass ge massBin[0] and gc.groupMass lt massBin[1],count)
+    print,'Found ['+str(n_elements(haloIDs))+'] halos in mass bin.'
+    if (count eq 0) then stop
+    
+    ; setup binning
+    haloRadii = gc.group_r_crit200[haloIDs]
+    
+    ;logminmax    = [0.01,2.0] * minmax(haloRadii) > [0.1,100.0]
+    ;logminmax[0] = floor(logminmax[0]*10)/10.0
+    ;logminmax[1] = ceil(logminmax[1]/100)*100.0
+    ;logminmax    = alog10(logminmax)
+    logminmax = alog10([1.0,500.0])
+    
+    saveTag   = 'massbin='+string(massBinLog[0],format='(f4.1)')+"-"+string(massBinLog[1],format='(f4.1)')+$
+                '.snap='+str(sP.snap)+'.nBins='+str(nbins)
+  endelse
+
+  ; save/restore
+  saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.stackRad.' + saveTag + '.sav'
+                 
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+  endif else begin 
+    ; arrays
+    rho_dm    = fltarr(nbins)
+    rho_gas   = fltarr(nbins)
+    size_gas  = fltarr(nbins)
+    num_gas   = fltarr(nbins)
+    rho_tr    = fltarr(nbins)
+    rho_stars = fltarr(nbins)
+    
+    ;radBins = [0.0,           logspace(logminmax[0],logminmax[1],nbins)]
+    ;midBins = [radBins[0]/2.0,logspace(logminmax[0],logminmax[1],nbins,/mid)]
+    ;TODO CUSTOM BINS
+    radBins = [0.0,5.0,12.0,25.0,45.0,75.0,100.0,130.0,180.0,300.0,500.0]
+    midBins = [2.5,8.5,18.5,35.0,60.0,87.5,115.0,155.0,240.0,400.0]
+
+    ; load gas,tr,dm,star positions
+    pos_gas   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
+    pos_tr    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='tracer',field='pos')
+    pos_dm    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
+    if keyword_set(stars) then $
+      pos_stars = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
+    
+    gas_mass   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='mass')
+    if keyword_set(stars) then $
+      stars_mass = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='mass')
+    dm_mass    = h.massTable[1]
+    
+    gas_size    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='vol')
+    gas_size    = (gas_size * 3.0 / (4*!pi))^(1.0/3.0) ;cellrad [ckpc]
+  
+    ; find alternative halo centers via iterative CM fitting
+    ;iterCM = groupCenterPosByIterativeCM(sP=sP,gc=gc,haloIDs=haloIDs)
+    ; find alternative halo centers via most bound particle ID
+    idMBCM = groupCenterPosByMostBoundID(sP=sP)
+  
+    ; locate halo
+    foreach haloID,haloIDs,j do begin
+    
+      ;haloPos = gc.groupPos[*,haloID] ;use FoF centers
+      ;haloPos = iterCM.iterDM[*,j] ;use iterative DM CoM centers
+      ;haloPos = gc.subgroupCM[*,gc.groupFirstSub[haloID]] ;use subfind CoM centers
+      if (gc.subgroupGrNr[gc.groupFirstSub[haloID]] ne haloID) then begin
+        print,'WARNING'
+        
+        stop
+      endif
+      haloPos = idMBCM[*,gc.groupFirstSub[haloID]] ;use most bound particle id centers
+      
+      haloRad = gc.group_r_crit200[haloID]
+  
+      ; calculate radii and make radial cut
+      rad     = periodicRadialDists(haloPos,pos_gas,sP=sP)
+      gas_ind = where(rad le 2*10.0^logminmax[1],gas_count)
+      rad_gas = rad[gas_ind]
+  
+      rad    = periodicRadialDists(haloPos,pos_tr,sP=sP)
+      tr_ind = where(rad le 2*10.0^logminmax[1],tr_count)
+      rad_tr = rad[tr_ind]
+  
+      rad    = periodicRadialDists(haloPos,pos_dm,sP=sP)
+      dm_ind = where(rad le 2*10.0^logminmax[1],dm_count)
+      rad_dm = rad[dm_ind]
+  
+      if keyword_set(stars) then begin
+        rad       = periodicRadialDists(haloPos,pos_stars,sP=sP)
+        stars_ind = where(rad le 2*10.0^logminmax[1],stars_count)
+        rad_stars = rad[stars_ind]
+      endif else begin
+        stars_count = 0
+      endelse
+      
+      print,'(' + str(haloID) + ') Found ['+str(gas_count)+'] gas ['+str(tr_count)+'] tracer ['+$
+            str(dm_count)+'] dm ['+str(stars_count)+'] stars inside cut.'
+                       
+      ; subselect gas,stars masses
+      gas_mass_sub   = gas_mass[gas_ind]
+      gas_size_sub   = gas_size[gas_ind]
+      if keyword_set(stars) then $
+        stars_mass_sub = stars_mass[stars_ind]
+      
+      ; do binning 
+      for i=0,nbins-1 do begin
+        ; gas
+        w1 = where(rad_gas gt radBins[i] and rad_gas le radBins[i+1],count1)
+        if (count1 gt 0) then begin
+          rho_gas[i]  += total(gas_mass_sub[w1])
+          size_gas[i] += total(gas_size_sub[w1])
+          num_gas[i]  += count1
+        endif
+        
+        ; stars
+        if keyword_set(stars) then begin
+          w2 = where(rad_stars gt radBins[i] and rad_stars le radBins[i+1],count2)
+          if (count2 gt 0) then $
+            rho_stars[i] += total(stars_mass_sub[w2])
+        endif
+        
+        ; dm
+        w3 = where(rad_dm gt radBins[i] and rad_dm le radBins[i+1],count3)
+        if (count3 gt 0) then $
+          rho_dm[i] += dm_mass * count3
+        
+        ; tracers
+        w4 = where(rad_tr gt radBins[i] and rad_tr le radBins[i+1],count4)
+        if (count4 gt 0) then $
+          rho_tr[i] += sP.trMassConst * count4
+      endfor
+    
+    endforeach
+
+    ; normalize stacked profiles
+    for i=0,nbins-1 do begin
+      ; shell volume normalization, average over number of halos, and convert to Msun
+      vol = 4*!pi/3 * (radBins[i+1]^3.0 - radBins[i]^3.0) ;kpc^3
+      
+      rho_gas[i]   = rho_gas[i]   / vol / n_elements(haloIDs) * 1e10
+      rho_tr[i]    = rho_tr[i]    / vol / n_elements(haloIDs) * 1e10
+      rho_dm[i]    = rho_dm[i]    / vol / n_elements(haloIDs) * 1e10
+      rho_stars[i] = rho_stars[i] / vol / n_elements(haloIDs) * 1e10
+      
+      ; normalize average cell size
+      if (num_gas[i] gt 0) then size_gas[i]  = size_gas[i] / num_gas[i]
+    endfor
+    
+    num_gas = num_gas / n_elements(haloIDs)  
+    
+    r = {rho_gas:rho_gas,size_gas:size_gas,num_gas:num_gas,$
+         rho_tr:rho_tr,rho_dm:rho_dm,rho_stars:rho_stars,$
+         haloIDs:haloIDs,haloRadii:haloRadii,$
+         logminmax:logminmax,radBins:radBins,midBins:midBins,$
+         saveTag:saveTag}
+
+    ; save
+    save,r,filename=saveFilename
+  endelse
+  
+  return, r
+
+end
+
+; cosmoCompareHaloCenters():
+
+pro cosmoCompareHaloCenters
+
+  res = 256
+  run = 'dev.tracer.nonrad'
+  redshift = 3.0
+  
+  sP = simParams(res=res,run=run,redshift=redshift)
+  
+  gc   = loadGroupCat(sP.simPath,sP.snap)
+  gCen = groupCenterPosByMostBoundID(sP=sP)
+  
+  binSize = 0.25
+  min = 0.0
+  max = 20.0
+  
+  num = 20000
+  
+  ; group catalog consistency checks
+  print,'nGroups nSubgroups',gc.nGroupsTot,gc.nSubgroupsTot
+  for i=0,gc.nGroupsTot-1 do begin
+    fsInd = gc.groupFirstSub[i]
+    grNr  = gc.subgroupGrNr[fsInd]
+    nSubs = gc.groupNSubs[i]
+    if (grNr ne i) then begin & print,'ERROR ',i,fsInd,grNr & stop & endif
+  endfor
+  
+  for i=0,gc.nGroupsTot-1 do begin
+    nSubs = gc.groupNSubs[i]
+    fsInd = gc.groupFirstSub[i]
+    grNrs = gc.subgroupGrNr[fsInd:fsInd+nSubs]
+    for j=0,n_elements(grNrs)-1 do begin
+      if (grNrs[j] ne i) then stop
+    endfor
+  endfor
+  
+  ; centers
+  cen_fof  = gc.groupPos[*,0:num]
+  cen_sfcm = gc.subgroupCM[*,gc.groupFirstSub[0:num]]
+  cen_mb   = gCen[*,gc.groupFirstSub[0:num]]
+  
+  ; distances
+  dist_fof_sfcm = sqrt( (cen_fof[0,*]-cen_sfcm[0,*])^2.0 + $
+                        (cen_fof[1,*]-cen_sfcm[1,*])^2.0 + $
+                        (cen_fof[2,*]-cen_sfcm[2,*])^2.0 )
+  
+  dist_fof_mb = sqrt( (cen_fof[0,*]-cen_mb[0,*])^2.0 + $
+                      (cen_fof[1,*]-cen_mb[1,*])^2.0 + $
+                      (cen_fof[2,*]-cen_mb[2,*])^2.0 )
+                      
+  dist_sfcm_mb = sqrt( (cen_sfcm[0,*]-cen_mb[0,*])^2.0 + $
+                       (cen_sfcm[1,*]-cen_mb[1,*])^2.0 + $
+                       (cen_sfcm[2,*]-cen_mb[2,*])^2.0 )
+  
+  ; plot histos
+  hist_fof_sfcm = histogram(reform(dist_fof_sfcm),binsize=binSize,min=min,max=max,loc=loc1)
+  hist_fof_mb   = histogram(reform(dist_fof_mb),binsize=binSize,min=min,max=max,loc=loc2)
+  hist_sfcm_mb  = histogram(reform(dist_sfcm_mb),binsize=binSize,min=min,max=max,loc=loc3)
+  
+  start_PS,'hist_fof_sfcm.eps'
+    fsc_plot,loc1,hist_fof_sfcm,xtitle="dist [kpc]",ytitle="N"
+  end_PS
+  
+  start_PS,'hist_fof_mb.eps'
+    fsc_plot,loc2,hist_fof_mb,xtitle="dist [kpc]",ytitle="N"
+  end_PS
+  
+  start_PS,'hist_sfcm_mb.eps'
+    fsc_plot,loc3,hist_sfcm_mb,xtitle="dist [kpc]",ytitle="N"
+  end_PS
+  
+  stop
+
+end
+
+; cosmoCompRadProfiles(): compare gas, tracer, and DM radial profiles of halos
+
+pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redshift
+
+  if (n_elements(massBinLog) eq 0 and n_elements(haloIDs) eq 0) then stop
+  if not keyword_set(redshift) then stop
 
   ; config
-  res = 128
-  run = 'dev.tracer.noref'
+  resSet = [256,128] ;[256,128]
+  run    = 'dev.tracer.nonrad'
+  stars  = 0
   
-  redshifts = [5.0,3.0,2.0,1.0]
+  ; run match
+  ;sP1 = simParams(res=resSet[1],run=run,redshift=redshift)
+  sP2 = simParams(res=resSet[0],run=run,redshift=redshift)
+  ;match = findMatchedHalos(sP1=sP1,sP2=sP2)
+  
+  ; start plot book
+  ;start_PS,sP1.plotPath+sP1.savPrefix+'.book.snap='+str(sP1.snap)+'.radProfiles.ps',eps=0,xs=7,ys=9
+  massBinsTag = 'massbin='+string(massBinLog[0],format='(f4.1)')+"-"+string(massBinLog[1],format='(f4.1)')
+  start_PS,sP2.plotPath+sP2.savPrefix+'.'+massBinsTag+'.snap='+str(sP2.snap)+'.radProfiles.eps',xs=7,ys=9
+  
+  ;for i=0,288,2 do begin ;288 matched at z=1
+  ;  print,''
+  ;  print,i
+  ;  hIDs = [ match.matchedInds[match.wMatch[i]], match.wMatch[i] ] ;sP1,sP2 (res[1],res[0]) (128,256)
+  
+    !p.multi = [0,1,2]
+  
+    ; plot 1
+    ; ------
+    foreach res,resSet,k do begin
+    ;foreach run,runSet,k do begin
+    
+      ; load group catalog
+      sP = simParams(res=res,run=run,redshift=redshift)
+      gc = loadGroupCat(sP.simPath,sP.snap)
+    
+      ; load radially stacked results
+      rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
+      
+      ; use matched halos between resolutions
+      ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=hIDs[k],stars=stars)
+  
+      ; check positions
+      ;sfInd = gc.groupFirstSub[hIDs[k]]
+      ;print,gc.groupPos[*,hIDs[k]]
+      ;print,gc.subgroupCM[*,sfInd]
+      ;print,'fof sfcm dist, match dist ',$
+      ;  periodicRadialDists(gc.groupPos[*,hIDs[k]],gc.subgroupCM[*,sfInd],sP=sP),match.posDiffs[hIDs[1]]
+    
+      ; multi plot config
+      line  = k
+    
+      ; start plot
+      if (k eq 0) then begin
+        ;start_PS,sP.plotPath+sP.savPrefix+'.res'+str(n_elements(resSet))+'.'+rs.saveTag+'.radProfiles.eps'
+  
+        plotStr = "nonRad"
+        ;plotStr = str(res)+textoidl('^3')
+        
+        plotTitle = plotStr+" z="+string(redshift,format='(f3.1)')+" ("+$
+                    string(massBinLog[0],format='(f4.1)')+" < log(M) < "+$
+                    string(massBinLog[1],format='(f4.1)')+") " + str(n_elements(rs.haloIDs)) + " halos"
+  
+        ;plotTitle = plotStr+" z="+string(redshift,format='(f3.1)')+" halo ID="+str(haloIDs[0])+$
+        ;            " log(M)="+string(alog10(gc.groupmass[haloIDs[0]]*1e10),format='(f5.2)')
+              
+        ;plotTitle = plotStr+" z="+string(redshift,format='(f3.1)')+" matched"+$
+        ;            " log(M)="+string(alog10(gc.groupMass[match.wMatch[i]]*1e10),format='(f5.2)')+" dist="+$
+        ;            string(match.posDiffs[match.wMatch[i]],format='(f4.1)')
+  
+        rs.logminmax = alog10([1.0,500.0])
+        xrange = 10.0^rs.logminmax
+        ;yrange = [min([rho_gas[where(rho_gas ne 0)],rho_tr,rho_dm,rho_stars[where(rho_stars ne 0)]])/2,$
+        ;          max([rho_dm,rho_gas,rho_tr,rho_stars])*2]
+        yrange = [min([rs.rho_gas[where(rs.rho_gas ne 0)],rs.rho_dm[where(rs.rho_dm ne 0)]])/2,$
+                  max([rs.rho_dm,rs.rho_gas])*2]
+         
+        fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+             xtitle="r [ckpc]",$
+             ytitle="mass density [h"+textoidl("^2")+" M"+textoidl("_{sun}")+$
+             " ckpc"+textoidl("^{-3}")+"]",title=plotTitle,/ylog,/xlog
+        
+        ; r200 lines
+        r200 = minmax(gc.group_r_crit200[rs.haloIDs])
+  
+        fsc_plot,[r200[0],r200[0]],yrange*[1.1,0.98],line=2,color=fsc_color('light gray'),/overplot
+        fsc_plot,[r200[1],r200[1]],yrange*[1.1,0.98],line=2,color=fsc_color('light gray'),/overplot
+        fsc_text,mean(r200)*0.95,yrange[0]*2,textoidl("r_{200}"),alignment=0.5,$
+          charsize=!p.charsize-0.3,color=fsc_color('light gray')
+        
+        ; plot gas dens
+        fsc_plot,rs.midBins,psym=-8,rs.rho_gas,/overplot,color=getColor(1)
+      endif else begin
+        fsc_plot,rs.midBins,rs.rho_gas,line=line,/overplot,color=getColor(1)
+      endelse
+      
+      ; plot other densities
+      fsc_plot,rs.midBins,rs.rho_dm,line=line,/overplot,color=getColor(2)
+      fsc_plot,rs.midBins,rs.rho_tr,line=line,/overplot,color=getColor(3)
+      
+      if (stars eq 1) then begin
+        fsc_plot,rs.midBins,rs.rho_stars,line=line,/overplot,color=getColor(7)
+        fsc_plot,rs.midBins,rs.rho_gas+rho_stars,line=line,/overplot,color=getColor(8)
+      endif
+      
+      ; softening lines
+      soft = sP.gravSoft * [1.0,2.8]
+      
+     fsc_plot,[soft[0],soft[0]],[yrange[0],yrange[0]*10],line=line,/overplot,color=fsc_color('dark gray')
+     fsc_plot,[soft[1],soft[1]],[yrange[0],yrange[0]*10],line=line,/overplot,color=fsc_color('dark gray') 
+     
+      if (k eq 0) then begin
+        fsc_text,soft[0]*0.8,yrange[0]*5,textoidl('\epsilon_{grav}'),color=fsc_color('dark gray'),$
+          charsize=!p.charsize-0.5,alignment=0.5
+        fsc_text,soft[1]*0.75,yrange[0]*5,textoidl('2.8\epsilon_{grav}'),color=fsc_color('dark gray'),$
+          charsize=!p.charsize-0.5,alignment=0.5
+      endif
+               
+    endforeach ;resSet
+    
+    ; legend (two res one run)
+    strs = ['gas ','dm ','tracer ','gas ','dm ','tracer '] + $
+           [textoidl('128^3'),textoidl('128^3'),textoidl('128^3'), $
+            textoidl('256^3'),textoidl('256^3'),textoidl('256^3')]
+    colors = getColor([1,2,3,1,2,3],/name)
+    styles = [1,1,1,0,0,0]
+    
+    ; legend (one res one run)
+    ;strs = ['gas ','dm ','tracer ']+$
+    ;       [textoidl(str(res)+'^3'),textoidl(str(res)+'^3'),textoidl(str(res)+'^3')]
+    ;colors = getColor([1,2,3],/name)
+    ;styles = [0,0,0]
+    
+    ; legend (one res two run)
+    ;strs = ['gas non-rad','dm non-rad','tracer non-rad','gas no-PM','dm no-PM','tracer no-PM']
+    ;colors = getColor([1,2,3,1,2,3],/name)
+    ;styles = [1,1,1,0,0,0]
+    
+    legend, strs, textcolors=colors, linestyle=styles, $
+      /top, /right, box=0, margin=0.25, linesize=0.25, charsize=!p.charsize-0.2
+    
+    ; plot 2
+    ; ------
+    foreach res,resSet,k do begin
+    
+      ; load group catalog
+      sP = simParams(res=res,run=run,redshift=redshift)
+    
+      ; load radially stacked results
+      rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
+      
+      ; load radially stacked results (matched)
+      ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=hIDs[k],stars=stars)
+  
+      ; reconstruct tracer number density since we didn't save it
+      ;nbins  = 20
+      ;logminmax = alog10([1.0,500.0])
+      ;radBins = [0.0, logspace(logminmax[0],logminmax[1],nbins)]
+      nbins = 10
+      radBins = [0.0,5.0,12.0,25.0,45.0,75.0,100.0,130.0,180.0,300.0,500.0]
+      
+      num_tr = fltarr(nbins)
+      
+      for j=0,nbins-1 do begin
+        vol = 4*!pi/3 * (radBins[j+1]^3.0 - radBins[j]^3.0) ;kpc^3
+        num_tr[j] = rs.rho_tr[j] * vol * 1 / 1e10 / sP.trMassConst ;=count4
+      endfor
+      
+      ; start plot
+      line = k
+      
+      if (k eq 0) then begin
+        rs.logminmax = alog10([1.0,500.0])
+        xrange = 10.0^rs.logminmax
+        yrange = [0.8,max([rs.num_gas,rs.size_gas])*2]
+        
+        plotTitle = "gas size and number counts"
+        
+        fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+             xtitle="r [ckpc]",$
+             ytitle="<r"+textoidl("_{gas cell}")+"> [ckpc]  or  N"+textoidl("_{gas}")+"  or  N"+textoidl("_{tr}"),$
+             title=plotTitle,/ylog,/xlog
+        
+        fsc_plot,xrange,[100.0,100.0],line=1,color=fsc_color('light gray'),/overplot
+        fsc_plot,xrange,[10.0,10.0],line=1,color=fsc_color('light gray'),/overplot
+        
+        ; r200 lines
+        r200 = minmax(rs.haloRadii)
+  
+        fsc_plot,[r200[0],r200[0]],yrange*[1.1,0.98],line=2,color=fsc_color('light gray'),/overplot
+        fsc_plot,[r200[1],r200[1]],yrange*[1.1,0.98],line=2,color=fsc_color('light gray'),/overplot
+        fsc_text,mean(r200)*0.95,yrange[0]*2,textoidl("r_{200}"),alignment=0.5,$
+          charsize=!p.charsize-0.3,color=fsc_color('light gray')
+        
+        ; plot gas dens
+        fsc_plot,rs.midBins,rs.num_gas,psym=-8,/overplot,color=getColor(1)
+        fsc_plot,rs.midBins,num_tr,psym=-8,/overplot,color=getColor(3)
+      endif else begin
+        fsc_plot,rs.midBins,rs.num_gas,line=line,/overplot,color=getColor(1)
+        fsc_plot,rs.midBins,num_tr,line=line,/overplot,color=getColor(3)
+      endelse
+      
+      ; plot other densities
+      fsc_plot,rs.midBins,rs.size_gas,line=line,/overplot,color=getColor(2)
+      
+      ; softening lines
+      soft = sP.gravSoft * [1.0,2.8]
+      
+     fsc_plot,[soft[0],soft[0]],[yrange[0],yrange[0]*6],line=line,/overplot,color=fsc_color('dark gray')
+     fsc_plot,[soft[1],soft[1]],[yrange[0],yrange[0]*6],line=line,/overplot,color=fsc_color('dark gray') 
+     
+      if (k eq 0) then begin
+        fsc_text,soft[0]*0.8,yrange[0]*2,textoidl('\epsilon_{grav}'),color=fsc_color('dark gray'),$
+          charsize=!p.charsize-0.5,alignment=0.5
+        fsc_text,soft[1]*0.75,yrange[0]*2,textoidl('2.8\epsilon_{grav}'),color=fsc_color('dark gray'),$
+          charsize=!p.charsize-0.5,alignment=0.5
+      endif
+               
+      ; legend
+      strs = [textoidl('128^3'),textoidl('128^3'),textoidl('128^3'), $
+              textoidl('256^3'),textoidl('256^3'),textoidl('256^3')]+$
+              [' N'+textoidl("_{gas}"),' <r'+textoidl("_{gas cell}")+'>',' N'+textoidl("_{tr}"),$
+              ' N'+textoidl("_{gas}"),' <r'+textoidl("_{gas cell}")+'>',' N'+textoidl("_{tr}")]
+      colors = getColor([1,2,3,1,2,3],/name)
+      styles = [1,1,1,0,0,0]
+      legend, strs, textcolors=colors, linestyle=styles, $
+        /top, /left, box=0, margin=0.25, linesize=0.25, charsize=!p.charsize-0.3, spacing=!p.charsize+0.2
+    
+    endforeach ;resSet
+    
+    ;end_PS;, pngResize=50
+    
+  ;endfor ;match
+  
+  end_PS ;book
+stop
+  return
+end
+
+; cosmoDiffRadProfiles(): calculate difference between gas and tracer radial profiles at several radii
+;                         overplot different resolutions and radii as a function of halo mass bin
+;                         plot for multiple resolutions
+
+pro cosmoDiffRadProfiles
+
+  resSet = [256,128]
+  run    = 'dev.tracer.nonrad'
+  stars  = 0
+  
+  redshifts = [4.0,3.0,2.0,1.0]
+  massBins  = [[11.5,12.0],[11.0,11.5],[10.5,11.0],[10.0,10.5]]
+  bins      = [4,9,12] ;~2%,10%,25% of r200
+
+  ; arrays
+  ratio_trgas = fltarr(n_elements(bins)+1,n_elements(redshifts),$
+                       n_elements(resSet),n_elements(massBins[0,*]))
+  
+  ; load data
+  foreach redshift,redshifts,i do begin
+    foreach res,resSet,j do begin
+      for k=0,n_elements(massBins[0,*])-1 do begin
+        massBinLog = massBins[*,k]
+        print,'massBinLog: ',massBinLog
+  
+        ; load group catalog
+        sP = simParams(res=res,run=run,redshift=redshift)
+        gc = loadGroupCat(sP.simPath,sP.snap)
+      
+        ; load radially stacked results
+        rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
+    
+        ; save ratios at specified bins
+        foreach bin,bins,m do begin
+          ratio_trgas[m,i,j,k] = rs.rho_tr[bin] / rs.rho_gas[bin]
+        endforeach
+        
+        ; save mean ratio
+        w = where(rs.rho_tr ne 0 and rs.rho_gas ne 0)
+        ratio_trgas[m,i,j,k] = mean(rs.rho_tr[w] / rs.rho_gas[w])
+  
+      endfor ;massBin
+    endforeach ;res
+  endforeach ;redshift
+  
+  ; plot once for each massBin
+  for k=0,n_elements(massBins[0,*])-1 do begin
+    start_PS,sP.plotPath+sP.savPrefix+'.massbin='+string(massBins[0,k],format='(f4.1)')+"-"+$
+      string(massBins[1,k],format='(f4.1)')+'.radDiff.eps'
+  
+    xrange = [6.0,0.0]
+    yrange = [0.0,5.0]
+    
+    plotTitle = "non-rad ("+string(massBins[0,k],format='(f4.1)')+$
+      " < log("+textoidl("M_{tot}")+") < "+string(massBins[1,k],format='(f4.1)')+")"
+    
+    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+         xtitle="redshift",ytitle=textoidl("\rho_{tr} / \rho_{gas}"),title=plotTitle
+  
+    fsc_plot,xrange,[1.0,1.0],line=2,color=fsc_color('light gray'),/overplot
+  
+    binStrs = ['r/r'+textoidl('_{vir}'),'r/r'+textoidl('_{vir}'),'r/r'+textoidl('_{vir}'),''] + $
+              ['~0.02','~0.10','~0.25','mean']
+    strings = []
+    lines   = []
+    colors  = []
+  
+    foreach res,resSet,j do begin
+      for m=0,n_elements(bins) do begin
+        ratios = ratio_trgas[m,*,j,k] ;vs redshift
+        fsc_plot,redshifts,ratios,psym=-8,line=j,color=getColor(m),/overplot
+        
+        strings = [strings,str(res)+textoidl('^3')+' '+binStrs[m]]
+        lines   = [lines,j]
+        colors  = [colors,getColor(m,/name)]
+      endfor ;m
+    endforeach
+    
+    ; legend
+    legend,strings,linestyle=lines,textcolors=colors,box=0,/left,/top,$
+      charsize=!p.charsize-0.2,linesize=0.25
+  
+    end_PS
+  endfor
+  
+  ;endforeach ;redshift
+  stop
+  
+end
+
+; tracerParentHisto():
+
+pro tracerParentHisto
+
+  ; config
+  res = 128 ;not used for non-cosmo
+  run = 'dev.tracer.gassphere'
+  
+  ;redshifts = [5.0,3.0,2.0,1.0] ;redshifts or snap numbers for non-cosmo
+  redshifts = [0,1,2,4,6,8,10]
   nNGB = 32
   units = getUnits() ;colors
   
   ; start plot
-  sP = simParams(res=res,run=run,redshift=redshift)
+  sP = simParams(res=res,run=run,redshift=redshifts[0])
   start_PS, sP.plotPath+sP.savPrefix+str(res)+'.parHisto.nNGB='+str(nNGB)+'.eps'
   
   num = 20
@@ -658,7 +1279,8 @@ pro cosmoTracerParentHisto
     fsc_plot,indgen(num)+1,par_histo[0:num-1],psym=-8,thick=!p.thick+1.0,$
              color=getColor(j),/overplot
     
-    legendStrs   = [legendStrs,'z = '+string(redshift,format='(f4.1)')]
+    ;legendStrs   = [legendStrs,'z = '+string(redshift,format='(f4.1)')]
+    legendStrs   = [legendStrs,'snap = '+str(redshift)]
     legendColors = [legendColors,getColor(j,/name)]
     
   endforeach
@@ -720,7 +1342,8 @@ pro cosmoTracerParentHisto
     fsc_plot,indgen(num)+1,par_histo[0:num-1],line=0,thick=!p.thick+1.0,$
              color=getColor(j),/overplot
     
-    legendStrs   = [legendStrs,'z = '+string(redshift,format='(f4.1)')]
+    ;legendStrs   = [legendStrs,'z = '+string(redshift,format='(f4.1)')]
+    legendStrs   = [legendStrs,'snap = '+str(redshift)]
     legendColors = [legendColors,getColor(j,/name)]
     
   endforeach

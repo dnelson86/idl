@@ -364,18 +364,44 @@ function getColor, i, name=name
   return,fsc_color(units.colors[ind])
 end
 
+function linspace, a, b, N
+  vals = findgen(N) / (N-1.0) * (b-a) + a
+  return, vals
+end
+
+function logspace, a, b, N, mid=mid
+  vals = findgen(N) / (N-1.0) * (b-a) + a
+  
+  ; return mid-bin points instead
+  if keyword_set(mid) then $
+    vals = (findgen(N-1)+0.5) / (N-1.0) * (b-a) + a
+  
+  vals = 10.0^vals
+  
+  return, vals
+end
+
 ; startPS, endPS: my version
 
-pro start_PS, filename, xs=xs, ys=ys
+pro start_PS, filename, xs=xs, ys=ys, eps=eps
 
   if not keyword_set(xs) then xs=7.5
   if not keyword_set(ys) then ys=5.0
+  if n_elements(eps) eq 0 then eps=1
 
   PS_Start, FILENAME=filename, /nomatch, /quiet, bits_per_pixel=8, color=1, $
-            /encapsulated, decomposed=0, xs=xs, ys=ys, /inches, font=0, tt_font='Times' ;3/2  
+            encapsulated=eps, decomposed=0, xs=xs, ys=ys, /inches, font=0, tt_font='Times' ;3/2  
  
-  !p.charsize = 1.5
-  !p.thick    = 4.0          
+  !p.charsize = 1.4
+  !p.thick    = 5.0
+  
+  !x.thick += 2.0
+  !y.thick += 2.0
+  !z.thick += 2.0
+  
+  ; make default custom psym (8) a filled circle
+  plotsym,0,/fill
+  !p.symsize = 0.7
             
 end
 
@@ -516,6 +542,7 @@ end
 ;@tracersShocktube
 
 @cosmoVis
+@cosmoSphere
 ;@cosmoPlot
 ;@cosmoAnalysis
 
