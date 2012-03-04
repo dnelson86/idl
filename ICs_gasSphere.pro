@@ -1,9 +1,130 @@
 ; ICs_gasSphere.pro
-; initial condition generation - gas cloud in static hernquist potential
+; initial condition generation - gas cloud in static hernquist/NFW potential
 ; from Mark Vogelsberger's python version
 ; dnelson jan.2012
 
 @helper
+
+; setupTwoSphereCollision(): copy gas and tracers from input filename twice, and offset from center
+
+pro setupTwoSphereCollision, gasOnly=gasOnly
+
+  input_fname  = "gasSphere.gasonly.1e4.nfw.M1e2.norot.dat.hdf5"
+  output_fname = "col2Sph.gasonly.1e4.nfw.M1e2.norot.dat"
+
+  offsetVec = [200.0,0,0] ;kpc in each direction
+  boxSize   = 5000.0 ;kpc
+  nBackGrid = 16 ;^3, nested twice
+  
+  ; load input sphere
+  h = loadSnapshotHeader(input_fname,snapNum='none',/verbose)
+
+  gas_pos = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='pos')
+  gas_vel = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='vel')
+  gas_u   = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='u')
+
+  ; offset template position to box center
+  gas_pos += boxSize/2.0
+  
+  ; decrease thermal energy of gas by a factor to perturb the individual spheres out of equilibrium
+  ; and towards collapse (also help prevent slow expansion during impact)
+  gas_u *= 0.5
+
+  ; arrays
+  nGasFinal = n_elements(gas_ids)*2
+  
+  ; duplicate, offset positions (right)
+  gas_pos_f = [gas_pos[0,*]+offsetVec[0],gas_pos[1,*]+offsetVec[1],gas_pos[2,*]+offsetVec[2]]
+  gas_vel_f = [gas_vel]
+  gas_u_f   = [gas_u]
+  
+  ; duplicate, offset positions (left)
+  gas_pos_f = [[gas_pos_f],[gas_pos[0,*]-offsetVec[0],gas_pos[1,*]-offsetVec[1],gas_pos[2,*]-offsetVec[2]]]
+  gas_vel_f = [[gas_vel_f],[gas_vel]]
+  gas_u_f   = [gas_u_f,gas_u]
+  
+  ; generate matching ids and tracer masses
+  gas_id = lindgen(n_elements(gas_u_f)) ;l64indgen()
+  
+  gas_mass = fltarr(n_elements(gas_id)) + float(h.masstable[0]) ;copy same const gas mass
+
+  ; form gas (partType=0) and tracers (partType=3)
+  gas    = {pos:gas_pos_f,vel:gas_vel_f,id:gas_id,u:gas_u_f,mass:gas_mass}
+
+  ; add nested background grid
+  boxSizeInner = ceil((max(gas.pos)-min(gas.pos))/100) * 100.0
+
+  gas = addICBackgroundGrid(gas, boxSize=boxSizeInner, boxCen=boxSize/2.0, nBackGrid=nBackGrid)
+  gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid)
+  
+  if not keyword_set(gasOnly) then begin
+    print,'Including tracers!'
+    ; repeat all the same with the tracers
+    tr_pos  = loadSnapshotSubset(input_fname,snapNum='none',partType='tracer',field='pos')
+    tr_vel  = loadSnapshotSubset(input_fname,snapNum='none',partType='tracer',field='vel')
+    tr_pos  += boxSize/2.0
+    nTrFinal  = n_elements(tr_ids)*2
+    
+    tr_pos_f = [tr_pos[0,*]+offsetVec[0],tr_pos[1,*]+offsetVec[1],tr_pos[2,*]+offsetVec[2]]
+    tr_vel_f = [tr_vel]
+    
+    tr_pos_f = [[tr_pos_f],[tr_pos[0,*]-offsetVec[0],tr_pos[1,*]-offsetVec[1],tr_pos[2,*]-offsetVec[2]]]
+    tr_vel_f = [[tr_vel_f],[tr_vel]]
+    
+    tr_id  = lindgen(n_elements(tr_pos_f[0,*])) + 100000000L ;l64indgen()
+    
+    tr_mass  = fltarr(n_elements(tr_id)) 
+    
+    tracer = {pos:tr_pos_f,vel:tr_vel_f,id:tr_id,mass:tr_mass}  
+
+    writeICFile,output_fname,part0=gas,part3=tracer;,/longIDs
+  endif else begin
+    print,'Writing gas only!'
+    ; save
+    writeICFile,output_fname,part0=gas;,/longIDs
+  endelse
+  
+  print,'Suggested target gas mass: '+string(h.masstable[0])
+
+end
+
+; setupSingleSphereIso(): isolated gas sphere setup (add background and center)
+
+pro setupSingleSphereIso
+
+  input_fname  = "gasSphere.gasonly.1e4.nfw.M1e2.L0.2.dat.hdf5"
+  output_fname = "gasSphere.gasonly.1e4.nfw.M1e2.L0.2.withBack.dat"
+
+  boxSize   = 5000.0 ;kpc
+  nBackGrid = 16 ;^3, nested twice
+  
+  ; load input sphere
+  h = loadSnapshotHeader(input_fname,snapNum='none',/verbose)
+
+  gas_pos  = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='pos')
+  gas_vel  = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='vel')
+  gas_id   = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='ids')
+  gas_u    = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='u')
+  
+  ; offset template position to box center
+  gas_pos += boxSize/2.0
+  
+  ; form gas (partType=0) and tracers (partType=3)
+  gas_mass = fltarr(n_elements(gas_id)) + float(h.masstable[0]) ;copy same const gas mass
+  
+  gas = {pos:gas_pos,vel:gas_vel,id:gas_id,u:gas_u,mass:gas_mass}
+
+  ; add nested background grid
+  boxSizeInner = ceil((max(gas.pos)-min(gas.pos))/100) * 100.0
+
+  gas = addICBackgroundGrid(gas, boxSize=boxSizeInner, boxCen=boxSize/2.0, nBackGrid=nBackGrid)
+  gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid)
+
+  ; save
+  writeICFile,output_fname,part0=gas
+  print,'Suggested target gas mass: '+string(h.masstable[0])
+
+end
 
 ; profile/value functions
 function GasRho, r

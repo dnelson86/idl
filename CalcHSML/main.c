@@ -1,7 +1,8 @@
 //
 // CalcHSML Routine for IDL
-// dnelson dec.2011
+// dnelson feb.2012
 // based on CalcHsml (for Python) by Mark Vogelsberger
+// 1D,2D,3D versions, for periodic set BoxSize>0 (LONG_XYZ not supported though)
 //
 
 #include <stdio.h>
@@ -125,11 +126,16 @@ int CalcHSML(int argc, void* argv[])
     IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,buf);
     return 0;
   } else {
-#ifdef TWODIMS
-	  IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSML Loaded (TWODIMS!).");
+#ifdef   ONEDIMS
+IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSML Loaded (ONEDIMS!).");
 #else
-		IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSML Loaded (NDIMS=3!).");
+#ifndef  TWODIMS
+IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSML Loaded (NDIMS=3!).");
+#else
+IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSML Loaded (TWODIMS!).");
 #endif
+#endif /* ONEDIMS */
+
   }
 
   // should check: pos has 2 dims, first dim is 3
@@ -142,7 +148,7 @@ int CalcHSML(int argc, void* argv[])
 	
   DesNumNgb    = *(int *)argv[3];
 	DesNumNgbDev = *(int *)argv[4];
-	BoxSize      = *(int *)argv[5];
+	BoxSize      = *(float *)argv[5];
 	HsmlGuess    = *(float *)argv[6];
 	Softening    = *(float *)argv[7];
 	

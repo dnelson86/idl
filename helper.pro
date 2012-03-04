@@ -169,181 +169,7 @@ function loadBinarySequence, fileBase, ptStruct
   return, pts
 end
 
-; writeICFile(): write old Gadget format IC file with gas particles and tracers
-;                each partX struct should contain {id,pos,vel,mass,u} in the usual format
-
-pro writeICFile, fOut, part0=part0, part1=part1, part2=part2, massarr=massarr
-
-  ; arrays
-  pos  = []
-  vel  = []
-  id   = []
-  mass = []
-  u    = []
-
-  ; quick type checking (type code 4 = FLOAT precision, 3 = LONG)
-  if keyword_set(massarr) then $
-    if ( (size(massarr))[2] ne 4 ) then print,'WARNING: massarr type.'
-
-  ; create header
-  npart    = lonarr(6)  
-  if not keyword_set(massarr) then massarr  = dblarr(6)
-  npartall = lonarr(6)
-
-  ; add to particle counts and concat arrays
-  if keyword_set(part0) then begin
-    ; GAS
-    npart(0)    = n_elements(part0.id)
-    npartall(0) = n_elements(part0.id)
-    
-    if (size(part0.pos))[3] ne 4 then print,'WARNING: part0 pos type.'
-    if (size(part0.vel))[3] ne 4 then print,'WARNING: part0 vel type.'
-    if (size(part0.id))[2] ne 3 then print,'WARNING: part0 id type.'
-    if (size(part0.u))[2] ne 4 then print,'WARNING: part0 u type.'
-    
-    pos  = [[pos], [part0.pos]]
-    vel  = [[vel], [part0.vel]]
-    id   = [id,    part0.id]
-    if (massarr[0] eq 0.0) then begin ; if massTable[partType]=0 then expect mass block in ICs
-      if (size(part0.mass))[2] ne 4 then print,'WARNING: part0 mass type.'
-      mass = [mass,  part0.mass]
-    endif
-    u    = [u,     part0.u]
-  endif
-
-  if keyword_set(part1) then begin
-    ; DM
-    npart(1)    = n_elements(part1.id)
-    npartall(1) = n_elements(part1.id)
-    
-    pos  = [[pos], [part1.pos]]
-    vel  = [[vel], [part1.vel]]
-    id   = [id,    part1.id]
-    mass = [mass,  part1.mass]
-    u    = [u,     part1.u]
-  endif
-  
-  if keyword_set(part2) then begin
-    ; TRACER
-    npart(2)    = n_elements(part2.id)
-    npartall(2) = n_elements(part2.id)
-    
-    pos  = [[pos], [part2.pos]]
-    vel  = [[vel], [part2.vel]]
-    id   = [id,    part2.id]
-    mass = [mass,  part2.mass]
-    ;u    = [u,     part2.u] ; u not expected in input for tracer
-  endif
-
-  time          = 0.0D
-  redshift      = 0.0D
-  flag_sfr      = 0L
-  flag_feedback = 0L
-  
-  bytesleft = 136
-  la        = intarr(bytesleft/2)
-
-  ; write IC file
-  openw,1,fOut,/f77_unformatted
-  writeu,1,npart,double(massarr),time,redshift,flag_sfr,flag_feedback,npartall,la
-
-  writeu,1, float(pos)
-  writeu,1, float(vel)
-  writeu,1, long(id)
-  if (n_elements(mass) gt 0) then $
-    writeu,1, float(mass)
-  writeu,1, float(u)                       ; internal energy per unit mass
-  close,1
-  
-  print,'wrote ',fOut
-
-end
-
-; writeICFileHDF5(): GAS ONLY
-pro writeICFileHDF5, fOut, boxSize, pos, vel, id, massOrDens, u
-
-  ; load hdf5 template
-  templatePath = '/n/home07/dnelson/make.ics/ArepoTemplate.hdf5'
-  
-  s = h5_parse(templatePath, /read)
-
-  ; modify base
-  s._NAME    = fOut
-  s._FILE    = fOut
-  s._COMMENT = "dnelson IC gen"
-  
-  ; modify HEADER
-  s.HEADER._FILE                      = fOut
-  s.HEADER.NUMPART_THISFILE._DATA     = [n_elements(id),0,0,0,0,0]
-  s.HEADER.NUMPART_TOTAL._DATA        = [n_elements(id),0,0,0,0,0]
-  s.HEADER.MASSTABLE._DATA            = [0.0,0.0,0.0,0.0,0.0,0.0]
-  s.HEADER.TIME._DATA                 = 0.0
-  s.HEADER.REDSHIFT._DATA             = 0.0
-  s.HEADER.BOXSIZE._DATA              = boxSize
-  s.HEADER.NUMFILESPERSNAPSHOT._DATA  = 1
-  s.HEADER.OMEGA0._DATA               = 0.0
-  s.HEADER.OMEGALAMBDA._DATA          = 0.0
-  s.HEADER.HUBBLEPARAM._DATA          = 1.0
-  s.HEADER.FLAG_SFR._DATA             = 0
-  s.HEADER.FLAG_COOLING._DATA         = 0  
-  s.HEADER.FLAG_STELLARAGE._DATA      = 0
-  s.HEADER.FLAG_METALS._DATA          = 0
-  s.HEADER.FLAG_FEEDBACK._DATA        = 0
-  s.HEADER.FLAG_DOUBLEPRECISION._DATA = 0
-  
-  s.HEADER.COMPOSITION_VECTOR_LENGTH._DATA = 0 ;?
-
-  ; for some reason these are expected IO blocks even for ICs
-  s1 = mod_struct(s.PARTTYPE0,'DENSITY',/delete)
-  s1 = mod_struct(s1,'SMOOTHINGLENGTH',/delete)
-  s1 = mod_struct(s1,'VOLUME',/delete)
-  s = mod_struct(s,'PARTTYPE0',s1)
-
-  ;s.PARTTYPE0.DENSITY._DATA[*]         = 0.0
-  ;s.PARTTYPE0.SMOOTHINGLENGTH._DATA[*] = 0.0
-  ;s.PARTTYPE0.VOLUME._DATA[*]          = 0.0
-  
-  ; modify data parameters
-  s.PARTTYPE0._FILE                = fOut
-  s.PARTTYPE0.COORDINATES._FILE    = fOut
-  s.PARTTYPE0.VELOCITIES._FILE     = fOut
-  s.PARTTYPE0.PARTICLEIDS._FILE    = fOut
-  s.PARTTYPE0.INTERNALENERGY._FILE = fOut
-    
-  ; modify data
-  s.PARTTYPE0.COORDINATES._DIMENSIONS    = [3,n_elements(id)]
-  s.PARTTYPE0.COORDINATES._NELEMENTS     = n_elements(pos)
-  s1 = mod_struct(s.PARTTYPE0.COORDINATES,'_DATA',pos) ;change _DATA size
-  s2 = mod_struct(s.PARTTYPE0,'COORDINATES',s1) ;update PARTTYPE0 with child
-
-  s.PARTTYPE0.VELOCITIES._DIMENSIONS     = [3,n_elements(id)]
-  s.PARTTYPE0.VELOCITIES._NELEMENTS      = n_elements(vel)
-  s1 = mod_struct(s.PARTTYPE0.VELOCITIES,'_DATA',vel)
-  s2 = mod_struct(s2,'VELOCITIES',s1)
-  
-  s.PARTTYPE0.PARTICLEIDS._DIMENSIONS    = [n_elements(id)]
-  s.PARTTYPE0.PARTICLEIDS._NELEMENTS     = n_elements(id)
-  s1 = mod_struct(s.PARTTYPE0.PARTICLEIDS,'_DATA',id)
-  s2 = mod_struct(s2,'PARTICLEIDS',s1)
-
-  s.PARTTYPE0.INTERNALENERGY._DIMENSIONS = [n_elements(u)]
-  s.PARTTYPE0.INTERNALENERGY._NELEMENTS  = n_elements(u)
-  s1 = mod_struct(s.PARTTYPE0.INTERNALENERGY,'_DATA',u)
-  s2 = mod_struct(s2,'INTERNALENERGY',s1)
-  
-  s.PARTTYPE0.MASSES._DIMENSIONS = [n_elements(massOrDens)]
-  s.PARTTYPE0.MASSES._NELEMENTS  = n_elements(massOrDens)
-  s1 = mod_struct(s.PARTTYPE0.MASSES,'_DATA',massOrDens)
-  s2 = mod_struct(s2,'MASSES',s1)
-  
-  s = mod_struct(s,'PARTTYPE0',s2) ;import new PARTTYPE0 structure
-
-  ; output
-  h5_create, fOut, s
-
-end
-
-; one line utility functions: str(), isnumeric()
+; one line utility functions
 
 function str, tString
   return, strcompress(string(tString),/remove_all)
@@ -381,13 +207,28 @@ function logspace, a, b, N, mid=mid
   return, vals
 end
 
+function nuniq, arr
+  return, n_elements(uniq(arr,sort(arr)))
+end
+
+function shuffle, array, seed=seed
+  if n_elements(seed) ne 0 then iseed=seed
+  return,array[sort(randomu(iseed,n_elements(array)))]
+end
+
 ; startPS, endPS: my version
 
-pro start_PS, filename, xs=xs, ys=ys, eps=eps
+pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big
 
   if not keyword_set(xs) then xs=7.5
   if not keyword_set(ys) then ys=5.0
   if n_elements(eps) eq 0 then eps=1
+  
+  ; make the page bigger
+  if n_elements(big) eq 1 then begin
+    xs *= 1.2 ;9.0
+    ys *= 1.2 ;6.0
+  endif 
 
   PS_Start, FILENAME=filename, /nomatch, /quiet, bits_per_pixel=8, color=1, $
             encapsulated=eps, decomposed=0, xs=xs, ys=ys, /inches, font=0, tt_font='Times' ;3/2  
@@ -537,9 +378,14 @@ end
 @cosmoLoad
 
 @tracers
-@tracersCosmo
+@tracersMC
+@tracersMC_2D
+@tracersMC_SphSym
+;@tracersCosmo
+;@tracersCosmoHalos
 ;@tracersDisks
 ;@tracersShocktube
+@tracersSpheres
 
 @cosmoVis
 @cosmoSphere
@@ -548,4 +394,4 @@ end
 
 @arepoLoad
 @arepoVis2D
-;@arepoSphSym
+@arepoSphSym

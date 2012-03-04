@@ -1,235 +1,447 @@
 ; tracersShocktube.pro
-; dev for tracer particles (shocktube tests)
-; dnelson jan.2012
+; dev for tracer particles (shocktube and converging flow tests)
+; dnelson feb.2012
 
 ; plotShocktube():
 
-pro plotShocktube, snap=snap
+pro plotShocktube
 
-  print,'Running: snap ['+str(snap)+']'
+  snaps = indgen(1001)
+  
+  foreach snap,snaps do begin
 
-  units = getUnits()
-  
-  ; config
-  tfac = '1'
-  workingPath = '/n/home07/dnelson/dev.tracer/'
-  ;snapPath    = workingPath + 'st2d.tfac'+str(tfac)+'.1storder/output/'
-  snapPath = workingPath + 'st2d.autogen/output/'
-  plotBase    = 'st2d_autogen_'
-  
-  colors = ['forest green','crimson']
-  
-  ; load
-  h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
-  
-  pos_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='x')
-  dens_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='rho')
-  u_gas      = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='u')
-  
-  pos_tracer  = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='x')
-  dens_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='tracer_rho')
-  temp_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='tracer_temp')
-  
-  ; sort on x-position
-  sort_ind_gas    = sort(pos_gas)
-  sort_ind_tracer = sort(pos_tracer)
-  
-  pos_gas  = pos_gas[sort_ind_gas]
-  dens_gas = dens_gas[sort_ind_gas]
-  u_gas    = u_gas[sort_ind_gas]
-  
-  pos_tracer  = pos_tracer[sort_ind_tracer]
-  dens_tracer = dens_tracer[sort_ind_tracer]
-  temp_tracer = temp_tracer[sort_ind_tracer]
-  
-  ; calculate gas temperature (all units=1)
-  meanmolwt = 1.0 * units.mass_proton
-  gamma     = 1.4
-  
-  temp_gas = (gamma-1.0) * u_gas / units.boltzmann * meanmolwt
-  
-  ; debugging: load y,z
-    y_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='y')
-    z_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='z')
+    print,'Running: snap ['+str(snap)+']'
     
+    ; config
+    workingPath = '/n/home07/dnelson/dev.tracer/'
+    snapPath    = workingPath + 'convFlow.cs0.02.L5.1e2.f1/output.ga53/'
+    plotBase    = 'convFlow.cs0.02.L5.1e2.f1'
+    
+    gamma = 5.0/3.0
+    ndims = 2
+    nNGB  = 32 ; number of neighbors to use with external CalcHSML routine
+               ; which finds smoothing lengths for tophat density estimate
+    
+    xrange = [0.0,20.0]
+    
+    ; load
+    h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
+    
+    pos_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='x')
+    dens_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='rho')
+    u_gas      = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='u')
+    pres_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='pressure')
+    mass_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='mass')
+
+    entr_gas   = pres_gas / dens_gas^gamma
+    
+    pos_tracer  = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='x')
+    
+    y_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='y')
     y_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='y')
     
-    y_gas = y_gas[sort_ind_gas]
-    z_gas = z_gas[sort_ind_gas]
+    ; sort on x-position
+    sort_ind_gas    = sort(pos_gas)
+    sort_ind_tracer = sort(pos_tracer)
     
+    pos_gas  = pos_gas[sort_ind_gas]
+    dens_gas = dens_gas[sort_ind_gas]
+    u_gas    = u_gas[sort_ind_gas]
+    pres_gas = pres_gas[sort_ind_gas]
+    mass_gas = mass_gas[sort_ind_gas]
+    entr_gas = entr_gas[sort_ind_gas]
+    
+    pos_tracer  = pos_tracer[sort_ind_tracer]
+    
+    y_gas    = y_gas[sort_ind_gas]
     y_tracer = y_tracer[sort_ind_tracer]
     
-    ; collapse gas onto x-coordinate, check for any differences vs y or z
-    num_per = 10
+    ; load horizontal velocity field
+    vx_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='velx')
+    vx_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='velx')
     
-    num_gas_new = n_elements(pos_gas) / num_per
-    pos_gas_new = fltarr(3,num_gas_new)
+    vx_gas    = vx_gas[sort_ind_gas]
+    vx_tracer = vx_tracer[sort_ind_tracer]    
     
-    for i=0,num_gas_new-1 do begin
-      pos_gas_new[0,i] = mean(pos_gas[i*num_per:(i+1)*num_per-1])
-      pos_gas_new[1,i] = mean(y_gas[i*num_per:(i+1)*num_per-1])
-      pos_gas_new[2,i] = mean(z_gas[i*num_per:(i+1)*num_per-1])
-    endfor
-  
-  ; interpolate tracer density+temp to positions of gas particles
-  dens_interp = interpNN(pos_gas,pos_tracer,dens_tracer)
-  temp_interp = interpNN(pos_gas,pos_tracer,temp_tracer)
-  
-  ; plot (0) - scatterplot of (x,y) gas and tracer positions
-  start_PS, workingPath + plotBase + 'spos_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps',$
-            xs=10.5, ys=2
-  
-    xrange = [0.0,20.0]
-    yrange = [0.0,2.0]
+    ; load vertical velocity field
+    vy_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='vely')
+    vy_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='vely')
     
-    fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-              xtitle="Position [Code]",ytitle="y",$
-              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+"",$
-              charsize=!p.charsize-0.6,position=[0.06,0.2,0.97,0.86]
+    vy_gas    = vy_gas[sort_ind_gas]
+    vy_tracer = vy_tracer[sort_ind_tracer]    
     
-    fsc_plot,pos_gas,y_gas,psym=4,symsize=0.2,/overplot,color=fsc_color(colors[0])
-    fsc_plot,pos_tracer,y_tracer,psym=4,symsize=0.2,/overplot,color=fsc_color(colors[1])
-  
-  end_PS
-  
-  ; plot (1) - density comparison
-  start_PS, workingPath + plotBase + 'dens_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps'
-  
-    yrange = [0.05,max(dens_gas)*1.1]
-  
-    ; plot
-    fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-              xtitle="",ytitle="Density [Code]",$
-              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+"",$
-              position=[0.25,0.3,0.95,0.9],xtickname=replicate(' ',10)
+    ; total gas energy
+    tot_e = total(0.5 * (vx_gas^2.0 + vy_gas^2.0) * double(mass_gas) + mass_gas * u_gas)
+    print,tot_e
     
-    psym = -4
-    line = 0
-    thick = 0.5
+    ; evaluate tracer density
+    pos_tracer3d  = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='pos')
+    mass_tracer = replicate(total(mass_gas) / h.nPartTot[3], h.nPartTot[3])
+  
+    eval_dens = estimateDensityTophat(pos_tracer3d,mass=mass_tracer,ndims=ndims,nNGB=nNGB,boxSize=0)
+    eval_dens = eval_dens[sort_ind_tracer]
+    pos_tracer3d = pos_tracer3d[*,sort_ind_tracer]
     
-    ; plot tracer
-    fsc_plot, pos_tracer,dens_tracer,psym=psym,line=line,thick=thick,$
-              symsize=0.2,/overplot,color=fsc_color(colors[1])
+    ; subselect tophat densities to avoid top/bottom box boundaries
+    wTrDens = where(abs(pos_tracer3d[1,*]-1.1) lt 0.05,count)
+
+    ; debugging: load y,z
+    ;  z_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='z')
+    ;  y_gas = y_gas[sort_ind_gas]
+    ;  z_gas = z_gas[sort_ind_gas]
+    ;  
+    ;  y_tracer = y_tracer[sort_ind_tracer]
+    ;  
+    ;  ; collapse gas onto x-coordinate, check for any differences vs y or z
+    ;  num_per = 10
+    ;  
+    ;  num_gas_new = n_elements(pos_gas) / num_per
+    ;  pos_gas_new = fltarr(3,num_gas_new)
+    ;  
+    ;  for i=0,num_gas_new-1 do begin
+    ;    pos_gas_new[0,i] = mean(pos_gas[i*num_per:(i+1)*num_per-1])
+    ;    pos_gas_new[1,i] = mean(y_gas[i*num_per:(i+1)*num_per-1])
+    ;    pos_gas_new[2,i] = mean(z_gas[i*num_per:(i+1)*num_per-1])
+    ;  endfor
     
-    ; plot gas
-    fsc_plot, pos_gas,dens_gas,psym=psym,line=line,thick=thick,$
-              symsize=0.4,/overplot,color=fsc_color(colors[0])
+    ; plot - fluid and tracer quantities and positions
+    start_PS, workingPath + plotBase + '_gastr_'+string(snap,format='(I04)')+'.eps',ys=6.0
+    
+      !p.multi = [0,1,3]
+    
+      psym    = 0
+      symsize = 0.4
+    
+      ; density comparison
+      yrange = [0.8,1.6] ;cs0.5=[0.5,2.5] cs2=[0.0,4.5] cs0.02=[0.8,1.6]
+      !y.margin = [-6.0,2.0]
+      fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+                xtitle="",ytitle="Density / Energy",$
+                title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+""
+      
+      fsc_plot, pos_gas,dens_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(0)
+      fsc_plot, pos_tracer3d[0,wTrDens],eval_dens[wTrDens],$
+        psym=8,symsize=symsize,/overplot,color=getColor(3)
+      
+      fsc_plot, pos_gas,u_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(4) 
+      fsc_plot, pos_gas,entr_gas,psym=psym,line=1,symsize=symsize,/overplot,color=getColor(5)
+  
+      ; legend
+      strings = ['gas dens','tracer dens','gas u','gas '+textoidl('P/\rho^\gamma')]
+      legend,strings,textcolors=getColor([0,3,4,5],/name),$
+        box=0,margin=0.25,/right,charsize=!p.charsize-0.4
+  
+      ; vx/vy comparison
+      yrange = [-0.025,0.025]  ;cs0.5=[-3.4,-3.4] cs2=[-3.4,-3.4 cs0.02=[-0.025,0.025]
+      !y.margin = [-8.0,8.0]
+      fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+                xtitle="",ytitle="Velocity"
+                
+      fsc_plot, pos_gas,vx_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(0) 
+      fsc_plot, pos_tracer,vx_tracer,psym=8,symsize=symsize,/overplot,color=getColor(1)
+  
+      fsc_plot, pos_gas,vy_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(2) 
+      fsc_plot, pos_tracer,vy_tracer,psym=8,symsize=symsize,/overplot,color=getColor(3)
+  
+      ; legend
+      strings = ['gas vx','tracer vx','gas vy','tracer vy']
+      legend,strings,textcolors=getColor([0,1,2,3],/name),$
+        box=0,margin=0.25,/right,charsize=!p.charsize-0.4
+    
+      ; scatterplot positions
+      yrange = [0.0,2.0]
+      !y.margin = [4.0,10.0]
+      fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+                xtitle="Position",ytitle="y";,position=[0.06,0.2,0.97,0.86]
+      
+      plotsym,0
+      fsc_plot,pos_gas,y_gas,psym=8,symsize=0.5,/overplot,color=getColor(1)
+      plotsym,0,/fill
+      fsc_plot,pos_tracer,y_tracer,psym=8,symsize=0.2,/overplot,color=getColor(3)
+    
+    end_PS, pngResize=50, /deletePS
+    
+  endforeach
+ 
+end
+
+; plotShocktubeMeshDens(): same as above but with mesh and projected density output files
+
+pro plotShocktubeMeshDens
+
+  ; config
+  workingPath = '/n/home07/dnelson/dev.tracer/'
+  snapPath    = workingPath + 'convFlow.cs5.L5.1e2.f4/output/'
+  plotBase    = 'convFlow.cs5.L5.1e2.f4'
+  
+  yrange1 = [0.0,8.5] ;cs0.5=[0.5,2.5] cs1.5/2=[0.0,4.5] cs0.02=[0.9,1.1] cs5=[0.0,8.5]
+  yrange2 = [-3.4,3.4]  ;cs0.5=[-3.4,-3.4] cs1.5/2=[-3.4,-3.4] cs0.02=[-0.025,0.025]
+  
+  gamma = 2.0
+  ndims = 2
+  nNGB_2D  = 128 ; number of neighbors to use with external CalcHSML routine
+                 ; which finds smoothing lengths for tophat density estimate
+  nNGB_1D  = 32
+  
+  xrange = [0.0,20.0]
+
+  snaps = indgen(1001)
+  
+  ; equivalent tracer mass
+  h = loadSnapshotHeader(snapPath,snapNum=0)
+  
+  mass_gas    = loadSnapshotSubset(snapPath,snapNum=0,partType='gas',field='mass')
+  trMassConst = total(mass_gas) / h.nPartTot[3]
+  
+  foreach snap,snaps do begin
+
+    print,'Running: snap ['+str(snap)+']'
+    
+    ; load
+    h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
+    
+    pos_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='x')
+    dens_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='rho')
+    u_gas      = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='u')
+    pres_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='pressure')
+    ;mass_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='mass')
+
+    entr_gas   = pres_gas / dens_gas^gamma
+    
+    pos_tracer  = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='x')
+    
+    y_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='y')
+    y_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='y')
+    
+    ; sort on x-position
+    sort_ind_gas    = sort(pos_gas)
+    sort_ind_tracer = sort(pos_tracer)
+    
+    pos_gas  = pos_gas[sort_ind_gas]
+    dens_gas = dens_gas[sort_ind_gas]
+    u_gas    = u_gas[sort_ind_gas]
+    pres_gas = pres_gas[sort_ind_gas]
+    ;mass_gas = mass_gas[sort_ind_gas]
+    entr_gas = entr_gas[sort_ind_gas]
+    
+    pos_tracer  = pos_tracer[sort_ind_tracer]
+    
+    y_gas    = y_gas[sort_ind_gas]
+    y_tracer = y_tracer[sort_ind_tracer]
+    
+    ; load horizontal velocity field
+    vx_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='velx')
+    vx_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='velx')
+    
+    vx_gas    = vx_gas[sort_ind_gas]
+    vx_tracer = vx_tracer[sort_ind_tracer]    
+    
+    ; load vertical velocity field
+    vy_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='vely')
+    vy_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='vely')
+    
+    vy_gas    = vy_gas[sort_ind_gas]
+    vy_tracer = vy_tracer[sort_ind_tracer]    
+    
+    ; total gas energy
+    ;tot_e = total(0.5 * (vx_gas^2.0 + vy_gas^2.0) * double(mass_gas) + mass_gas * u_gas)
+    
+    ; evaluate tracer density
+    pos_tracer3d  = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='pos')
+    
+    eval_dens = estimateDensityTophat(pos_tracer3d,mass=trMassConst,ndims=ndims,nNGB=nNGB_2D,boxSize=0)
+    eval_dens = eval_dens[sort_ind_tracer]
+    pos_tracer3d = pos_tracer3d[*,sort_ind_tracer]
+    
+    ; subselect tophat densities to avoid top/bottom box boundaries
+    wTrDens = where(abs(pos_tracer3d[1,*]-1.1) lt 0.05,count)
+    
+    ; re-calculate tracer density using one-dimensional CalcHSML
+    eval_dens_1d = estimateDensityTophat(pos_tracer3d[*,wTrDens],mass=trMassConst,$
+                                         ndims=1,nNGB=nNGB_1D,boxSize=0)
+
+    ; plot - fluid and tracer quantities and positions
+    start_PS, workingPath + plotBase + '_gastr_'+string(snap,format='(I04)')+'.eps',xs=10.0,ys=5.0
+    
+      !p.multi = [0,1,4]
+    
+      psym    = 0
+      symsize = 0.4
+    
+      ; density comparison
+      !y.margin = [-6.0,2.0]
+      fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange1,/xs,/ys,$
+                xtitle="",ytitle="Density / Energy",$
+                title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+"",$
+                xtickname=replicate(' ',10)
+      
+      fsc_plot, pos_gas,dens_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(0)
+      fsc_plot, pos_tracer3d[0,wTrDens],eval_dens[wTrDens],psym=8,symsize=symsize,/overplot,color=getColor(3)
+      fsc_plot, pos_tracer3d[0,wTrDens],5*eval_dens_1d,psym=8,symsize=symsize,/overplot,color=getColor(7)
+      
+      fsc_plot, pos_gas,u_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(4) 
+      fsc_plot, pos_gas,entr_gas,psym=psym,line=1,symsize=symsize,/overplot,color=getColor(5)
+  
+      ; legend
+      strings = ['gas '+textoidl('\rho'),'tracer '+textoidl('\rho_{2D}'),'tracer '+textoidl('\rho_{1D}'),$
+                 'gas u','gas '+textoidl('P/\rho^\gamma')]
+      legend,strings,textcolors=getColor([0,3,7,4,5],/name),$
+        box=0,margin=0.25,/right,charsize=!p.charsize-0.4
+  
+      ; vx/vy comparison
+      !y.margin = [-8.0,6.0]
+      fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange2,/xs,/ys,$
+                xtitle="",ytitle="Velocity",xtickname=replicate(' ',10)
+                
+      fsc_plot, pos_gas,vx_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(0) 
+      fsc_plot, pos_tracer,vx_tracer,psym=8,symsize=symsize,/overplot,color=getColor(1)
+  
+      ;fsc_plot, pos_gas,vy_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(2) 
+      ;fsc_plot, pos_tracer,vy_tracer,psym=8,symsize=symsize,/overplot,color=getColor(3)
+  
+      ; legend
+      strings = ['gas '+textoidl('v_x'),'tracer '+textoidl('v_x')];,'gas vy','tracer vy']
+      legend,strings,textcolors=getColor([0,1],/name),$
+        box=0,margin=0.25,/right,charsize=!p.charsize-0.4
+    
+      ; plot mesh with tracers over
+      yrange = [0.0,2.0]
+      !y.margin = [-2.0,8.0]
+      fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+                xtitle="",ytitle="y",xtickname=replicate(' ',10)
+     
+      plotVoronoi2D, snapPath+'voronoi_mesh_', snap, /overPlot
+       
+      ;plotsym,0
+      ;fsc_plot,pos_gas,y_gas,psym=8,symsize=0.5,/overplot,color=getColor(1)
+      plotsym,0,/fill
+      fsc_plot,pos_tracer,y_tracer,psym=8,symsize=0.2,/overplot,color=getColor(3)
+    
+      ; projected density
+      !y.margin = [4.0,2.0]
+      fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+               xtitle="Position",ytitle="y"
+               
+      plotDensityField, snapPath,snap,/psOut,/overPlot,minMax=yrange1
+    
+    end_PS, pngResize=50, /deletePS
+    
+  endforeach
+ 
+end
+
+; compWaveOverDens(): compare maximum tracer overdensity vs time for different methods
+
+pro compWaveOverDens
+
+  ; config
+  workingPath = '/n/home07/dnelson/dev.tracer/'
+  snapPath    = workingPath + 'convFlow.cs0.02.L5.1e2.f1/output/'
+  plotBase    = 'convFlow.cs0.02.L5.1e2.f1'
+  
+  yrange = [0.5,2.0] ;cs5=[0,16] cs0.02/cs0.5=[0.5,2.0] cs1.5=[0.5,4.0] cs5f4 or cs5_1e3=[0.0,30.0]
+  
+  nNGB_1D = [8,16,32,64]
+  nNGB_2D = [32,64,128,256]
+
+  snaps = indgen(1001) ;indgen(50)*20 ;
+  
+  ; arrays
+  trOverGas_1D = fltarr(n_elements(nNGB_1D),n_elements(snaps))
+  trOverGas_2D = fltarr(n_elements(nNGB_2D),n_elements(snaps))
+  
+  times = fltarr(n_elements(snaps))
+  
+  ; equivalent tracer mass
+  h = loadSnapshotHeader(snapPath,snapNum=0)
+  
+  mass_gas    = loadSnapshotSubset(snapPath,snapNum=0,partType='gas',field='mass')
+  trMassConst = total(mass_gas) / h.nPartTot[3]
+  
+  foreach snap,snaps,j do begin
+
+    print,'Running: snap ['+str(snap)+']'
+    
+    ; load
+    h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
+    
+    times[j] = h.time
+    
+    pos_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='pos')
+    dens_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='rho')
+    pos_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='pos')
+    
+    ; select gas row and sort on x-position
+    wGas = where(abs(pos_gas[1,*]-1.1) lt 0.05,count)
+    
+    pos_gas = pos_gas[0,wGas]
+    pos_gas = pos_gas[sort(pos_gas)]
+    
+    dens_gas = dens_gas[wGas]
+    dens_gas = dens_gas[sort(pos_gas)]
+    
+    ; select tracer row and prepare sort on x-position
+    pos_tracer = pos_tracer[*,sort(pos_tracer[0,*])]
+    wTr = where(abs(pos_tracer[1,*]-1.1) lt 0.05,count)
+
+    ; evaluate tracer density (2D)
+    ndims = 2
+    foreach nNGB,nNGB_2D,k do begin
+      ; tophat evaluation
+      eval_dens = estimateDensityTophat(pos_tracer,mass=trMassConst,ndims=ndims,nNGB=nNGB,boxSize=0)
+
+      eval_dens = eval_dens[wTr]
+      
+      ; linear interpolation onto gas points
+      eval_interp = interpol(eval_dens,pos_tracer[0,wTr],pos_gas)
+      
+      ; save maximum overdensity
+      ratio = eval_interp / dens_gas
+      trOverGas_2d[k,j] = max(ratio)
+    endforeach
+
+    ; zero y-coordinates
+    pos_tracer[1,*] = 0.0
+
+    ; evaluate tracer density (1D)
+    ndims = 1
+    foreach nNGB,nNGB_1D,k do begin
+      ; tophat evaluation
+      eval_dens_1d = estimateDensityTophat(pos_tracer[*,wTr],mass=trMassConst,$
+                                           ndims=ndims,nNGB=nNGB,boxSize=0)
+      eval_dens_1d = 5.0 * eval_dens_1d[wTr] ;5.0 = Ny/Ly (convert tracer rho to 2D, or gas rho to 1D)
+      
+      ; linear interpolation onto gas points
+      eval_interp = interpol(eval_dens_1d,pos_tracer[0,wTr],pos_gas)
+      
+      ; save maximum overdensity
+      ratio = eval_interp / dens_gas
+      trOverGas_1d[k,j] = max(ratio)
+    endforeach
+    
+  endforeach
+
+  ; plot
+  start_PS, workingPath + plotBase + '_overDens_'+string(snap,format='(I04)')+'.eps',ys=5.0
+    
+    fsc_plot, [0],[0],/nodata,xrange=minmax(times),yrange=yrange,/xs,/ys,$
+              xtitle="Time",ytitle="Maximum Tracer/Gas Overdensity"
+    
+    foreach nNGB,nNGB_2D,k do begin
+      fsc_plot,times,trOverGas_2d[k,*],line=0,color=getColor(k),/overplot
+    endforeach
+    
+    foreach nNGB,nNGB_1D,k do begin
+      fsc_plot,times,trOverGas_1d[k,*],line=0,color=getColor(k+n_elements(nNGB_2D)),/overplot
+    endforeach
 
     ; legend
-    legend,['gas','tracer'],textcolors=colors,box=0,margin=0.25,/right
-    
-    ; residual (difference)
-    res = abs(dens_interp - dens_gas) / dens_gas
-    w = where(res ne 0.0)
-    print,'residual minmax: ',minmax(res[w])
-    
-    ;yrange = alog10(minmax(res[w]))
-    yrange = [-7.5,-0.5]
-    
-    fsc_plot,[0],[0],ytitle="log(Frac Error)",xtitle="Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
-              xticklen=0.05,/nodata,position=[0.25,0.15,0.95,0.3],/noerase,yticks=2
-    
-    fsc_plot,xrange,[-2.0,-2.0],line=0,color=fsc_color('gray'),thick=!p.thick-1.0,/overplot
-    fsc_plot,pos_gas,alog10(res[w]),psym=-4,line=line,thick=thick,symsize=0.2,/overplot   
-  
-  end_PS
-  
-  ; plot (2) - temperature comparison
-  start_PS, workingPath + plotBase + 'temp_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps'
-  
-    yrange = [-7.88,-8.07]
-  
-    ; plot
-    fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-              xtitle="",ytitle="log(Temp) [Code]",$
-              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+"",$
-              position=[0.25,0.3,0.95,0.9],xtickname=replicate(' ',10)
-  
-    ; plot tracer
-    fsc_plot, pos_tracer,alog10(temp_tracer),psym=psym,line=line,thick=thick,$
-              symsize=0.2,/overplot,color=fsc_color(colors[1])  
-  
-    ; plot gas
-    fsc_plot, pos_gas,alog10(temp_gas),psym=psym,line=line,thick=thick,$
-              symsize=0.4,/overplot,color=fsc_color(colors[0])  
-  
-    ; legend
-    legend,['gas','tracer'],textcolors=colors,box=0,margin=0.25,/right
-    
-    ; residual (difference)
-    res = abs(temp_interp - temp_gas) / abs(temp_gas)
-    w = where(res ne 0.0)
-    
-    yrange = alog10(minmax(res[w]))
+    colors  = getColor(indgen(n_elements(nNGB_1D)+n_elements(nNGB_2D)),/name)
+    strings = ['2D nNGB = '+str(nNGB_2D),'1D nNGB = '+str(nNGB_1D)]
+    legend,strings,textcolors=colors,box=0,margin=0.25,/right,charsize=!p.charsize-0.3
 
-    fsc_plot,[0],[0],ytitle="log(Frac Error)",xtitle="Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
-              xticklen=0.05,/nodata,position=[0.25,0.15,0.95,0.3],/noerase,yticks=2
-  
-    fsc_plot,xrange,[-2.0,-2.0],line=0,color=fsc_color('gray'),thick=!p.thick-1.0,/overplot
-    fsc_plot,pos_gas,alog10(res[w]),psym=-4,line=line,thick=thick,symsize=0.2,/overplot  
-  
   end_PS
-
-  ; load vertical velocity field
-  vy_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='vely')
-  vy_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='vely')
-  
-  vy_gas    = vy_gas[sort_ind_gas]
-  vy_tracer = vy_tracer[sort_ind_tracer]
-  
-  ; plot (3) - v_y
-  start_PS, workingPath + plotBase + 'vy_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps'
-  
-    yrange = [-1e-4,1e-4]
-  
-    ; plot
-    fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-              xtitle="Position [Code]",ytitle="v_y [Code]",$
-              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+""
-  
-    ; plot gas
-    fsc_plot, pos_gas,vy_gas,psym=4,line=line,thick=thick,$
-              symsize=0.4,/overplot,color=fsc_color(colors[0])  
-  
-    ; plot tracer
-    fsc_plot, pos_tracer,vy_tracer,psym=4,line=line,thick=thick,$
-              symsize=0.2,/overplot,color=fsc_color(colors[1])  
-  
-    ; legend
-    legend,['gas','tracer'],textcolors=colors,box=0,margin=0.25,/right
-    
-  end_PS
-  
-  ; load vertical velocity field
-  vz_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='velz')
-  vz_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='velz')
-  
-  vz_gas    = vz_gas[sort_ind_gas]
-  vz_tracer = vz_tracer[sort_ind_tracer]
-  
-  ; plot (3) - v_z
-  start_PS, workingPath + plotBase + 'vz_'+string(snap,format='(I3.3)')+'.tfac='+str(tfac)+'.eps'
-  
-    yrange = [-1e-4,1e-4]
-  
-    ; plot
-    fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-              xtitle="Position [Code]",ytitle="v_z [Code]",$
-              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+""
-  
-    ; plot gas
-    fsc_plot, pos_gas,vz_gas,psym=4,line=line,thick=thick,$
-              symsize=0.4,/overplot,color=fsc_color(colors[0])  
-  
-    ; plot tracer
-    fsc_plot, pos_tracer,vz_tracer,psym=4,line=line,thick=thick,$
-              symsize=0.2,/overplot,color=fsc_color(colors[1])  
-  
-    ; legend
-    legend,['gas','tracer'],textcolors=colors,box=0,margin=0.25,/right
-    
-  end_PS
-  
+stop
 end
 
 ; compMassDist(): compare mass distribution of tracer particles to the underlying density field of gas
@@ -238,8 +450,6 @@ pro compMassDist, snap=snap
 
   print,'Running: snap ['+str(snap)+']'
 
-  units = getUnits()
-  
   ; config
   tfac = '16'
   ndims = 2
@@ -258,8 +468,8 @@ pro compMassDist, snap=snap
   ; load
   h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
   
-  pos_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='pos')  
-  dens_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='rho')
+  pos_gas  = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='pos')  
+  dens_gas = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='rho')
   mass_gas =  loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='mass')
   
   pos_tracer  = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='pos')
@@ -346,8 +556,6 @@ pro compMassDistTwoRuns, snap=snap
 
   print,'Running: snap ['+str(snap)+']'
 
-  units = getUnits()
-  
   ; config
   ndims = 2
   nNGB  = 32 ; number of neighbors to use with external CalcHSML routine
@@ -489,152 +697,5 @@ pro compMassDistTwoRuns, snap=snap
              psym=-4,line=line,thick=thick,symsize=0.2,/overplot  
     
   end_PS, pngResize=40
-
-end
-
-; compGasExact(): compare gas properties between runs (which should be identical)
-
-pro compGasExact, snap=snap
-
-  print,'Running: snap ['+str(snap)+']'
-  
-  workingPath = '/n/home07/dnelson/dev.tracer/'
-  
-  ;snapPath1   = workingPath + 'st2d.tfac1.2ndorder/output/'
-
-  ;snapPath1   = workingPath + 'st2d.tfac1.1storder/output.timebins/'
-  ;snapPath1   = workingPath + 'st2d.tfac1.1storder/output.direct/'
-  snapPath1   = workingPath + 'st2d.tfac1.1storder/output/'
-  
-  snapPath2   = workingPath + 'st2d.gasonly/output/'
-  
-  ; load (1)
-  x_gas1    = loadSnapshotSubset(snapPath1,snapNum=snap,partType='gas',field='x')
-  dens_gas1 = loadSnapshotSubset(snapPath1,snapNum=snap,partType='gas',field='rho')
-  ids_gas1  = loadSnapshotSubset(snapPath1,snapNum=snap,partType='gas',field='ids')
-  
-  ; load (2)
-  x_gas2    = loadSnapshotSubset(snapPath2,snapNum=snap,partType='gas',field='x')
-  dens_gas2 = loadSnapshotSubset(snapPath2,snapNum=snap,partType='gas',field='rho')
-  ids_gas2  = loadSnapshotSubset(snapPath2,snapNum=snap,partType='gas',field='ids')
-  
-  ; sort on id
-  sort1 = sort(ids_gas1)
-  sort2 = sort(ids_gas2)
-  
-  dens_gas_sorted1 = dens_gas1[sort1]
-  dens_gas_sorted2 = dens_gas2[sort2]
-  
-  diff = dens_gas_sorted1 - dens_gas_sorted2
-  
-  ; where is it different
-  w = where(diff gt 0.001,count)
-  
-  x_gas_sorted1 = x_gas1[sort1]
-  x_gas_sorted2 = x_gas2[sort2]
-  
-  print,'gas dens total diff: ',total(diff),count
-  if (count gt 0) then $
-    print,'positions: ',x_gas_sorted1[w]
-  
-  ; quick plot
-  start_PS,'test2.eps'
-  
-    fsc_plot,x_gas1,dens_gas1,psym=4,symsize=0.6,color=fsc_color('crimson'),xrange=[0.0,20.0]
-    fsc_plot,x_gas2,dens_gas2,psym=4,symsize=0.6,color=fsc_color('slate blue'),/overplot
-  
-  end_PS
-  
-  ;start_PS,'test3.eps'
-  ;  plothist,diff,/auto
-  ;end_PS
-  stop
-  
-end
-
-; compCurMaxTemp(): compare profiles of current to past maximum tracer temperature
-
-pro compCurMaxTemp, snap=snap
-
-  print,'Running: snap ['+str(snap)+']'
-
-  units = getUnits()
-  
-  ; config
-  ndims = 2
-  
-  xrange = [0.0,20.0]  
-  
-  workingPath = '/n/home07/dnelson/dev.tracer/'
-  snapPath    = workingPath + 'test.maxtemp/output/'
-  plotBase    = 'testmaxt_'
-  
-  colors = ['forest green','crimson']
-  
-  ; load
-  h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
-  
-  pos_tracer     = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='pos')
-  curtemp_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='tracer_temp')
-  maxtemp_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='tracer_maxtemp')
-
-  ; sort on tracer x-position
-  sort_ind_tracer = sort(pos_tracer[0,*])
-  
-  x_tracer = reform(pos_tracer[0,sort_ind_tracer])
-  y_tracer = reform(pos_tracer[1,sort_ind_tracer])
-  z_tracer = reform(pos_tracer[2,sort_ind_tracer])
-  
-  curtemp_tracer = curtemp_tracer[sort_ind_tracer]
-  maxtemp_tracer = maxtemp_tracer[sort_ind_tracer]
-  
-  ; tracer selection to avoid periodic edges (CalcHSML not doing periodic correctly for LONG_X)
-  wBounds = [0.4,1.6]
-  if (ndims eq 2) then $
-    wTracer = where(y_tracer ge wBounds[0] and y_tracer le wBounds[1],count)
-  if (ndims eq 3) then $
-    wTracer = where(y_tracer ge wBounds[0] and y_tracer le wBounds[1] and $
-                    z_tracer ge wBounds[0] and z_tracer le wBounds[1],count)
-  
-  ; plot comparison
-  start_PS, workingPath + plotBase +string(snap,format='(I3.3)')+'.eps'
-
-    yrange = alog10(minmax(curtemp_tracer))*[1.005,0.995]
-  
-    ; plot
-    fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-              xtitle="",ytitle="log( Tracer Temp )",$
-              title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)'),$
-              position=[0.25,0.4,0.95,0.9],xtickname=replicate(' ',10)
-              
-    psym = 4
-    line = 0
-    thick = 0.5
-    
-    ; plot tracer (avoiding edges with wTracer)   
-    fsc_plot, x_tracer[wTracer],alog10(curtemp_tracer[wTracer]),psym=psym,line=line,thick=thick,$
-              symsize=0.2,/overplot,color=fsc_color(colors[0])
-    fsc_plot, x_tracer[wTracer],alog10(maxtemp_tracer[wTracer]),psym=psym,line=line,thick=thick,$
-              symsize=0.2,/overplot,color=fsc_color(colors[1])         
-    
-    ; legend
-    legend,['current','past max'],textcolors=colors,box=0,margin=0.25,/right
-    
-    ; residual (difference)
-    res = abs(curtemp_tracer - maxtemp_tracer) / curtemp_tracer
-    w = where(res ne 0.0)
-    
-    yrange = alog10(minmax(res[w]))
-    if (snap eq 0) then yrange = [-3.0,-1.0] ; fix degeneracy when no res
-    
-    fsc_plot,[0],[0],ytitle="log(Frac Diff)",xtitle="Position [Code]",xrange=xrange,yrange=yrange,/xs,/ys,$
-              xticklen=0.05,/nodata,position=[0.25,0.15,0.95,0.4],/noerase,yticks=3
-    
-    fsc_plot,xrange,[-2.0,-2.0],line=0,color=fsc_color('gray'),thick=!p.thick-1.0,/overplot
-    
-    if (snap ne 0) then $
-      fsc_plot,x_tracer[w],alog10(res[w]),psym=-4,line=line,thick=thick,symsize=0.2,/overplot  
-              
-  end_PS, pngResize=50, /deletePS
 
 end

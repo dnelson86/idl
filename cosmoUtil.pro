@@ -236,6 +236,88 @@ function simParams, res=res, run=run, redshift=redshift
     return,r
   endif
   
+  if (run eq 'dev.tracer.nograd') then begin
+    r.boxSize       = 20000.0
+    r.trMassConst   = 4.76446157e-03
+    r.snapRange     = [0,38]
+    r.groupCatRange = [15,38]
+    r.gravSoft      = 4.0
+  
+    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nograd/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nograd/'
+    r.savPrefix  = 'V'
+    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nograd/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
+  
+  if (run eq 'dev.tracer.nocomov') then begin
+    r.boxSize       = 20000.0
+    r.trMassConst   = 4.76446157e-03
+    r.snapRange     = [0,19]
+    r.groupCatRange = [2,19]
+    r.gravSoft      = 4.0
+  
+    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nocomov/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nocomov/'
+    r.savPrefix  = 'C'
+    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nocomov/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
+  
+  if (run eq 'dev.tracer.cvel') then begin
+    r.boxSize       = 20000.0
+    r.snapRange     = [0,38]
+    r.groupCatRange = [15,38]
+    r.gravSoft      = 4.0
+    
+    if (res eq 128) then r.trMassConst = 4.76446157e-03
+    if (res eq 256) then r.trMassConst = 5.95556796e-04
+    
+    if (res eq 128) then r.gravSoft = 4.0
+    if (res eq 256) then r.gravSoft = 2.0
+  
+    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_cvel/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_cvel/'
+    r.savPrefix  = 'E'
+    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_cvel/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
+  
+  if (run eq 'dev.tracer.constTS2') then begin
+    r.boxSize       = 20000.0
+    r.snapRange     = [0,38]
+    r.groupCatRange = [15,38]
+    r.gravSoft      = 4.0
+    
+    r.trMassConst = 4.76446157e-03
+    
+    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_constTS2/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_constTS2/'
+    r.savPrefix  = 'O'
+    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_constTS2/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
+  
   if (run eq 'dev.tracer.gassphere') then begin
     r.boxSize       = 5000.0
     r.trMassConst   = 0.00020755
@@ -349,6 +431,26 @@ function sgIDList, sP=sP, sg=sg, select=select, minNumPart=minNumPart
   endif
   
   return, valSGids
+
+end
+
+; sgPriChildInd(): get the subgroup index of the primary subgroup of a given group, or -1 if none
+
+function sgPriChildInd, gc=gc, haloID=haloID
+
+  if (n_elements(gc) eq 0 or n_elements(haloID) eq 0) then stop
+
+  sgInd = min(where(gc.subgroupGrNr eq haloID,count))
+  fsInd = gc.groupFirstSub[haloID]
+  
+  ; skip if group has no subgroup to obtain this value from
+  if (count eq 0) then return,-1
+  
+  ; double-check (failing either should indicate a problem in the group catalogs, right?)
+  if (sgInd ne fsInd) then return,-1 ;stop
+  if (gc.subgroupGrNr[sgInd] ne haloID) then return,-1 ;stop
+
+  return,sgInd
 
 end
 
@@ -547,12 +649,12 @@ function gcINDList, sP=sP, gc=gc, sgIDList=sgIDList
   
 end
 
-; groupCenterPosByMostBoundID(): compute a "best" center position in space for all subfind groups by 
-;                                using the position of the most bound particles, whose IDs are stored in 
-;                                the group catalog but without knowing the particle types we have to 
-;                                load all gas+dm+stars particle positions
+; subgroupPosByMostBoundID(): compute a "best" center position in space for all subfind groups by 
+;                             using the position of the most bound particles, whose IDs are stored in 
+;                             the group catalog but without knowing the particle types we have to 
+;                             load all gas+dm+stars particle positions
 
-function groupCenterPosByMostBoundID, sP=sP
+function subgroupPosByMostBoundID, sP=sP
 
   forward_function loadSnapshotSubset, loadGroupCat
   
@@ -618,6 +720,54 @@ function groupCenterPosByMostBoundID, sP=sP
   return, groupCen
 end
 
+; correctPeriodicDistVecs(): enforce periodic B.C. for distance vecotrs (effectively component by 
+;                            component), input vecs in format fltarr[3,n]
+
+pro correctPeriodicDistVecs, vecs, sP=sP
+
+  w = where(vecs gt sP.boxSize*0.5,count)
+  if (count ne 0) then $
+    vecs[w] = vecs[w] - sP.boxSize
+    
+  w = where(vecs lt -sP.boxSize*0.5,count)
+  if (count ne 0) then $
+    vecs[w] = sP.boxSize + vecs[w]
+
+end
+
+; periodicDists(): calculate distances correctly taking into account periodic B.C.
+
+function periodicDists, pt, vecs, sP=sP
+
+  nDimsPt = (size(pt))[0]
+
+  if ( ((size(vecs))[0] ne 1 and (size(vecs))[0] ne 2) or $
+       (size(vecs))[1] ne 3) then stop ; vecs not in expected shape
+  if (nDimsPt ne 1 and nDimsPt ne 2) then stop ; something is wrong
+
+  ; distances from one point to a vector of other points [3,n]
+  if (nDimsPt eq 1) then begin
+    xDist = vecs[0,*]-pt[0]
+    yDist = vecs[1,*]-pt[1]
+    zDist = vecs[2,*]-pt[2]
+  endif
+  
+  if (nDimsPt eq 2) then begin
+    xDist = vecs[0,*]-pt[0,*]
+    yDist = vecs[1,*]-pt[1,*]
+    zDist = vecs[2,*]-pt[2,*]
+  endif
+  
+  correctPeriodicDistVecs, xDist, sP=sP
+  correctPeriodicDistVecs, yDist, sP=sP
+  correctPeriodicDistVecs, zDist, sP=sP
+  
+  dists = reform( sqrt( xDist*xDist + yDist*yDist + zDist*zDist ) )
+  
+  return, dists
+
+end
+
 ; groupCenterPosByIterativeCM(): compute a "better" center position in space for all FoF groups by
 ;                                iteratively searching for the center of mass
 
@@ -625,7 +775,7 @@ function groupCenterPosByIterativeCM, sP=sP, gc=gc, haloIDs=haloIDs
 
   forward_function loadSnapshotSubset, loadSnapshotHeader
 
-  if not keyword_set(haloIDs) then stop
+  if (n_elements(haloIDs) eq 0) then stop
 
   ; config
   radStartStop = [1.0,0.2] ; fractions of r_vir
@@ -649,19 +799,25 @@ function groupCenterPosByIterativeCM, sP=sP, gc=gc, haloIDs=haloIDs
   ; locate halo
   foreach haloID,haloIDs,j do begin
     haloPos = gc.groupPos[*,haloID]
+
+    ; NaNs in gc?
+    if (not finite(haloPos[0])) then begin
+      iterDM[*,j]  = [-1,0,0]
+      iterGAS[*,j] = [-1,0,0]
+      continue
+    endif
+
+    ;haloRad = 100.0
+    ;if tag_exist(gc,'group_r_crit200') then stop ; catch
     haloRad = gc.group_r_crit200[haloID]
 
     ; calculate radii and make radial cut
-    rad = reform( sqrt( (pos_gas[0,*]-haloPos[0])*(pos_gas[0,*]-haloPos[0]) + $
-                        (pos_gas[1,*]-haloPos[1])*(pos_gas[1,*]-haloPos[1]) + $
-                        (pos_gas[2,*]-haloPos[2])*(pos_gas[2,*]-haloPos[2]) ) )
-
+    rad = periodicDists(haloPos,pos_gas,sP=sP)
+    
     gas_ind = where(rad le haloRad*radStartStop[0],gas_count)
     pos_gas_sub = pos_gas[*,gas_ind]
 
-    rad = reform( sqrt( (pos_dm[0,*]-haloPos[0])*(pos_dm[0,*]-haloPos[0]) + $
-                        (pos_dm[1,*]-haloPos[1])*(pos_dm[1,*]-haloPos[1]) + $
-                        (pos_dm[2,*]-haloPos[2])*(pos_dm[2,*]-haloPos[2]) ) )
+    rad = periodicDists(haloPos,pos_dm,sP=sP)
 
     dm_ind = where(rad le haloRad*radStartStop[0],dm_count)
     pos_dm_sub = pos_dm[*,dm_ind]
@@ -683,13 +839,8 @@ function groupCenterPosByIterativeCM, sP=sP, gc=gc, haloIDs=haloIDs
     foreach radCut,radSteps,k do begin
 
       ; calculate radii based on last CM
-      rad_gas = reform( sqrt( (pos_gas_sub[0,*]-cm_gas[0,k-1>0])*(pos_gas_sub[0,*]-cm_gas[0,k-1>0]) + $
-                              (pos_gas_sub[1,*]-cm_gas[1,k-1>0])*(pos_gas_sub[1,*]-cm_gas[1,k-1>0]) + $
-                              (pos_gas_sub[2,*]-cm_gas[2,k-1>0])*(pos_gas_sub[2,*]-cm_gas[2,k-1>0]) ) )
-  
-      rad_dm = reform( sqrt( (pos_dm_sub[0,*]-cm_dm[0,k-1>0])*(pos_dm_sub[0,*]-cm_dm[0,k-1>0]) + $
-                             (pos_dm_sub[1,*]-cm_dm[1,k-1>0])*(pos_dm_sub[1,*]-cm_dm[1,k-1>0]) + $
-                             (pos_dm_sub[2,*]-cm_dm[2,k-1>0])*(pos_dm_sub[2,*]-cm_dm[2,k-1>0]) ) )
+      rad_gas = periodicDists(cm_gas[*,k-1>0],pos_gas_sub,sP=sP)
+      rad_dm  = periodicDists(cm_dm[*,k-1>0],pos_dm_sub,sP=sP)
 
       ; make selection inside this radial cut
       w_gas = where(rad_gas le radCut*haloRad,count_gas)
@@ -706,6 +857,7 @@ function groupCenterPosByIterativeCM, sP=sP, gc=gc, haloIDs=haloIDs
       cm_drift[0,k] = sqrt(total((cm_gas[*,k-1>0]-cm_gas[*,k])^2.0))
       cm_drift[1,k] = sqrt(total((cm_dm[*,k-1>0]-cm_dm[*,k])^2.0))
       
+      ;debug:
       ;print,k,radCut,count_gas,count_dm
       ;print,'haloPos: ',haloPos
       ;print,'gasCM:   ',cm_gas[*,k]
@@ -739,40 +891,6 @@ function groupCenterPosByIterativeCM, sP=sP, gc=gc, haloIDs=haloIDs
   return,r
 end
 
-; correctPeriodicDistVecs(): enforce periodic B.C. for distance vecotrs (effectively component by 
-;                            component), input vecs in format fltarr[3,n]
-
-pro correctPeriodicDistVecs, vecs, sP=sP
-
-  w = where(vecs gt sP.boxSize*0.5,count)
-  if (count ne 0) then $
-    vecs[w] = vecs[w] - sP.boxSize
-    
-  w = where(vecs lt -sP.boxSize*0.5,count)
-  if (count ne 0) then $
-    vecs[w] = sP.boxSize + vecs[w]
-
-end
-
-; periodicRadialDists(): calculate radial distances from one point to a vector of other points [3,n]
-;                        correctly taking into account periodic B.C.
-
-function periodicRadialDists, pt, vecs, sP=sP
-
-  xDist = vecs[0,*]-pt[0]
-  yDist = vecs[1,*]-pt[1]
-  zDist = vecs[2,*]-pt[2]
-  
-  correctPeriodicDistVecs, xDist, sP=sP
-  correctPeriodicDistVecs, yDist, sP=sP
-  correctPeriodicDistVecs, zDist, sP=sP
-  
-  rad = reform( sqrt( xDist*xDist + yDist*yDist + zDist*zDist ) )
-  
-  return, rad
-
-end
-
 ; findMatchedHalos(): cross-match halos between two group catalogs
 
 function findMatchedHalos, sP1=sP1, sP2=sP2
@@ -793,37 +911,28 @@ function findMatchedHalos, sP1=sP1, sP2=sP2
   posDiffs    = fltarr(gc1.nGroupsTot)
   
   targetPos   = fltarr(3,gc2.nGroupsTot)
+ 
+  ; load most bound particle ID positions for subfind groups
+  idMBCM1 = subgroupPosByMostBoundID(sP=sP1)
+  idMBCM2 = subgroupPosByMostBoundID(sP=sP2)
   
-  ; find ending points where firstsub and grnr don't agree
-  for i=0,gc1.nGroupsTot-1 do begin
-    sfInd = gc1.groupFirstSub[i]
-    if (sfInd gt gc1.nSubgroupsTot-1) then continue
-    grnr = gc1.subgroupGrNr[sfInd]
-    if (grnr eq i) then endingInd1 = i
-  endfor
-  
+  ; fill target positions with mbID positions for each first subgroup of each FoF group in groupcat2
   for i=0,gc2.nGroupsTot-1 do begin
-    sfInd = gc2.groupFirstSub[i]
-    if (sfInd gt gc2.nSubgroupsTot-1) then continue
-    grnr = gc2.subgroupGrNr[sfInd]
-    if (grnr eq i) then endingInd2 = i
-  endfor
-  
-  ; fill target positions with subfind CMs for each first subgroup of each FoF group in groupcat2
-  for i=0,endingInd2-1 do begin
-    sfInd = gc2.groupFirstSub[i]
-    targetPos[*,i] = gc2.subgroupCM[*,sfInd]
+    sgInd = sgPriChildInd(gc=gc2,haloID=i)
+    targetPos[*,i] = idMBCM2[*,sgInd]
   endfor
 
   ; loop over all FoF halos in groupcat1
-  for i=0,endingInd1-1 do begin
-    ;if (i mod 100 eq 0) then print,i
+  for i=0,gc1.nGroupsTot-1 do begin
+    ; find primary subgroup child and so position, skip if none
+    sgInd = sgPriChildInd(gc=gc1,haloID=i)
+    if (sgInd eq -1) then continue
+    
     ; compute distances from subfind CM center and cut at maximum
-    sfInd = gc1.groupFirstSub[i]
-    hPos  = gc1.subgroupCM[*,sfInd]
+    hPos  = idMBCM1[*,sgInd]
     hMass = gc1.groupMass[i]
     
-    dists = periodicRadialDists(hPos,targetPos,sP=sP1)
+    dists = periodicDists(hPos,targetPos,sP=sP1)
     minDist = min(dists)
     
     if (minDist le distTol) then begin

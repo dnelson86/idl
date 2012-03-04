@@ -4,8 +4,8 @@
 
 ; plotVoronoi2D(): plot "voronoi_mesh" output file
 
-pro plotVoronoi2D, fileBase, boxSize, m, oPlot=oPlot, fillWindow=fillWindow, $
-                   zoom=zoom, pos=pos, ids=ids
+pro plotVoronoi2D, fileBase, m, overPlot=overPlot, fillWindow=fillWindow, $
+                   zoom=zoom, pos=pos, ids=ids, boxSize=boxSize
 
   ;config
   nDims   = 2
@@ -14,20 +14,21 @@ pro plotVoronoi2D, fileBase, boxSize, m, oPlot=oPlot, fillWindow=fillWindow, $
   
   ;load
   vor = loadVoronoiMesh(fileBase,m,nDims)
-  
-  nGas = vor.nLoad[0]
-
-  ; set ranges
-  if (not keyword_set(zoom)) then begin
-    xrange = [0,boxSize[0]]
-    yrange = [0,boxSize[1]]
-  endif else begin
-    xrange = [boxSize[0]/2.0-boxSize[0]/zoom,boxSize[0]/2.0+boxSize[0]/zoom]
-    yrange = [boxSize[1]/2.0-boxSize[1]/zoom,boxSize[1]/2.0+boxSize[1]/zoom]
-  endelse
-
+ 
   ; start plot
-  if (not keyword_set(oPlot)) then begin
+  if (not keyword_set(overPlot)) then begin
+  
+    if not keyword_set(boxSize) then stop
+    
+    ; set ranges
+    if (not keyword_set(zoom)) then begin
+      xrange = [0,boxSize[0]]
+      yrange = [0,boxSize[1]]
+    endif else begin
+      xrange = [boxSize[0]/2.0-boxSize[0]/zoom,boxSize[0]/2.0+boxSize[0]/zoom]
+      yrange = [boxSize[1]/2.0-boxSize[1]/zoom,boxSize[1]/2.0+boxSize[1]/zoom]
+    endelse
+  
     if keyword_set(fillWindow) then $
       plot,[0],[0],/nodata,xrange=xrange,yrange=yrange, $
            xstyle=5,ystyle=5,position=[0.0,0.0,1.0,1.0] ;5=1+4 bitwise, exact+supressed
@@ -38,7 +39,7 @@ pro plotVoronoi2D, fileBase, boxSize, m, oPlot=oPlot, fillWindow=fillWindow, $
   endif
 
   ; for each cell, plot edges of cell
-  for j=0L, nGas-1 do begin
+  for j=0L, vor.nGas-1 do begin
     x = transpose(vor.xyzEdges[0, vor.edgeList[vor.nEdgesOffset[j]:vor.nEdgesOffset[j]+vor.nEdges[j]-1]])
     y = transpose(vor.xyzEdges[1, vor.edgeList[vor.nEdgesOffset[j]:vor.nEdgesOffset[j]+vor.nEdges[j]-1]])
 
@@ -61,7 +62,7 @@ end
 ; plotDensityField(): plot "density_field_" or "proj_density_field_" output file
 
 pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=writeJPG, psOut=psOut, $
-                        xyScaleFac=xyScaleFac, minMax=minMax, log=log
+                        xyScaleFac=xyScaleFac, minMax=minMax, log=log, overPlot=overPlot
   
   if (not keyword_set(writePNG) and not keyword_set(writeJPG) and not keyword_set(psOut)) then begin
     print,'ERROR: No output method specified.'
@@ -76,8 +77,9 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
   
     ; log scaling of density
     if keyword_set(log) then begin
-      w = where(df.dens ne 0.0)
+      w = where(df.dens gt 1e-8,comp=wc)
       df.dens[w] = alog10(df.dens[w])
+      df.dens[wc] = min(df.dens[w])
     endif
   
     ; color tables and scaling
@@ -139,7 +141,7 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
     
     ;output PS - assume the ps device is already open
     if keyword_set(psOut) then begin
-      tvimage,pic,true=1,position=[0.0,0.0,1.0,1.0]
+      tvimage,pic,true=1,position=[0.0,0.0,1.0,1.0],overplot=overPlot
     endif
     
     df = !NULL
@@ -211,14 +213,14 @@ pro scatterPlotPos
 
   ; config
   workingPath = '/n/home07/dnelson/dev.tracer/'
-  filePath    = workingPath + 'gasSphere.gasonly.2e5/output/'
+  filePath    = workingPath + 'col2Sph.gastr.1e5.f1/output/'
   
   zoomSize = 1000.0 ;kpc
   partType = 'gas'
 
   ; find number of snapshots and loop
   ;nSnaps = n_elements(file_search(filepath+'snap_*'))
-  snapRange = [0,10,1]
+  snapRange = [10,40,5]
   
   for snap=snapRange[0],snapRange[1],snapRange[2] do begin
     ; sizes

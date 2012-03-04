@@ -592,15 +592,17 @@ end
 
 function getSnapFilelist, fileBase, snapNum=m
 
-  ; check for '/' on end of fileBase
-  lastChar = strmid(fileBase,strlen(fileBase)-1,1)
-  if (lastChar ne '/') then fileBase += '/'
-
   ; format snapNum and initial guess
   if (str(m) eq 'none') then begin
     ext = ''
     f = fileBase
+    if file_test(f) then return,[f]
   endif else begin
+    ; check for '/' on end of fileBase
+    lastChar = strmid(fileBase,strlen(fileBase)-1,1)
+    if (lastChar ne '/') then fileBase += '/'
+    
+    ; format snapshot number
     if (m le 999) then $
       ext = string(m,format='(I3.3)')
     if (m gt 999) then $
@@ -637,7 +639,7 @@ function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
   ; get matching filename (return -1 if not found)
   fileList = getSnapFilelist(fileBase,snapNum=m)
 
-  if ((size(fileList))[0] eq 0) then if (fileList eq -1) then return,-1
+  if ((size(fileList))[0] eq 0) then if (fileList eq -1) then stop
   
   ; read header from first part
   fileID   = h5f_open(fileList[0])
@@ -666,7 +668,7 @@ function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
         ;compVectorLen      : s.composition_vector_length        $
       }
       
-  h5f_close, fileID  
+  h5f_close, fileID
   
   return, h
 end
@@ -675,7 +677,8 @@ end
 ;                       partType = [0,1,2,4] or ('gas','dm','tracer','stars') (case insensitive)
 ;                       field    = ['ParticleIDs','coordinates','xyz',...] (case insensitive)
 
-function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verbose=verbose
+function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
+                             verbose=verbose, doublePrec=doublePrec
 
   if not keyword_set(verbose) then verbose = 0
   partType = PT ; so we don't change the input
@@ -705,14 +708,21 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
   headerID = h5g_open(fileID,"Header")
   nPartTot = h5a_read(h5a_open_name(headerID,"NumPart_Total"))
   nSplits  = h5a_read(h5a_open_name(headerID,"NumFilesPerSnapshot"))
+  flagDbl  = h5a_read(h5a_open_name(headerID,"Flag_DoublePrecision"))
   h5g_close, headerID
   h5f_close, fileID
   
   if (nSplits ne nFiles) then begin
     print,'ERROR: NumFilesPerSnapshot ['+str(nSplits)+'] differs from number of split files found ['+$
            str(nFiles)+'].'
-    return,0
+    stop
   endif
+  
+  ; double precision
+  if (flagDbl eq 1 and not keyword_set(doublePrec)) then $
+    print,'Warning: Snapshot is double precision but only singlePrec load requested.'
+  if (flagDbl eq 0 and keyword_set(doublePrec)) then $
+    print,'Warning: Snapshot is single precision but doublePrec load requested.'
   
   ; early exit: no particles of requested type
   if (nPartTot[partType] eq 0) then return, 0
@@ -723,11 +733,14 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
   rDims = 1 ;override if needed
   fieldName = ''
   
+  ; gas, stars, dm
+  ; --------------
+  
   if (field eq 'center_of_mass' or field eq 'centerofmass' or field eq 'com' or field eq 'cm' or $
       field eq 'cmx' or field eq 'cmy' or field eq 'cmz') then begin
     fieldName = 'Center-of-Mass'
     rDims = 3
-    r = dblarr(rDims,nPartTot[partType])
+    r = fltarr(rDims,nPartTot[partType])
     if (partType ne 0) then begin & print,'Error: CoM is gas only!' & return,0 & endif
   endif
   if (field eq 'coordinates' or field eq 'xyz' or field eq 'positions' or field eq 'pos' or $
@@ -750,13 +763,6 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
     r = fltarr(nPartTot[partType])
     fieldName = 'ElectronAbundance'
     if (partType ne 0) then begin & print,'Error: NE is gas only!' & return,0 & endif
-  endif
-  if (field eq 'properties' or field eq 'quants' or field eq 'quantities' or $
-      field eq 'tracer_cumsfr' or field eq 'tracer_maxtemp_nosf' or field eq 'tracer_maxtemp') then begin
-    fieldName = 'FluidQuantities'
-    rDims = 3 ; WARNING: must match to Arepo run (currently: CumSFR,MaxTempNoSF,MaxTemp)
-    r = fltarr(rDims,nPartTot[partType])
-    if (partType ne 3) then begin & print,'Error: Fluid quantities are tracer only!' & return,0 & endif
   endif
   if (field eq 'internalenergy' or field eq 'u') then begin
     r = fltarr(nPartTot[partType])
@@ -794,6 +800,11 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
     fieldName = 'Number of faces of cell'
     if (partType ne 0) then begin & print,'Error: NumFaces is gas only!' & return,0 & endif
   endif
+  if (field eq 'numtr' or field eq 'numtracers') then begin
+    r = lonarr(nPartTot[partType])
+    fieldName = 'NumTracers'
+    if (partType ne 0) then begin & print,'Error: NumTracers is gas only!' & return,0 & endif
+  endif
   if (field eq 'particleids' or field eq 'ids') then begin
     r = lonarr(nPartTot[partType])
     fieldName = 'ParticleIDs'
@@ -801,6 +812,11 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
   if (field eq 'potential' or field eq 'phi') then begin
     r = fltarr(nPartTot[partType])
     fieldName = 'Potential'
+  endif
+  if (field eq 'pressure' or field eq 'pres') then begin
+    r = fltarr(nPartTot[partType])
+    if (partType ne 0) then begin & print,'Error: Pressure is gas only!' & return,0 & endif
+    fieldName = 'Pressure'
   endif
   if (field eq 'smoothinglength' or field eq 'hsml') then begin
     r = fltarr(nPartTot[partType])
@@ -834,6 +850,27 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
     if (partType ne 0) then begin & print,'Error: Vol is gas only!' & return,0 & endif
   endif
   
+  ; tracers
+  ; -------
+  
+  if (field eq 'parentid' or field eq 'parentids') then begin
+    r = lonarr(nPartTot[partType])
+    fieldName = 'ParentID'
+    if (partType ne 3) then begin & print,'Error: ParentID is tracer only!' & return,0 & endif
+  endif
+  if (field eq 'properties' or field eq 'quants' or field eq 'quantities' or $
+      field eq 'tracer_cumsfr' or field eq 'tracer_maxtemp_nosf' or field eq 'tracer_maxtemp') then begin
+    fieldName = 'FluidQuantities'
+    rDims = 3 ; WARNING: must match to Arepo run (currently: CumSFR,MaxTempNoSF,MaxTemp)
+    r = fltarr(rDims,nPartTot[partType])
+    if (partType ne 3) then begin & print,'Error: Fluid quantities are tracer only!' & return,0 & endif
+  endif
+  if (field eq 'tracerid' or field eq 'tracerids') then begin
+    r = lonarr(nPartTot[partType])
+    fieldName = 'TracerID'
+    if (partType ne 3) then begin & print,'Error: TracerID is tracer only!' & return,0 & endif
+  endif
+  
   if (fieldName eq '') then begin
     print,'ERROR: Requested field -- ' + strlowcase(field) + ' -- not recognized!'
     return,0
@@ -843,6 +880,10 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, verb
     print,'Loading "' + str(fieldName) + '" for partType=' + str(partType) + ' from snapshot (' + $
           str(m) + ') in [' + str(nFiles) + '] files. (nGas=' + $
           str(nPartTot[0]) + ' nDM=' + str(nPartTot[1]) + ' nStars=' + str(nPartTot[4]) + ')' 
+   
+  ; double precision requested?
+  if (size(r,/tname) eq 'FLOAT' and keyword_set(doublePrec)) then $
+    r = double(r)
    
   ; load requested field from particle type across all file parts
   for i=0,nFiles-1 do begin
