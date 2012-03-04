@@ -4,64 +4,6 @@
 
 @helper
 
-; add background grid of specified resolution to gas ICs
-function addICBackgroundGrid, gas, boxSize=boxSize, nBackGrid=nBackGrid
-
-  ; if not requested, return un-altered
-  if (nBackGrid eq 0) then return, gas
-  
-  if (n_elements(boxSize) eq 0 or n_elements(gas) eq 0) then stop
-
-  ; config
-  massBackGrid   = 1e-20
-  uthermBackGrid = 0.0
-
-  backCellSize = boxSize / nBackGrid
-  
-  xyz_back = findgen(nBackGrid)/nBackGrid * boxSize + backCellSize/2.0
-  
-  nBackKeep = 0
-  pos_back = []
-  
-  ; find empty background grid cells
-  for i=0,nBackGrid-1 do begin
-    for j=0,nBackGrid-1 do begin
-      for k=0,nBackGrid-1 do begin
-        cenBackCell = [xyz_back[i],xyz_back[j],xyz_back[k]]
-        min_xyz = cenBackCell - backCellSize/2.0
-        max_xyz = cenBackCell + backCellSize/2.0
-        
-        w = where(gas.pos[0,*] ge min_xyz[0] and gas.pos[0,*] le max_xyz[0] and $
-                  gas.pos[1,*] ge min_xyz[1] and gas.pos[1,*] le max_xyz[1] and $
-                  gas.pos[2,*] ge min_xyz[2] and gas.pos[2,*] le max_xyz[2], count)
-        
-        ; keep background point
-        if (count eq 0) then begin
-          nBackKeep += 1
-          pos_back = [[pos_back],[cenBackCell]]
-        endif
-      endfor
-    endfor
-  endfor
-  
-  ; create other arrays
-  vel_back  = fltarr(3,nBackKeep)
-  mass_back = fltarr(nBackKeep) + massBackGrid
-  u_back    = fltarr(nBackKeep) + uthermBackGrid
-  id_back   = lindgen(nBackKeep) + max(id) + 1
-  
-  ; concat background grid and primary cells
-  pos  = [[gas.pos],[pos_back]]
-  vel  = [[gas.vel],[vel_back]]
-  mass = [gas.mass,mass_back]
-  u    = [gas.u,u_back]
-  id   = [gas.id,id_back]
-
-  r = {pos:pos,vel:vel,mass:mass,u:u,id:id}
-  return, r
-  
-end
-
 ; 2D arepo.cuda input
 pro gen_arepo_cuda_2D_input
 
@@ -270,33 +212,40 @@ pro gen_TS_BlastWave_3D_ICs
 end
 
 
-; original 3D Evrard collapse: BoxSize=10.0 PERIODIC GAMMA=1.4
+; 3D Evrard collapse: BoxSize=10.0 PERIODIC
+; 
+; this makes a constant density cold sphere surrounded by a constant density hot medium
+; which fills the entire box, NOT the density profile rho(r) = M_cold / (2pi R_cold^2 r) for r<R_cold
+
 pro gen_evrard_collapse_3D_ICs
 
   ; config
-  fOut = "evrard_3D_24k.dat"
+  fOut = "evrard_3D_10k_box=50_rhohot=0.001.dat"
   
-  Lx = 10.0
-  Ly = 10.0
-  Lz = 10.0
+  Lx = 50.0
+  Ly = 50.0
+  Lz = 50.0
   
   ga       = 5.0/3.0
-  rho_hot  = 1.0
-  rho_cold = 10.0
   P        = 1.0
   
-  Machnumber = 2.7
+  rho_hot  = 0.001
+  rho_cold = 10.0 ;30.0 -> utherm_cold=0.05
+                  ;10.0 -> utherm_cold=0.15
   
   R_cold = 1.0  
-  N_cold = 24000L
+  N_cold = 10000L
   
   ; derived
   xc = Lx/2
   yc = Ly/2
   zc = Lz/2
   
-  cs   = sqrt(ga*P/rho_hot)
-  vext = Machnumber*cs
+  ; don't know what the purpose of this hot medium (x-direction only) velocity was?
+  ;Machnumber = 2.7
+  ;cs   = sqrt(ga*P/rho_hot)
+  ;vext = Machnumber*cs
+  ;print,vext
   
   vol_hot  = Lx*Ly*Lz - 4.0*!pi/3.0*R_cold^3.0
   vol_cold = 4.0*!pi/3.0*R_cold^3.0
@@ -307,7 +256,9 @@ pro gen_evrard_collapse_3D_ICs
   N_total = N_cold + N_hot
   
   print,'num cold hot total',N_cold,N_hot,N_total
-  
+  print,'Suggested TargetGasMass: ',mPart
+  print,'Suggested MeanVolume: ',vol_hot/N_hot
+
   ; arrays
   pos  = fltarr(3,N_total)
   vel  = fltarr(3,N_total)
@@ -332,7 +283,7 @@ pro gen_evrard_collapse_3D_ICs
     pos[1,n] = y
     pos[2,n] = z
     u[n]     = P/rho_hot/(ga-1.0)
-    vel[0,n] = vext
+    ;vel[0,n] = vext
   endfor
   
   ; generate cold component
@@ -359,6 +310,180 @@ pro gen_evrard_collapse_3D_ICs
   
   ; write
   writeICFile,fOut,part0=gasWithBack
+  
+end
+
+; 2D uniform medium (for testing domain decomposition, etc)
+; BoxSize=2.0 PERIODIC TWODIMS LONG_X=10.0
+
+pro gen_uniform_medium_2D_ICs
+
+  ; config
+  fOut = "uniform_2d_20x2.dat"
+  
+  ga = 2.0
+  
+  P   = 1.0
+  rho = 1.0
+ 
+  Lx  = 20.0
+  Ly  = 2.0
+  Nx  = long(20)
+  Ny  = long(2)
+
+  ; deriv
+  uPart    = P/rho/(ga-1.0)
+  massPart = rho*(Lx*Ly)/(Nx*Ny)
+
+  nTotGas = Nx*Ny
+  
+  deltax = Lx/Nx
+  deltay = Ly/Ny
+  
+  ; create gas arrays
+  id   = lindgen(nTotGas)+1L
+  pos  = fltarr(3,nTotGas)
+  vel  = fltarr(3,nTotGas)
+  mass = fltarr(nTotGas) + massPart
+  u    = fltarr(nTotGas) + uPart
+  
+  ; set gas properties
+  for i=0L,Nx-1 do begin
+    for j=0L,Ny-1 do begin
+      pid = i+j*Nx
+      
+      pos[0,pid] = i*deltax+deltax/2.0  
+      pos[1,pid] = j*deltay+deltay/2.0  
+      pos[2,pid] = 0.0
+    endfor
+  endfor
+  
+  ; write gas (partType=0)
+  gas    = {pos:pos,vel:vel,id:id,mass:mass,u:u}
+  
+  writeICFile,fOut,part0=gas
+
+end
+
+; 2D converging flow test
+; periodic sinusoidal velocity perturbation, otherwise uniform
+; BoxSize=2.0 PERIODIC TWODIMS LONG_X=10.0
+
+pro gen_converging_flow_2D_ICs, gasOnly=gasOnly
+
+  ; config
+  fOut = "convFlow_2d_cs0.02_L5_1e2_ga2.dat"
+  
+  ga  = 2.0 ;ga=1+2/dof (for monatomic, 2 in 2D, 3 in 3D) (for diatomic, 4 in 2D, 5 in 3D)
+  
+  P   = 1.0
+  rho = 1.0
+  
+  Lx  = 20.0
+  Ly  = 2.0
+  Nx  = long(1e2+1) ; odd = places one cell exactly centered at x=Lx/2
+  Ny  = long(10)
+  
+  lambda = 5.0 ; wavelength (needs to divide Lx evenly)
+  csFac  = 0.02 ; maximum velocity = half the sound speed
+  tfac   = 1L  ; 1-to-1 tracer-gas ratio
+  
+  ; deriv
+  uPart    = P/rho/(ga-1.0)
+  massPart = rho*(Lx*Ly)/(Nx*Ny)
+  
+  cs = sqrt(ga*P/rho)
+  
+  nTotGas = Nx*Ny
+  
+  deltax = Lx/Nx
+  deltay = Ly/Ny
+  
+  ; create gas arrays
+  id   = lindgen(nTotGas)+1L
+  pos  = fltarr(3,nTotGas)
+  vel  = fltarr(3,nTotGas)
+  mass = fltarr(nTotGas) + massPart
+  u    = fltarr(nTotGas) + uPart
+  
+  ; set gas properties
+  for i=0L,Nx-1 do begin
+    for j=0L,Ny-1 do begin
+      pid = i+j*Nx
+      
+      pos[0,pid] = i*deltax+deltax/2.0  
+      pos[1,pid] = j*deltay+deltay/2.0  
+      pos[2,pid] = 0.0
+    
+      ; linear velocity (+csFac*cs at x=0, -csFac*cs at x=Lx, zero at x=Lx/2)
+      ; vel[0,pid] = (pos[0,pid]/Lx)*(-2.0)*csFac*cs + cs*csFac
+      ; sinusoidal velocity (csFac*cs*cos(2pi x/lambda))
+      vel[0,pid] = csFac * cs * cos(2*!pi*pos[0,pid]/lambda)
+    endfor
+  endfor
+
+  if (not keyword_set(gasOnly)) then begin
+  
+  ; create tracer arrays
+  NxTr = tfac*Nx
+  NyTr = Ny
+  
+  nTr = NxTr*NyTr
+  
+  id2   = lindgen(nTr) + nTotGas + 1L
+  pos2  = fltarr(3,nTr)
+  vel2  = fltarr(3,nTr)
+  mass2 = fltarr(nTr)
+  ;u2    = fltarr(nTr) ; u not expected in IC for tracer
+  
+  ; set tracer properties
+  deltax = Lx/NxTr
+  deltay = Ly/NyTr
+  
+  for i=0L,NxTr-1 do begin
+    for j=0L,NyTr-1 do begin
+      pid = i+j*NxTr
+      
+      pos2[0,pid] = i*deltax+deltax/2.0  
+      pos2[1,pid] = j*deltay+deltay/2.0  
+      pos2[2,pid] = 0.0
+      
+      ; tracers get no velocity from ICs
+    endfor
+  endfor
+  
+  ; offset tracers from gas by a small amount
+  ;seed = 45L
+  ;offset_x = ( deltax/4.0 * randomu(seed,1) )[0]
+  ;offset_y = ( deltay/4.0 * randomu(seed,1) )[0]
+
+  ;pos2[0,*] = pos2[0,*] + offset_x
+  ;pos2[1,*] = pos2[1,*] + offset_y
+  
+  ; quick plot
+  ;start_PS,'ics.eps'
+  ;  fsc_plot,pos[0,*],pos[1,*],psym=4,symsize=0.2,xrange=[0.0,Lx],yrange=[0.0,Ly],/xs,/ys,color=fsc_color('forest green')
+  ;  fsc_plot,pos2[0,*],pos2[1,*],psym=4,symsize=0.4,color=fsc_color('crimson'),/overplot
+  ;end_PS
+  
+  ; debug counts
+  print, nTotGas+nTr
+  print, n_elements(pos(0,*)) + n_elements(pos2(1,*))
+  print, n_elements(vel(0,*)) + n_elements(vel2(1,*))
+  print, n_elements(id) + n_elements(id2)
+  
+  ; make struct
+  tracer = {pos:pos2,vel:vel2,id:id2,mass:mass2}
+  
+  endif ;gasOnly
+  
+  ; write gas (partType=0) and tracers (partType=3)
+  gas    = {pos:pos,vel:vel,id:id,mass:mass,u:u}
+  
+  if (not keyword_set(gasOnly)) then $
+    writeICFile,fOut,part0=gas,part3=tracer
+  if (keyword_set(gasOnly)) then $
+    writeICFile,fOut,part0=gas
   
 end
 

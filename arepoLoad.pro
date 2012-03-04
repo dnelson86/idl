@@ -1,8 +1,6 @@
 ; arepoLoad.pro
-; dnelson
-; 7/5/10
-;
-; loading functions for various Arepo outputs
+; loading/writing functions for various Arepo outputs, snapshots, ICs
+; dnelson feb.2012
 
 ; loadVoronoiMesh(): load "voronoi_mesh_" output
 
@@ -272,4 +270,293 @@ function loadSnapshotHDF5, fBase, i, $
     vol  = s.parttype0.volume._DATA
 
   return, h
+end
+
+; writeICFile(): write old Gadget format IC file with gas particles and tracers
+;                each partX struct should contain {id,pos,vel,mass,u} in the usual format
+
+pro writeICFile, fOut, part0=part0, part1=part1, part2=part2, part3=part3, massarr=massarr, $
+                 longIDs=longIDs, doublePrecision=doublePrecision
+
+  ; arrays
+  pos  = []
+  vel  = []
+  id   = []
+  mass = []
+  u    = []
+
+  ; type checking (type code 4 = FLOAT precision, 3 = LONG)
+  if keyword_set(massarr) then $
+    if ( (size(massarr))[2] ne 4 ) then print,'WARNING: massarr type.'
+    
+  valTypeCode = 4 ; FLOAT
+  idTypeCode  = 3 ; LONG32
+  
+  if keyword_set(doublePrecision) then valTypeCode = 5 ;DOUBLE
+  if keyword_set(longIDs) then idTypeCode = 14 ;LONG64
+
+  ; create header
+  npart    = lonarr(6)  
+  if not keyword_set(massarr) then massarr  = dblarr(6)
+  npartall = lonarr(6)
+
+  ; add to particle counts and concat arrays
+  if keyword_set(part0) then begin
+    ; GAS
+    npart(0)    = n_elements(part0.id)
+    npartall(0) = n_elements(part0.id)
+    
+    ; check typing
+    if (size(part0.pos))[3] ne valTypeCode then print,'WARNING: part0 pos type.'
+    if (size(part0.vel))[3] ne valTypeCode then print,'WARNING: part0 vel type.'
+    if (size(part0.id))[2] ne idTypeCode then print,'WARNING: part0 id type.'
+    if (size(part0.u))[2] ne valTypeCode then print,'WARNING: part0 u type.'    
+    
+    pos  = [[pos], [part0.pos]]
+    vel  = [[vel], [part0.vel]]
+    id   = [id,    part0.id]
+    if (massarr[0] eq 0.0) then begin ; if massTable[partType]=0 then expect mass block in ICs
+      if (size(part0.mass))[2] ne valTypeCode then print,'WARNING: part0 mass type.'
+      mass = [mass,  part0.mass]
+    endif
+    u    = [u,     part0.u]
+  endif
+
+  if keyword_set(part1) then begin
+    ; DM
+    npart(1)    = n_elements(part1.id)
+    npartall(1) = n_elements(part1.id)
+    
+    pos  = [[pos], [part1.pos]]
+    vel  = [[vel], [part1.vel]]
+    id   = [id,    part1.id]
+    mass = [mass,  part1.mass]
+    u    = [u,     part1.u]
+  endif
+  
+  if keyword_set(part2) then begin
+    print,'Update the script.'
+    stop
+    ; TRACER (old partType)
+  endif
+  
+  if keyword_set(part3) then begin
+    ; TRACER
+    npart(3)    = n_elements(part3.id)
+    npartall(3) = n_elements(part3.id)
+    
+    ; check typing
+    if (size(part3.pos))[3] ne valTypeCode then print,'WARNING: part3 pos type.'
+    if (size(part3.vel))[3] ne valTypeCode then print,'WARNING: part3 vel type.'
+    if (size(part3.id))[2] ne idTypeCode then print,'WARNING: part3 id type.'
+    
+    pos  = [[pos], [part3.pos]]
+    vel  = [[vel], [part3.vel]]
+    id   = [id,    part3.id]
+    ; mass not expected in input for tracer (after my change to not output mass in snapshots)
+    ; note: this is different in different versions of Arepo right now (true in gasSphere, convFlow)
+    ;if (massarr[3] eq 0.0) then begin ; if massTable[partType]=3 then expect mass block in ICs
+    ;  if (size(part3.mass))[2] ne valTypeCode then print,'WARNING: part3 mass type.'
+    ;  mass = [mass,  part3.mass]
+    ;endif
+    ;u    = [u,     part3.u] ; u not expected in input for tracer
+  endif
+
+  ; double precision?
+  if keyword_set(doublePrecision) then begin
+    ; force double
+    pos = double(pos)
+    vel = double(vel)
+    if (n_elements(mass) gt 0) then mass = double(mass)
+    u = double(u)
+  endif else begin
+    ; force single
+    pos = float(pos)
+    vel = float(vel)
+    if (n_elements(mass) gt 0) then mass = float(mass)
+    u = float(u)
+  endelse
+  
+  ; long (64bit) ids?
+  if keyword_set(longIDs) then begin
+    id = long64(id)
+  endif else begin
+    id = long(id)
+  endelse
+
+  ; header
+  time          = 0.0D
+  redshift      = 0.0D
+  flag_sfr      = 0L
+  flag_feedback = 0L
+  
+  bytesleft = 136
+  la        = intarr(bytesleft/2)
+
+  ; write IC file
+  openw,1,fOut,/f77_unformatted
+  writeu,1,npart,double(massarr),time,redshift,flag_sfr,flag_feedback,npartall,la
+
+  writeu,1, pos
+  writeu,1, vel
+  writeu,1, id
+  if (n_elements(mass) gt 0) then $
+    writeu,1, mass
+  writeu,1, u
+  close,1
+  
+  print,'wrote ',fOut
+  print,massarr
+  print,n_elements(pos[0,*]),n_elements(vel[0,*]),n_elements(id),n_elements(mass),n_elements(u)
+end
+
+; writeICFileHDF5(): GAS ONLY
+pro writeICFileHDF5, fOut, boxSize, pos, vel, id, massOrDens, u
+
+  ; load hdf5 template
+  templatePath = '/n/home07/dnelson/make.ics/ArepoTemplate.hdf5'
+  
+  s = h5_parse(templatePath, /read)
+
+  ; modify base
+  s._NAME    = fOut
+  s._FILE    = fOut
+  s._COMMENT = "dnelson IC gen"
+  
+  ; modify HEADER
+  s.HEADER._FILE                      = fOut
+  s.HEADER.NUMPART_THISFILE._DATA     = [n_elements(id),0,0,0,0,0]
+  s.HEADER.NUMPART_TOTAL._DATA        = [n_elements(id),0,0,0,0,0]
+  s.HEADER.MASSTABLE._DATA            = [0.0,0.0,0.0,0.0,0.0,0.0]
+  s.HEADER.TIME._DATA                 = 0.0
+  s.HEADER.REDSHIFT._DATA             = 0.0
+  s.HEADER.BOXSIZE._DATA              = boxSize
+  s.HEADER.NUMFILESPERSNAPSHOT._DATA  = 1
+  s.HEADER.OMEGA0._DATA               = 0.0
+  s.HEADER.OMEGALAMBDA._DATA          = 0.0
+  s.HEADER.HUBBLEPARAM._DATA          = 1.0
+  s.HEADER.FLAG_SFR._DATA             = 0
+  s.HEADER.FLAG_COOLING._DATA         = 0  
+  s.HEADER.FLAG_STELLARAGE._DATA      = 0
+  s.HEADER.FLAG_METALS._DATA          = 0
+  s.HEADER.FLAG_FEEDBACK._DATA        = 0
+  s.HEADER.FLAG_DOUBLEPRECISION._DATA = 0
+  
+  s.HEADER.COMPOSITION_VECTOR_LENGTH._DATA = 0 ;?
+
+  ; for some reason these are expected IO blocks even for ICs
+  s1 = mod_struct(s.PARTTYPE0,'DENSITY',/delete)
+  s1 = mod_struct(s1,'SMOOTHINGLENGTH',/delete)
+  s1 = mod_struct(s1,'VOLUME',/delete)
+  s = mod_struct(s,'PARTTYPE0',s1)
+
+  ;s.PARTTYPE0.DENSITY._DATA[*]         = 0.0
+  ;s.PARTTYPE0.SMOOTHINGLENGTH._DATA[*] = 0.0
+  ;s.PARTTYPE0.VOLUME._DATA[*]          = 0.0
+  
+  ; modify data parameters
+  s.PARTTYPE0._FILE                = fOut
+  s.PARTTYPE0.COORDINATES._FILE    = fOut
+  s.PARTTYPE0.VELOCITIES._FILE     = fOut
+  s.PARTTYPE0.PARTICLEIDS._FILE    = fOut
+  s.PARTTYPE0.INTERNALENERGY._FILE = fOut
+    
+  ; modify data
+  s.PARTTYPE0.COORDINATES._DIMENSIONS    = [3,n_elements(id)]
+  s.PARTTYPE0.COORDINATES._NELEMENTS     = n_elements(pos)
+  s1 = mod_struct(s.PARTTYPE0.COORDINATES,'_DATA',pos) ;change _DATA size
+  s2 = mod_struct(s.PARTTYPE0,'COORDINATES',s1) ;update PARTTYPE0 with child
+
+  s.PARTTYPE0.VELOCITIES._DIMENSIONS     = [3,n_elements(id)]
+  s.PARTTYPE0.VELOCITIES._NELEMENTS      = n_elements(vel)
+  s1 = mod_struct(s.PARTTYPE0.VELOCITIES,'_DATA',vel)
+  s2 = mod_struct(s2,'VELOCITIES',s1)
+  
+  s.PARTTYPE0.PARTICLEIDS._DIMENSIONS    = [n_elements(id)]
+  s.PARTTYPE0.PARTICLEIDS._NELEMENTS     = n_elements(id)
+  s1 = mod_struct(s.PARTTYPE0.PARTICLEIDS,'_DATA',id)
+  s2 = mod_struct(s2,'PARTICLEIDS',s1)
+
+  s.PARTTYPE0.INTERNALENERGY._DIMENSIONS = [n_elements(u)]
+  s.PARTTYPE0.INTERNALENERGY._NELEMENTS  = n_elements(u)
+  s1 = mod_struct(s.PARTTYPE0.INTERNALENERGY,'_DATA',u)
+  s2 = mod_struct(s2,'INTERNALENERGY',s1)
+  
+  s.PARTTYPE0.MASSES._DIMENSIONS = [n_elements(massOrDens)]
+  s.PARTTYPE0.MASSES._NELEMENTS  = n_elements(massOrDens)
+  s1 = mod_struct(s.PARTTYPE0.MASSES,'_DATA',massOrDens)
+  s2 = mod_struct(s2,'MASSES',s1)
+  
+  s = mod_struct(s,'PARTTYPE0',s2) ;import new PARTTYPE0 structure
+
+  ; output
+  h5_create, fOut, s
+
+end
+
+; addICBackgroundGrid(): add background grid of specified resolution nBackGrid^3 of size boxSize 
+;                        centered at [0,0,0] (or [boxCen,boxCen,boxCen] if specified) to gas ICs 
+;                        (only add background cells that would be empty)
+
+function addICBackgroundGrid, gas, boxSize=boxSize, boxCen=boxCen, nBackGrid=nBackGrid
+
+  ; if not requested, return un-altered
+  if (nBackGrid eq 0) then return, gas
+  
+  if (n_elements(boxSize) eq 0 or n_elements(gas) eq 0) then stop
+
+  ; config
+  massBackGrid   = 1e-20
+  uthermBackGrid = 0.0
+
+  backCellSize = boxSize / nBackGrid
+  
+  xyz_back = findgen(nBackGrid)/nBackGrid * boxSize + backCellSize/2.0
+  
+  if keyword_set(boxCen) then xyz_back += boxCen - boxSize/2.0
+
+  nBackKeep = 0
+  pos_back = []
+  
+  ; find empty background grid cells
+  for i=0,nBackGrid-1 do begin
+    for j=0,nBackGrid-1 do begin
+      for k=0,nBackGrid-1 do begin
+        cenBackCell = [xyz_back[i],xyz_back[j],xyz_back[k]]
+        min_xyz = cenBackCell - backCellSize/2.0
+        max_xyz = cenBackCell + backCellSize/2.0
+        
+        w = where(gas.pos[0,*] ge min_xyz[0] and gas.pos[0,*] le max_xyz[0] and $
+                  gas.pos[1,*] ge min_xyz[1] and gas.pos[1,*] le max_xyz[1] and $
+                  gas.pos[2,*] ge min_xyz[2] and gas.pos[2,*] le max_xyz[2], count)
+        
+        ; keep background point
+        if (count eq 0) then begin
+          nBackKeep += 1
+          pos_back = [[pos_back],[cenBackCell]]
+        endif
+      endfor
+    endfor
+  endfor
+  
+  print,'Added ['+str(nBackKeep)+'] background cells of '+str(nBackGrid)+$
+        '^3 ('+str(nBackGrid^3)+') inside boxSize = '+string(boxSize)+' suggest meanVolume = '+$
+        string(backCellSize^3.0)
+  
+  ; create other arrays
+  vel_back  = fltarr(3,nBackKeep)
+  mass_back = fltarr(nBackKeep) + massBackGrid
+  u_back    = fltarr(nBackKeep) + uthermBackGrid
+  id_back   = lindgen(nBackKeep) + max(gas.id) + 1
+  
+  ; concat background grid and primary cells
+  pos  = [[gas.pos],[pos_back]]
+  vel  = [[gas.vel],[vel_back]]
+  mass = [gas.mass,mass_back]
+  u    = [gas.u,u_back]
+  id   = [gas.id,id_back]
+
+  r = {pos:pos,vel:vel,mass:mass,u:u,id:id}
+  return, r
+  
 end

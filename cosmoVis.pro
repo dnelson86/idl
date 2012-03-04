@@ -7,20 +7,19 @@
 pro makeArepoFoFBsub
 
   ; config
-  res = 256
+  res = 128
   run = 'tracer'
   
   sP = simParams(res=res,run=run)
-  
+
   ;redshift = 3.0
   ;snap     = redshiftToSnapNum(redshift,sP=sP)
   
-  ;snapRange = [267,267,1]
-  snapRange = [278,278,1]
+  snapRange = [50,50,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 64
+  nProcs    = 16
   ptile     = 4 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
@@ -53,7 +52,7 @@ pro makeArepoFoFBsub
     
     ; write header
     printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q nancy'
+    printf,lun,'#BSUB -q keck'
     printf,lun,'#BSUB -J fof_' + str(snap) + ''
     printf,lun,'#BSUB -n ' + str(nProcs)
     printf,lun,'#BSUB -R "' + selectStr + 'rusage[mem=30000] span[ptile=' + str(ptile) + ']"'
@@ -95,15 +94,17 @@ end
 pro makeArepoProjBsub
 
   ; config - path and snapshot 
-  workingPath = '/n/home07/dnelson/dev.tracer/'
-  basePath    = workingPath + 'gasSphere.gasonly.nfwrot.coolsf/'
-  snapPath    = workingPath + 'gasSphere.gasonly.nfwrot.coolsf/output/'
+  ;workingPath = '/n/home07/dnelson/sims.tracers/'
+  ;basePath    = workingPath + '512_20Mpc/'
+  ;snapPath    = workingPath + '512_20Mpc/output/'
 
-  ;redshift = 3.0
-  ;snap     = redshiftToSnapNum(redshift,sP=sP)
+  ;snapRange = [92,92,1] ;2e5
+  
+  workingPath = '/n/home07/dnelson/dev.tracerMC/'
+  basePath    = workingPath + 'col2Sph.gasonly.1e4.norot.nocool.nosg.f100/'
+  snapPath    = workingPath + 'col2Sph.gasonly.1e4.norot.nocool.nosg.f100/output/'
 
-  ;snapRange = [1,1,1]
-  snapRange = [0,20,2]
+  snapRange = [1,200,1]
 
   ; config - viewsize / object
   h = loadSnapshotHeader(basePath+'output/',snapNum=snapRange[0])
@@ -112,13 +113,14 @@ pro makeArepoProjBsub
   xyzCen = [h.boxSize/2.0,h.boxSize/2.0,h.boxSize/2.0]
 
   sliceWidth  = h.boxSize ; cube sidelength
-  zoomFac     = 10
+  zoomFac     = 10.0      ; final image is boxSize/zoomFac in extent
 
   ; render config
   spawnJobs   = 1    ; execute bsub?
-  nProcs      = 8    ; 128^3=8, 256^3=24, 512^3=96 (minimum for memory)
-  dimX        = 800  ; image dimensions (x pixels)
-  dimY        = 800  ; image dimensions (y pixels)
+  nProcs      = 1    ; 128^3=8, 256^3=24, 512^3=256 (minimum for memory)
+  ptile       = 8
+  dimX        = 500  ; image dimensions (x pixels)
+  dimY        = 500  ; image dimensions (y pixels)
   
   axesStr = ['0 1 2','0 2 1','1 2 0'] ;xy,xz,yz
   
@@ -157,9 +159,9 @@ pro makeArepoProjBsub
     ; write header
     printf,lun,'#!/bin/sh'
     printf,lun,'#BSUB -q keck'
-    printf,lun,'#BSUB -J proj_' + str(snap) + "cs"
+    printf,lun,'#BSUB -J proj_' + str(snap) + ""
     printf,lun,'#BSUB -n ' + str(nProcs)
-    printf,lun,'#BSUB -R "rusage[mem=30000] span[ptile=8]"'
+    printf,lun,'#BSUB -R "rusage[mem=30000] span[ptile=' + str(ptile) + ']"'
     printf,lun,'#BSUB -o run_proj.out'
     printf,lun,'#BSUB -g /dnelson/proj' ; 4 concurrent jobs limit automatically
     printf,lun,'#BSUB -cwd ' + basePath
@@ -209,15 +211,17 @@ pro makeArepoProjBsub
 end
 
 ; sphMapBox: run sph kernel density projection on whole box
-;
 
 pro sphMapBox, res=res, run=run, partType=partType
 
-  sP = simParams(res=res,run=run)
-  
   ; config
-  redshift = 3.0 ;5.0
-  snap     = redshiftToSnapNum(redshift,sP=sP)
+  ;res = 128
+  ;run = 'dev.tracer.nocomov'
+  ;partType = 'gas'
+
+  ;redshift = 3.0 ;5.0
+  ;snap     = redshiftToSnapNum(redshift,sP=sP)
+  snap = 19
   
   nPixels = [800,800] ;px
 
@@ -226,6 +230,7 @@ pro sphMapBox, res=res, run=run, partType=partType
   axes    = [0,1] ; x,y
 
   ; paths and render config
+  sP = simParams(res=res,run=run)
   h = loadSnapshotHeader(sP.simPath,snapNum=snap)
   
   boxSize = [h.boxSize,h.boxSize,h.boxSize]              ;kpc

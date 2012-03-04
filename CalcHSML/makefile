@@ -4,7 +4,8 @@
 # comment out TWODIMS OPT for 3D version
 
 #OPT = -DTWODIMS
-EXEC = CalcHSML_3D.so
+OPT = -DONEDIMS
+EXEC = CalcHSML_1D.so
 
 SRCS   = main.c tree.c
 
