@@ -8,18 +8,16 @@ pro makeArepoFoFBsub
 
   ; config
   res = 128
-  run = 'tracer'
+  run = 'tracerMC.nonrad.noref'
+  f = '10'
   
-  sP = simParams(res=res,run=run)
+  sP = simParams(res=res,run=run,f=f)
 
-  ;redshift = 3.0
-  ;snap     = redshiftToSnapNum(redshift,sP=sP)
-  
-  snapRange = [50,50,1]
+  snapRange = [16,38,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 16
+  nProcs    = 8
   ptile     = 4 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   

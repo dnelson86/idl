@@ -2,6 +2,31 @@
 ; dev for tracer particles (shocktube and converging flow tests)
 ; dnelson feb.2012
 
+function interpNN, pos_src, pos_dest, val_src
+
+    ; something fancy (linear or cubic?)
+    ;dens_interp = interpol(dens_gas,pos_gas,pos_tracer)
+    ;res = dens_interp - dens_tracer
+    
+    ; nearest neighbor interpolation by indices
+    ;inds = round(pos_gas / 20.0 * n_elements(dens_tracer))
+    
+    ; nearest neighbor interpolation (manual)
+    val_interp = fltarr(n_elements(pos_src))
+    
+    for i=0,n_elements(pos_src)-1 do begin
+      ind = where(abs(pos_dest-pos_src[i]) eq min(abs(pos_dest-pos_src[i])),count)
+      
+      if (count eq 0) then begin
+        print,'WARNING'
+        stop
+      endif
+      val_interp[i] = val_src[ind[0]]
+    endfor
+    
+  return, val_interp
+end
+
 ; plotShocktube():
 
 pro plotShocktube

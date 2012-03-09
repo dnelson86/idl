@@ -1,6 +1,6 @@
 ; cosmoUtil.pro
 ; cosmological simulations - utility functions
-; dnelson jan.2012
+; dnelson mar.2012
 
 ; redshiftToSnapNum(): convert redshift to the nearest snapshot number
 
@@ -74,270 +74,6 @@ function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose
   if (n_elements(snapNum) eq 1) then snapNum = snapNum[0]
 
   return,snapNum
-end
-
-; simParams(): return structure of simulation parameters
-
-function simParams, res=res, run=run, redshift=redshift
-
-  if not keyword_set(res) or not keyword_set(run) then begin
-     print,'Error: simParams: arguments not specified.'
-     exit
-  endif
-
-  r = {simPath:      '',$    ; root path to simulation snapshots and group catalogs
-       arepoPath:    '',$    ; root path to Arepo and param.txt for e.g. projections/fof
-       savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
-       boxSize:      0.0,$   ; boxsize of simulation, kpc
-       trMassConst:  0.0,$   ; mass per tracer under equal mass assumption (=TargetGasMass)
-       gravSoft:     0.0,$   ; gravitational softening length (ckpc)
-       snapRange:    [0,0],$ ; snapshot range of simulation
-       groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
-       plotPath:     '',$    ; path to put plots
-       galCatPath:   '',$    ; path to galaxy catalog files
-       thistPath:    '',$    ; path to thermal history files
-       derivPath:    '',$    ; path to put derivative (data) files
-       snap:         -1,$     ; convenience for passing between functions
-       res:          0,$     ; copied from input
-       run:          '',$    ; copied from input
-       minNumGasPart: 0}     ; minimum number of gas particles in a galaxy to include in e.g. mass func
-       
-  if (isnumeric(res)) then $
-    r.res = res
-  r.run = run
- 
-  if (run eq 'gadget') then begin
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,314]
-    r.groupCatRange = [50,314]
-    r.minNumGasPart = 100
-  
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-    if (res eq 512) then r.gravSoft = 1.0
-  
-    r.simPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
-    r.savPrefix = 'G'
-    
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
-    r.galCatPath = '/n/home07/dnelson/coldflows/galaxycat/'
-    r.thistPath  = '/n/home07/dnelson/coldflows/thermhist/'
-    r.derivPath  = '/n/home07/dnelson/coldflows/data.files/'
-    
-    return,r
-  endif
-  
-  if (run eq 'tracer') then begin
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,313]
-    r.groupCatRange = [50,313]
-    r.minNumGasPart = 100
-    
-    if (res eq 128) then r.trMassConst = 4.76446157e-03
-    if (res eq 256) then r.trMassConst = 5.95556796e-04
-    if (res eq 512) then r.trMassConst = 7.44447120e-05
-    
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-    if (res eq 512) then r.gravSoft = 1.0
-  
-    r.simPath   = '/n/home07/dnelson/sims.tracers/'+str(res)+'_20Mpc/output/'
-    r.arepoPath = '/n/home07/dnelson/sims.tracers/'+str(res)+'_20Mpc/'
-    r.savPrefix = 'T'
-    
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
-    r.galCatPath = '/n/home07/dnelson/coldflows/galaxycat/'
-    r.thistPath  = '/n/home07/dnelson/coldflows/thermhist/'
-    r.derivPath  = '/n/home07/dnelson/coldflows/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracer') then begin
-    r.boxSize       = 20000.0
-    r.trMassConst   = 4.76446157e-03
-    r.snapRange     = [0,76]
-    r.groupCatRange = [25,76]
-    r.gravSoft      = 4.0
-  
-    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/'
-    r.savPrefix  = 'D'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracer.nonrad') then begin
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-  
-    if (res eq 128) then r.trMassConst = 4.76446157e-03
-    if (res eq 256) then r.trMassConst = 5.95556796e-04
-    
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-  
-    r.simPath    = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/'
-    r.savPrefix  = 'N'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracer.noref') then begin
-    r.boxSize       = 20000.0
-    r.trMassConst   = 4.76446157e-03
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-    r.gravSoft      = 4.0
-  
-    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_noref/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_noref/'
-    r.savPrefix  = 'R'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_noref/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracer.nopm') then begin
-    r.boxSize       = 20000.0
-    r.trMassConst   = 4.76446157e-03
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-    r.gravSoft      = 4.0
-  
-    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nopm/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nopm/'
-    r.savPrefix  = 'P'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nopm/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracer.nograd') then begin
-    r.boxSize       = 20000.0
-    r.trMassConst   = 4.76446157e-03
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-    r.gravSoft      = 4.0
-  
-    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nograd/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nograd/'
-    r.savPrefix  = 'V'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nograd/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracer.nocomov') then begin
-    r.boxSize       = 20000.0
-    r.trMassConst   = 4.76446157e-03
-    r.snapRange     = [0,19]
-    r.groupCatRange = [2,19]
-    r.gravSoft      = 4.0
-  
-    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nocomov/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nocomov/'
-    r.savPrefix  = 'C'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nocomov/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracer.cvel') then begin
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-    r.gravSoft      = 4.0
-    
-    if (res eq 128) then r.trMassConst = 4.76446157e-03
-    if (res eq 256) then r.trMassConst = 5.95556796e-04
-    
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-  
-    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_cvel/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_cvel/'
-    r.savPrefix  = 'E'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_cvel/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracer.constTS2') then begin
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-    r.gravSoft      = 4.0
-    
-    r.trMassConst = 4.76446157e-03
-    
-    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_constTS2/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_constTS2/'
-    r.savPrefix  = 'O'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_constTS2/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracer.gassphere') then begin
-    r.boxSize       = 5000.0
-    r.trMassConst   = 0.00020755
-    r.snapRange     = [0,10]
-    r.groupCatRange = [0,0]
-  
-    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/gasSphere.gasonly.2e5/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/gasSphere.gasonly.2e5/'
-    r.savPrefix  = 'S'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/gasSphere.gasonly.2e5/data.files/'
-    
-    ; if redshift passed in, treat as snapshot number
-    if (n_elements(redshift) eq 1) then r.snap = redshift
-
-    return,r
-  endif
-  
-  print,'simParams: ERROR.'
-  exit
 end
 
 ; sgIDList(): return a sub-list of subgroup IDs from a given group catalog sg
@@ -962,6 +698,79 @@ function findMatchedHalos, sP1=sP1, sP2=sP2
 
   r = {matchedInds:matchedInds,massDiffs:massDiffs,posDiffs:posDiffs,wMatch:wMatch,nMatched:nMatched}
   return,r
+end
+
+; cosmoCompareHaloCenters(): compare relative differences between different calcuations of the centers
+;                            of halos, and verify group catalog consistency (group-subgroup mappings)
+
+pro cosmoCompareHaloCenters
+
+  res = 128
+  run = 'dev.tracer.nograd'
+  redshift = 3.0
+  
+  sP = simParams(res=res,run=run,redshift=redshift)
+  
+  gc    = loadGroupCat(sP.simPath,sP.snap)
+  sgCen = subgroupPosByMostBoundID(sP=sP)
+  
+  binSize = 1.0
+  min = 0.0
+  max = 50.0
+  
+  num = 3500
+  
+  ; group catalog consistency checks
+  print,'nGroups nSubgroups',gc.nGroupsTot,gc.nSubgroupsTot
+  ; should pass this
+  for i=0,gc.nGroupsTot-1 do begin
+    sgInd = sgPriChildInd(gc=gc,haloID=i)
+    if (sgInd eq -1) then continue
+    grNr = gc.subgroupGrNr[sgInd]
+    if (grNr ne i) then stop
+  endfor
+  
+  ; centers
+  cen_fof  = gc.groupPos[*,0:num]
+  
+  cen_sfcm = fltarr(3,num)
+  cen_mb   = fltarr(3,num)
+  
+  w = []
+  
+  for i=0,num-1 do begin
+    sgInd = sgPriChildInd(gc=gc,haloID=i)
+    if (sgInd ne -1) then begin
+      w = [w,i]
+      cen_sfcm[*,i] = gc.subgroupCM[*,sgInd]
+      cen_mb[*,i] = sgCen[*,sgInd]
+    endif
+  endfor
+  
+  ; distances
+  dist_fof_sfcm = periodicDists(cen_fof,cen_sfcm,sP=sP)
+  dist_fof_mb   = periodicDists(cen_fof,cen_mb,sP=sP)
+  dist_sfcm_mb  = periodicDists(cen_sfcm,cen_mb,sP=sP)
+
+  ; plot histos
+  hist_fof_sfcm = histogram(dist_fof_sfcm[w],binsize=binSize,min=min,max=max,loc=loc1)
+  hist_fof_mb   = histogram(dist_fof_mb[w],binsize=binSize,min=min,max=max,loc=loc2)
+  hist_sfcm_mb  = histogram(dist_sfcm_mb[w],binsize=binSize,min=min,max=max,loc=loc3)
+  
+  start_PS,'hist_fof_sfcm.eps'
+    fsc_plot,loc1,hist_fof_sfcm,xtitle="dist [kpc]",ytitle="N"
+  end_PS
+  
+  start_PS,'hist_fof_mb.eps'
+    fsc_plot,loc2,hist_fof_mb,xtitle="dist [kpc]",ytitle="N"
+  end_PS
+  
+  start_PS,'hist_sfcm_mb.eps'
+    fsc_plot,loc3,hist_sfcm_mb,xtitle="dist [kpc]",ytitle="N"
+  end_PS
+  
+  stop
+
 end
 
 ; snapNumToRedshift(): convert snapshot number to redshift or time

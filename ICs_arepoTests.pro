@@ -372,7 +372,7 @@ end
 pro gen_converging_flow_2D_ICs, gasOnly=gasOnly
 
   ; config
-  fOut = "convFlow_2d_cs0.02_L5_1e2_ga2.dat"
+  fOut = "convFlow_2d_cs5.0_L5_20_ga2.dat"
   
   ga  = 2.0 ;ga=1+2/dof (for monatomic, 2 in 2D, 3 in 3D) (for diatomic, 4 in 2D, 5 in 3D)
   
@@ -381,17 +381,19 @@ pro gen_converging_flow_2D_ICs, gasOnly=gasOnly
   
   Lx  = 20.0
   Ly  = 2.0
-  Nx  = long(1e2+1) ; odd = places one cell exactly centered at x=Lx/2
-  Ny  = long(10)
+  Nx  = long(20) ; odd = places one cell exactly centered at x=Lx/2
+  Ny  = long(2)
   
   lambda = 5.0 ; wavelength (needs to divide Lx evenly)
-  csFac  = 0.02 ; maximum velocity = half the sound speed
+  csFac  = 5.0 ; maximum velocity = half the sound speed
   tfac   = 1L  ; 1-to-1 tracer-gas ratio
   
   ; deriv
   uPart    = P/rho/(ga-1.0)
   massPart = rho*(Lx*Ly)/(Nx*Ny)
-  
+
+  print,'Suggested TargetGasMass: ',massPart
+
   cs = sqrt(ga*P/rho)
   
   nTotGas = Nx*Ny
