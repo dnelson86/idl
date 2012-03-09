@@ -590,7 +590,7 @@ end
 
 ; getSnapFilelist(): take input path and snapshot number and find snapshot filename
 
-function getSnapFilelist, fileBase, snapNum=m
+function getSnapFilelist, fileBase, snapNum=m, groupOrdered=groupOrdered
 
   ; format snapNum and initial guess
   if (str(m) eq 'none') then begin
@@ -612,6 +612,7 @@ function getSnapFilelist, fileBase, snapNum=m
   endelse
 
   ; check for single (non-split)
+  if not keyword_set(groupOrdered) then $
   if file_test(fileBase+'snap_'+ext+'.hdf5') then $
     return, file_search(fileBase + 'snap_' + ext + ".*hdf5")
 
@@ -627,7 +628,8 @@ function getSnapFilelist, fileBase, snapNum=m
   if (file_test(f+'.hdf5') or file_test(f+'.0.hdf5')) then $
     return, file_search(f+".*hdf5")
 
-  return,-1
+  print,'Error: Failed to find snapshot.'
+  stop
 end
 
 ; loadSnapshotHeader(): load header
@@ -639,8 +641,6 @@ function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
   ; get matching filename (return -1 if not found)
   fileList = getSnapFilelist(fileBase,snapNum=m)
 
-  if ((size(fileList))[0] eq 0) then if (fileList eq -1) then stop
-  
   ; read header from first part
   fileID   = h5f_open(fileList[0])
   s = h5_parse(fileID,"Header")
@@ -678,12 +678,12 @@ end
 ;                       field    = ['ParticleIDs','coordinates','xyz',...] (case insensitive)
 
 function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
-                             verbose=verbose, doublePrec=doublePrec
+                             verbose=verbose, doublePrec=doublePrec, groupOrdered=groupOrdered
 
   if not keyword_set(verbose) then verbose = 0
   partType = PT ; so we don't change the input
 
-  fileList = getSnapFilelist(fileBase,snapNum=m)
+  fileList = getSnapFilelist(fileBase,snapNum=m,groupOrdered=groupOrdered)
 
   nFiles = n_elements(fileList)
   
@@ -803,7 +803,7 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
   if (field eq 'numtr' or field eq 'numtracers') then begin
     r = lonarr(nPartTot[partType])
     fieldName = 'NumTracers'
-    if (partType ne 0) then begin & print,'Error: NumTracers is gas only!' & return,0 & endif
+    if (partType ne 0 and partType ne 4) then begin & print,'Error: NumTracers is gas/stars only!' & return,0 & endif
   endif
   if (field eq 'particleids' or field eq 'ids') then begin
     r = lonarr(nPartTot[partType])
@@ -859,9 +859,9 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
     if (partType ne 3) then begin & print,'Error: ParentID is tracer only!' & return,0 & endif
   endif
   if (field eq 'properties' or field eq 'quants' or field eq 'quantities' or $
-      field eq 'tracer_cumsfr' or field eq 'tracer_maxtemp_nosf' or field eq 'tracer_maxtemp') then begin
+      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_nosf' or field eq 'tracer_maxentropy') then begin
     fieldName = 'FluidQuantities'
-    rDims = 3 ; WARNING: must match to Arepo run (currently: CumSFR,MaxTempNoSF,MaxTemp)
+    rDims = 3 ; WARNING: must match to Arepo run (currently: MaxTemp,MaxTempNoSF,MaxEntropy)
     r = fltarr(rDims,nPartTot[partType])
     if (partType ne 3) then begin & print,'Error: Fluid quantities are tracer only!' & return,0 & endif
   endif
@@ -925,7 +925,7 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
   if (field eq 'x' or field eq 'y' or field eq 'z' or $
       field eq 'velx' or field eq 'vely' or field eq 'velz' or $
       field eq 'cmx' or field eq 'cmy' or field eq 'cmz' or $
-      field eq 'tracer_cumsfr' or field eq 'tracer_maxtemp_nosf' or field eq 'tracer_maxtemp') then begin
+      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_nosf' or field eq 'tracer_maxentropy') then begin
     case field of
       'x'   : fN = 0
       'velx': fN = 0
@@ -937,9 +937,9 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
       'velz': fN = 2
       'cmz' : fN = 2
       
-      'tracer_cumsfr'       : fN = 0
+      'tracer_maxtemp'      : fN = 0
       'tracer_maxtemp_nosf' : fN = 1
-      'tracer_maxtemp'      : fN = 2
+      'tracer_maxentropy'   : fN = 2
     endcase
     r = reform(r[fN,*])
   endif

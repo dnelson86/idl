@@ -546,7 +546,7 @@ end
 ; parMass=1     : total mass (dm+baryonic) of parent halos (from catalog)
 ; curTemp=1     : current temperature of each element
 ; curDens=1     : current density of each gas element
-; maxPastTemp=1 : maximum past previos temperature of each element
+; maxPastTemp=1 : maximum past previous temperature of each element
 
 function gcSubsetProp, sP=sP, select=select, oSnap=oSnap, $
                        rVirNorm=rVirNorm, virTemp=virTemp, parMass=parMass, $
