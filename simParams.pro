@@ -2,7 +2,9 @@
 ; return structure of simulation parameters with consistent information
 ; dnelson mar.2012
 
-function simParams, res=res, run=run, redshift=redshift, f=f
+function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
+
+  forward_function redshiftToSnapNum
 
   if not keyword_set(res) or not keyword_set(run) then begin
      print,'Error: simParams: arguments not specified.'
@@ -14,7 +16,7 @@ function simParams, res=res, run=run, redshift=redshift, f=f
        savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
        boxSize:      0.0,$   ; boxsize of simulation, kpc
        trMassConst:  0.0,$   ; mass per tracer under equal mass assumption (=TargetGasMass)
-       trMCPerCell:  0,$     ; starting number of monte carlo tracers per cell
+       trMCPerCell:  0,$     ; starting number of monte carlo tracers per cell (copied from f input)
        gravSoft:     0.0,$   ; gravitational softening length (ckpc)
        snapRange:    [0,0],$ ; snapshot range of simulation
        groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
@@ -22,14 +24,22 @@ function simParams, res=res, run=run, redshift=redshift, f=f
        galCatPath:   '',$    ; path to galaxy catalog files
        thistPath:    '',$    ; path to thermal history files
        derivPath:    '',$    ; path to put derivative (data) files
-       snap:         -1,$     ; convenience for passing between functions
+       snap:         -1,$    ; convenience for passing between functions
        res:          0,$     ; copied from input
        run:          '',$    ; copied from input
+       redshift:     0.0,$   ; copied from input
        minNumGasPart: 0}     ; minimum number of gas particles in a galaxy to include in e.g. mass func
        
+  ; copy inputs
   if (isnumeric(res)) then $
     r.res = res
   r.run = run
+  if n_elements(redshift) gt 0 then begin
+    r.redshift = redshift
+    if n_elements(snap) gt 0 then print, 'Warning: snap and redshift both specified!'
+  endif
+  if n_elements(snap) gt 0 then $
+    r.snap = snap
  
   if (run eq 'gadget') then begin ; ComparisonProject GADGET 128,256,512
     r.boxSize       = 20000.0
@@ -228,5 +238,5 @@ function simParams, res=res, run=run, redshift=redshift, f=f
   endif
   
   print,'simParams: ERROR.'
-  exit
+  stop
 end

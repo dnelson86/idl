@@ -377,6 +377,34 @@ function removeIntersectionFromB, A, B, union=union
     endelse
 end
 
+; getIDIndexMap(): return an array of size max(ids)-min(ids) such that array[ID-min(ids)] is the 
+;                  index of the original array ids where ID is found (assumes a one to one mapping, 
+;                  not repeated indices as in the case of parentIDs for tracers)
+
+function getIDIndexMap, ids, minid=minid
+
+  minid = long(min(ids))
+  maxid = long(max(ids))
+
+  ; looped where approach (never a good idea)
+  ;arr = l64indgen(maxid-minid+1)
+  ;for i=minid,maxid do begin
+  ;  w = where(ids eq i,count)
+  ;  if (count gt 0) then arr[i] = w[0]
+  ;endfor
+
+  ; C-style loop approach (good for sparse IDs)
+  arr = lon64arr(maxid-minid+1)
+  for i=0L,n_elements(ids)-1L do arr[ids[i]-minid] = i
+
+  ; reverse histogram approach (good for dense ID sampling, maybe better by factor of ~2)
+  ;arr = l64indgen(maxid-minid+1)
+  ;h = histogram(ids,rev=rev,omin=omin)
+  ;for i=0L,n_elements(h)-1 do if (rev[i+1] gt rev[i]) then arr[i] = rev[rev[i]:rev[i+1]-1]
+
+  return, arr
+end
+
 ; external C-routine interfaces
 ; -----------------------------
 ; 

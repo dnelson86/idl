@@ -8,12 +8,12 @@ pro makeArepoFoFBsub
 
   ; config
   res = 128
-  run = 'tracerMC.nonrad.noref'
+  run = 'tracerMC.ref'
   f = '10'
   
   sP = simParams(res=res,run=run,f=f)
 
-  snapRange = [16,38,1]
+  snapRange = [7,27,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
@@ -23,7 +23,7 @@ pro makeArepoFoFBsub
   
   excludeHosts = ['hero2701','hero1008','hero2405','hero1603'] ;leave empty otherwise
  
-  paramFile = "param.txt"
+  paramFile = "param_fof.txt"
 
   for snap=snapRange[0],snapRange[1],snapRange[2] do begin
  
@@ -91,36 +91,32 @@ end
 
 pro makeArepoProjBsub
 
-  ; config - path and snapshot 
-  ;workingPath = '/n/home07/dnelson/sims.tracers/'
-  ;basePath    = workingPath + '512_20Mpc/'
-  ;snapPath    = workingPath + '512_20Mpc/output/'
-
-  ;snapRange = [92,92,1] ;2e5
+  ; config - path and snapshot
+  res = 128
+  run = 'tracerMC.ref'
+  f   = '1'
   
-  workingPath = '/n/home07/dnelson/dev.tracerMC/'
-  basePath    = workingPath + 'col2Sph.gasonly.1e4.norot.nocool.nosg.f100/'
-  snapPath    = workingPath + 'col2Sph.gasonly.1e4.norot.nocool.nosg.f100/output/'
-
-  snapRange = [1,200,1]
-
+  snapRange = [0,0,1]
+  
   ; config - viewsize / object
-  h = loadSnapshotHeader(basePath+'output/',snapNum=snapRange[0])
+  sP = simParams(res=res,run=run,f=f,snap=snapRange[0])
+  h = loadSnapshotHeader(sP=sP)
   
   ;xyzCen = [1123.20,7568.80,16144.2] ;dusan 512
-  xyzCen = [h.boxSize/2.0,h.boxSize/2.0,h.boxSize/2.0]
+  ;xyzCen = [h.boxSize/2.0,h.boxSize/2.0,h.boxSize/2.0]
+  xyzCen = [5500.0,7000.0,7500.0]
 
   sliceWidth  = h.boxSize ; cube sidelength
-  zoomFac     = 10.0      ; final image is boxSize/zoomFac in extent
+  zoomFac     = 5.0       ; final image is boxSize/zoomFac in extent
 
   ; render config
   spawnJobs   = 1    ; execute bsub?
   nProcs      = 1    ; 128^3=8, 256^3=24, 512^3=256 (minimum for memory)
-  ptile       = 8
-  dimX        = 500  ; image dimensions (x pixels)
-  dimY        = 500  ; image dimensions (y pixels)
+  ptile       = 1
+  dimX        = 1000  ; image dimensions (x pixels)
+  dimY        = 1000  ; image dimensions (y pixels)
   
-  axesStr = ['0 1 2','0 2 1','1 2 0'] ;xy,xz,yz
+  axesStr = ['0 1 2'] ;['0 1 2','0 2 1','1 2 0'] ;xy,xz,yz
   
   ; bbox and projection setup
   cmdCode = 5 ;projection
@@ -142,7 +138,7 @@ pro makeArepoProjBsub
   for snap=snapRange[0],snapRange[1],snapRange[2] do begin
  
     ; write bjob file
-    jobFileName = workingPath+'job_proj.bsub'
+    jobFileName = sP.arepoPath+'job_proj.bsub'
     
     ; check before overriding
     if file_test(jobFileName) then begin
@@ -162,14 +158,14 @@ pro makeArepoProjBsub
     printf,lun,'#BSUB -R "rusage[mem=30000] span[ptile=' + str(ptile) + ']"'
     printf,lun,'#BSUB -o run_proj.out'
     printf,lun,'#BSUB -g /dnelson/proj' ; 4 concurrent jobs limit automatically
-    printf,lun,'#BSUB -cwd ' + basePath
+    printf,lun,'#BSUB -cwd ' + sP.arepoPath
     printf,lun,'#BSUB -a openmpi'
     printf,lun,''
       
     ; write projection commands
     foreach axisStr, axesStr, i do begin 
     
-      strArray = ['mpirun.lsf ./Arepo '+paramFile,$
+      strArray = ['mpirun.lsf ./Arepo_proj '+paramFile,$
                   str(cmdCode),$
                   str(snap),$
                   str(dimX),str(dimY),$
@@ -184,8 +180,8 @@ pro makeArepoProjBsub
       outputFilename = 'proj_density_field_' + string(snap,format='(I3.3)') + '.' + str(i) + '.dat'
       
       printf,lun,''
-      printf,lun,'mv ' + snapPath + 'proj_density_field_' + string(snap,format='(I3.3)') + ' ' + $
-                 snapPath + outputFilename
+      printf,lun,'mv ' + sP.simPath + 'proj_density_field_' + string(snap,format='(I3.3)') + ' ' + $
+                 sP.simPath + outputFilename
       printf,lun,''
     
     endforeach
@@ -196,12 +192,12 @@ pro makeArepoProjBsub
       
     ; add to queue if requested
     if (spawnJobs) then begin
-      spawn, 'bsub < ' + workingPath + 'job_proj.bsub', result
+      spawn, 'bsub < ' + sP.arepoPath + 'job_proj.bsub', result
       print,'  '+result
       
       ; file cleanup
       wait,0.5
-      spawn, 'rm ' + workingPath + 'job_proj.bsub'
+      spawn, 'rm ' + sP.arepoPath + 'job_proj.bsub'
     endif
   
   endfor ;snapRange
@@ -293,6 +289,193 @@ pro sphMapBox, res=res, run=run, partType=partType
     tvim,colMassMap,xrange=xMinMax,yrange=yMinMax,pcharsize=0.0001
   end_PS, pngResize=68, /deletePS
   
+end
+
+; sphDensityProjection(): (OLD) make density projection using SPH kernel (inspired by Mark's sphMap)
+;                         NOTE: kernel coeffs only valid for 3D!
+
+function sphDensityProjection, pos, hsml, mass, quantity=quantity, imgSize=imgSize, boxSize=boxSize,$
+                               boxCen=boxCen, axis0=axis0, axis1=axis1, mode=mode, periodic=periodic,$
+                               verbose=verbose
+
+  print,'You should switch this to the calcSphMap C-routine.'
+  stop
+
+  ; config
+  if not keyword_set(axis0) then axis0 = 0
+  if not keyword_set(axis1) then axis1 = 1
+  if not keyword_set(verbose) then verbose = 0
+  
+  if keyword_set(periodic) then begin
+    print,'ERROR: PERIODIC not supported.'
+    return,0
+  endif
+  
+  if (mode ne 1 and mode ne 2 and mode ne 3) then begin
+    print,'ERROR: Unsupported mode='+str(mode)+' parameter.'
+    return,0
+  endif
+  
+  ; storage
+  p    = dblarr(3)
+  pos0 = double(0.0)
+  pos1 = double(0.0)
+  binnedParticles = 0UL
+  
+  ; init
+  npart = n_elements(hsml)
+
+  grid = fltarr(imgSize[0],imgSize[1])
+  
+  if keyword_set(quantity) then $
+    gridQuantity = fltarr(imgSize[0],imgSize[1])
+  
+  pxSize = [float(boxSize[0]) / imgSize[0], float(boxSize[1]) / imgSize[1]]
+  pxArea = pxSize[0] * pxSize[1]
+
+  if (pxSize[0] lt pxSize[1]) then $
+    hMin = 1.001 * pxSize[0] / 2.0
+  if (pxSize[0] ge pxSize[1]) then $
+    hMin = 1.001 * pxSize[1] / 2.0
+    
+  hMax = pxSize[0] * 50.0
+  
+  for part=0, npart-1, 1 do begin
+    ; progress report
+    if (part mod round(npart/10.0) eq 0 and verbose) then $
+      print,'Progress: '+string(100.0*part/npart,format='(I3)')+'%'
+      
+    ; get particle data
+    p[0] = pos[0,part]
+    p[1] = pos[1,part]
+    p[2] = pos[2,part]
+    h    = double(hsml[part])
+    v    = double(mass[part])
+    
+    if keyword_set(quantity) then $
+      w    = double(quantity[part])
+    
+    ; early exit if out of z-bounds
+    if (abs(p[3-axis0-axis1] - boxCen[2]) gt boxSize[2] / 2.0) then $
+      continue
+      
+    pos0 = p[axis0] - (boxCen[0] - boxSize[0] / 2.0)
+    pos1 = p[axis1] - (boxCen[1] - boxSize[1] / 2.0)
+    
+    ; clamp hsml
+    if (h lt hMin) then h = hMin;
+    if (h gt hMax) then h = hMax;
+    
+    ; early exit if ...
+    if (pos0 - 0.0 lt -h or pos1 - 0.0 lt -h or pos0 - boxSize[0] gt h or pos1 - boxSize[1] gt h) then $
+      continue
+      
+    binnedParticles += 1
+    
+    h2 = h * h;
+    
+    ; number of pixels covered by particle
+    nx = h / pxSize[0] + 1;
+    ny = h / pxSize[1] + 1;
+    
+    ; coordinates of pixel center of particle
+    x = (floor(pos0 / pxSize[0]) + 0.5) * pxSize[0]
+    y = (floor(pos1 / pxSize[1]) + 0.5) * pxSize[1]
+    
+    ; normalization constant
+    sum = 0.0
+    
+    for dx = -nx, nx, 1 do begin
+      for dy = -ny, ny, 1 do begin
+        ; dist of covered pixel from actual position
+        xx = x + dx * pxSize[0] - pos0
+        yy = y + dy * pxSize[1] - pos1
+        r2 = xx*xx + yy*yy
+        
+        if (r2 < h2) then begin
+          ; sph kernel (inlined): sum += _getkernel(h,r2);
+          hinv = double(1.0) / h
+          u    = sqrt(r2) * hinv
+          
+          if (u lt 0.5) then begin
+            sum += (2.546479089470 + 15.278874536822 * (u - 1.0) * u * u)
+          endif else begin
+            sum += (5.092958178941 * (1.0 - u) * (1.0 - u) * (1.0 - u))
+          endelse
+        endif ;r2 < h2
+      endfor
+    endfor
+    
+    ; exit if negligible
+    if (sum lt 1.0e-10) then $
+      continue
+      
+    ; add contribution to image
+    for dx = -nx, nx, 1 do begin
+      for dy = -ny, ny, 1 do begin
+        ; coordinates of pixel center of covering pixels
+        xxx = x + dx * pxSize[0]
+        yyy = y + dy * pxSize[1]
+        
+        ; pixel array indices
+        i = floor(xxx / pxSize[0]) ;implicit C cast to int
+        j = floor(yyy / pxSize[1]) ;same
+        
+        if (i ge 0 and i lt imgSize[0] and j ge 0 and j lt imgSize[1]) then begin
+          xx = x + dx * pxSize[0] - pos0
+          yy = y + dy * pxSize[1] - pos1
+          r2 = xx*xx + yy*yy
+          
+          if (r2 lt h2) then begin
+            ; divide by sum for normalization
+            ; divide by pixelarea to get column density (optional: /pxArea)
+            ; sph kernel (inlined): grid[] += _getkernel(h,r2) * v / sum
+            hinv = double(1.0) / h
+            u    = sqrt(r2) * hinv
+            
+            if (u lt 0.5) then begin
+              grid[i * imgSize[1] + j] += $
+                (2.546479089470 + 15.278874536822 * (u - 1.0) * u * u) * v / sum
+              if keyword_set(quantity) then $
+                gridQuantity[i * imgSize[1] + j] += $
+                  (2.546479089470 + 15.278874536822 * (u - 1.0) * u * u) * v * w / sum
+            endif else begin
+              grid[i * imgSize[1] + j] += $
+                (5.092958178941 * (1.0 - u) * (1.0 - u) * (1.0 - u)) * v / sum
+                  if keyword_set(quantity) then $
+                  gridQuantity[i * imgSize[1] + j] += $
+                  (5.092958178941 * (1.0 - u) * (1.0 - u) * (1.0 - u)) * v * w / sum
+            endelse
+          
+          endif ;r2 < h2
+        endif ;i,j
+      
+      endfor
+    endfor
+
+  endfor ;part
+  
+  if (verbose) then print,'Number of binned particles: ',binnedParticles
+  
+  if (mode eq 1) then begin
+    if (verbose) then print,'Returning: Column Mass Map'
+    return,grid
+  endif
+  if (mode eq 2) then begin
+    if (verbose) then print,'Returning: Quantity Mass-Weighted Map'
+    return,gridQuantity
+  endif
+  if (mode eq 3) then begin
+    if (verbose) then print,'Returning: Column Density Map'
+    for i=0,i lt imgSize[0] do begin
+      for j=0,j lt imgSize[1] do begin
+        grid[i + imgSize[1] * j] /= pxArea
+      endfor
+    endfor
+    
+    return,grid
+  endif
+
 end
 
 ; sphMapSubhalos: run sph kernel density projection on boxes centered on halos/subhalos

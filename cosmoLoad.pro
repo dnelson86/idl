@@ -2,6 +2,118 @@
 ; cosmological simulations - loading procedures (snapshots, fof/subhalo group cataloges)
 ; dnelson jan.2012
 
+; getTypeSortedIDList(): within the group catalog ID list rearrange the IDs for each FOF group to be 
+;                        ordered first by type (not by SubNr since Subfind was run) such that the
+;                        groupOffsetType indexing can be used
+
+function getTypeSortedIDList, sP=sP, gc=gc
+
+  ; load header
+  h  = loadsnapshotHeader(sP=sP)
+  
+  if (h.nPartTot[2] ne 0 or h.nPartTot[5] ne 0) then stop ; not implemented
+  
+  ; save/restore
+  saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.gcSortedIDs.snap=' + str(sP.snap) + '.sav'
+                 
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,sortedIDList
+  endif
+    
+  ; for each type, load IDs, match to group cat IDs
+  gas_ids  = loadsnapshotSubset(sP=sP,partType='gas',field='ids')
+  match,gas_ids,gc.IDs,gas_ind,gc_ind_gas,count=count_gas
+  gas_ids  = !NULL
+  
+  dm_ids   = loadsnapshotSubset(sP=sP,partType='dm',field='ids')
+  match,dm_ids,gc.IDs,dm_ind,gc_ind_dm,count=count_dm
+  dm_ids   = !NULL
+  
+  star_ids = loadsnapshotSubset(sP=sP,partType='star',field='ids')
+  match,star_ids,gc.IDs,star_ind,gc_ind_star,count=count_star
+  star_ids = !NULL
+  
+  ; reorder indices into ID arrays to match order found in gc.IDs
+  gc_ind_gas  = gc_ind_gas[sort(gc_ind_gas)]
+  gc_ind_dm   = gc_ind_dm[sort(gc_ind_dm)]
+  gc_ind_star = gc_ind_star[sort(gc_ind_star)]
+  
+  ; verify counts
+  if (count_gas + count_dm + count_star ne total(gc.groupLen)) then stop
+  if (count_gas ne total(gc.groupLenType[0,*])) then stop
+  if (count_dm ne total(gc.groupLenType[1,*])) then stop
+  if (count_star ne total(gc.groupLenType[4,*])) then stop
+  
+  start_gas  = 0L
+  start_dm   = 0L
+  start_star = 0L
+  offset     = 0L
+  
+  ; DEBUG:
+  mask_gas  = intarr(max(gc.IDs[gc_ind_gas])+1)
+  mask_dm   = intarr(max(gc.IDs[gc_ind_dm])+1)
+  mask_star = intarr(max(gc.IDs[gc_ind_star])+1)
+  
+  sortedIDList = lon64arr(gc.nIDsTot)
+  
+  ; loop over each fof group
+  for i=0L,gc.nGroupsTot-1 do begin
+    ; gas
+    if (gc.groupLenType[0,i] gt 0) then begin
+      halo_gas_ids  = gc.IDs[gc_ind_gas[start_gas:start_gas+gc.groupLenType[0,i]-1]]
+      if n_elements(halo_gas_ids)  ne gc.groupLenType[0,i] then stop
+      
+      ; DEBUG: fill mask as check for duplicates
+      mask_gas[halo_gas_ids] += 1
+      
+      ; fill in sorted ID list
+      sortedIDList[offset:offset+n_elements(halo_gas_ids)-1] = halo_gas_ids
+      offset += n_elements(halo_gas_ids)    
+      
+      ; increment
+      start_gas  += n_elements(halo_gas_ids)
+    endif
+    
+    ; dm
+    if (gc.groupLenType[1,i] gt 0) then begin
+      halo_dm_ids   = gc.IDs[gc_ind_dm[start_dm:start_dm+gc.groupLenType[1,i]-1]]
+      if n_elements(halo_dm_ids)   ne gc.groupLenType[1,i] then stop
+      mask_dm[halo_dm_ids] += 1
+      sortedIDList[offset:offset+n_elements(halo_dm_ids)-1] = halo_dm_ids
+      offset += n_elements(halo_dm_ids)
+      start_dm   += n_elements(halo_dm_ids)
+    endif
+    
+    ; stars
+    if (gc.groupLenType[4,i] gt 0) then begin
+      halo_star_ids = gc.IDs[gc_ind_star[start_star:start_star+gc.groupLenType[4,i]-1]]
+      if n_elements(halo_star_ids) ne gc.groupLenType[4,i] then stop
+      mask_star[halo_star_ids] += 1
+      sortedIDList[offset:offset+n_elements(halo_star_ids)-1] = halo_star_ids
+      offset += n_elements(halo_star_ids)
+      start_star += n_elements(halo_star_ids)
+    endif
+  endfor
+  
+  ; DEBUG: check masks
+  w_gas  = where(mask_gas gt 1,count_gas)
+  w_dm   = where(mask_dm gt 1,count_dm)
+  w_star = where(mask_star gt 1,count_star)
+  
+  if (count_gas gt 0 or count_dm gt 0 or count_star gt 0) then stop
+  
+  ; DEBUG: match old and sorted ID lists for consistency
+  match,gc.IDs,sortedIDList,ind1,ind2,count=count
+  if (count ne n_elements(sortedIDList)) then stop
+  
+  ; save
+  save,sortedIDList,filename=saveFilename
+
+  return, sortedIDList
+
+end
+
 ; getGroupCatFilename(): take input path and snapshot number and find fof/subfind group catalog filename
 
 function getGroupCatFilename, fileBase, snapNum=m
@@ -74,13 +186,14 @@ end
 ;                     
 ; readIDs=1 : by default, skip IDs since we operate under the group ordered snapshot assumption, but
 ;             if this flag is set then read IDs and include them (if they exist)
+;             also generate (GrNr,Type) sorted id list
 
-function loadGroupCat, fileBase, m, verbose=verbose
+function loadGroupCat, sP=sP, readIDs=readIDs, verbose=verbose
 
   if not keyword_set(verbose) then verbose = 0
   !except = 0 ;suppress floating point underflow/overflow errors
 
-  fileList = getGroupCatFileName(fileBase,snapNum=m)
+  fileList = getGroupCatFileName(sP.simPath,snapNum=sP.snap)
 
   nFiles = n_elements(fileList)
   
@@ -95,15 +208,16 @@ function loadGroupCat, fileBase, m, verbose=verbose
   endif
   
   if (verbose) then $
-    print,'Loading group catalog from snapshot ('+str(m)+') in [' + str(NumFiles) + '] files.'  
+    print,'Loading group catalog from snapshot ('+str(sP.snap)+') in [' + str(NumFiles) + '] files.'  
   
   ; counters
   nGroupsTot    = 0L
-  ;nIDsTot       = 0L
+  nIDsTot       = 0L
   nSubgroupsTot = 0L
   
   skip    = 0L
   skipSub = 0L
+  skipIDs = 0L
   
   ; load across all file parts
   for i=0,nFiles-1 do begin
@@ -125,7 +239,7 @@ function loadGroupCat, fileBase, m, verbose=verbose
          
     ; add counters
     nGroupsTot    += h.nGroups
-    ;nIDsTot       += h.nIDs
+    nIDsTot       += h.nIDs
     nSubgroupsTot += h.nSubgroups
           
     ; allocate storage if this is the first iteration
@@ -177,7 +291,19 @@ function loadGroupCat, fileBase, m, verbose=verbose
       }
         sf = create_struct(sf,sfsub) ;concat
       endif
-    endif
+      
+      ; ID load requested?
+      if keyword_set(readIDs) then begin
+        if (h.nIDsTot eq 0) then begin
+          print,'Warning: readIDs requested but no IDs in group catalog!'
+          stop
+        endif
+        
+        sfids = { IDs:lonarr(h.nIDsTot) }
+        sf = create_struct(sf,sfids) ;concat
+      endif
+      
+    endif ;i=0
     
     ; fill sf with group data from this part
     sf.GroupLen        [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/GroupLen"))
@@ -227,22 +353,47 @@ function loadGroupCat, fileBase, m, verbose=verbose
   skipSub += h.nSubgroups
     endif
     
+    ; fill sf with IDs from this part (if requested)
+    if keyword_set(readIDs) then begin
+      sf.IDs[skipIDs:(skipIDs+h.nIDs-1)] = h5d_read(h5d_open(fileID,"IDs/ID"))
+      skipIDs += h.nIDs
+    endif
+    
     ; close file
     h5f_close, fileID
   
   endfor
   
-  ; create offset tables
+  ; create offset tables (sort to create ID list is: (1) GrNr, (2) SubNr, (3) Type, (4) BindingEnergy)
   for i=1L, h.nGroupsTot-1 do begin
-    sf.GroupOffset[i]       = sf.GroupOffset[i-1]       + sf.GroupLen[i-1]
-    sf.GroupOffsetType[*,i] = sf.GroupOffsetType[*,i-1] + sf.GroupOffsetType[*,i-1]
+    sf.GroupOffset[i] = sf.GroupOffset[i-1] + sf.GroupLen[i-1]
   endfor
-
+  
+  ; given SubNr sorted before Type, GroupOffsetType can ONLY be used on getTypeSortedIDList
+  for i=0L, h.nGroupsTot-1 do begin
+    typeCumSum = [0,total(sf.groupLenType[0:4,i],/cum,/pres)]
+    sf.GroupOffsetType[*,i] = sf.GroupOffset[i] + typeCumSum
+  endfor
+  
+  ; if ID read requested, create typeSortedIDList (and save), add to return structure
+  if keyword_set(readIDs) then begin
+    sfsorted = { IDsSorted:getTypeSortedIDList(sP=sP,gc=sf) }
+    sf = create_struct(sf,sfsorted) ;concat
+  endif
+  
+  ; TODO: SubgroupOffset and SubgroupOffsetType
+  
   ; verify accumulated totals with last header totals
-  if ((nGroupsTot ne h.nGroupsTot) or (nSubgroupsTot ne h.nSubgroupsTot)) then begin
-      ;(nIDsTot ne h.nIDsTot and keyword_set(readIDs)) or $
+  if ((nGroupsTot ne h.nGroupsTot) or (nSubgroupsTot ne h.nSubgroupsTot) or $ 
+      (nIDsTot ne h.nIDsTot and keyword_set(readIDs))) then begin
     print,'ERROR: Totals do not add up.'
     stop
+  endif
+  
+  ; if ID read was not requested but IDs exist, stop for now (possibly under the group ordered assumption)
+  if (nIDsTot gt 0 and not keyword_set(readIDs)) then begin
+    print,'Warning: readIDs not requested, but IDs present in group catalog!'
+    ;stop
   endif
   
   !except = 1
@@ -250,18 +401,18 @@ function loadGroupCat, fileBase, m, verbose=verbose
   return,sf
 end
 
-; loadSubhaloGroups(): load (OLD) complete subfind group catalog for a given snapshot
+; loadSubhaloGroups(): load (OLD, not HDF5) complete subfind group catalog for a given snapshot
 ;
 ; skipIDs=1 : don't load actual group member particle IDs
 
-function loadSubhaloGroups, fileBase, m, verbose=verbose, skipIDs=skipIDs
+function loadSubhaloGroups, sP=sP, verbose=verbose, skipIDs=skipIDs
 
   if not keyword_set(verbose) then verbose = 0
 
   ; set filename
   ext = string(m,format='(I3.3)')
-  fIDs = fileBase + 'groups_' + ext + '/subhalo_ids_' + ext
-  fTab = fileBase + 'groups_' + ext + '/subhalo_tab_' + ext
+  fIDs = sP.simPath + 'groups_' + ext + '/subhalo_ids_' + ext
+  fTab = sP.simPath + 'groups_' + ext + '/subhalo_tab_' + ext
   
   ; check existance and multiple outputs
   if not file_test(fIDs) then begin
@@ -270,7 +421,7 @@ function loadSubhaloGroups, fileBase, m, verbose=verbose, skipIDs=skipIDs
       nSplit_IDs = n_elements(file_search(fIDs+".*"))
       nSplit_tab = n_elements(file_search(fTab+".*"))
     endif else begin
-      print, 'ERROR: group_ids file ' + fileBase + str(m) + ' does not exist!'
+      print, 'ERROR: group_ids file ' + sP.simPath + str(sP.snap) + ' does not exist!'
       return,0
     endelse
   endif
@@ -281,7 +432,7 @@ function loadSubhaloGroups, fileBase, m, verbose=verbose, skipIDs=skipIDs
   endif
   
   if (verbose) then $
-    print,'Loading subhalo groups from snapshot ('+str(m)+') in [' + str(nSplit_IDs) + '] files.'
+    print,'Loading subhalo groups from snapshot ('+str(sP.snap)+') in [' + str(nSplit_IDs) + '] files.'
   
   ; counters
   nGroupsTot    = 0L
@@ -506,7 +657,7 @@ function loadSubhaloGroups, fileBase, m, verbose=verbose, skipIDs=skipIDs
     readu,lun,hIDs
     
     if (hIDs.nTask ne nSplit_IDs) then begin
-      print,'WARNING: h.nTask='+str(h.nTask)+' (m='+str(m)+$
+      print,'WARNING: h.nTask='+str(h.nTask)+' (sP.snap='+str(sP.snap)+$
             ') differs from number of IDS split files ('+str(nSplit_IDs)+'.'
       ;return,0
     endif
@@ -590,7 +741,10 @@ end
 
 ; getSnapFilelist(): take input path and snapshot number and find snapshot filename
 
-function getSnapFilelist, fileBase, snapNum=m, groupOrdered=groupOrdered
+function getSnapFilelist, fileBase, snapNum=m, groupOrdered=groupOrdered, subBox=subBox
+
+  sbstr = ''
+  if keyword_set(subBox) then sbstr = 'subbox_'
 
   ; format snapNum and initial guess
   if (str(m) eq 'none') then begin
@@ -608,13 +762,13 @@ function getSnapFilelist, fileBase, snapNum=m, groupOrdered=groupOrdered
     if (m gt 999) then $
       ext = string(m,format='(I4.4)')
       
-    f = fileBase + 'snapdir_' + ext + '/snap_' + ext
+    f = fileBase + 'snapdir_' + ext + '/snap_' + sbstr + ext
   endelse
 
   ; check for single (non-split)
   if not keyword_set(groupOrdered) then $
-  if file_test(fileBase+'snap_'+ext+'.hdf5') then $
-    return, file_search(fileBase + 'snap_' + ext + ".*hdf5")
+  if file_test(fileBase+'snap_'+sbstr+ext+'.hdf5') then $
+    return, file_search(fileBase + 'snap_' + sbstr + ext + ".*hdf5")
 
   ; check for single groupordered
   if file_test(fileBase+'snap-groupordered_'+ext+'.hdf5') then $
@@ -634,12 +788,12 @@ end
 
 ; loadSnapshotHeader(): load header
 
-function loadSnapshotHeader, fileBase, snapNum=m, verbose=verbose
+function loadSnapshotHeader, sP=sP, verbose=verbose, subBox=subBox
 
   if not keyword_set(verbose) then verbose = 0
 
   ; get matching filename (return -1 if not found)
-  fileList = getSnapFilelist(fileBase,snapNum=m)
+  fileList = getSnapFilelist(sP.simPath,snapNum=sP.snap,subBox=subBox)
 
   ; read header from first part
   fileID   = h5f_open(fileList[0])
@@ -677,30 +831,36 @@ end
 ;                       partType = [0,1,2,4] or ('gas','dm','tracer','stars') (case insensitive)
 ;                       field    = ['ParticleIDs','coordinates','xyz',...] (case insensitive)
 
-function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
-                             verbose=verbose, doublePrec=doublePrec, groupOrdered=groupOrdered
+function loadSnapshotSubset, sP=sP, partType=PT, field=field, $
+                             verbose=verbose, $
+                             doublePrec=doublePrec, groupOrdered=groupOrdered, subBox=subBox
 
   if not keyword_set(verbose) then verbose = 0
-  partType = PT ; so we don't change the input
 
-  fileList = getSnapFilelist(fileBase,snapNum=m,groupOrdered=groupOrdered)
+  fileList = getSnapFilelist(sP.simPath,snapNum=sP.snap,groupOrdered=groupOrdered,subBox=subBox)
 
   nFiles = n_elements(fileList)
   
   ; input config: set partType number if input in string
-  if (strlowcase(str(partType)) eq 'gas' or strlowcase(str(partType)) eq 'hydro')      then partType = 0
-  if (strlowcase(str(partType)) eq 'dm' or strlowcase(str(partType)) eq 'darkmatter')  then partType = 1
-  if (strlowcase(str(partType)) eq 'tracer' or strlowcase(str(partType)) eq 'tracers') then partType = 3
-  if (strlowcase(str(partType)) eq 'stars' or strlowcase(str(partType)) eq 'star')     then partType = 4
+  partType = strlowcase(string(PT)) ; so we don't change the input
+  if (strcmp(partType,'gas')       or strcmp(partType,'hydro'))      then partType = 0
+  if (strcmp(partType,'dm')        or strcmp(partType,'darkmatter')) then partType = 1
+  if (strcmp(partType,'tracervel') or strcmp(partType,'tracersvel')) then partType = 2
+  if (strcmp(partType,'tracermc')  or strcmp(partType,'tracersmc'))  then partType = 3
+  if (strcmp(partType,'stars')     or strcmp(partType,'star'))       then partType = 4
   
   ; error checking
+  if (strcmp(partType,'tracer') or strcmp(partType,'tracers')) then begin
+    print,'ERROR: Please specify which type of tracers!'
+    stop
+  endif
   if (not isnumeric(partType)) then begin
     print,'ERROR: Bad partType = ' + partType
-    return,0
+    stop
   endif
-  if (partType lt 0 or partType gt 5) then begin
+  if (partType lt 0 or partType gt 4) then begin
     print,'ERROR: partType = ' + str(partType) + ' out of bounds!'
-    return,0
+    stop
   endif
   
   ; load particle array sizes from header of first part
@@ -733,21 +893,38 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
   rDims = 1 ;override if needed
   fieldName = ''
   
-  ; gas, stars, dm
-  ; --------------
+  ; common fields (all besides tracersMC)
+  ; -------------------------------------
   
+  if (field eq 'coordinates' or field eq 'xyz' or field eq 'positions' or field eq 'pos' or $
+      field eq 'x' or field eq 'y' or field eq 'z') then begin
+    fieldName = 'Coordinates'
+    rDims = 3
+    r = fltarr(rDims,nPartTot[partType])
+  endif
+  if (field eq 'particleids' or field eq 'ids') then begin
+    r = lonarr(nPartTot[partType])
+    fieldName = 'ParticleIDs'
+  endif
+  if (field eq 'potential' or field eq 'phi') then begin
+    r = fltarr(nPartTot[partType])
+    fieldName = 'Potential'
+  endif
+  if (field eq 'velocities' or field eq 'vel' or $
+      field eq 'velx' or field eq 'vely' or field eq 'velz') then begin
+    fieldName = 'Velocities'
+    rDims = 3
+    r = dblarr(rDims,nPartTot[partType])
+  endif
+  
+  ; gas only
+  ; --------
   if (field eq 'center_of_mass' or field eq 'centerofmass' or field eq 'com' or field eq 'cm' or $
       field eq 'cmx' or field eq 'cmy' or field eq 'cmz') then begin
     fieldName = 'Center-of-Mass'
     rDims = 3
     r = fltarr(rDims,nPartTot[partType])
     if (partType ne 0) then begin & print,'Error: CoM is gas only!' & return,0 & endif
-  endif
-  if (field eq 'coordinates' or field eq 'xyz' or field eq 'positions' or field eq 'pos' or $
-      field eq 'x' or field eq 'y' or field eq 'z') then begin
-    fieldName = 'Coordinates'
-    rDims = 3
-    r = fltarr(rDims,nPartTot[partType])
   endif
   if (field eq 'coolingrate' or field eq 'coolrate') then begin
     r = fltarr(nPartTot[partType])
@@ -774,20 +951,10 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
     fieldName = 'MachNumber'
     if (partType ne 0) then begin & print,'Error: MachNum is gas only!' & return,0 & endif
   endif
-  if (field eq 'masses' or field eq 'mass') then begin
-    r = fltarr(nPartTot[partType])
-    fieldName = 'Masses'
-    if (partType ne 0 and partType ne 4) then begin & print,'Error: Mass is gas/stars only!' & return,0 & endif
-  endif
   if (field eq 'maxfaceangle') then begin
     r = fltarr(nPartTot[partType])
     fieldName = 'MaxFaceAngle'
     if (partType ne 0) then begin & print,'Error: MaxFaceAngle is gas only!' & return,0 & endif
-  endif
-  if (field eq 'metallicity' or field eq 'metal') then begin
-    r = fltarr(nPartTot[partType])
-    fieldName = 'Metallicity'
-    if (partType ne 0 and partType ne 4) then begin & print,'Error: Z is gas/stars only!' & return,0 & endif
   endif
   if (field eq 'neutralhydrogenabundance' or field eq 'nh') then begin
     r = fltarr(nPartTot[partType])
@@ -799,19 +966,6 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
     r = fltarr(nPartTot[partType])
     fieldName = 'Number of faces of cell'
     if (partType ne 0) then begin & print,'Error: NumFaces is gas only!' & return,0 & endif
-  endif
-  if (field eq 'numtr' or field eq 'numtracers') then begin
-    r = lonarr(nPartTot[partType])
-    fieldName = 'NumTracers'
-    if (partType ne 0 and partType ne 4) then begin & print,'Error: NumTracers is gas/stars only!' & return,0 & endif
-  endif
-  if (field eq 'particleids' or field eq 'ids') then begin
-    r = lonarr(nPartTot[partType])
-    fieldName = 'ParticleIDs'
-  endif
-  if (field eq 'potential' or field eq 'phi') then begin
-    r = fltarr(nPartTot[partType])
-    fieldName = 'Potential'
   endif
   if (field eq 'pressure' or field eq 'pres') then begin
     r = fltarr(nPartTot[partType])
@@ -828,21 +982,10 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
     fieldName = 'StarFormationRate'
     if (partType ne 0) then begin & print,'Error: SFR is gas only!' & return,0 & endif
   endif
-  if (field eq 'stellarformationtime' or field eq 'sftime') then begin
-    r = fltarr(nPartTot[partType])
-    fieldName = 'StellarFormationTime'
-    if (partType ne 4) then begin & print,'Error: SFTime is stars only!' & return,0 & endif
-  endif
   if (field eq 'surface_area' or field eq 'surfarea') then begin
     r = fltarr(nPartTot[partType])
     fieldName = 'Surface Area'
     if (partType ne 0) then begin & print,'Error: SurfArea is gas only!' & return,0 & endif
-  endif
-  if (field eq 'velocities' or field eq 'vel' or $
-      field eq 'velx' or field eq 'vely' or field eq 'velz') then begin
-    fieldName = 'Velocities'
-    rDims = 3
-    r = dblarr(rDims,nPartTot[partType])
   endif
   if (field eq 'volume' or field eq 'vol') then begin
     r = fltarr(nPartTot[partType])
@@ -850,25 +993,51 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
     if (partType ne 0) then begin & print,'Error: Vol is gas only!' & return,0 & endif
   endif
   
-  ; tracers
-  ; -------
+  ; gas/stars only
+  ; --------------
+  if (field eq 'masses' or field eq 'mass') then begin
+    r = fltarr(nPartTot[partType])
+    fieldName = 'Masses'
+    if (partType ne 0 and partType ne 4) then begin & print,'Error: Mass is gas/stars only!' & return,0 & endif
+  endif
+  if (field eq 'metallicity' or field eq 'metal') then begin
+    r = fltarr(nPartTot[partType])
+    fieldName = 'Metallicity'
+    if (partType ne 0 and partType ne 4) then begin & print,'Error: Z is gas/stars only!' & return,0 & endif
+  endif
+  if (field eq 'numtr' or field eq 'numtracers') then begin
+    r = lonarr(nPartTot[partType])
+    fieldName = 'NumTracers'
+    if (partType ne 0 and partType ne 4) then begin & print,'Error: NumTracers is gas/stars only!' & return,0 & endif
+  endif
   
+  ; stars only (TODO: GFM)
+  ; ----------
+  if (field eq 'stellarformationtime' or field eq 'sftime') then begin
+    r = fltarr(nPartTot[partType])
+    fieldName = 'StellarFormationTime'
+    if (partType ne 4) then begin & print,'Error: SFTime is stars only!' & return,0 & endif
+  endif
+  
+  ; tracers (Monte Carlo)
+  ; ---------------------
   if (field eq 'parentid' or field eq 'parentids') then begin
     r = lonarr(nPartTot[partType])
     fieldName = 'ParentID'
-    if (partType ne 3) then begin & print,'Error: ParentID is tracer only!' & return,0 & endif
+    if (partType ne 3) then begin & print,'Error: ParentID is tracerMC only!' & return,0 & endif
   endif
   if (field eq 'properties' or field eq 'quants' or field eq 'quantities' or $
-      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_nosf' or field eq 'tracer_maxentropy') then begin
+      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxdens' or $
+      field eq 'tracer_maxmachnum' or field eq 'tracer_maxentropy') then begin
     fieldName = 'FluidQuantities'
-    rDims = 3 ; WARNING: must match to Arepo run (currently: MaxTemp,MaxTempNoSF,MaxEntropy)
+    rDims = 5 ; WARNING: must match to setup in Arepo run
     r = fltarr(rDims,nPartTot[partType])
-    if (partType ne 3) then begin & print,'Error: Fluid quantities are tracer only!' & return,0 & endif
+    if (partType ne 3) then begin & print,'Error: Fluid quantities are tracerMC/Vel only!' & return,0 & endif
   endif
   if (field eq 'tracerid' or field eq 'tracerids') then begin
     r = lonarr(nPartTot[partType])
     fieldName = 'TracerID'
-    if (partType ne 3) then begin & print,'Error: TracerID is tracer only!' & return,0 & endif
+    if (partType ne 3) then begin & print,'Error: TracerID is tracerMC only!' & return,0 & endif
   endif
   
   if (fieldName eq '') then begin
@@ -925,7 +1094,8 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
   if (field eq 'x' or field eq 'y' or field eq 'z' or $
       field eq 'velx' or field eq 'vely' or field eq 'velz' or $
       field eq 'cmx' or field eq 'cmy' or field eq 'cmz' or $
-      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_nosf' or field eq 'tracer_maxentropy') then begin
+      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxdens' or $
+      field eq 'tracer_maxmachnum' or field eq 'tracer_maxentropy') then begin
     case field of
       'x'   : fN = 0
       'velx': fN = 0
@@ -938,8 +1108,10 @@ function loadSnapshotSubset, fileBase, snapNum=m, partType=PT, field=field, $
       'cmz' : fN = 2
       
       'tracer_maxtemp'      : fN = 0
-      'tracer_maxtemp_nosf' : fN = 1
-      'tracer_maxentropy'   : fN = 2
+      'tracer_maxtemp_time' : fN = 1
+      'tracer_maxdens'      : fN = 2
+      'tracer_maxmachnum'   : fN = 3
+      'tracer_maxentropy'   : fN = 4
     endcase
     r = reform(r[fN,*])
   endif
