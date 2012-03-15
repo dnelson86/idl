@@ -16,7 +16,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
        boxSize:      0.0,$   ; boxsize of simulation, kpc
        trMassConst:  0.0,$   ; mass per tracer under equal mass assumption (=TargetGasMass)
-       trMCPerCell:  0,$     ; starting number of monte carlo tracers per cell (copied from f input)
+       trMCPerCell:  0,$     ; starting number of monte carlo tracers per cell (copied from f input, 0=none)
        gravSoft:     0.0,$   ; gravitational softening length (ckpc)
        snapRange:    [0,0],$ ; snapshot range of simulation
        groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
@@ -43,7 +43,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.boxSize       = 20000.0
     r.snapRange     = [0,314]
     r.groupCatRange = [50,314]
-    r.minNumGasPart = -1
+    r.minNumGasPart = -1 ; no additional cut
+    r.trMCPerCell   = 0  ; none (SPH)
     
     if keyword_set(f) then stop ; shouldn't be specified
   
@@ -67,7 +68,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.boxSize       = 20000.0
     r.snapRange     = [0,313]
     r.groupCatRange = [50,313]
-    r.minNumGasPart = -1
+    r.minNumGasPart = -1 ; no additional cut
+    r.trMCPerCell   = -1 ; velocity tracers
     
     if keyword_set(f) then stop ; shouldn't be specified
     if (res eq 128) or (res eq 256) then stop ; DELETED
@@ -96,10 +98,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.boxSize       = 20000.0
     r.snapRange     = [0,313]
     r.groupCatRange = [50,313]
-    r.minNumGasPart = -1
+    r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 20
     
-    if keyword_set(f) then stop ; shouldn't be specified
+    if keyword_set(f) then stop ; shouldn't be specified, fixed at 20
     if (res eq 512) then stop ; don't exist yet
     
     if (res eq 128) then r.trMassConst = 4.76446157e-03 / r.trMCPerCell
@@ -124,13 +126,16 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   
   if (run eq 'dev.tracer') then begin
     r.boxSize       = 20000.0
-    r.trMassConst   = 4.76446157e-03
     r.snapRange     = [0,76]
     r.groupCatRange = [25,76]
-    r.gravSoft      = 4.0
-  
+    r.minNumGasPart = -1 ; no additional cut
+    r.trMCPerCell   = -1 ; velocity tracers
+
     if keyword_set(f) then stop
-  
+    
+    r.trMassConst   = 4.76446157e-03
+    r.gravSoft      = 4.0
+
     r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/output/'
     r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/'
     r.savPrefix  = 'D'
@@ -147,6 +152,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.boxSize       = 20000.0
     r.snapRange     = [0,38]
     r.groupCatRange = [15,38]
+    r.minNumGasPart = -1 ; no additional cut
+    r.trMCPerCell   = -1 ; velocity tracers
     
     if keyword_set(f) then stop
   

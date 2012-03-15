@@ -65,17 +65,14 @@ function partTypeNum, partType
   if (strcmp(partType,'tracermc')  or strcmp(partType,'tracersmc'))  then partType = 3
   if (strcmp(partType,'stars')     or strcmp(partType,'star'))       then partType = 4
   
-  if (strcmp(partType,'tracer') or strcmp(partType,'tracers')) then begin
-    print,'ERROR: Please specify which type of tracers!' & stop
-  endif  
+  if (strcmp(partType,'tracer') or strcmp(partType,'tracers')) then $
+    message,'ERROR: Please specify which type of tracers!'
   
-  if not isnumeric(partType) then begin
-    print,'ERROR: Unrecognized partType!' & stop
-  endif
+  if not isnumeric(partType) then $
+    message,'ERROR: Unrecognized partType!'
   
-  if (partType lt 0 or partType gt 4) then begin
-    print,'ERROR: partType = ' + str(partType) + ' out of bounds!' & stop
-  endif
+  if (partType lt 0 or partType gt 4) then $
+    message,'ERROR: partType = ' + str(partType) + ' out of bounds!'
 
   return, partType
 end

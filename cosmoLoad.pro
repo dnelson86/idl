@@ -14,7 +14,7 @@ function getTypeSortedIDList, sP=sP, gc=gc
   if (h.nPartTot[5] ne 0) then stop ; not implemented
   
   ; save/restore
-  saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.gcSortedIDs.snap=' + str(sP.snap) + '.sav'
+  saveFilename = sP.derivPath + 'gcSortedIDs.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
                  
   if file_test(saveFilename) then begin
     restore,saveFilename
@@ -925,14 +925,17 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     print,'Warning: Snapshot is single precision but doublePrec load requested.'
   
   ; early exit: no particles of requested type
-  if (nPartTot[partType] eq 0) then return, 0
+  if (nPartTot[partType] eq 0) then begin
+    print,'Warning: No particles of requested type present.'
+    return,[]
+  endif
   
   ; input config: set fieldName and return array
   count = 0L
   field = strlowcase(field)
   rDims = 1 ;override if needed
   fieldName = ''
-  
+
   ; common fields (all besides tracersMC)
   ; -------------------------------------
   
@@ -940,21 +943,21 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       field eq 'x' or field eq 'y' or field eq 'z') then begin
     fieldName = 'Coordinates'
     rDims = 3
-    r = fltarr(rDims,nPartTot[partType])
+    rType = 'float'
   endif
   if (field eq 'particleids' or field eq 'ids') then begin
-    r = lonarr(nPartTot[partType])
+    rType = 'long'
     fieldName = 'ParticleIDs'
   endif
   if (field eq 'potential' or field eq 'phi') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'Potential'
   endif
   if (field eq 'velocities' or field eq 'vel' or $
       field eq 'velx' or field eq 'vely' or field eq 'velz') then begin
     fieldName = 'Velocities'
     rDims = 3
-    r = dblarr(rDims,nPartTot[partType])
+    rType = 'float'
   endif
   
   ; gas only
@@ -963,72 +966,72 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       field eq 'cmx' or field eq 'cmy' or field eq 'cmz') then begin
     fieldName = 'Center-of-Mass'
     rDims = 3
-    r = fltarr(rDims,nPartTot[partType])
+    rType = 'float'
     if (partType ne 0) then begin & print,'Error: CoM is gas only!' & return,0 & endif
   endif
   if (field eq 'coolingrate' or field eq 'coolrate') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'CoolingRate'
     if (partType ne 0) then begin & print,'Error: CoolingRate is gas only!' & return,0 & endif
   endif
   if (field eq 'density' or field eq 'rho' or field eq 'dens') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'Density'
     if (partType ne 0) then begin & print,'Error: Density is gas only!' & return,0 & endif
   endif
   if (field eq 'electronabundance' or field eq 'ne' or field eq 'nelec') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'ElectronAbundance'
     if (partType ne 0) then begin & print,'Error: NE is gas only!' & return,0 & endif
   endif
   if (field eq 'internalenergy' or field eq 'u') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'InternalEnergy'
     if (partType ne 0) then begin & print,'Error: U is gas only!' & return,0 & endif
   endif
   if (field eq 'machnumber' or field eq 'machnum') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'MachNumber'
     if (partType ne 0) then begin & print,'Error: MachNum is gas only!' & return,0 & endif
   endif
   if (field eq 'maxfaceangle') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'MaxFaceAngle'
     if (partType ne 0) then begin & print,'Error: MaxFaceAngle is gas only!' & return,0 & endif
   endif
   if (field eq 'neutralhydrogenabundance' or field eq 'nh') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'NeutralHydrogenAbundance'
     if (partType ne 0) then begin & print,'Error: NH is gas only!' & return,0 & endif
   endif
   if (field eq 'number_of_faces_of_cell' or field eq 'num_cell_faces' or field eq 'numcellfaces' or $
       field eq 'numfaces') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'Number of faces of cell'
     if (partType ne 0) then begin & print,'Error: NumFaces is gas only!' & return,0 & endif
   endif
   if (field eq 'pressure' or field eq 'pres') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     if (partType ne 0) then begin & print,'Error: Pressure is gas only!' & return,0 & endif
     fieldName = 'Pressure'
   endif
   if (field eq 'smoothinglength' or field eq 'hsml') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'SmoothingLength'
     if (partType ne 0) then begin & print,'Error: HSML is gas only!' & return,0 & endif
   endif
   if (field eq 'starformationrate' or field eq 'sfr') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'StarFormationRate'
     if (partType ne 0) then begin & print,'Error: SFR is gas only!' & return,0 & endif
   endif
   if (field eq 'surface_area' or field eq 'surfarea') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'Surface Area'
     if (partType ne 0) then begin & print,'Error: SurfArea is gas only!' & return,0 & endif
   endif
   if (field eq 'volume' or field eq 'vol') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'Volume'
     if (partType ne 0) then begin & print,'Error: Vol is gas only!' & return,0 & endif
   endif
@@ -1036,17 +1039,17 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   ; gas/stars only
   ; --------------
   if (field eq 'masses' or field eq 'mass') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'Masses'
     if (partType ne 0 and partType ne 4) then begin & print,'Error: Mass is gas/stars only!' & return,0 & endif
   endif
   if (field eq 'metallicity' or field eq 'metal') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'Metallicity'
     if (partType ne 0 and partType ne 4) then begin & print,'Error: Z is gas/stars only!' & return,0 & endif
   endif
   if (field eq 'numtr' or field eq 'numtracers') then begin
-    r = lonarr(nPartTot[partType])
+    rType = 'long'
     fieldName = 'NumTracers'
     if (partType ne 0 and partType ne 4) then begin & print,'Error: NumTracers is gas/stars only!' & return,0 & endif
   endif
@@ -1054,7 +1057,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   ; stars only (TODO: GFM)
   ; ----------
   if (field eq 'stellarformationtime' or field eq 'sftime') then begin
-    r = fltarr(nPartTot[partType])
+    rType = 'float'
     fieldName = 'StellarFormationTime'
     if (partType ne 4) then begin & print,'Error: SFTime is stars only!' & return,0 & endif
   endif
@@ -1062,28 +1065,49 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   ; tracers (Monte Carlo)
   ; ---------------------
   if (field eq 'parentid' or field eq 'parentids') then begin
-    r = lonarr(nPartTot[partType])
+    rType = 'long'
     fieldName = 'ParentID'
     if (partType ne 3) then begin & print,'Error: ParentID is tracerMC only!' & return,0 & endif
   endif
+  if (field eq 'tracerid' or field eq 'tracerids') then begin
+    rType = 'long'
+    fieldName = 'TracerID'
+    if (partType ne 3) then begin & print,'Error: TracerID is tracerMC only!' & return,0 & endif
+  endif
+  
+  ; tracers (common)
+  ; ----------------
   if (field eq 'properties' or field eq 'quants' or field eq 'quantities' or $
       field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxdens' or $
       field eq 'tracer_maxmachnum' or field eq 'tracer_maxentropy') then begin
     fieldName = 'FluidQuantities'
     rDims = 5 ; WARNING: must match to setup in Arepo run
-    r = fltarr(rDims,nPartTot[partType])
-    if (partType ne 3) then begin & print,'Error: Fluid quantities are tracerMC/Vel only!' & return,0 & endif
-  endif
-  if (field eq 'tracerid' or field eq 'tracerids') then begin
-    r = lonarr(nPartTot[partType])
-    fieldName = 'TracerID'
-    if (partType ne 3) then begin & print,'Error: TracerID is tracerMC only!' & return,0 & endif
+    rType = 'float'
+    if (partType ne 3 and partType ne 2) then begin & print,'Error: Fluid quantities are tracerMC/Vel only!' & return,0 & endif
   endif
   
   if (fieldName eq '') then begin
     print,'ERROR: Requested field -- ' + strlowcase(field) + ' -- not recognized!'
-    return,0
+    stop
   endif
+  
+  ; multidim slice (hyperslab selection) request
+  multiDimSliceFlag = 0
+  if (field eq 'x' or field eq 'y' or field eq 'z' or $
+      field eq 'velx' or field eq 'vely' or field eq 'velz' or $
+      field eq 'cmx' or field eq 'cmy' or field eq 'cmz' or $
+      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxdens' or $
+      field eq 'tracer_maxmachnum' or field eq 'tracer_maxentropy') then begin
+    multiDimSliceFlag = 1
+    
+    ; override rDims to one
+    rDims = 1
+  endif
+
+  ; use rType to make return array
+  if rType eq 'float' then r = fltarr(rDims,nPartTot[partType])
+  if rType eq 'long'  then r = lonarr(rDims,nPartTot[partType])
+  r = reform(r)
   
   if (verbose) then $
     print,'Loading "' + str(fieldName) + '" for partType=' + str(partType) + ' from snapshot (' + $
@@ -1108,9 +1132,53 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       groupName = 'PartType'+str(partType)
       
       groupID = h5g_open(fileID,groupName)
-      groupData = h5d_read(h5d_open(groupID,fieldName))
+      dataSetID = h5d_open(groupID,fieldName)
+      
+      if multiDimSliceFlag eq 1 then begin
+        ; if multiDimSlice requested, load dataset size and select hyperslab
+        dataSpaceID = h5d_get_space(dataSetID)
+        dataSpaceDims = h5s_get_simple_extent_dims(dataSpaceID)
+        
+        ; these are all 2D arrays, determine which column (IDL) to read (row in hdf5/C)
+        case field of
+          'x'   : fN = 0
+          'velx': fN = 0
+          'cmx' : fN = 0
+          'y'   : fN = 1
+          'vely': fN = 1
+          'cmy' : fN = 1
+          'z'   : fN = 2
+          'velz': fN = 2
+          'cmz' : fN = 2
+          
+          'tracer_maxtemp'      : fN = 0
+          'tracer_maxtemp_time' : fN = 1
+          'tracer_maxdens'      : fN = 2
+          'tracer_maxmachnum'   : fN = 3
+          'tracer_maxentropy'   : fN = 4
+        endcase
+        
+        ; start at this column with length equal to the dataset size
+        start  = ulon64arr(n_elements(dataSpaceDims))
+        length = ulon64arr(n_elements(dataSpaceDims))
+        
+        start[0]  = fN
+        length[0] = 1
+        length[1] = dataSpaceDims[1]
+        
+        ; select hyperslab and create a memory space to hold the result (otherwise it is full size+sparse)
+        h5s_select_hyperslab, dataSpaceID, start, length, /reset
+        memSpaceID = h5s_create_simple(length)
+        
+        ; read the data in the selected hyperslab
+        groupData = reform(h5d_read(dataSetID, file_space=dataSpaceID, memory_space=memSpaceID))
+      endif else begin
+        ; normal read of all data in the dataSet
+        groupData = h5d_read(dataSetID)
+      endelse
 
       ; close file
+      h5d_close, dataSetID
       h5g_close, groupID
       h5g_close, headerID
       h5f_close, fileID
@@ -1129,32 +1197,6 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       count += nPart[partType]
   
   endfor
-  
-  ; if requesting a slice of a multidim array, do it now
-  if (field eq 'x' or field eq 'y' or field eq 'z' or $
-      field eq 'velx' or field eq 'vely' or field eq 'velz' or $
-      field eq 'cmx' or field eq 'cmy' or field eq 'cmz' or $
-      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxdens' or $
-      field eq 'tracer_maxmachnum' or field eq 'tracer_maxentropy') then begin
-    case field of
-      'x'   : fN = 0
-      'velx': fN = 0
-      'cmx' : fN = 0
-      'y'   : fN = 1
-      'vely': fN = 1
-      'cmy' : fN = 1
-      'z'   : fN = 2
-      'velz': fN = 2
-      'cmz' : fN = 2
-      
-      'tracer_maxtemp'      : fN = 0
-      'tracer_maxtemp_time' : fN = 1
-      'tracer_maxdens'      : fN = 2
-      'tracer_maxmachnum'   : fN = 3
-      'tracer_maxentropy'   : fN = 4
-    endcase
-    r = reform(r[fN,*])
-  endif
   
   return,r
 end
