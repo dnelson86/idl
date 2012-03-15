@@ -4,6 +4,42 @@
 
 @helper
 
+; addSubboxBackGrid(): add a single nested background grid to a snapshot
+
+pro addSubboxBackGrid
+
+  input_fname  = "snap_subbox_690.hdf5"
+  output_fname = "snap_subbox_690"
+
+  subboxSize = 4000.0 ;ckpc
+  subboxCen  = [5500,7000,7500] ;ckpc
+  nBackGrid  = 16 ;^3, nested twice
+  
+  ; load input sphere
+  h = loadSnapshotHeader(fileName=input_fname,/verbose)
+
+  gas_pos  = loadSnapshotSubset(fileName=input_fname,partType='gas',field='pos')
+  gas_mass = loadSnapshotSubset(fileName=input_fname,partType='gas',field='mass')
+  gas_vel  = loadSnapshotSubset(fileName=input_fname,partType='gas',field='vel')
+  gas_id   = loadSnapshotSubset(fileName=input_fname,partType='gas',field='ids')
+  gas_u    = loadSnapshotSubset(fileName=input_fname,partType='gas',field='u')
+  
+  ; offset template position to box center
+  ;gas_pos += boxSize/2.0
+  
+  ; form gas
+  gas = {pos:gas_pos,vel:gas_vel,id:gas_id,u:gas_u,mass:gas_mass}
+
+  ; add nested background grid
+  gas = addICBackgroundGrid(gas, boxSize=subboxSize*1.5, boxCen=subboxCen, nBackGrid=nBackGrid)
+  gas = addICBackgroundGrid(gas, boxSize=h.boxSize, nBackGrid=nBackGrid)
+
+  ; save
+  writeICFile,output_fname,part0=gas,/longIDs
+  print,'Suggested target gas mass: '+string(h.masstable[0])
+
+end
+
 ; 2D arepo.cuda input
 pro gen_arepo_cuda_2D_input
 

@@ -2,10 +2,11 @@
 ; gas accretion project - plots
 ; dnelson jan.2012
 
-pro plotGalCatRedshift, res=res, run=run
+; plotGalCatRedshift(): 
+
+pro plotGalCatRedshift, sP=sP
 
   units = getUnits()
-  sP    = simParams(res=res,run=run)
   
   ; config
   colors = ['forest green','slate blue','black']
@@ -19,7 +20,7 @@ pro plotGalCatRedshift, res=res, run=run
   yrange = [11.5,13.5]
     
   ; plot
-  plotName = sP.plotPath+'galmass_vs_redshift_'+str(res)+'.eps'
+  plotName = sP.plotPath+'galmass_vs_redshift_'+str(sP.res)+'.eps'
   
   if (str(res[0]) eq 'two') then res = [256,128]    
   if (str(res[0]) eq 'all') then res = [512,256,128]    
@@ -27,7 +28,8 @@ pro plotGalCatRedshift, res=res, run=run
   start_PS, plotName
 
   fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
-           xtitle="Redshift",ytitle="log ( total gas mass [M"+textoidl("_{sun}")+"] )",xs=9,/ys,ymargin=[4,3]
+           xtitle="Redshift",ytitle="log ( total gas mass [M"+textoidl("_{sun}")+"] )",$
+           xs=9,/ys,ymargin=[4,3]
   universeage_axis,xrange,yrange
     
   if (n_elements(res) eq 1) then $
@@ -36,39 +38,42 @@ pro plotGalCatRedshift, res=res, run=run
   ; loop over each resolution
   for j=0,n_elements(res)-1 do begin    
   
-    sP = simParams(res=res[j],run=run)
+    sP.res = res[j]
   
     ; arrays
     mass_tot_gal  = fltarr(sP.snapRange[1])
     mass_tot_gmem = fltarr(sP.snapRange[1])
     
     ; load constant mass factor (gadget)
-    massfac = loadSnapshotSubset(sP.simPath,snapNum=0,partType='gas',field='mass')
-    massfac = massfac[0]
+    ;massfac = loadSnapshotSubset(sP.simPath,snapNum=0,partType='gas',field='mass')
+    ;massfac = massfac[0]
+    ; TODO FOR UNEQUAL MASSES
+    stop
     
     ; load galaxy and group membership catalogs
     for m=sP.groupcatRange[0],sP.groupcatRange[1]-1 do begin
-      gc = galaxyCat(res=res[j],run=run,snap=m)
+      sP.snap = m
+      galcat = galaxyCat(sP=sP)
       
-      mass_tot_gal[m]  = n_elements(gc.galaxyIDs) * massfac
-      mass_tot_gmem[m] = n_elements(gc.groupmemIDs) * massfac
+      mass_tot_gal[m]  = n_elements(galcat.galaxyIDs)
+      mass_tot_gmem[m] = n_elements(galcat.groupmemIDs)
       
       ; enforce minimum number of particles cut
       if (minNumGasInGal gt 0) then begin
-        wGal = where(gc.galaxyLen ge minNumGasInGal,countGal)
-        wGmem = where(gc.groupmemLen ge minNumGasInGal,countGmem)
+        wGal = where(galcat.galaxyLen ge minNumGasInGal,countGal)
+        wGmem = where(galcat.groupmemLen ge minNumGasInGal,countGmem)
         
         if (countGal ne 0) then $
-          mass_tot_gal[m] -= (total(gc.galaxyLen[wGal]) * massfac)
+          mass_tot_gal[m] -= total(galcat.galaxyLen[wGal])
         if (countGmem ne 0) then $
-          mass_tot_gmem[m] -= (total(gc.groupmemLen[wGmem]) * massfac)
+          mass_tot_gmem[m] -= total(galcat.groupmemLen[wGmem])
       endif
     endfor
     
     ; convert masses
-    mass_tot      = codeMassToLogMsun(mass_tot_gal+mass_tot_gmem)
-    mass_tot_gal  = codeMassToLogMsun(mass_tot_gal)
-    mass_tot_gmem = codeMassToLogMsun(mass_tot_gmem)
+    mass_tot      = codeMassToLogMsun((mass_tot_gal+mass_tot_gmem)*massfac)
+    mass_tot_gal  = codeMassToLogMsun(mass_tot_gal*massfac)
+    mass_tot_gmem = codeMassToLogMsun(mass_tot_gmem*massfac)
     
      ; overplot successive resolutions
     overplot = 1 ;1,1,1
@@ -91,10 +96,10 @@ pro plotGalCatRedshift, res=res, run=run
 
 end
 
-pro plotGalCatMassFunction, res=res, run=run
+; plotGalCatMassFunction(): 
 
-  sP = simParams(res=res,run=run)
- 
+pro plotGalCatMassFunction, sP=sP
+
   ; config
   redshifts = [2.0,0.0]
   
@@ -103,7 +108,7 @@ pro plotGalCatMassFunction, res=res, run=run
   colors = ['forest green','slate blue','black']
 
   ; plot
-  plotName = sP.plotPath+'gal_massfunction_'+str(res)+'.eps'
+  plotName = sP.plotPath+'gal_massfunction_'+str(sP.res)+'.eps'
   
   xrange = [8.0,11.6]
   yrange = [1,5e3]  
@@ -124,26 +129,27 @@ pro plotGalCatMassFunction, res=res, run=run
   for j=0,n_elements(res)-1 do begin
     for m=0,n_elements(redshifts)-1 do begin  
 
-      targetSnap = redshiftToSnapnum(redshifts[m])
-      sP = simParams(res=res[j],run=run)
+      sP = simParams(res=res[j],run=run,redshift=redshifts[m])
       
       ; load constant mass factor (gadget)
-      massfac = loadSnapshotSubset(sP.simPath,snapNum=0,partType='gas',field='mass')
-      massfac = massfac[0]      
+      ;massfac = loadSnapshotSubset(sP.simPath,snapNum=0,partType='gas',field='mass')
+      ;massfac = massfac[0]
+      ;TODO FOR UNEQUAL MASSES
+      stop 
       
       ; load galaxy catalog and select galaxies above particle count cut
-      gc = galaxyCat(res=res[j],run=run,snap=targetSnap)
+      galcat = galaxyCat(sP=sP)
       
       ; enforce minimum number of particles cut and compute galaxy masses
       if (minNumGasInGal gt 0) then begin
-        w = where(gc.galaxyLen ge minNumGasInGal,count)
+        w = where(galcat.galaxyLen ge minNumGasInGal,count)
         
         galMasses = fltarr(count)
         
         for i=0,count-1 do $
-          galMasses[i] = gc.galaxyLen[w[i]] * massfac
+          galMasses[i] = galcat.galaxyLen[w[i]] * massfac
       endif else begin
-        galMasses = gc.galaxyLen * massfac
+        galMasses = galcat.galaxyLen * massfac
       endelse
       
       galMasses = codeMassToLogMsun(galMasses)
@@ -177,31 +183,24 @@ end
 
 ; plotGalCatRadii(): plot distribution of galaxy/groupmem radial distances
 
-pro plotGalCatRadii, res=res, run=run
+pro plotGalCatRadii, sP=sP
 
-  sP = simParams(res=res,run=run)
-  
   ; config
-  redshift = 2.0
-  
   colors = ['forest green','slate blue','black']
   
   ; subhalo selection config
   sgSelect = 'pri' ;pri,sec,all
   parNorm  = 'sec' ;pri,sec (normalize r_vir by primary or secondary parent)
-  minNumPart = 1
   
   ; get normalized r/r_vir
-  sP.snap = redshiftToSnapnum(redshift)
-  
-  gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,minNumPart=minNumPart,/rVirNorm)
+  gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,/rVirNorm)
   
   ; plot
   xrange = [-0.1,2.0]
   yrange = [1e1,3e5]
   bin = 0.02
   
-  title = str(res) + textoidl("^3") + " z=" + string(redshift,format='(f3.1)')
+  title = str(sP.res) + textoidl("^3") + " z=" + string(sP.redshift,format='(f3.1)')
   xtitle = "r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}")
   ytitle = "Count"
   
@@ -228,64 +227,21 @@ pro plotGalCatRadii, res=res, run=run
   end_PS
 end
 
-; compTmaxEffEOS(): compare maxiumum temperature reached by gas particles when including time spent
-;                   on the effective equation of state vs not
-
-pro compTmaxEffEOS, res=res, run=run
-
-  sP = simParams(res=res,run=run)
-  
-  ; config
-  redshift = 2.0
-  
-  ; load
-  maxt_all = maxTemps(res=res,run=run,redshift=redshift,inclEffEOS=1)
-  maxt_noeffeos = maxTemps(res=res,run=run,redshift=redshift,inclEffEOS=0)
-  
-  ; plot config
-  xyrange = [4.0,7.0]
-  
-  sP.snap = redshiftToSnapnum(redshift)
-  plotName = sP.plotPath + 'tmax_effeos_'+str(res)+'_'+str(sP.snap)+'.eps'
-  
-  start_PS, plotName
-  
-  fsc_plot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,$
-           xtitle="log ( T"+textoidl("_{max}")+" excluding eff eos )",$
-           ytitle="log ( T"+textoidl("_{max}")+" including all time )",/xs,/ys,$
-           title=str(res)+textoidl("^3")+" z=30 to z="+string(redshift,format='(i1)')
-  
-  fsc_plot,maxt_noeffeos.maxTemps_gal,maxt_all.maxTemps_gal,psym=3,$
-           color=fsc_color('black'),/overplot
-           
-  ;fsc_plot,[4.0,7.0],[4.0,7.0],color=fsc_color('orange'),/overplot
-           
-  end_PS  
-  
-end
-
 ; plotRhoTempGalCut(): plot the Torrey+ (2010) galaxy cat on the (rho,temp) plane at a given redshift
 
-pro plotRhoTempGalCut, res=res, run=run
-
-  sP = simParams(res=res,run=run)
+pro plotRhoTempGalCut, sP=sP
   
   ; config
-  redshift = 2.0
-  
   galcut_T   = 6.0
   galcut_rho = 0.25
   
   ; subhalo selection config
   sgSelect = 'pri' ; pri,sec,all
   parNorm  = 'sec' ; pri,sec (normalize r_vir by primary or secondary parent)
-  minNumPart = 1   ; enforce minimum 100 gas particles per halo
 
-  ; load (dens,temp) and masses
-  sP.snap = redshiftToSnapnum(redshift)
-  
-  gcDens = gcSubsetProp(sP=sP,select=sgSelect,minNumPart=minNumPart,/curDens)
-  gcTemp = gcSubsetProp(sP=sP,select=sgSelect,minNumPart=minNumPart,/curTemp)
+  ; load (dens,temp) and masses  
+  gcDens = gcSubsetProp(sP=sP,select=sgSelect,/curDens)
+  gcTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp)
 
   ; 2d histo parameters                
   nbins   = 140*(res/128)
@@ -333,7 +289,7 @@ pro plotRhoTempGalCut, res=res, run=run
          barwidth=0.5,lcharsize=!p.charsize-0.5,xrange=rMinMax,yrange=tMinMax
     
     ; scale Torrey+ (2011) galaxy cut to physical density
-    scalefac = snapNumToRedshift(snap=sP.snap,/time) ; time flag gives simulation time = scale factor
+    scalefac = snapNumToRedshift(sP=sP,/time) ; time flag gives simulation time = scale factor
     a3inv = 1.0 / (scalefac*scalefac*scalefac)
     
     ; draw cut line
@@ -350,32 +306,25 @@ end
 ; plotGasOrigins(): plot temperature, entropy, and primary/secondary radius for all gas elements
 ;                   from the galaxy catalog at a target redshift as a function of time backwards
 
-pro plotGasOrigins, res=res, run=run
-
-  sP = simParams(res=res,run=run)
+pro plotGasOrigins, sP=sP
 
   ; config
-  redshift     = 2.0
-  numSnapsBack = 5         ; how many steps backwards to plot from target redshift
+  numSnapsBack = 5           ; how many steps backwards to plot from target redshift
   radBounds    = [0.3,0.325] ; fraction of r_vir in target redshift
-  gcType       = 'gmem'     ; plot which component, gal or gmem
+  gcType       = 'gmem'      ; plot which component, gal or gmem
   
   colors = ['black','forest green','slate blue','crimson','orange','saddle brown']
 
   ; subhalo selection config
   sgSelect = 'pri' ; pri,sec,all
   parNorm  = 'sec' ; pri,sec (normalize r_vir by primary or secondary parent)
-  minNumPart = 1   ; enforce minimum 100 gas particles per halo
-  
-  sP.snap = redshiftToSnapnum(redshift)
   
   ; make legend
   legStrs = []
-  timeStart = snapNumToAge(sP.snap)
+  timeStart = snapNumToAge(sP=sP)
   
   for i=0,numSnapsBack do begin
-    timeDiff = (timeStart - snapnumToAge(sP.snap-i)) * 1000 ;Myr
-    ;curZ = snapNumToRedshift(snap=sP.snap-i)
+    timeDiff = (timeStart - snapnumToAge(snap=sP.snap-i)) * 1000 ;Myr
     curStr   = textoidl('\Delta')+"t = "+string(timeDiff,format='(i3)')+" Myr"
     legStrs = [legStrs,curStr]
   endfor
@@ -390,12 +339,11 @@ pro plotGasOrigins, res=res, run=run
     for m=sP.snap,sP.snap-numSnapsBack,-1 do begin
    
       ; load
-      gcTemp = gcSubsetProp(sP=sP,select=sgSelect,minNumPart=minNumpart,oSnap=m,/curTemp)
+      gcTemp = gcSubsetProp(sP=sP,select=sgSelect,oSnap=m,/curTemp)
 
       ; load galaxy radii catalog to make radial cut at target redshift
       if (m eq sP.snap) then $
-        gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,minNumPart=minNumpart,$
-                             oSnap=m,/rVirNorm)
+        gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,oSnap=m,/rVirNorm)
 
       ; select between galaxy and group member
       if (gcType eq 'gal') then begin
@@ -445,7 +393,6 @@ pro plotGasOrigins, res=res, run=run
   end_PS
   
   ; plot (2) - radial distances
-  
   plotBase = "gas.origins.rad_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)+'_'+gcType
   plotName = sP.plotPath + plotBase + '_'+str(sP.res)+'_'+str(sP.snap)+'.eps'
   
@@ -454,8 +401,7 @@ pro plotGasOrigins, res=res, run=run
     ; loop backwards over snapshots
     for m=sP.snap,sP.snap-numSnapsBack,-1 do begin
       ; load
-      gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,minNumPart=minNumpart,$
-                           oSnap=m,/rVirNorm)
+      gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,oSnap=m,/rVirNorm)
       
       ;w = where(gcRad.gal eq -1,count)
       ;print,'['+str(m)+'] Not matched: '+str(count)+' of '+str(n_elements(gcRad.gal))
@@ -528,12 +474,9 @@ end
 
 ; plotGasOriginsTracks():
   
-pro plotGasOriginsTracks, res=res, run=run
-  
-  sP = simParams(res=res,run=run)
+pro plotGasOriginsTracks, sP=sP
 
   ; config
-  redshift     = 2.0
   numSnapsBack = 5           ; how many steps backwards to plot from target redshift
   radBounds    = [0.3,0.302] ; fraction of r_vir in target redshift
   minRadCut    = 0.45        ; gas element must reach this r/r_vir at least to be included
@@ -544,17 +487,13 @@ pro plotGasOriginsTracks, res=res, run=run
   ; subhalo selection config
   sgSelect = 'pri' ; pri,sec,all
   parNorm  = 'sec' ; pri,sec (normalize r_vir by primary or secondary parent)
-  minNumPart = 1   ; enforce minimum 100 gas particles per halo
-  
-  sP.snap = redshiftToSnapnum(redshift)
   
   ; make legend
   legStrs = []
-  timeStart = snapNumToAge(sP.snap)
+  timeStart = snapNumToAge(sP=sP)
   
   for i=0,numSnapsBack do begin
-    timeDiff = (timeStart - snapnumToAge(sP.snap-i)) * 1000 ;Myr
-    ;curZ = snapNumToRedshift(snap=sP.snap-i)
+    timeDiff = (timeStart - snapnumToAge(snap=sP.snap-i)) * 1000 ;Myr
     curStr   = textoidl('\Delta')+"t = "+string(timeDiff,format='(i3)')+" Myr"
     legStrs = [legStrs,curStr]
   endfor  
@@ -562,9 +501,8 @@ pro plotGasOriginsTracks, res=res, run=run
   ; loop backwards over snapshots and make tracks
   for m=sP.snap,sP.snap-numSnapsBack,-1 do begin
     ; load
-    gcTemp = gcSubsetProp(sP=sP,select=sgSelect,minNumPart=minNumpart,oSnap=m,/curTemp)
-    gcRad  = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,minNumPart=minNumpart,$
-                          oSnap=m,/rVirNorm)
+    gcTemp = gcSubsetProp(sP=sP,select=sgSelect,oSnap=m,/curTemp)
+    gcRad  = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,oSnap=m,/rVirNorm)
     
     ; select between galaxy and group member
     if (gcType eq 'gal') then begin
@@ -608,7 +546,6 @@ pro plotGasOriginsTracks, res=res, run=run
     wR = where(max(xdata,dim=1) ge minRadCut,comp=wRcomp)
     
   ; plot (1) - temperature vs. radial distances (all)
-  
   xrange = [0.0,1.1]
   yrange = [4.0,max(ydata)*1.1]  
   
@@ -641,7 +578,6 @@ pro plotGasOriginsTracks, res=res, run=run
   end_PS    
     
   ; plot (2) - temperature vs. radial distances meeting minRadCut
-  
   plotBase = "gas.origins.rt1_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)+'_'+gcType
   plotName = sP.plotPath + plotBase + '_'+str(sP.res)+'_'+str(sP.snap)+'.eps'
   
@@ -783,7 +719,7 @@ pro plot2DRadHistos,plotBase,sP,h2rt_gal,h2rt_gmem,xrange,yrange,ytitle,$
   w = where(h2rt_both ne 0)
   h2rt_both[w] = alog10(h2rt_both[w]) / alog10(b) 
   
-  redshift = snapNumToRedshift(snap=sP.snap)
+  redshift = snapNumToRedshift(sP=sP)
   
   start_PS, plotName
     
@@ -864,15 +800,11 @@ end
 ; maxPastTemp=1 : maximum previous gas temperature
 ; tVirNorm=1    : normalize by the virial temperature of the parent halo
 
-pro plotTempRad2DHisto, res=res, run=run
+pro plotTempRad2DHisto, sP=sP
 
-  sP = simParams(res=res,run=run)
-  
   ; config
-  redshift   = 2.0
-  
-  ;massBins = [0.0,100.0] ; no massbins
-  massBins = [9.5,10.0,10.5,11.0,11.5,12.0]
+  massBins = [0.0,100.0] ; no massbins
+  ;massBins = [9.5,10.0,10.5,11.0,11.5,12.0]
   
   curTemp     = 1 ; current temperature vs radius
   maxPastTemp = 0 ; maximum previous temperature vs radius
@@ -882,27 +814,23 @@ pro plotTempRad2DHisto, res=res, run=run
   ; subhalo selection config
   sgSelect = 'pri' ; pri,sec,all
   parNorm  = 'sec' ; pri,sec (normalize r_vir by primary or secondary parent)
-  minNumPart = 1   ; enforce minimum 100 gas particles per halo
   
   ; get normalized r/r_vir
-  sP.snap = redshiftToSnapnum(redshift)
-  
-  gcRad = gcSubsetProp(sP=sP,select=sgSelect,minNumPart=minNumPart,parNorm=parNorm,/rVirNorm)
+  gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,/rVirNorm)
   
   ; get current or maxPast temperature
-  gcTemp = gcSubsetProp(sP=sP,select=sgSelect,minNumPart=minNumPart,$
-                        curTemp=curTemp,maxPastTemp=maxPastTemp)
+  gcTemp = gcSubsetProp(sP=sP,select=sgSelect,curTemp=curTemp,maxPastTemp=maxPastTemp)
   
   if keyword_set(tVirNorm) then begin
     ; calculate temperatures of parents and take (non-log) ratio
-    gcVirTemp = gcSubsetProp(sP=sP,select=sgSelect,minNumPart=minNumPart,/virTemp)
+    gcVirTemp = gcSubsetProp(sP=sP,select=sgSelect,/virTemp)
     
     gcTemp.gal  = 10.0^gcTemp.gal / gcVirTemp.gal
     gcTemp.gmem = 10.0^gcTemp.gmem / gcVirTemp.gmem
   endif
   
   ; calculate masses of parents
-  parentMass = gcSubsetProp(sP=sP,select=sgSelect,minNumPart=minNumPart,/parMass)
+  parentMass = gcSubsetProp(sP=sP,select=sgSelect,/parMass)
   
   for j=0,n_elements(massBins)-2 do begin
   
@@ -912,8 +840,8 @@ pro plotTempRad2DHisto, res=res, run=run
   
     ;binSizeRad  = 0.05 - 0.01*(res/128)
     ;binSizeTemp = 0.05 - 0.01*(res/128)  
-    binSizeRad  = 0.04 / (res/128)
-    binSizeTemp = 0.04 / (res/128)
+    binSizeRad  = 0.04 / (sP.res/128)
+    binSizeTemp = 0.04 / (sP.res/128)
     
     if (keyword_set(tVirNorm)) then begin
       yrange = [0.0,1.4]
@@ -945,17 +873,17 @@ pro plotTempRad2DHisto, res=res, run=run
     
     ; 2d histo plot config
     if (keyword_set(curTemp)) then begin
-      plotBase = "temp_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)
+      plotBase = "temp_"+sgSelect+'_'+parNorm
       ytitle   = "log ( T"+textoidl("_{cur}")+" )"
     endif
     
     if (keyword_set(maxPastTemp)) then begin
-      plotBase = "tmax_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)
+      plotBase = "tmax_"+sgSelect+'_'+parNorm
       ytitle   = "log ( T"+textoidl("_{max}")+" )"
     endif
     
     if (keyword_set(tVirNorm)) then begin
-      plotBase = "tmax_tvirNorm_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)
+      plotBase = "tmax_tvirNorm_"+sgSelect+'_'+parNorm
       ytitle   = "T"+textoidl("_{max,cur}")+" / T"+textoidl("_{vir}")
     endif
     
@@ -978,20 +906,20 @@ pro plotTempRad2DHisto, res=res, run=run
     
     ; vertical slices plot config
     if (keyword_set(curTemp)) then begin
-      plotName = sP.plotPath + 'temp_rad_slices_'+str(res)+'_'+str(sP.snap)+'_'+sgSelect+'_'+$
-             parNorm+'_'+str(minNumPart)+'.eps'    
+      plotName = sP.plotPath + 'temp_rad_slices_'+str(sP.res)+'_'+str(sP.snap)+'_'+$
+                 sgSelect+'_'+parNorm+'.eps'    
       xtitle   = "log ( T"+textoidl("_{cur}")+ " ) [K]"
     endif
     
     if (keyword_set(maxPastTemp)) then begin
-      plotName = sP.plotPath + 'tmax_rad_slices_'+str(res)+'_'+str(sP.snap)+'_'+sgSelect+'_'+$
-             parNorm+'_'+str(minNumPart)+'.eps'    
+      plotName = sP.plotPath + 'tmax_rad_slices_'+str(sP.res)+'_'+str(sP.snap)+'_'+$
+                 sgSelect+'_'+parNorm+'.eps'    
       xtitle = "log ( T"+textoidl("_{max}")+ " ) [K]"
     endif
     
     if (keyword_set(tVirNorm)) then begin
-      plotName = sP.plotPath + 'tmax_TvirNorm_rad_slices_'+str(res)+'_'+str(sP.snap)+'_'+sgSelect+'_'+$
-             parNorm+'_'+str(minNumPart)+'.eps'
+      plotName = sP.plotPath + 'tmax_TvirNorm_rad_slices_'+str(sP.res)+'_'+str(sP.snap)+'_'+$
+                 sgSelect+'_'+parNorm+'.eps'
       xtitle = "T"+textoidl("_{max,cur}")+" / T"+textoidl("_{vir}")
     endif
     
