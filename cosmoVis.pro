@@ -7,17 +7,17 @@
 pro makeArepoFoFBsub
 
   ; config
-  res = 128
+  res = 256
   run = 'gadget'
   ;f = '10'
   
   sP = simParams(res=res,run=run)
 
-  snapRange = [100,314,1]
+  snapRange = [60,99,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 4 ; needed nodes: 128^3=0.5 (n4tile4), 256^3=4 (n32tile4)
+  nProcs    = 32 ; needed nodes: 128^3=0.5 (n4tile4), 256^3=4 (n32tile4)
   ptile     = 4 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
@@ -55,7 +55,7 @@ pro makeArepoFoFBsub
     printf,lun,'#BSUB -n ' + str(nProcs)
     printf,lun,'#BSUB -R "' + selectStr + 'rusage[mem=31000] span[ptile=' + str(ptile) + ']"'
     printf,lun,'#BSUB -x'
-    printf,lun,'#BSUB -o run_fof.out'
+    printf,lun,'#BSUB -o run_fof_'+str(snap)+'.out'
     printf,lun,'#BSUB -g /dnelson/fof' ; 4 concurrent jobs limit automatically
     printf,lun,'#BSUB -cwd ' + sP.arepoPath
     printf,lun,'#BSUB -a openmpi'
@@ -65,7 +65,7 @@ pro makeArepoFoFBsub
     strArray = ['mpirun.lsf ./Arepo_fof '+paramFile,$
                 str(cmdCode),$
                 str(snap),$
-                '>> run_fof.txt']
+                '>> run_fof_'+str(snap)+'.txt']
     printf,lun,strjoin(strArray,' ')
       
     ; close

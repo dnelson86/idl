@@ -402,7 +402,7 @@ function subgroupPosByMostBoundID, sP=sP
   forward_function loadSnapshotSubset, loadGroupCat
   
   ; save/restore
-  saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.gCen.mbID.'+str(sP.snap)+'.sav'
+  saveFilename = sP.derivPath + 'sgCen.mbID.'+ sP.savPrefix + str(sP.res) + '.' + str(sP.snap)+'.sav'
                  
   if file_test(saveFilename) then begin
     restore,saveFilename

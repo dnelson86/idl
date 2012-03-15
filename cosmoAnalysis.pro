@@ -415,7 +415,12 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
   maxSnap = max(saveSnaps)
   
   ; set saveFilename and check for existence
-  saveFilename = sP.derivPath + 'maxtemp.'+str(sP.res)+'.'+str(minSnap)+'-'+str(maxSnap)+'.sav'
+  saveTag = ''
+  if sP.trMCPerCell eq -1 then saveTag = '.trVel'
+  if sP.trMCPerCell gt 0 then  saveTag = '.trMC'
+  if sP.trMCPerCell eq 0 then  saveTag = '.SPH'
+  saveFilename = sP.derivPath+'maxtemp'+saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
+                 str(minSnap)+'-'+str(maxSnap)+'.sav'
   
   if (file_test(saveFilename)) then begin
     restore, saveFilename
@@ -436,10 +441,6 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
     maxTempTime_gal   = fltarr(n_elements(galcat.galaxyIDs))
     maxTemps_gmem     = fltarr(n_elements(galcat.groupmemIDs))
     maxTempTime_gmem  = fltarr(n_elements(galcat.groupmemIDs))
-    
-    ; no dispersion estimate for the maximum temperatures available
-    maxTempDisp_gal  = []
-    maxTempDisp_gmem = []
     
     for m=minSnap,maxSnap,1 do begin
       sP.snap = m
@@ -509,7 +510,8 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
       if total(sP.snap eq saveSnaps) gt 0 then begin
         ; set savefilename
         w = where(sP.snap eq saveSnaps)
-        saveFilename = sP.derivPath + 'maxtemp.'+str(sP.res)+'.'+str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
+        saveFilename = sP.derivPath + 'maxtemp.SPH.'+sP.savPrefix+str(sP.res)+'.'+$
+                       str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
 
         if file_test(saveFilename) then begin
           print,'WARNING: saveRedshifts but ['+saveFilename+'] exists, skipping write!'
@@ -519,7 +521,9 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
         ; save for future lookups
         r = {maxTemps_gal:maxTemps_gal,maxTemps_gmem:maxTemps_gmem,$
              maxTempTime_gal:maxTempTime_gal,maxTempTime_gmem:maxTempTime_gmem,$
-             maxTempDisp_gal:maxTempDisp_gal,maxTempDisp_gmem:maxTempDisp_gmem}
+             maxTempDisp_gal:0,maxTempDisp_gmem:0,$   ; no dispersions for sph
+             maxTemps_min_gal:0,maxTemps_min_gmem:0,$ ; no minimum values for sph
+             maxTemps_mean_gal:0,maxTemps_mean_gal:0} ; no mean values for sph
              
         save,r,filename=saveFilename
         print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
@@ -528,8 +532,8 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
     endfor ;m
   endif
   
-  ; MONTE CARLO TRACERS CASE - for each original gas cell, determine a single statistic of its 
-  ; population of tracers and an estimate for the dispersion in that statistic
+  ; MONTE CARLO TRACERS CASE - for each original gas cell, determine some statistics of its
+  ; population of tracers and an estimate for the dispersion in those statistics
   ; ------------------------
   if sP.trMCPerCell gt 0 then begin
   
@@ -609,7 +613,7 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
       if (count_gmem ne 0) then temp_gmem[w] = 1.0
       temp_gmem = alog10(temp_gmem)
       
-      ; replace existing values if current snapshot has higher temps (enforce off effective EOS)
+      ; replace existing values if current snapshot has higher temps (galaxy members)
       w1 = where(temp_gal gt maxTemps_gal,count1)
       if (count1 gt 0) then begin
         maxTemps_gal[w1]    = temp_gal[w1]
@@ -632,7 +636,8 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
       if total(sP.snap eq saveSnaps) gt 0 then begin
         ; set savefilename
         w = where(sP.snap eq saveSnaps)
-        saveFilename = sP.derivPath + 'maxtemp.'+str(sP.res)+'.'+str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
+        saveFilename = sP.derivPath + 'maxtemp.trMC.'+sP.savPrefix+str(sP.res)+'.'+$
+                       str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
 
         if file_test(saveFilename) then begin
           print,'WARNING: saveRedshifts but ['+saveFilename+'] exists, skipping write!'
@@ -642,12 +647,22 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
         ; prepare output
         offset = 0L
         
-        r = {maxTemps_gal     : fltarr(n_elements(galcat_gal_cc))  ,$
-             maxTemps_gmem    : fltarr(n_elements(galcat_gmem_cc)) ,$
-             maxTempTime_gal  : fltarr(n_elements(galcat_gal_cc))  ,$
-             maxTempTime_gmem : fltarr(n_elements(galcat_gmem_cc)) ,$
-             maxTempDisp_gal  : fltarr(n_elements(galcat_gal_cc))  ,$
-             maxTempDisp_gmem : fltarr(n_elements(galcat_gmem_cc))  }
+        r = {maxTemps_gal       : fltarr(n_elements(galcat_gal_cc))  ,$ ; max(maxTemps)
+             maxTemps_gmem      : fltarr(n_elements(galcat_gmem_cc)) ,$
+             maxTempTime_gal    : fltarr(n_elements(galcat_gal_cc))  ,$ ; time of max(maxTemps)
+             maxTempTime_gmem   : fltarr(n_elements(galcat_gmem_cc)) ,$
+             maxTempDisp_gal    : fltarr(n_elements(galcat_gal_cc))  ,$ ; stddev(maxTemps)
+             maxTempDisp_gmem   : fltarr(n_elements(galcat_gmem_cc)) ,$
+                                                                      $
+             maxTemps_min_gal   : fltarr(n_elements(galcat_gal_cc))  ,$ ; min(maxTemps)
+             maxTemps_min_gmem  : fltarr(n_elements(galcat_gmem_cc)) ,$
+             maxTemps_mean_gal  : fltarr(n_elements(galcat_gal_cc))  ,$ ; mean(maxTemps)
+             maxTemps_mean_gmem : fltarr(n_elements(galcat_gmem_cc)) ,$
+                                                                      $
+             maxTempTime_min_gal   : fltarr(n_elements(galcat_gal_cc))  ,$ ; time of min(maxTemps)
+             maxTempTime_min_gmem  : fltarr(n_elements(galcat_gmem_cc)) ,$
+             maxTempTime_mean_gal  : fltarr(n_elements(galcat_gal_cc))  ,$ ; mean(times maxTemps)
+             maxTempTime_mean_gmem : fltarr(n_elements(galcat_gmem_cc))  }
         
         for i=0,n_elements(galcat_gal_cc)-1 do begin
           if galcat_gal_cc[i] gt 0 then begin
@@ -655,12 +670,18 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
             childInds = lindgen(galcat_gal_cc[i]) + offset
             
             locMaxTemps = maxTemps_gal[childInds]
-            locMaxTempTime = maxTempTime_gal[childInds] ; this is really time (scale factor) for tracerMC
+            locMaxTempTime = maxTempTime_gal[childInds] ; this is really time (scale factor) for tracers
             
             ; save the maximum value reached by any child tracer and the stddev of the population maxima
             r.maxTemps_gal[i]    = max(locMaxTemps,indmax)
             r.maxTempTime_gal[i] = locMaxTempTime[indmax]
             r.maxTempDisp_gal[i] = stddev(locMaxTemps)
+            
+            ; save minimum and means (and associated times)
+            r.maxTemps_min_gal[i]     = min(locMaxTemps,indmin)
+            r.maxTempTime_min_gal[i]  = locMaxTempTime[indmin]
+            r.maxTemps_mean_gal[i]    = mean(locMaxTemps)
+            r.maxTempTime_mean_gal[i] = mean(locMaxTempTime)
             
             offset += galcat_gal_cc[i]
           endif
@@ -681,6 +702,12 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
             r.maxTempTime_gmem[i] = locMaxTempTime[indmax]
             r.maxTempDisp_gmem[i] = stddev(locMaxTemps)
             
+            ; save minimum and means (and associated times)
+            r.maxTemps_min_gmem[i]     = min(locMaxTemps,indmin)
+            r.maxTempTime_min_gmem[i]  = locMaxTempTime[indmin]
+            r.maxTemps_mean_gmem[i]    = mean(locMaxTemps)
+            r.maxTempTime_mean_gmem[i] = mean(locMaxTempTime)
+            
             offset += galcat_gmem_cc[i]
           endif
         endfor
@@ -699,7 +726,39 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
   
     print,'Calculating new maxtemp using ( TracerVEL ) res = '+str(sP.res)+$
       ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
-    stop ; TODO START - similar to tracerMC since there could be multiple  
+
+    ; load gas ids
+    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+
+    ; match galcat IDs to gas_ids
+    match,galcat.galaxyIDs,gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+    inds_gal = ids_gal_ind[sort(galcat_ind)]
+    
+    match,galcat.groupmemIDs,gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+    inds_gmem = ids_gmem_ind[sort(galcat_ind)]
+    
+    gas_ids = !NULL
+    
+    ; locate tracer children (indices) of gas id subsets
+    galcat_gal_trids  = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gal,child_counts=galcat_gal_cc)
+    galcat_gmem_trids = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gmem,child_counts=galcat_gmem_cc)
+    
+    ; convert tracer children indices to tracer IDs at this zMin
+    tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
+    
+    galcat_gal_trids  = tr_ids[galcat_gal_trids]
+    galcat_gmem_trids = tr_ids[galcat_gmem_trids]
+
+    tr_ids   = !NULL
+    inds_gal  = !NULL
+    inds_gmem = !NULL
+    galcat   = !NULL ; not used past this point
+    
+    ; arrays store all tracers (compact into max and dispersion at the end)
+    maxTemps_gal      = fltarr(n_elements(galcat_gal_trids))
+    maxTempTime_gal   = fltarr(n_elements(galcat_gal_trids))
+    maxTemps_gmem     = fltarr(n_elements(galcat_gmem_trids))
+    maxTempTime_gmem  = fltarr(n_elements(galcat_gmem_trids))
   
     for m=minSnap,maxSnap,1 do begin
       sP.snap = m
@@ -719,35 +778,18 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
       tr_ids     = !NULL
       galcat_ind = !NULL
       
-      ; find gas parents of both trids_gal and trids_gmem
-      tr_parinds = cosmoTracerVelParents(sP=sP,/getInds)
+      ; load tracer maximum temperature and sub-snapshot time at this snapshot
+      tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxtemp')
       
-      ; use map to convert both tr_parids_gal and tr_parids_gmem to indices
-      tr_parinds_gal  = tr_parinds[trids_gal_ind]
-      tr_parinds_gmem = tr_parinds[trids_gmem_ind]
-      tr_parinds = !NULL
+      temp_gal  = tr_maxtemp[trids_gal_ind]  * units.UnitTemp_in_cgs ; tracer output still in unit system
+      temp_gmem = tr_maxtemp[trids_gmem_ind] * units.UnitTemp_in_cgs
+      tr_maxtemp = !NULL
       
-      ; load u,nelec to calculate temperatures
-      u     = loadSnapshotSubset(sP=sP,partType='gas',field='u')
-      nelec = loadSnapshotSubset(sP=sP,partType='gas',field='ne')
+      tr_maxtemp_time = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxtemp_time')
       
-      u_gal  = u[tr_parinds_gal]
-      u_gmem = u[tr_parinds_gmem]
-      u = !NULL
-      
-      nelec_gal  = nelec[tr_parinds_gal]
-      nelec_gmem = nelec[tr_parinds_gmem]
-      nelec = !NULL
-      
-      temp_gal  = convertUtoTemp(u_gal,nelec_gal)
-      temp_gmem = convertUtoTemp(u_gal,nelec_gal)
-      
-      ; load gas SFR and select off the effective EOS (SFR must be zero)
-      sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
-      
-      sfr_gal  = sfr[tr_parinds_gal]
-      sfr_gmem = sfr[tr_parinds_gmem]
-      sfr = !NULL
+      temp_time_gal  = tr_maxtemp_time[trids_gal_ind]
+      temp_time_gmem = tr_maxtemp_time[trids_gmem_ind]
+      tr_maxtemp_time = !NULL
       
       ; take log of temperatures
       w = where(temp_gal le 0,count_gal)
@@ -758,38 +800,106 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts
       if (count_gmem ne 0) then temp_gmem[w] = 1.0
       temp_gmem = alog10(temp_gmem)
       
-      ; replace existing values if current snapshot has higher temps (enforce off effective EOS)
-      w1 = where(temp_gal gt maxTemps_gal and sfr_gal eq 0.0,count1)
+      ; replace existing values if current snapshot has higher temps (galaxy members)
+      w1 = where(temp_gal gt maxTemps_gal,count1)
       if (count1 gt 0) then begin
         maxTemps_gal[w1]    = temp_gal[w1]
-        maxTempTime_gal[w1] = snapNumToRedshift(sP=sP,/time)
+        maxTempTime_gal[w1] = temp_time_gal[w1] ; sub-snapshot timing
       endif
       
       ; replace existing values if current snapshot has higher temps (group members)
-      w2 = where(temp_gmem gt maxTemps_gmem and sfr_gmem eq 0.0,count2)
+      w2 = where(temp_gmem gt maxTemps_gmem,count2)
       if (count2 gt 0) then begin
         maxTemps_gmem[w2]    = temp_gmem[w2]
-        maxTempTime_gmem[w2] = snapNumToRedshift(sP=sP,/time)
+        maxTempTime_gmem[w2] = temp_time_gmem[w2] ; sub-snapshot timing
       endif
+      
+      temp_gal  = !NULL
+      temp_gmem = !NULL
+      temp_time_gal  = !NULL
+      temp_time_gmem = !NULL
      
       ; SAVE?
       if total(sP.snap eq saveSnaps) gt 0 then begin
         ; set savefilename
         w = where(sP.snap eq saveSnaps)
-        saveFilename = sP.derivPath + 'maxtemp.'+str(sP.res)+'.'+str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
+        saveFilename = sP.derivPath + 'maxtemp.trVel.'+sP.savPrefix+str(sP.res)+'.'+$
+                       str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
 
         if file_test(saveFilename) then begin
           print,'WARNING: saveRedshifts but ['+saveFilename+'] exists, skipping write!'
           continue
         endif
         
-        stop ;TODO FINISH similar to tracerMC since there could be multiple
+        ; prepare output
+        offset = 0L
         
-        ; save for future lookups
-        r = {maxTemps_gal:maxTemps_gal,maxTemps_gmem:maxTemps_gmem,$
-             maxTempTime_gal:maxTempTime_gal,maxTempTime_gmem:maxTempTime_gmem,$
-             maxTempDisp_gal:maxTempDisp_gal,maxTempDisp_gmem:maxTempDisp_gmem}
-             
+        r = {maxTemps_gal       : fltarr(n_elements(galcat_gal_cc))  ,$ ; max(maxTemps)
+             maxTemps_gmem      : fltarr(n_elements(galcat_gmem_cc)) ,$
+             maxTempTime_gal    : fltarr(n_elements(galcat_gal_cc))  ,$ ; time of max(maxTemps)
+             maxTempTime_gmem   : fltarr(n_elements(galcat_gmem_cc)) ,$
+             maxTempDisp_gal    : fltarr(n_elements(galcat_gal_cc))  ,$ ; stddev(maxTemps)
+             maxTempDisp_gmem   : fltarr(n_elements(galcat_gmem_cc)) ,$
+                                                                      $
+             maxTemps_min_gal   : fltarr(n_elements(galcat_gal_cc))  ,$ ; min(maxTemps)
+             maxTemps_min_gmem  : fltarr(n_elements(galcat_gmem_cc)) ,$
+             maxTemps_mean_gal  : fltarr(n_elements(galcat_gal_cc))  ,$ ; mean(maxTemps)
+             maxTemps_mean_gmem : fltarr(n_elements(galcat_gmem_cc)) ,$
+                                                                      $
+             maxTempTime_min_gal   : fltarr(n_elements(galcat_gal_cc))  ,$ ; time of min(maxTemps)
+             maxTempTime_min_gmem  : fltarr(n_elements(galcat_gmem_cc)) ,$
+             maxTempTime_mean_gal  : fltarr(n_elements(galcat_gal_cc))  ,$ ; mean(times maxTemps)
+             maxTempTime_mean_gmem : fltarr(n_elements(galcat_gmem_cc))  }
+        
+        for i=0,n_elements(galcat_gal_cc)-1 do begin
+          if galcat_gal_cc[i] gt 0 then begin
+            ; for each gas cell, collect its child tracers
+            childInds = lindgen(galcat_gal_cc[i]) + offset
+            
+            locMaxTemps = maxTemps_gal[childInds]
+            locMaxTempTime = maxTempTime_gal[childInds] ; this is really time (scale factor) for tracers
+            
+            ; save the maximum value reached by any child tracer and the stddev of the population maxima
+            r.maxTemps_gal[i]    = max(locMaxTemps,indmax)
+            r.maxTempTime_gal[i] = locMaxTempTime[indmax]
+            r.maxTempDisp_gal[i] = stddev(locMaxTemps)
+            
+            ; save minimum and means (and associated times)
+            r.maxTemps_min_gal[i]     = min(locMaxTemps,indmin)
+            r.maxTempTime_min_gal[i]  = locMaxTempTime[indmin]
+            r.maxTemps_mean_gal[i]    = mean(locMaxTemps)
+            r.maxTempTime_mean_gal[i] = mean(locMaxTempTime)
+            
+            offset += galcat_gal_cc[i]
+          endif
+        endfor
+        
+        offset = 0L
+        
+        for i=0,n_elements(galcat_gmem_cc)-1 do begin
+          if galcat_gmem_cc[i] gt 0 then begin
+            ; for each gas cell, collect its child tracers
+            childInds = lindgen(galcat_gmem_cc[i]) + offset
+            
+            locMaxTemps = maxTemps_gmem[childInds]
+            locMaxTempTime = maxTempTime_gmem[childInds]
+            
+            ; save the maximum value reached by any child tracer and the stddev of the population maxima
+            r.maxTemps_gmem[i]    = max(locMaxTemps,indmax)
+            r.maxTempTime_gmem[i] = locMaxTempTime[indmax]
+            r.maxTempDisp_gmem[i] = stddev(locMaxTemps)
+            
+            ; save minimum and means (and associated times)
+            r.maxTemps_min_gmem[i]     = min(locMaxTemps,indmin)
+            r.maxTempTime_min_gmem[i]  = locMaxTempTime[indmin]
+            r.maxTemps_mean_gmem[i]    = mean(locMaxTemps)
+            r.maxTempTime_mean_gmem[i] = mean(locMaxTempTime)
+            
+            offset += galcat_gmem_cc[i]
+          endif
+        endfor
+        
+        ; save for future lookups        
         save,r,filename=saveFilename
         print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
         r = !NULL

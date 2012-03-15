@@ -18,7 +18,7 @@ function getTracerVelSpatialDens, sP=sP, nNGB=nNGB
     ;tr_mass = total(mass_gas) / h.nPartTot[3] ; should be mass gas at t=0
     
     ; load positions and calculate densities via HSMLs
-    tr_pos  = loadSnapshotSubset(sP=sP, field='pos', partType='tracer')
+    tr_pos  = loadSnapshotSubset(sP=sP, field='pos', partType='tracerVel')
     tr_dens = estimateDensityTophat(tr_pos,mass=sP.trMassConst,ndims=3,nNGB=nNGB,boxSize=h.boxSize)
     tr_pos  = !NULL
     
@@ -44,7 +44,7 @@ function cosmoTracerVelParents, sP=sP, getInds=getInds, getIDs=getIDs
   endif else begin
     ; load
     gas_pos = loadSnapshotSubset(sP=sP, field='pos', partType='gas')
-    tr_pos  = loadSnapshotSubset(sP=sP, field='pos', partType='tracer')
+    tr_pos  = loadSnapshotSubset(sP=sP, field='pos', partType='tracerVel')
     
     nTr  = (size(tr_pos))[2]
     nGas = (size(gas_pos))[2]
@@ -63,7 +63,7 @@ function cosmoTracerVelParents, sP=sP, getInds=getInds, getIDs=getIDs
       dists = periodicDists(tr_pos[*,indVerify[i]],gas_pos,sP=sP)
       w = where(dists eq min(dists),count)
       
-      if (count ne 1) then begin & print,'WARNING' & stop & endif
+      if (count ne 1) then message,'ERROR: More than one mindist in NN debug search!'
       
       ; fail?
       if (w[0] ne par_ind[indVerify[i]]) then begin
@@ -96,15 +96,28 @@ end
 ;
 ; child_counts and child_inds : pass both to skip load and reverse histo (for e.g. loops over more 
 ; than one gas cell)
+; child_counts: pass alone to return number of child tracers per gas cell as an optional output
 
 function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
-                                 gasInds=gasInds, child_counts=child_counts, child_inds=child_inds
+                                 gasInds=gasInds, gasIDs=gasIDs, $ ; input: gas cells to search
+                                 child_counts=child_counts, child_inds=child_inds
 
-  if (n_elements(gasInds) eq 0) then stop
+  if (n_elements(gasInds) eq 0 and n_elements(gasIDs) eq 0) then stop
   if (not keyword_set(getInds) and not keyword_set(getIDs)) then stop
 
+  if (n_elements(gasInds) eq 0) then begin
+    ; convert input gas IDs into indices
+    if n_elements(gasIDs) eq 0 then stop ; IDs required if indices not specified
+    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    idsIndMap = getIDIndexMap(gas_ids,minid=minid)
+    gas_ids = !NULL
+    
+    gasInds = idsIndMap[gasIDs-minid]
+    idsIndMap = !NULL
+  endif
+
   ; load if required
-  if (n_elements(child_counts) eq 0 and n_elements(child_inds) eq 0) then begin
+  if (n_elements(child_counts) eq 0 or n_elements(child_inds) eq 0) then begin
     ; get tracer parent indices
     tr_par_ind = cosmoTracerVelParents(sP=sP,/getInds)
   
@@ -130,6 +143,9 @@ function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   ; check for 32 bit long overflow
   if (min(tr_inds) lt 0) then stop
   
+  ; reduce memory of return
+  if max(child_counts) lt 32767 then child_counts = uint(child_counts)
+  
   ; debug: (slower loop with concat)
   ;tr_inds2 = []
   ;foreach gasInd,gasInds do begin
@@ -143,7 +159,7 @@ function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   
   ; if IDs requested, load tracer IDs and do crossmatch
   if keyword_set(getIDs) then begin
-    tr_ids = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='ids', partType='tracer')
+    tr_ids = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='ids', partType='tracerVel')
     
     ; return children tracer ids
     return,tr_ids[tr_inds]
@@ -192,7 +208,7 @@ function cosmoTracerVelMasses, sP=sP
       
       ; find all tracers with this gas parent
       w = where(tr_par_ind eq par_ind,count)
-      if (count eq 0) then begin & print,'WARNING' & stop & endif
+      if (count eq 0) then message,'ERROR: trVel parent verify failed!'
       
       ; calculate mass using same subdivision scheme
       mass = gas_mass[par_ind] / count
@@ -237,11 +253,8 @@ function getCosmoTracerVelPos, sP=sP, snapRange=snapRange, numTracers=numTracers
   
   ; verify spacing ok
   nSnaps2 = (float(snapRange[0])-snapRange[1]+1.0) / float(snapRange[2])
-  if (nSnaps ne nSnaps2) then begin
-    print,'Error: Spacing must evenly divide snapshot range.'
-    return,0
-  endif
-  
+  if (nSnaps ne nSnaps2) then message,'Error: Spacing must evenly divide snapshot range.'
+
   ; loop over requested snapshots
   k = 0
   
@@ -261,8 +274,8 @@ function getCosmoTracerVelPos, sP=sP, snapRange=snapRange, numTracers=numTracers
     endif
     times[k] = h.time  
       
-    pos = loadSnapshotSubset(sP=sP,partType='tracer',field='pos')
-    ids = loadSnapshotSubset(sP=sP,partType='tracer',field='ids')
+    pos = loadSnapshotSubset(sP=sP,partType='tracerVel',field='pos')
+    ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
     
     ; make tracer selection on first snapshot
     if (snap eq snapRange[0]) then begin      
@@ -292,12 +305,8 @@ function getCosmoTracerVelPos, sP=sP, snapRange=snapRange, numTracers=numTracers
 
         w = where(dists le maxDist,count)
         
-        if (count eq 0) then begin
-          print,'Error: No tracers within maxDist of specified targetPos.'
-          stop
-        endif else begin
-          print,'Found ['+str(count)+'] tracers near targetPos.'
-        endelse
+        if (count eq 0) then message,'Error: No tracers within maxDist of specified targetPos.'
+        print,'Found ['+str(count)+'] tracers near targetPos.'
         
         ; arrays
         numTracers = count
@@ -315,14 +324,11 @@ function getCosmoTracerVelPos, sP=sP, snapRange=snapRange, numTracers=numTracers
       ; use match instead
       match,ids,idTargets,ids_ind,idTargets_ind,count=count
       
-      if (count ne numTracers) then begin
-        print,'Error: Failed to match all targets.'
-        return,0
-      endif
+      if (count ne numTracers) then message,'Error: Failed to match all targets.'
       
-    trPos[k,*,0] = pos[0,ids_ind]
-    trPos[k,*,1] = pos[1,ids_ind]
-    trPos[k,*,2] = pos[2,ids_ind]    
+      trPos[k,*,0] = pos[0,ids_ind]
+      trPos[k,*,1] = pos[1,ids_ind]
+      trPos[k,*,2] = pos[2,ids_ind]    
     endif else begin
       ; locate IDs using where loop
       for j=0,numTracers-1 do begin
@@ -573,7 +579,7 @@ pro cosmoCompAxisProfiles
     
     ; load gas,tr,dm,star positions
     pos_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
-    pos_tr    = loadSnapshotSubset(sP=sP,partType='tracer',field='pos')
+    pos_tr    = loadSnapshotSubset(sP=sP,partType='tracerVel',field='pos')
     pos_dm    = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
     ;pos_stars = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
     
@@ -683,7 +689,7 @@ pro tracerVelParentOffsetHisto
     
     ; get distance (for each tracer) from parent
     gas_pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
-    tr_pos  = loadSnapshotSubset(sP=sP,partType='tracer',field='pos')
+    tr_pos  = loadSnapshotSubset(sP=sP,partType='tracerVel',field='pos')
     
     par_offset = periodicDists(tr_pos,gas_pos[*,tr_par_ind],sP=sP)
     
@@ -796,15 +802,13 @@ pro tracerVelParentHisto
   
   foreach redshift,redshifts,j do begin
   
-    sP    = simParams(res=res,run=run,redshift=redshift)
+    sP = simParams(res=res,run=run,redshift=redshift)
     
     ; load
     h = loadSnapshotHeader(sP=sP)
   
     ; load tracer parents and sort
     tr_par_ind = cosmoTracerVelParents(sP=sP, /getInds)
-    ;tr_par_ind = tr_par_ind[sort(tr_par_ind)]
-    ;tr_par_ind = shuffle([0,1,2,3,4,4,5,6,6,6,7,9,15,16,16])
     
     par_histo = histogram(tr_par_ind)
     par_histo = histogram(par_histo,loc=loc)
@@ -851,7 +855,6 @@ pro tracerVelParentHisto
   
     ; load tracer parents and sort
     tr_par_ind = cosmoTracerVelParents(sP=sP, /getInds)
-    ;tr_par_ind = tr_par_ind[sort(tr_par_ind)]
     
     par_histo = histogram(tr_par_ind)
     par_histo = histogram(par_histo,loc=loc)

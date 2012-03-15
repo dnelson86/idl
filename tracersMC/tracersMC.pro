@@ -108,9 +108,11 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
                               child_counts=child_counts ; optional output
                               
   if (n_elements(gasInds) eq 0 and n_elements(gasIDs) eq 0) then stop
+  if (not keyword_set(getInds) and not keyword_set(getIDs)) then stop
   
   if (n_elements(gasIDs) eq 0) then begin
     ; convert input gas indices into IDs
+    if n_elements(gasInds) eq 0 then stop ; indices required if IDs not specified
     gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')    
     gasIDs = gas_ids[gasInds]
     gas_ids = !NULL

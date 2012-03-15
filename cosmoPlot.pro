@@ -6,6 +6,7 @@
 
 pro plotGalCatRedshift, sP=sP
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   ; config
@@ -100,6 +101,8 @@ end
 
 pro plotGalCatMassFunction, sP=sP
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
   ; config
   redshifts = [2.0,0.0]
   
@@ -185,6 +188,8 @@ end
 
 pro plotGalCatRadii, sP=sP
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
   ; config
   colors = ['forest green','slate blue','black']
   
@@ -230,6 +235,8 @@ end
 ; plotRhoTempGalCut(): plot the Torrey+ (2010) galaxy cat on the (rho,temp) plane at a given redshift
 
 pro plotRhoTempGalCut, sP=sP
+  
+  compile_opt idl2, hidden, strictarr, strictarrsubs  
   
   ; config
   galcut_T   = 6.0
@@ -307,6 +314,8 @@ end
 ;                   from the galaxy catalog at a target redshift as a function of time backwards
 
 pro plotGasOrigins, sP=sP
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
   numSnapsBack = 5           ; how many steps backwards to plot from target redshift
@@ -475,6 +484,8 @@ end
 ; plotGasOriginsTracks():
   
 pro plotGasOriginsTracks, sP=sP
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
   numSnapsBack = 5           ; how many steps backwards to plot from target redshift
@@ -646,6 +657,8 @@ end
   
 pro plotVerticalSlices,rad_gal,rad_gmem,temp_gal,temp_gmem,plotName,xrange,yrange,xtitle
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
   ; config
   colors     = ['forest green','slate blue','black']
   
@@ -702,6 +715,8 @@ end
   
 pro plot2DRadHistos,plotBase,sP,h2rt_gal,h2rt_gmem,xrange,yrange,ytitle,$
                     virTempRange=virTempRange,massBinStr=massBinStr
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   plotName = sP.plotPath + plotBase + '_rad_both_'+str(sP.res)+'_'+str(sP.snap)+'.eps'
   
@@ -802,18 +817,25 @@ end
 
 pro plotTempRad2DHisto, sP=sP
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
   ; config
-  massBins = [0.0,100.0] ; no massbins
-  ;massBins = [9.5,10.0,10.5,11.0,11.5,12.0]
+  ;massBins = [0.0,100.0] ; no massbins
+  massBins = [9.5,10.0,10.5,11.0,11.5,12.0,12.5] ; log(M)
   
-  curTemp     = 1 ; current temperature vs radius
-  maxPastTemp = 0 ; maximum previous temperature vs radius
+  curTemp     = 0 ; current temperature vs radius
+  maxPastTemp = 1 ; maximum previous temperature vs radius
   
   tVirNorm    = 0 ; normalize temperature by virial temp of parent halo
   
   ; subhalo selection config
   sgSelect = 'pri' ; pri,sec,all
   parNorm  = 'sec' ; pri,sec (normalize r_vir by primary or secondary parent)
+  
+  ; load group catalog just for counts of objects in each mass bin
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  subgroupMasses = codeMassToLogMsun(gc.subgroupMass)
+  gc = !NULL
   
   ; get normalized r/r_vir
   gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,/rVirNorm)
@@ -852,7 +874,9 @@ pro plotTempRad2DHisto, sP=sP
     wGal  = where(parentMass.gal gt massBins[j] and parentMass.gal le massBins[j+1],count1)
     wGmem = where(parentMass.gmem gt massBins[j] and parentMass.gmem le massBins[j+1],count2)
     
-    print,j,count1,count2
+    wGCMassBin = where(subgroupMasses gt massBins[j] and subgroupMasses le massBins[j+1],count_gc)
+    
+    print,j,count1,count2,count_gc
     
     temp_gal  = gcTemp.gal[wGal]
     temp_gmem = gcTemp.gmem[wGmem]
@@ -897,7 +921,7 @@ pro plotTempRad2DHisto, sP=sP
       massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
       
       massRangeCode = 10.0^[massBins[j],massBins[j+1]] / 1e10
-      virTempRange = alog10( codeMassToVirTemp(massRangeCode,redshift) )
+      virTempRange = alog10( codeMassToVirTemp(massRangeCode,sP=sP) )
     endif
     
     ; plot 2d histo
