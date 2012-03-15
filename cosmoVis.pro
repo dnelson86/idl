@@ -8,16 +8,16 @@ pro makeArepoFoFBsub
 
   ; config
   res = 128
-  run = 'tracerMC.ref'
-  f = '10'
+  run = 'gadget'
+  ;f = '10'
   
-  sP = simParams(res=res,run=run,f=f)
+  sP = simParams(res=res,run=run)
 
-  snapRange = [7,27,1]
+  snapRange = [100,314,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 8
+  nProcs    = 4 ; needed nodes: 128^3=0.5 (n4tile4), 256^3=4 (n32tile4)
   ptile     = 4 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
@@ -53,7 +53,7 @@ pro makeArepoFoFBsub
     printf,lun,'#BSUB -q keck'
     printf,lun,'#BSUB -J fof_' + str(snap) + ''
     printf,lun,'#BSUB -n ' + str(nProcs)
-    printf,lun,'#BSUB -R "' + selectStr + 'rusage[mem=30000] span[ptile=' + str(ptile) + ']"'
+    printf,lun,'#BSUB -R "' + selectStr + 'rusage[mem=31000] span[ptile=' + str(ptile) + ']"'
     printf,lun,'#BSUB -x'
     printf,lun,'#BSUB -o run_fof.out'
     printf,lun,'#BSUB -g /dnelson/fof' ; 4 concurrent jobs limit automatically
@@ -92,31 +92,34 @@ end
 pro makeArepoProjBsub
 
   ; config - path and snapshot
-  res = 128
+  res = 256
   run = 'tracerMC.ref'
   f   = '1'
+  subBox = 1 ; search for subbox snapshot versus normal
   
-  snapRange = [0,0,1]
+  snapRange = [1,847,1]
   
   ; config - viewsize / object
   sP = simParams(res=res,run=run,f=f,snap=snapRange[0])
-  h = loadSnapshotHeader(sP=sP)
+  h = loadSnapshotHeader(sP=sP,subBox=subBox)
+  
+  ;boxSize = h.boxSize ; full box
+  boxSize = 2000.0 ; subbox
   
   ;xyzCen = [1123.20,7568.80,16144.2] ;dusan 512
-  ;xyzCen = [h.boxSize/2.0,h.boxSize/2.0,h.boxSize/2.0]
-  xyzCen = [5500.0,7000.0,7500.0]
+  xyzCen = [boxSize/2.0,boxSize/2.0,boxSize/2.0]
 
-  sliceWidth  = h.boxSize ; cube sidelength
-  zoomFac     = 5.0       ; final image is boxSize/zoomFac in extent
+  sliceWidth  = boxSize ; cube sidelength
+  zoomFac     = 1.1   ; final image is boxSize/zoomFac in extent
 
   ; render config
   spawnJobs   = 1    ; execute bsub?
   nProcs      = 1    ; 128^3=8, 256^3=24, 512^3=256 (minimum for memory)
   ptile       = 1
-  dimX        = 1000  ; image dimensions (x pixels)
-  dimY        = 1000  ; image dimensions (y pixels)
+  dimX        = 800  ; image dimensions (x pixels)
+  dimY        = 800  ; image dimensions (y pixels)
   
-  axesStr = ['0 1 2'] ;['0 1 2','0 2 1','1 2 0'] ;xy,xz,yz
+  axesStr = ['0 1 2','0 2 1'] ;['0 1 2','0 2 1','1 2 0'] ;xy,xz,yz
   
   ; bbox and projection setup
   cmdCode = 5 ;projection
@@ -480,14 +483,7 @@ end
 
 ; sphMapSubhalos: run sph kernel density projection on boxes centered on halos/subhalos
 
-pro sphMapHalos, res=res, run=run, sgIDs=sgIDs
-
-  if (not keyword_set(res)) then begin
-    print,'Error: sphMapHalos: Bad inputs.'
-    return
-  endif
-
-  sP = simParams(res=res,run=run)
+pro sphMapHalos, sP=sP, gcIDs=gcIDs
 
   ; config
   boxSize = [200,200,200] ;kpc
@@ -496,32 +492,29 @@ pro sphMapHalos, res=res, run=run, sgIDs=sgIDs
   axes = list([0,1]) ;x,y
   mode = 1 ;1=col mass, 2=mass-weighted quantity, 3=col density
   
-  redshift = 3.0
-  snap     = redshiftToSnapNum(redshift,sP=sP)
-  
   ; target list
-  sgTarget = loadSubhaloGroups(sP.simPath,snap,/verbose)
+  gcTarget = loadGroupCat(sP=sP,/verbose)
     
-  if (not keyword_set(sgIDs)) then begin
+  if (not keyword_set(gcIDs)) then begin
     ; make list of primary halo IDs (map them all)
-    valSGids = sgIDList(sg=sgTarget,select='pri')
+    valGCids = gcIDList(gc=gcTarget,select='pri')
   endif else begin
     ; make specified IDs
-    valSGids = sgIDs
+    valGCids = gcIDs
   endelse
 
   ; load properties from snapshot
-  pos  = loadSnapshotSubset(sP.simPath,snapNum=snap,partType='gas',field='pos',/verbose)
-  hsml = loadSnapshotSubset(sP.simPath,snapNum=snap,partType='gas',field='hsml',/verbose)
-  mass = loadSnapshotSubset(sP.simPath,snapNum=snap,partType='gas',field='mass',/verbose)
+  pos  = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+  hsml = loadSnapshotSubset(sP=sP,partType='gas',field='hsml')
+  mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
   
   ; loop over all non-background subhalos and image
-  foreach sgID, valSGids do begin
+  foreach gcID, valGCids do begin
   
     foreach axisPair, axes do begin
   
-      imgFilename = 'sphmap.G.z='+str(redshift)+'.sgID='+str(sgID)+'.axis0='+$
-                    str(axisPair[0])+'.axis1='+str(axisPair[1])+'.res='+str(res)+'.box='+str(boxSize[0])
+      imgFilename = 'sphmap.G.snap='+str(sP.snap)+'.gcID='+str(gcID)+'.axis0='+$
+                    str(axisPair[0])+'.axis1='+str(axisPair[1])+'.res='+str(sP.res)+'.box='+str(boxSize[0])
                     
       if (file_test(sP.plotPath+imgFilename+'.png') or file_test(sP.plotPath+imgFilename+'.eps')) then begin
         print,'Skipping: ' + imgFilename
@@ -529,9 +522,9 @@ pro sphMapHalos, res=res, run=run, sgIDs=sgIDs
       endif     
   
       ; get subhalo position
-      boxCen = sgTarget.subgroupPos[*,sgID]
+      boxCen = gcTarget.subgroupPos[*,gcID]
       
-      print,'['+string(sgID,format='(I04)')+'] Mapping ['+str(axisPair[0])+' '+$
+      print,'['+string(gcID,format='(I04)')+'] Mapping ['+str(axisPair[0])+' '+$
             str(axisPair[1])+'] with '+str(boxSize[0])+$
             ' kpc box around subhalo center ['+str(boxCen[0])+' '+str(boxCen[1])+' '+str(boxCen[2])+']'
     
@@ -555,12 +548,12 @@ pro sphMapHalos, res=res, run=run, sgIDs=sgIDs
       start_PS, sP.plotPath+imgFilename+'.eps'
         loadct, 4, bottom=1, /silent
         tvim,colMassMap,xrange=xMinMax,yrange=yMinMax,pcharsize=0.0001
-        fsc_text,0.72,0.05,"z=3 id="+string(sgID,format='(I04)'),alignment=0.5,$
+        fsc_text,0.72,0.05,"z=3 id="+string(gcID,format='(I04)'),alignment=0.5,$
                  color=fsc_color('white'),/normal
       end_PS, pngResize=68, /deletePS
     
     endforeach ;axisPair
   
-  endforeach ;valSGids
+  endforeach ;valGCids
   
 end

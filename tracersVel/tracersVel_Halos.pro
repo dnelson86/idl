@@ -2,24 +2,24 @@
 ; dev for tracer particles related to cosmological boxes and group catalogs / halos
 ; dnelson feb.2012
 
-; cosmoCompMassFunctions(): compare gas, tracer, and DM FoF mass functions
+; cosmoTracerVel_CompMassFunctions(): compare gas, tracer, and DM FoF mass functions
 
-pro cosmoCompMassFunctions
+function cosmoTracerVel_CompMassFunctions, sP=sP, noPlot=noPlot
 
   ; config
-  res      = 256
-  run      = 'tracer'
-  redshift = 3.0
+  ;res      = 256
+  ;run      = 'dev.tracer.nonrad'
+  ;redshift = 3.0
   
   ; load group catalog
-  sP    = simParams(res=res,run=run,redshift=redshift)
+  ;sP    = simParams(res=res,run=run,redshift=redshift)
   units = getUnits()
 
-  h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
-  gc = loadGroupCat(sP.simPath,sP.snap,/verbose)
+  h  = loadSnapshotHeader(sP=sP)
+  gc = loadGroupCat(sP=sP,/verbose)
   
   ; load gas masses, calculate dm and tr masses
-  gas_mass = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='mass')
+  gas_mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
   dm_mass  = h.massTable[1]  
   
   ; calculate halo masses
@@ -27,94 +27,140 @@ pro cosmoCompMassFunctions
   hm_dm   = reform(gc.groupMassType[1,*]) * units.UnitMass_in_Msun
   hm_star = reform(gc.groupMassType[4,*]) * units.UnitMass_in_Msun
   hm_tr   = reform(gc.groupLenType[3,*]) * sP.trMassConst * units.UnitMass_in_Msun
-  ;hm_dm2  = reform(gc.groupLenType[1,*]) * dm_mass * units.UnitMass_in_Msun ;debug check
   
-  ; nonzero only
-  hm_gas  = hm_gas[where(hm_gas ne 0)]
-  hm_dm   = hm_dm[where(hm_dm ne 0)]
-  hm_star = hm_star[where(hm_star ne 0)]
-  hm_tr   = hm_tr[where(hm_tr ne 0)]
-  hm_bar  = [hm_gas,hm_star] ;baryonic
+  hm_bar  = hm_gas + hm_star
   
   print,'Found: ['+str(n_elements(hm_gas))+'] gas, ['+str(n_elements(hm_dm))+'] dm, ['+$
         str(n_elements(hm_star))+'] stars, ['+str(n_elements(hm_tr))+'] tracers.'
-  
-  ; sort ascending
-  hm_gas  = hm_gas[sort(hm_gas)]
-  hm_dm   = hm_dm[sort(hm_dm)]
-  hm_star = hm_star[sort(hm_star)]
-  hm_tr   = hm_tr[sort(hm_tr)]
-  hm_bar  = hm_bar[sort(hm_bar)]
-  
-  ; y-vals (cumulative number count) and normalize by box volume
-  y_gas  = reverse(indgen(n_elements(hm_gas)) + 1)   / (h.boxSize/1000)^3.0 ;Mpc
-  y_dm   = reverse(indgen(n_elements(hm_dm)) + 1)    / (h.boxSize/1000)^3.0
-  y_star = reverse(indgen(n_elements(hm_star)) + 1)  / (h.boxSize/1000)^3.0
-  y_tr   = reverse(indgen(n_elements(hm_tr)) + 1)    / (h.boxSize/1000)^3.0
-  y_bar  = reverse(indgen(n_elements(hm_bar)) + 1)   / (h.boxSize/1000)^3.0
-  
+        
+  ; plot (1) - scatterplot of hm_gas vs hm_tr, hm_bar vs hm_tr
+  if not keyword_set(noPlot) then begin
+  start_PS,sP.plotPath+sP.savPrefix+'.'+str(sP.res)+'.gasScatter.snap='+str(sP.snap)+'.eps'
+    xrange = [1e8,1e12]
+    yrange = [0.0,2.0]
+    
+    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/xlog,$
+         xtitle="Halo Mass [DM h"+textoidl("^{-1}")+" M"+textoidl("_{sun}")+"]",$
+         ytitle="Tracer Mass / Gas Mass",$
+         title=str(sP.res)+textoidl("^3")+" "+sP.run+" z="+$
+               string(sP.redshift,format='(f3.1)')+" (FoF Catalog)"
+         
+    fsc_plot,xrange,[1.0,1.0],line=0,color=fsc_color('light gray'),/overplot
+    fsc_plot,hm_dm,hm_tr/hm_gas,psym=8,symsize=0.4,/overplot,color=getColor(1)
+    
+  end_PS
+    
+  if (h.nPartTot[4] gt 0) then begin
+    start_PS,sP.plotPath+sP.savPrefix+'.'+str(sP.res)+'starScatter.snap='+str(sP.snap)+'.eps'
+      xrange = [1e8,1e12]
+      yrange = [0.0,2.0]
+      
+      fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/xlog,$
+           xtitle="Halo Mass [DM h"+textoidl("^{-1}")+" M"+textoidl("_{sun}")+"]",$
+           ytitle="Tracer Mass / Total Baryonic Mass",$
+           title=str(sP.res)+textoidl("^3")+" "+sP.run+" z="+$
+                 string(sP.redshift,format='(f3.1)')+" (FoF Catalog)"
+           
+      fsc_plot,xrange,[1.0,1.0],line=0,color=fsc_color('light gray'),/overplot
+      fsc_plot,hm_dm,hm_tr/hm_bar,psym=8,symsize=0.4,/overplot,color=getColor(1)
+      
+      ; legend
+      strings = ['tr mass/star mass', 'mean','stddev']
+      colors  = getColor([1,3,4],/name)
+      legend,strings,textcolors=colors,/right,/top,box=0    
+    end_PS
+  endif
+
+  ; plot (2) - standard mass functions
+    
+    ; sort ascending
+    hm_gas  = hm_gas[sort(hm_gas)]
+    hm_dm   = hm_dm[sort(hm_dm)]
+    hm_star = hm_star[sort(hm_star)]
+    hm_bar  = hm_bar[sort(hm_bar)]
+    
+    hm_tr  = hm_tr[sort(hm_tr)]
+    
+    ; y-vals (cumulative number count) and normalize by box volume
+    y_gas  = reverse(indgen(n_elements(hm_gas)) + 1)    / (h.boxSize/1000)^3.0 ;Mpc
+    y_dm   = reverse(indgen(n_elements(hm_dm)) + 1)     / (h.boxSize/1000)^3.0    
+    y_tr   = reverse(indgen(n_elements(hm_tr)) + 1) / (h.boxSize/1000)^3.0
+    y_star = reverse(indgen(n_elements(hm_star)) + 1)    / (h.boxSize/1000)^3.0
+    y_bar  = reverse(indgen(n_elements(hm_bar)) + 1) / (h.boxSize/1000)^3.0
+    
   ; plot
-  start_PS,sP.plotPath+sP.savPrefix+str(res)+'.massFuncs.snap='+str(sP.snap)+'.eps'
-    xrange = [2e7,max(hm_dm)]
+  start_PS,sP.plotPath+sP.savPrefix+'.'+str(sP.res)+'.massFuncs.snap='+str(sP.snap)+'.eps'
+    xrange = [1e8,max(hm_dm)*1.2]
     yrange = [1e-4,1e0]
     
     fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,/xlog,$
          xtitle="",xtickname=replicate(' ',10),$
          ytitle="number ("+textoidl("\geq")+" M) [h"+textoidl("^3")+" Mpc"+textoidl("^{-3}")+"]",$
-         title=str(res)+textoidl("^3")+" z="+string(redshift,format='(f3.1)')+" (FoF Mass Functions)",$
+         title=str(sP.res)+textoidl("^3")+" "+sP.run+" z="+$
+               string(sP.redshift,format='(f3.1)')+" (FoF catalog)",$
          position=[0.18,0.35,0.9,0.9]
          
     fsc_plot,hm_dm,y_dm,line=0,/overplot,color=getColor(1)
-    fsc_plot,hm_star,y_star,line=0,/overplot,color=getColor(2)
     fsc_plot,hm_gas,y_gas,line=0,/overplot,color=getColor(3)
     fsc_plot,hm_tr,y_tr,line=0,/overplot,color=getColor(7)
-    fsc_plot,hm_bar,y_bar,line=0,/overplot,color=getColor(8)
+    
+    if (h.nPartTot[4] gt 0) then begin
+      fsc_plot,hm_star,y_star,line=0,/overplot,color=getColor(2)
+      fsc_plot,hm_bar,y_bar,line=0,/overplot,color=getColor(4)
+    endif
     
     ; legend
-    legend,['dm','star','gas','tracer','gas+stars'],$
-           textcolors=getColor([1,2,3,7,8],/name),/bottom,/left,box=0,margin=0.1
-           
+    if (h.nPartTot[4] gt 0) then $
+      legend,['dm','gas','star','tracer','baryons'],$
+             textcolors=getColor([1,3,2,7,4],/name),/bottom,/left,box=0,margin=0.1
+    if (h.nPartTot[4] eq 0) then $
+      legend,['dm','gas','tracer'],$
+             textcolors=getColor([1,3,7],/name),/bottom,/left,box=0,margin=0.1
+               
     ; gas/tr residual plot
-    yrange = [0.65,1.35]
+    yrange = [0.3,1.7]
     fsc_plot,[0],[0],/nodata,/noerase,xrange=xrange,yrange=yrange,/xs,/ys,/xlog,$
-             xtitle="mass [h"+textoidl("^{-1}")+" M"+textoidl("_{sun}")+"]",$
-             ytitle="ratio",ytickv=[0.8,1.0,1.2],yticks=2,$
+             xtitle="Mass [h"+textoidl("^{-1}")+" M"+textoidl("_{sun}")+"]",$
+             ytitle="ratio",ytickv=[0.5,1.0,1.5],yticks=2,$
              position=[0.18,0.15,0.9,0.35]
              
     ; just interpolate both onto a set of masses then compare
     nbins = 100
-    res_pts = 10.0^( findgen(nbins+1)/nbins * (11.5-7.5) + 7.5 )
+    res_pts = 10.0^( findgen(nbins+1)/nbins * (11.8-8.0) + 8.0 )
     gas_res = interpol(y_gas,hm_gas,res_pts)
-    tr_res  = interpol(y_tr,hm_tr,res_pts)
+    tr_res = interpol(y_tr,hm_tr,res_pts)
     
     ; plot
     fsc_plot,xrange,[1.0,1.0],line=0,color=fsc_color('light gray'),/overplot
-    fsc_plot,xrange,[1.2,1.2],line=1,color=fsc_color('light gray'),/overplot
-    fsc_plot,xrange,[0.8,0.8],line=1,color=fsc_color('light gray'),/overplot
+    fsc_plot,xrange,[1.5,1.5],line=1,color=fsc_color('light gray'),/overplot
+    fsc_plot,xrange,[0.5,0.5],line=1,color=fsc_color('light gray'),/overplot
     fsc_plot,res_pts,tr_res/gas_res,line=0,color=getColor(3),/overplot
     
-    ; do the same for the baryonic MF instead of just gas
-    res_pts = 10.0^( findgen(nbins+1)/nbins * (11.5-7.5) + 7.5 )
-    tr_res  = interpol(y_tr,hm_tr,res_pts)
+    ; do the same for the total baryons
+    res_pts = 10.0^( findgen(nbins+1)/nbins * (11.8-8.0) + 8.0 )
     bar_res = interpol(y_bar,hm_bar,res_pts)
+    tr_res = interpol(y_tr,hm_tr,res_pts)
     fsc_plot,res_pts,tr_res/bar_res,line=0,color=getColor(8),/overplot
     
     ; legend
-    legend,['tr/gas','tr/baryon'],textcolors=getColor([3,8],/name),/right,/top,box=0
+    if (h.nPartTot[4] gt 0) then $
+      legend,['gas','gas+stars'],textcolors=getColor([3,8],/name),/right,/top,box=0
     
   end_PS
-  
-  stop  
+  endif ; noPlot
+
+  r = {hm_dm:hm_dm,hm_gas:hm_gas,hm_star:hm_star,hm_bar:hm_bar,hm_tr:hm_tr}
+  return, r
   
 end
 
-; cosmoStackGroupsRad(): stack radial properties of groups in mass bins and save
+; cosmoTracerVel_StackGroupsRad(): stack radial properties of groups in mass bins and save
 
-function cosmoStackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs, trMass=trMass, stars=stars
+function cosmoTracerVel_StackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs, stars=stars
 
   ; load snapshot info and group catalog
-  h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
-  gc = loadGroupCat(sP.simPath,sP.snap)
+  h  = loadSnapshotHeader(sP=sP)
+  gc = loadGroupCat(sP=sP)
 
   ;nbins = 20
   nbins = 10 ;CUSTOM
@@ -154,12 +200,6 @@ function cosmoStackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs, trMass=tr
                 '.snap='+str(sP.snap)+'.nBins='+str(nbins)
   endelse
   
-  ; add trMass to saveTag
-  if keyword_set(trMass) then begin
-    print,'Using unequal tracer masses.'
-    saveTag += '.sdM'
-  endif
-
   ; save/restore
   saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.stackRad.' + saveTag + '.sav'
                  
@@ -187,25 +227,23 @@ function cosmoStackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs, trMass=tr
     midBins = [2.5,8.5,18.5,35.0,60.0,87.5,115.0,155.0,240.0,400.0]
 
     ; load positions
-    pos_gas   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
-    pos_tr    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='tracer',field='pos')
-    pos_dm    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
+    pos_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+    pos_tr    = loadSnapshotSubset(sP=sP,partType='tracer',field='pos')
+    pos_dm    = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
     if keyword_set(stars) then $
-      pos_stars = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
+      pos_stars = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
     
     ; load masses
-    gas_mass   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='mass')
-    if keyword_set(trMass) then $
-      tr_mass    = cosmoTracerMasses(sP=sP) ; parent gas mass division
+    gas_mass   = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
     if keyword_set(stars) then $
-      stars_mass = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='mass')
+      stars_mass = loadSnapshotSubset(sP=sP,partType='stars',field='mass')
     dm_mass    = h.massTable[1]
     
-    gas_size    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='vol')
+    gas_size    = loadSnapshotSubset(sP=sP,partType='gas',field='vol')
     gas_size    = (gas_size * 3.0 / (4*!pi))^(1.0/3.0) ;cellrad [ckpc]
   
     ; load tracer parents and reverse histogram
-    tr_par_ind = cosmoTracerParents(sP=sP,/getInds)
+    tr_par_ind = cosmoTracerVelParents(sP=sP,/getInds)
     child_counts = histogram(tr_par_ind,rev=child_inds)
     
     ; find alternative halo centers via iterative CM fitting
@@ -224,9 +262,9 @@ function cosmoStackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs, trMass=tr
       
       ; take most bound particle ID position and r200_crit
       ; skip if group has no subgroup to obtain this value from
-      sgInd = sgPriChildInd(gc=gc,haloID=haloID)
-      if (sgInd eq -1) then begin & print,' skip' & continue & endif
-      haloPos = idMBCM[*,sgInd]
+      gcInd = gcPriChildInd(gc=gc,haloID=haloID)
+      if (gcInd eq -1) then begin & print,' skip' & continue & endif
+      haloPos = idMBCM[*,gcInd]
   
       ; calculate radii and make radial cut
       rad     = periodicDists(haloPos,pos_gas,sP=sP)
@@ -257,8 +295,6 @@ function cosmoStackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs, trMass=tr
       gas_size_sub   = gas_size[gas_ind]
       if keyword_set(stars) then $
         stars_mass_sub = stars_mass[stars_ind]
-      if keyword_set(trMass) then $
-        tr_mass_sub = tr_mass[tr_ind]
       
       ; do binning 
       for i=0,nbins-1 do begin
@@ -353,7 +389,6 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
   resSet = [128] ;[256,128]
   run    = 'dev.tracer.constTS2'
   stars  = 0
-  trMass = 0 ; use parent gas masses subdivided by number of child tracers
   
   ; run match
   ;sP1 = simParams(res=resSet[1],run=run,redshift=redshift)
@@ -387,13 +422,13 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
       gc = loadGroupCat(sP.simPath,sP.snap)
     
       ; load radially stacked results
-      rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,trMass=trMass,stars=stars)
+      rs = cosmoTracerVel_StackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
       
       ; use individual halos
-      ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs[i],trMass=trMass,stars=stars)
+      ;rs = cosmoTracerVel_StackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs[i],stars=stars)
       
       ; use matched halos between resolutions
-      ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=hIDs[k],trMass=trMass,stars=stars)
+      ;rs = cosmoTracerVel_StackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=hIDs[k],trMass=trMass,stars=stars)
   
       ; check positions
       ;sfInd = gc.groupFirstSub[hIDs[k]]
@@ -502,31 +537,14 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
       sP = simParams(res=res,run=run,redshift=redshift)
     
       ; load radially stacked results
-      rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,trMass=trMass,stars=stars)
+      rs = cosmoTracerVel_StackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
       
       ; use individual halos
-      ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs[i],trMass=trMass,stars=stars)
+      ;rs = cosmoTracerVel_StackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs[i],stars=stars)
       
       ; load radially stacked results (matched)
-      ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=hIDs[k],stars=stars)
+      ;rs = cosmoTracerVel_StackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=hIDs[k],stars=stars)
   
-      ; reconstruct tracer number density since we didn't save it
-      ;if (trMass eq 0) then begin
-      ;  ;nbins  = 20
-      ;  ;logminmax = alog10([1.0,500.0])
-      ;  ;radBins = [0.0, logspace(logminmax[0],logminmax[1],nbins)]
-      ;  nbins = 10
-      ;  radBins = [0.0,5.0,12.0,25.0,45.0,75.0,100.0,130.0,180.0,300.0,500.0]
-      ;  
-      ;  num_tr = fltarr(nbins)
-      ;  
-      ;  for j=0,nbins-1 do begin
-      ;    vol = 4*!pi/3 * (radBins[j+1]^3.0 - radBins[j]^3.0) ;kpc^3
-      ;    num_tr[j] = rs.rho_tr[j] * vol * 1 / 1e10 / sP.trMassConst ;=count4
-      ;  endfor
-      ;  ; but have to switch below from rs.num_tr to num_tr
-      ;endif
-      
       ; start plot
       line = k
       
@@ -608,11 +626,11 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
   return
 end
 
-; cosmoDiffRadProfiles(): calculate difference between gas and tracer radial profiles at several radii
+; cosmoTracerVel_DiffRadProfiles(): calculate difference between gas and tracer radial profiles at several radii
 ;                         overplot different resolutions and radii as a function of halo mass bin
 ;                         plot for multiple resolutions
 
-pro cosmoDiffRadProfiles
+pro cosmoTracerVel_DiffRadProfiles
 
   resSet = [256,128]
   run    = 'dev.tracer.nonrad'
@@ -635,10 +653,10 @@ pro cosmoDiffRadProfiles
   
         ; load group catalog
         sP = simParams(res=res,run=run,redshift=redshift)
-        gc = loadGroupCat(sP.simPath,sP.snap)
+        gc = loadGroupCat(sP=sP)
       
         ; load radially stacked results
-        rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
+        rs = cosmoTracerVel_StackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
     
         ; save ratios at specified bins
         foreach bin,bins,m do begin
@@ -694,6 +712,5 @@ pro cosmoDiffRadProfiles
   endfor
   
   ;endforeach ;redshift
-  stop
   
 end

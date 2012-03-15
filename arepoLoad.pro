@@ -92,11 +92,16 @@ function loadDensityField, fileBase, m, axes=axes
     dens = fltarr(nPixelsY, nPixelsX)
     readu,1,dens
     
+    ;read temperature field
+    temp = fltarr(nPixelsY, nPixelsX)
+    readu,1,temp
+    
   close,1
 
   dens = transpose(dens)
+  temp = transpose(temp)
  
-  r = {nPixelsXY:[nPixelsX,nPixelsY],dens:dens}
+  r = {nPixelsXY:[nPixelsX,nPixelsY],dens:dens,temp:temp}
   return,r
 
 end
@@ -318,7 +323,7 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2, part3=part3, massa
     if (massarr[0] eq 0.0) then begin ; if massTable[partType]=0 then expect mass block in ICs
       if (size(part0.mass))[2] ne valTypeCode then print,'WARNING: part0 mass type.'
       mass = [mass,  part0.mass]
-    endif
+    endif    
     u    = [u,     part0.u]
   endif
 
@@ -401,7 +406,7 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2, part3=part3, massa
   writeu,1, vel
   writeu,1, id
   if (n_elements(mass) gt 0) then $
-    writeu,1, mass
+    writeu,1, mass    
   writeu,1, u
   close,1
   
@@ -511,9 +516,15 @@ function addICBackgroundGrid, gas, boxSize=boxSize, boxCen=boxCen, nBackGrid=nBa
 
   backCellSize = boxSize / nBackGrid
   
-  xyz_back = findgen(nBackGrid)/nBackGrid * boxSize + backCellSize/2.0
+  x_back = findgen(nBackGrid)/nBackGrid * boxSize + backCellSize/2.0
+  y_back = x_back
+  z_back = x_back
   
-  if keyword_set(boxCen) then xyz_back += boxCen - boxSize/2.0
+  if keyword_set(boxCen) then begin
+    x_back += boxCen[0] - boxSize/2.0
+    y_back += boxCen[1] - boxSize/2.0
+    z_back += boxCen[2] - boxSize/2.0
+  endif
 
   nBackKeep = 0
   pos_back = []
@@ -522,7 +533,7 @@ function addICBackgroundGrid, gas, boxSize=boxSize, boxCen=boxCen, nBackGrid=nBa
   for i=0,nBackGrid-1 do begin
     for j=0,nBackGrid-1 do begin
       for k=0,nBackGrid-1 do begin
-        cenBackCell = [xyz_back[i],xyz_back[j],xyz_back[k]]
+        cenBackCell = [x_back[i],y_back[j],z_back[k]]
         min_xyz = cenBackCell - backCellSize/2.0
         max_xyz = cenBackCell + backCellSize/2.0
         

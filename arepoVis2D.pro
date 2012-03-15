@@ -62,18 +62,19 @@ end
 ; plotDensityField(): plot "density_field_" or "proj_density_field_" output file
 
 pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=writeJPG, psOut=psOut, $
-                        xyScaleFac=xyScaleFac, minMax=minMax, log=log, overPlot=overPlot
+                      xyScaleFac=xyScaleFac, minMax=minMax, log=log, overPlot=overPlot,$
+                      twoAxesSideBySide=twoAxesSideBySide,densTempSideBySide=densTempSideBySide,$
+                      sideMinMax=sideMinMax
   
   if (not keyword_set(writePNG) and not keyword_set(writeJPG) and not keyword_set(psOut)) then begin
-    print,'ERROR: No output method specified.'
-    stop
+    print,'ERROR: No output method specified.' & stop
   endif
   
-  ; if m is an array, treat as list of snapshot numbers and loop over each
+  ; if snaps is an array, treat as list of snapshot numbers and loop over each
   foreach m,snaps do begin
 
     ; load
-    df = loadDensityField(filePath,m,axes=axes)
+    df = loadDensityField(filePath,m,axes=axes[0])
   
     ; log scaling of density
     if keyword_set(log) then begin
@@ -87,39 +88,90 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
     loadct, 11, rgb_table=rgbTable
     tvlct, r, g, b, /get
     
-    if not keyword_set(minMax) then $
-      colorMinMax = minmax(df.dens)
-    if keyword_set(minMax) then $
-      colorMinMax = minMax
+    if not keyword_set(minMax) then colorMinMax = minmax(df.dens)
+    if keyword_set(minMax) then colorMinMax = minMax
     
     print,' dens minmax:',colorMinMax
   
+    ; dens(1)
     colindex = (df.dens - colorMinMax[0])/(colorMinMax[1]-colorMinMax[0])*255.0
     
     ind = where(colindex ge 256.0)
     if ind(0) ne -1 then colindex(ind) = 255.9
-    
     ind = where(colindex lt 0)
     if ind(0) ne -1 then colindex(ind) = 0
     
     colindex = byte(colindex)
     
-    ;create image
-    pic=bytarr(3,df.nPixelsXY[0],df.nPixelsXY[1])
+    ; create image
+    sideFac = 1.0
+    if keyword_set(twoAxesSideBySide) or keyword_set(densTempSideBySide) then sideFac = 2.0
+    pic = bytarr(3,df.nPixelsXY[0]*sideFac,df.nPixelsXY[1])
   
-    pic[0,*,*] = r[colindex]
-    pic[1,*,*] = g[colindex]
-    pic[2,*,*] = b[colindex]
+    ; stamp in main density
+    pic[0,0:df.nPixelsXY[0]-1,0:df.nPixelsXY[1]-1] = r[colindex]
+    pic[1,0:df.nPixelsXY[0]-1,0:df.nPixelsXY[1]-1] = g[colindex]
+    pic[2,0:df.nPixelsXY[0]-1,0:df.nPixelsXY[1]-1] = b[colindex]
+    
+    if keyword_set(twoAxesSideBySide) then begin
+      ; load other projection
+      df = loadDensityField(filePath,m,axes=axes[1])
+    
+      ; log scaling of density
+      if keyword_set(log) then begin
+        w = where(df.dens gt 1e-8,comp=wc)
+        df.dens[w] = alog10(df.dens[w])
+        df.dens[wc] = min(df.dens[w])
+      endif
+      
+      if not keyword_set(sideMinMax) then colorMinMax = minmax(df.dens)
+      if keyword_set(sideMinMax) then colorMinMax = minMax
+      
+      colindex = (df.dens - colorMinMax[0])/(colorMinMax[1]-colorMinMax[0])*255.0
+      
+      ind = where(colindex ge 256.0)
+      if ind(0) ne -1 then colindex(ind) = 255.9
+      ind = where(colindex lt 0)
+      if ind(0) ne -1 then colindex(ind) = 0
+      
+      colindex = byte(colindex)
+      
+      ; stamp in second density
+      pic[0,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = r[colindex]
+      pic[1,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = g[colindex]
+      pic[2,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = b[colindex]
+    endif
+    
+    if keyword_set(densTempSideBySide) then begin
+      ; get temperature from already loaded data
+      if not keyword_set(sideMinMax) then colorMinMax = minmax(df.temp)
+      if keyword_set(sideMinMax) then colorMinMax = minMax
+      
+      colindex = (df.temp - colorMinMax[0])/(colorMinMax[1]-colorMinMax[0])*255.0
+      
+      ind = where(colindex ge 256.0)
+      if ind(0) ne -1 then colindex(ind) = 255.9
+      ind = where(colindex lt 0)
+      if ind(0) ne -1 then colindex(ind) = 0
+      
+      colindex = byte(colindex)
+      
+      ; stamp in temperature
+      pic[0,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = r[colindex]
+      pic[1,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = g[colindex]
+      pic[2,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = b[colindex]
+    endif
     
     ;rescale image
     if keyword_set(xyScaleFac) then begin
       pic = rebin(pic,3,xyScaleFac*df.nPixelsXY[0],xyScaleFac*df.nPixelsXY[1])
     endif
-  
-    ;output filename
-    if not keyword_set(axes) then axes = 0
     
-    outputFilename = filePath + 'density_' + string(m,format='(i3.3)') + '.' + str(axes)
+    ;output filename
+    axesOut = axes
+    if not keyword_set(axes) then axesOut = 0
+    if n_elements(axes) eq 2 then axesOut = str(axes[0])+'-'+str(axes[1])
+    outputFilename = filePath + 'density_' + string(m,format='(i3.3)') + '.' + str(axesOut)
     
     ;write JPG
     if keyword_set(writeJPG) then begin

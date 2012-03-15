@@ -4,74 +4,87 @@
 ;
 ; NOTE: all my IDL routines loaded at bottom of this file
 
-; getUnits(): return a structure of useful units
+; one line utility functions
+; --------------------------
 
-function getUnits
-
-  Hubble  = 1.0      ;H0 in 100km/s/Mpc
-  Gravity = 6.673e-8 ;G in cgs, cm^3/g/s^2
-
-  units = { units,                   $
-  
-            ; units (from parameter file)
-            UnitLength_in_cm         : double(3.085678e21)    ,$;  1.0 kpc
-            UnitMass_in_g            : 1.989*double(10.0)^43  ,$;  1.0e10 solar masses
-            UnitVelocity_in_cm_per_s : double(1.0e5)          ,$;  1 km/sec
-            
-            ; derived units
-            UnitTime_in_s       : 0.0D                        ,$
-            UnitDensity_in_cgs  : 0.0D                        ,$
-            UnitPressure_in_cgs : 0.0D                        ,$
-            UnitEnergy_in_cgs   : 0.0D                        ,$
-            
-            ; non-cgs units
-            UnitMass_in_Msun    : 0.0D                        ,$
-            
-            ; constants
-            boltzmann   : double(1.38066e-16)                 ,$ ;cgs
-            mass_proton : double(1.6727e-24)                  ,$ ;cgs
-            
-            ; derived constants
-            H0      : 0.0D                                    ,$
-            G       : 0.0D                                    ,$
-            rhoCrit : 0.0D                                    ,$
-            
-            ; color list
-            colors : strarr(17)                               ,$
-            
-            ; unit conversions
-            s_in_Myr  : 3.156e13                              ,$
-            Msun_in_g : 1.989*double(10.0)^33                 ,$
-            pc_in_cm  : 3.0868e18                             ,$
-            Mpc_in_cm : 3.0868e24                             ,$
-            kpc_in_km : 3.0856e16                              $
-      }
-      
-  ; derived units
-  units.UnitTime_in_s       = units.UnitLength_in_cm / units.UnitVelocity_in_cm_per_s
-  units.UnitDensity_in_cgs  = units.UnitMass_in_g / units.UnitLength_in_cm^3.0
-  units.UnitPressure_in_cgs = units.UnitMass_in_g / units.UnitLength_in_cm / units.UnitTime_in_s^2.0
-  units.UnitEnergy_in_cgs   = units.UnitMass_in_g * units.UnitLength_in_cm^2.0 / units.UnitTime_in_s^2.0
-  
-  ; non-cgs units
-  units.UnitMass_in_Msun = units.UnitMass_in_g / units.Msun_in_g
-  
-  ; derived constants (in code units)
-  units.H0 = Hubble * 100 * 1e5 / (units.Mpc_in_cm) / $
-             units.UnitVelocity_in_cm_per_s * units.UnitLength_in_cm
-  units.G  = Gravity / units.UnitLength_in_cm^3.0 * units.UnitMass_in_g * units.UnitTime_in_s^2.0
-  
-  units.rhoCrit = 3.0 * units.H0^2.0 / (8.0*!pi*units.G) ;code, z=0
-
-  ; color list
-  units.colors = ['black','blue','green','red','cyan','magenta','gray','orange', $
-                  'brown','chartreuse','violet','papaya','aquamarine', $
-                  'firebrick', 'rosy brown', 'gold', 'olive']
-
-  return, units
+function str, tString
+  return, strcompress(string(tString),/remove_all)
 end
 
-; loadCSV()
+function isnumeric, input
+  on_ioerror, false
+  test = double(input)
+  return, 1
+  false: return, 0
+end
+
+function getColor, i, name=name
+  forward_function getUnits
+  units = getUnits()
+  ind = (i) mod (n_elements(units.colors)-1)
+  
+  if keyword_set(name) then return,units.colors[ind]
+  return,fsc_color(units.colors[ind])
+end
+
+function linspace, a, b, N
+  vals = findgen(N) / (N-1.0) * (b-a) + a
+  return, vals
+end
+
+function logspace, a, b, N, mid=mid
+  vals = findgen(N) / (N-1.0) * (b-a) + a
+  
+  ; return mid-bin points instead
+  if keyword_set(mid) then $
+    vals = (findgen(N-1)+0.5) / (N-1.0) * (b-a) + a
+  
+  vals = 10.0^vals
+  
+  return, vals
+end
+
+function nuniq, arr
+  return, n_elements(uniq(arr,sort(arr)))
+end
+
+function shuffle, array, seed=seed
+  if n_elements(seed) ne 0 then iseed=seed
+  return,array[sort(randomu(iseed,n_elements(array)))]
+end
+
+; partTypeNum(): convert a string description of a particle type to its numeric value
+
+function partTypeNum, partType
+
+  if not isnumeric(partType) then partType = strlowcase(str(partType))
+
+  if (strcmp(partType,'gas')       or strcmp(partType,'hydro'))      then partType = 0
+  if (strcmp(partType,'dm')        or strcmp(partType,'darkmatter')) then partType = 1
+  if (strcmp(partType,'tracervel') or strcmp(partType,'tracersvel')) then partType = 2
+  if (strcmp(partType,'tracermc')  or strcmp(partType,'tracersmc'))  then partType = 3
+  if (strcmp(partType,'stars')     or strcmp(partType,'star'))       then partType = 4
+  
+  if (strcmp(partType,'tracer') or strcmp(partType,'tracers')) then begin
+    print,'ERROR: Please specify which type of tracers!' & stop
+  endif  
+  
+  if not isnumeric(partType) then begin
+    print,'ERROR: Unrecognized partType!' & stop
+  endif
+  
+  if (partType lt 0 or partType gt 4) then begin
+    print,'ERROR: partType = ' + str(partType) + ' out of bounds!' & stop
+  endif
+
+  return, partType
+end
+
+; basic IO
+; --------
+
+; loadCSV(): load all the lines of a textfile with column template ptStruct
+;            skip headerLines at the beginning and put their contents as a string into header
 
 function loadCSV, headerLines, fileName, ptStruct, header=header;, format=format
 
@@ -98,9 +111,7 @@ function loadCSV, headerLines, fileName, ptStruct, header=header;, format=format
   
 end
 
-; loadBinary()
-; right now just reads Stars_X.bin
-; first float indicates how many pts
+; loadBinary(): right now just reads Stars_X.bin (first float indicates how many pts)
 
 function loadBinary, fileName, ptStruct
 
@@ -122,8 +133,7 @@ function loadBinary, fileName, ptStruct
   return, pts
 end
 
-; loadBinarySequence()
-; right now just reads Stars_X_Y where X=num, Y=node
+; loadBinarySequence(): right now just reads Stars_X_Y where X=num, Y=node
 
 function loadBinarySequence, fileBase, ptStruct
 
@@ -167,54 +177,6 @@ function loadBinarySequence, fileBase, ptStruct
   endfor
   
   return, pts
-end
-
-; one line utility functions
-; --------------------------
-
-function str, tString
-  return, strcompress(string(tString),/remove_all)
-end
-
-function isnumeric, input
-  on_ioerror, false
-  test = double(input)
-  return, 1
-  false: return, 0
-end
-
-function getColor, i, name=name
-  units = getUnits()
-  ind = (i) mod (n_elements(units.colors)-1)
-  
-  if keyword_set(name) then return,units.colors[ind]
-  return,fsc_color(units.colors[ind])
-end
-
-function linspace, a, b, N
-  vals = findgen(N) / (N-1.0) * (b-a) + a
-  return, vals
-end
-
-function logspace, a, b, N, mid=mid
-  vals = findgen(N) / (N-1.0) * (b-a) + a
-  
-  ; return mid-bin points instead
-  if keyword_set(mid) then $
-    vals = (findgen(N-1)+0.5) / (N-1.0) * (b-a) + a
-  
-  vals = 10.0^vals
-  
-  return, vals
-end
-
-function nuniq, arr
-  return, n_elements(uniq(arr,sort(arr)))
-end
-
-function shuffle, array, seed=seed
-  if n_elements(seed) ne 0 then iseed=seed
-  return,array[sort(randomu(iseed,n_elements(array)))]
 end
 
 ; postscript output
@@ -385,6 +347,8 @@ function getIDIndexMap, ids, minid=minid
 
   minid = long(min(ids))
   maxid = long(max(ids))
+  
+  if (maxid-minid) gt 2e9 then stop ; should change arr to lon64arr
 
   ; looped where approach (never a good idea)
   ;arr = l64indgen(maxid-minid+1)
@@ -394,8 +358,8 @@ function getIDIndexMap, ids, minid=minid
   ;endfor
 
   ; C-style loop approach (good for sparse IDs)
-  arr = lon64arr(maxid-minid+1)
-  for i=0L,n_elements(ids)-1L do arr[ids[i]-minid] = i
+  arr = ulonarr(maxid-minid+1)
+  for i=0UL,n_elements(ids)-1L do arr[ids[i]-minid] = i
 
   ; reverse histogram approach (good for dense ID sampling, maybe better by factor of ~2)
   ;arr = l64indgen(maxid-minid+1)
@@ -536,26 +500,26 @@ end
 
 ; load routines for use
 ; ---------------------
+@units
 @simParams
 @cosmoUtil
 @cosmoLoad
 
-@tracersMC
-@tracersMC_2D
-@tracersMC_SphSym
-@tracersMC_Halos
-
-;@tracers
-;@tracersCosmo
-;@tracersCosmoHalos
-;@tracersDisks
-;@tracersShocktube
-;@tracersSpheres
-
+@cosmoAnalysis
 @cosmoVis
-@cosmoSphere
-;@cosmoPlot
-;@cosmoAnalysis
+;@cosmoSphere
+@cosmoPlot
+
+@tracersVel_Cosmo
+@tracersVel_Halos
+;@tracersVel_Disks
+;@tracersVel_2D
+;@tracersVel_SphSym
+
+@tracersMC
+@tracersMC_Halos
+;@tracersMC_2D
+;@tracersMC_SphSym
 
 @arepoLoad
 @arepoVis2D

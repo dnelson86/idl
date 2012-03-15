@@ -20,15 +20,13 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        gravSoft:     0.0,$   ; gravitational softening length (ckpc)
        snapRange:    [0,0],$ ; snapshot range of simulation
        groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
-       plotPath:     '',$    ; path to put plots
-       galCatPath:   '',$    ; path to galaxy catalog files
-       thistPath:    '',$    ; path to thermal history files
+       plotPath:     '',$    ; working path to put plots
        derivPath:    '',$    ; path to put derivative (data) files
        snap:         -1,$    ; convenience for passing between functions
        res:          0,$     ; copied from input
        run:          '',$    ; copied from input
-       redshift:     0.0,$   ; copied from input
-       minNumGasPart: 0}     ; minimum number of gas particles in a galaxy to include in e.g. mass func
+       redshift:     -1.0,$  ; copied from input
+       minNumGasPart: 0}     ; minimum number of gas particles required to use subgroup
        
   ; copy inputs
   if (isnumeric(res)) then $
@@ -45,19 +43,22 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.boxSize       = 20000.0
     r.snapRange     = [0,314]
     r.groupCatRange = [50,314]
-    r.minNumGasPart = 100
+    r.minNumGasPart = -1
+    
+    if keyword_set(f) then stop ; shouldn't be specified
   
     if (res eq 128) then r.gravSoft = 4.0
     if (res eq 256) then r.gravSoft = 2.0
     if (res eq 512) then r.gravSoft = 1.0
   
-    r.simPath   = '/n/hernquistfs1/mvogelsberger/ComparisonProject/'+str(res)+'_20Mpc/Gadget/output/'
+    r.simPath   = '/n/home07/dnelson/sims.gadget/'+str(res)+'_20Mpc/output/'
+    r.arepoPath = '/n/home07/dnelson/sims.gadget/'+str(res)+'_20Mpc/'
     r.savPrefix = 'G'
+    r.plotPath  = '/n/home07/dnelson/coldflows/'
+    r.derivPath = '/n/home07/dnelson/sims.gadget/'+str(res)+'_20Mpc/data.files/'
     
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
-    r.galCatPath = '/n/home07/dnelson/coldflows/galaxycat/'
-    r.thistPath  = '/n/home07/dnelson/coldflows/thermhist/'
-    r.derivPath  = '/n/home07/dnelson/coldflows/data.files/'
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
     
     return,r
   endif
@@ -66,7 +67,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.boxSize       = 20000.0
     r.snapRange     = [0,313]
     r.groupCatRange = [50,313]
-    r.minNumGasPart = 100
+    r.minNumGasPart = -1
+    
+    if keyword_set(f) then stop ; shouldn't be specified
+    if (res eq 128) or (res eq 256) then stop ; DELETED
     
     if (res eq 128) then r.trMassConst = 4.76446157e-03
     if (res eq 256) then r.trMassConst = 5.95556796e-04
@@ -79,11 +83,38 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.simPath   = '/n/home07/dnelson/sims.tracers/'+str(res)+'_20Mpc/output/'
     r.arepoPath = '/n/home07/dnelson/sims.tracers/'+str(res)+'_20Mpc/'
     r.savPrefix = 'T'
-    
     r.plotPath   = '/n/home07/dnelson/coldflows/'
-    r.galCatPath = '/n/home07/dnelson/coldflows/galaxycat/'
-    r.thistPath  = '/n/home07/dnelson/coldflows/thermhist/'
-    r.derivPath  = '/n/home07/dnelson/coldflows/data.files/'
+    r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_20Mpc/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
+  
+  if (run eq 'tracerMC') then begin ; sims.tracersMC (Monte Carlo) 128,256,512
+    r.boxSize       = 20000.0
+    r.snapRange     = [0,313]
+    r.groupCatRange = [50,313]
+    r.minNumGasPart = -1
+    r.trMCPerCell   = 20
+    
+    if keyword_set(f) then stop ; shouldn't be specified
+    if (res eq 512) then stop ; don't exist yet
+    
+    if (res eq 128) then r.trMassConst = 4.76446157e-03 / r.trMCPerCell
+    if (res eq 256) then r.trMassConst = 5.95556796e-04 / r.trMCPerCell
+    if (res eq 512) then r.trMassConst = 7.44447120e-05 / r.trMCPerCell
+    
+    if (res eq 128) then r.gravSoft = 4.0
+    if (res eq 256) then r.gravSoft = 2.0
+    if (res eq 512) then r.gravSoft = 1.0
+  
+    r.simPath   = '/n/home07/dnelson/sims.tracersMC/'+str(res)+'_20Mpc/output/'
+    r.arepoPath = '/n/home07/dnelson/sims.tracersMC/'+str(res)+'_20Mpc/'
+    r.savPrefix = 'M'
+    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.derivPath  = '/n/home07/dnelson/sims.tracersMC/'+str(res)+'_20Mpc/data.files/'
     
     ; if redshift passed in, convert to snapshot number and save
     if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
@@ -97,6 +128,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.snapRange     = [0,76]
     r.groupCatRange = [25,76]
     r.gravSoft      = 4.0
+  
+    if keyword_set(f) then stop
   
     r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/output/'
     r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/'
@@ -114,6 +147,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.boxSize       = 20000.0
     r.snapRange     = [0,38]
     r.groupCatRange = [15,38]
+    
+    if keyword_set(f) then stop
   
     if (res eq 128) then r.trMassConst = 4.76446157e-03
     if (res eq 256) then r.trMassConst = 5.95556796e-04

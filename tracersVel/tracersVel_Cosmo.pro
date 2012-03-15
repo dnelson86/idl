@@ -2,9 +2,9 @@
 ; dev for tracer particles related to cosmological boxes
 ; dnelson feb.2012
 
-; getTracerSpatialDens(): wrapper to do tophat density calculation for tracers and save result
+; getTracerVelSpatialDens(): wrapper to do tophat density calculation for tracers and save result
 
-function getTracerSpatialDens, sP=sP, nNGB=nNGB
+function getTracerVelSpatialDens, sP=sP, nNGB=nNGB
 
   saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.trDens.nNGB=' + str(nNGB) + '.snap=' + $
                  str(sP.snap) + '.sav'
@@ -13,12 +13,12 @@ function getTracerSpatialDens, sP=sP, nNGB=nNGB
     restore,saveFilename,/verbose
   endif else begin
     ; load snapshot header for boxSize
-    h = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+    h = loadSnapshotHeader(sP=sP)
     
     ;tr_mass = total(mass_gas) / h.nPartTot[3] ; should be mass gas at t=0
     
     ; load positions and calculate densities via HSMLs
-    tr_pos  = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='pos', partType='tracer')
+    tr_pos  = loadSnapshotSubset(sP=sP, field='pos', partType='tracer')
     tr_dens = estimateDensityTophat(tr_pos,mass=sP.trMassConst,ndims=3,nNGB=nNGB,boxSize=h.boxSize)
     tr_pos  = !NULL
     
@@ -30,9 +30,9 @@ function getTracerSpatialDens, sP=sP, nNGB=nNGB
   
 end
 
-; cosmoTracerParents(): return indices (or optionally IDs) of parent gas cells of all tracers
+; cosmoTracerVelParents(): return indices (or optionally IDs) of parent gas cells of all tracers
 
-function cosmoTracerParents, sP=sP, getInds=getInds, getIDs=getIDs
+function cosmoTracerVelParents, sP=sP, getInds=getInds, getIDs=getIDs
  
   if (not keyword_set(getInds) and not keyword_set(getIDs)) then stop
   
@@ -43,8 +43,8 @@ function cosmoTracerParents, sP=sP, getInds=getInds, getIDs=getIDs
     restore, saveFilename
   endif else begin
     ; load
-    gas_pos = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='pos', partType='gas')
-    tr_pos  = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='pos', partType='tracer')
+    gas_pos = loadSnapshotSubset(sP=sP, field='pos', partType='gas')
+    tr_pos  = loadSnapshotSubset(sP=sP, field='pos', partType='tracer')
     
     nTr  = (size(tr_pos))[2]
     nGas = (size(gas_pos))[2]
@@ -79,7 +79,7 @@ function cosmoTracerParents, sP=sP, getInds=getInds, getIDs=getIDs
   
   ; if IDs requested, load gas IDs and do crossmatch
   if keyword_set(getIDs) then begin
-    gas_ids = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='ids', partType='gas')
+    gas_ids = loadSnapshotSubset(sP=sP, field='ids', partType='gas')
     
     ; return parent gas ids
     return,gas_ids[par_ind]
@@ -91,14 +91,14 @@ function cosmoTracerParents, sP=sP, getInds=getInds, getIDs=getIDs
 
 end
 
-; cosmoTracerChildren(): return indices (or optionally IDs) of child tracer particles of 
+; cosmoTracerVelChildren(): return indices (or optionally IDs) of child tracer particles of 
 ;                        specified gas cells (by indices gasInds)
 ;
 ; child_counts and child_inds : pass both to skip load and reverse histo (for e.g. loops over more 
 ; than one gas cell)
 
-function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
-                              gasInds=gasInds, child_counts=child_counts, child_inds=child_inds
+function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
+                                 gasInds=gasInds, child_counts=child_counts, child_inds=child_inds
 
   if (n_elements(gasInds) eq 0) then stop
   if (not keyword_set(getInds) and not keyword_set(getIDs)) then stop
@@ -106,8 +106,7 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   ; load if required
   if (n_elements(child_counts) eq 0 and n_elements(child_inds) eq 0) then begin
     ; get tracer parent indices
-    tr_par_ind = cosmoTracerParents(sP=sP,/getInds)
-    ;tr_par_ind = [0,1,2,3,4,4,5,6,6,6,7,9,15,16,16] ;debug
+    tr_par_ind = cosmoTracerVelParents(sP=sP,/getInds)
   
     ; reverse histogram
     child_counts = histogram(tr_par_ind,rev=child_inds)
@@ -155,10 +154,10 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   endelse
 end
 
-; cosmoTracerMasses(): return array of masses for the tracers by dividing the total mass of each
-;                      parent gas cell among all its child tracers
+; cosmoTracerVelMasses(): return array of masses for the tracers by dividing the total mass of each
+;                         parent gas cell among all its child tracers (UNUSED)
 
-function cosmoTracerMasses, sP=sP
+function cosmoTracerVelMasses, sP=sP
  
   ; check for save file
   saveFilename = sP.derivPath + 'trMass_' + sP.savPrefix + str(sP.res) + '_' + str(sP.snap) + '.sav'
@@ -167,12 +166,8 @@ function cosmoTracerMasses, sP=sP
     restore, saveFilename
   endif else begin
     ; load gas mass and tracer parent indices
-    gas_mass = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='mass', partType='gas')
-    tr_par_ind = cosmoTracerParents(sP=sP,/getInds)
-    
-    ;debug
-    ;tr_par_ind = [0,1,2,3,4,4,5,6,6,6,7,9,15,16,16]
-    ;gas_mass = 1.0 + fltarr(max(tr_par_ind)+1)
+    gas_mass = loadSnapshotSubset(sP=sP, field='mass', partType='gas')
+    tr_par_ind = cosmoTracerVelParents(sP=sP,/getInds)
     
     ; reverse histogram
     child_counts = histogram(tr_par_ind,rev=child_inds)    
@@ -181,8 +176,8 @@ function cosmoTracerMasses, sP=sP
     tr_mass = fltarr(n_elements(tr_par_ind))
     
     for i=0,n_elements(gas_mass)-1 do begin
-      cInds = cosmoTracerChildren(sP=sP,gasInds=[i],/getInds,$
-                                  child_counts=child_counts,child_inds=child_inds)
+      cInds = cosmoTracerVelChildren(sP=sP,gasInds=[i],/getInds,$
+                                     child_counts=child_counts,child_inds=child_inds)
       if (n_elements(cInds) gt 0) then $
         tr_mass[cInds] = gas_mass[i] / n_elements(cInds)
     endfor
@@ -225,14 +220,14 @@ function cosmoTracerMasses, sP=sP
   return, tr_mass
 end
 
-; getCosmoTracerPos(): return time series of tracer positions for a given number of tracers nearest
+; getCosmoTracerVelPos(): return time series of tracer positions for a given number of tracers nearest
 ;                      to a given ending position
 ;
 ; numTracers=1 : track N tracers closest to targetPos
 ; maxDist=1    : track all tracers within minDist of targetPos
 
-function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, numTracers=numTracers, $
-                            targetPos=targetPos, maxDist=maxDist, verbose=verbose
+function getCosmoTracerVelPos, sP=sP, snapRange=snapRange, numTracers=numTracers, $
+                               targetPos=targetPos, maxDist=maxDist, verbose=verbose
 
   useMatch = 1    ; use match for ID location instead of where loop
 
@@ -251,11 +246,12 @@ function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, numTracers=n
   k = 0
   
   for snap=snapRange[0],snapRange[1],-snapRange[2] do begin
+    sP.snap = snap
     if keyword_set(verbose) then if (snap mod verbose eq 0) then $
-      print,'snap: ',str(snap)
+      print,'snap: ',str(sP.snap)
     
     ; load header and store time
-    h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
+    h = loadSnapshotHeader(sP=sP,/verbose)
     
     ; skip over missing snapshots
     if (n_tags(h) eq 0) then begin
@@ -265,8 +261,8 @@ function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, numTracers=n
     endif
     times[k] = h.time  
       
-    pos = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='pos')
-    ids = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='ids')
+    pos = loadSnapshotSubset(sP=sP,partType='tracer',field='pos')
+    ids = loadSnapshotSubset(sP=sP,partType='tracer',field='ids')
     
     ; make tracer selection on first snapshot
     if (snap eq snapRange[0]) then begin      
@@ -352,9 +348,9 @@ function getCosmoTracerPos, snapPath=snapPath, snapRange=snapRange, numTracers=n
 
 end
 
-; cosmoTracerTrajPretty(): make interesting image
+; cosmoTracerVelTrajPretty(): make interesting image
 
-pro cosmoTracerTrajPretty, numHalos
+pro cosmoTracerVelTrajPretty, numHalos
 
   ; config
   res = 128
@@ -368,8 +364,8 @@ pro cosmoTracerTrajPretty, numHalos
   sP    = simParams(res=res,run=run,redshift=redshift)
   units = getUnits()
 
-  h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
-  gc = loadGroupCat(sP.simPath,sP.snap,/verbose)
+  h  = loadSnapshotHeader(sP=sP)
+  gc = loadGroupCat(sP=sP,/verbose)
   
   ; halo selection (manual)
   ;haloIDs = indgen(20)
@@ -422,7 +418,7 @@ pro cosmoTracerTrajPretty, numHalos
     if file_test(saveFilename) then begin
       restore,saveFilename,/verbose
     endif else begin
-      tp = getCosmoTracerPos(snapPath=sP.simPath, snapRange=snapRange, targetPos=targetPos, $
+      tp = getCosmoTracerVelPos(sP=sP, snapRange=snapRange, targetPos=targetPos, $
                              numTracers=numTracers, verbose=1)
       save,tp,filename=saveFilename
     endelse
@@ -442,9 +438,9 @@ pro cosmoTracerTrajPretty, numHalos
   
 end
 
-; cosmoTracerTraj(): plot a few individual tracer trajectories over contour of the disk gas density
+; cosmoTracerVelTraj(): plot a few individual tracer trajectories over contour of the disk gas density
 
-pro cosmoTracerTraj
+pro cosmoTracerVelTraj
  
   ; config
   res = 128
@@ -457,8 +453,8 @@ pro cosmoTracerTraj
   sP    = simParams(res=res,run=run,redshift=redshift)
   units = getUnits()
 
-  h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
-  gc = loadGroupCat(sP.simPath,sP.snap,/verbose)
+  h  = loadSnapshotHeader(sP=sP)
+  gc = loadGroupCat(sP=sP,/verbose)
   
   ; select target position
   ;targetPos = [2614.26,123.019,3410.30] ;ckpc
@@ -476,8 +472,8 @@ pro cosmoTracerTraj
   if file_test(saveFilename) then begin
     restore,saveFilename,/verbose
   endif else begin
-    tp = getCosmoTracerPos(snapPath=sP.simPath, snapRange=snapRange, targetPos=targetPos, $
-                           maxDist=maxDist, verbose=1)
+    tp = getCosmoTracerVelPos(sP=sP, snapRange=snapRange, targetPos=targetPos, $
+                              maxDist=maxDist, verbose=1)
     save,tp,filename=saveFilename
   endelse
            
@@ -561,7 +557,7 @@ pro cosmoCompAxisProfiles
     sP = simParams(res=res,run=run,redshift=redshift)
     ;sP = simParams(res=res,run=run)
     ;sP.snap = 10
-    h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+    h  = loadSnapshotHeader(sP=sP)
   
     ; setup binning
     nBins  = 100
@@ -576,13 +572,13 @@ pro cosmoCompAxisProfiles
     midBins = xBins + binSize/2.0
     
     ; load gas,tr,dm,star positions
-    pos_gas   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
-    pos_tr    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='tracer',field='pos')
-    pos_dm    = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='dm',field='pos')
-    ;pos_stars = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='pos')
+    pos_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+    pos_tr    = loadSnapshotSubset(sP=sP,partType='tracer',field='pos')
+    pos_dm    = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
+    ;pos_stars = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
     
-    gas_mass   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='mass')
-    ;stars_mass = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='stars',field='mass')
+    gas_mass   = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
+    ;stars_mass = loadSnapshotSubset(sP=sP,partType='stars',field='mass')
     dm_mass    = h.massTable[1]  
   
     ; do binning
@@ -652,10 +648,10 @@ pro cosmoCompAxisProfiles
   stop
 end
 
-; tracerParentOffsetHisto(): offset of tracers from cell center, split into different histograms
+; tracerVelParentOffsetHisto(): offset of tracers from cell center, split into different histograms
 ;                            based on the number of child tracers in each gas cell
 
-pro tracerParentOffsetHisto
+pro tracerVelParentOffsetHisto
 
   ; config
   resSet = [256,128]
@@ -682,12 +678,12 @@ pro tracerParentOffsetHisto
     endif
     
     ; load tracer parents and reverse histogram
-    tr_par_ind = cosmoTracerParents(sP=sP,/getInds)
+    tr_par_ind = cosmoTracerVelParents(sP=sP,/getInds)
     child_counts = histogram(tr_par_ind,rev=child_inds)    
     
     ; get distance (for each tracer) from parent
-    gas_pos = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
-    tr_pos  = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='tracer',field='pos')
+    gas_pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+    tr_pos  = loadSnapshotSubset(sP=sP,partType='tracer',field='pos')
     
     par_offset = periodicDists(tr_pos,gas_pos[*,tr_par_ind],sP=sP)
     
@@ -695,7 +691,7 @@ pro tracerParentOffsetHisto
     tr_pos  = !NULL
     
     ; get gas cell sizes
-    gas_size = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='vol')
+    gas_size = loadSnapshotSubset(sP=sP,partType='gas',field='vol')
     gas_size = (gas_size * 3.0 / (4*!pi))^(1.0/3.0) ;cellrad [ckpc]
     
     ; normalize by r_cell
@@ -713,8 +709,8 @@ pro tracerParentOffsetHisto
     ; find tracers in gas cells with N_children=1 and plot histogram
     gasInds = where(child_counts eq 1,count)
     
-    cInds = cosmoTracerChildren(sP=sP,gasInds=gasInds,/getInds,$
-                                child_counts=child_counts,child_inds=child_inds)
+    cInds = cosmoTracerVelChildren(sP=sP,gasInds=gasInds,/getInds,$
+                                   child_counts=child_counts,child_inds=child_inds)
     print,'N=1 ',n_elements(cInds),median(par_offset[cInds])
     
     h = histogram(par_offset[cInds],binsize=binSize,min=minMax[0],max=minMax[1],loc=loc)
@@ -726,8 +722,8 @@ pro tracerParentOffsetHisto
     ; find tracers in gas cells with N_children>1<5 and plot histogram
     gasInds = where(child_counts gt 1 and child_counts lt 5,count)
     
-    cInds = cosmoTracerChildren(sP=sP,gasInds=gasInds,/getInds,$
-                                child_counts=child_counts,child_inds=child_inds)
+    cInds = cosmoTracerVelChildren(sP=sP,gasInds=gasInds,/getInds,$
+                                   child_counts=child_counts,child_inds=child_inds)
     print,'N>1<5 ',n_elements(cInds),median(par_offset[cInds])
     
     h = histogram(par_offset[cInds],binsize=binSize,min=minMax[0],max=minMax[1],loc=loc)
@@ -739,8 +735,8 @@ pro tracerParentOffsetHisto
     ; find tracers in gas cells with N_children>1<5 and plot histogram
     gasInds = where(child_counts ge 5,count)
     
-    cInds = cosmoTracerChildren(sP=sP,gasInds=gasInds,/getInds,$
-                                child_counts=child_counts,child_inds=child_inds)
+    cInds = cosmoTracerVelChildren(sP=sP,gasInds=gasInds,/getInds,$
+                                   child_counts=child_counts,child_inds=child_inds)
     print,'N>=5 ',n_elements(cInds),median(par_offset[cInds])
     
     h = histogram(par_offset[cInds],binsize=binSize,min=minMax[0],max=minMax[1],loc=loc)
@@ -773,9 +769,9 @@ pro tracerParentOffsetHisto
 stop
 end
 
-; tracerParentHisto(): number of tracers per gas cell
+; tracerVelParentHisto(): number of tracers per gas cell
 
-pro tracerParentHisto
+pro tracerVelParentHisto
 
   ; config
   res = 128 ;not used for non-cosmo
@@ -803,10 +799,10 @@ pro tracerParentHisto
     sP    = simParams(res=res,run=run,redshift=redshift)
     
     ; load
-    h = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+    h = loadSnapshotHeader(sP=sP)
   
     ; load tracer parents and sort
-    tr_par_ind = cosmoTracerParents(sP=sP, /getInds)
+    tr_par_ind = cosmoTracerVelParents(sP=sP, /getInds)
     ;tr_par_ind = tr_par_ind[sort(tr_par_ind)]
     ;tr_par_ind = shuffle([0,1,2,3,4,4,5,6,6,6,7,9,15,16,16])
     
@@ -851,10 +847,10 @@ pro tracerParentHisto
     sP    = simParams(res=res,run=run,redshift=redshift)
     
     ; load
-    h = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+    h = loadSnapshotHeader(sP=sP)
   
     ; load tracer parents and sort
-    tr_par_ind = cosmoTracerParents(sP=sP, /getInds)
+    tr_par_ind = cosmoTracerVelParents(sP=sP, /getInds)
     ;tr_par_ind = tr_par_ind[sort(tr_par_ind)]
     
     par_histo = histogram(tr_par_ind)
@@ -881,9 +877,9 @@ pro tracerParentHisto
   stop
 end
 
-; cosmoTracerGasDensComp(): compare spatially estimated tracer density to parent cell gas density
+; cosmoTracerVel_GasDensComp(): compare spatially estimated tracer density to parent cell gas density
 
-pro cosmoTracerGasDensComp
+pro cosmoTracerVel_GasDensComp
 
   ; config
   res = 128
@@ -897,14 +893,14 @@ pro cosmoTracerGasDensComp
   units = getUnits() ;colors
 
   ; load
-  h = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+  h = loadSnapshotHeader(sP=sP)
   
   ; get tracer and gas densities
-  tr_dens  = getTracerSpatialDens(sP=sP, nNGB=nNGB)
-  gas_dens = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='density',/verbose)
+  tr_dens  = getTracerVelSpatialDens(sP=sP, nNGB=nNGB)
+  gas_dens = loadSnapshotSubset(sP=sP,partType='gas',field='density',/verbose)
   
   ; load tracer parents and gas densities
-  tr_par_ind = cosmoTracerParents(sP=sP, /getInds)
+  tr_par_ind = cosmoTracerVelParents(sP=sP, /getInds)
   
   ; reorder gas densities to correspond to tr_dens parents
   gas_dens = gas_dens[tr_par_ind]
@@ -991,10 +987,10 @@ pro cosmoTracerGasDensComp
   
 end
 
-; cosmoTracerGasDensCompNGB(): compare spatially estimated tracer density to parent cell gas density
+; cosmoTracerVel_GasDensCompNGB(): compare spatially estimated tracer density to parent cell gas density
 ;                              as a function of nNGB used to calculate tracer densities
 
-pro cosmoTracerGasDensCompNGB
+pro cosmoTracerVel_GasDensCompNGB
 
   ; config
   res = 128
@@ -1010,12 +1006,12 @@ pro cosmoTracerGasDensCompNGB
   units = getUnits() ;colors
 
   ; load
-  h = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+  h = loadSnapshotHeader(sP=sP)
   
   ; load tracer parents and gas densities
-  tr_par_ind = cosmoTracerParents(sP=sP, /getInds)
+  tr_par_ind = cosmoTracerVelParents(sP=sP, /getInds)
   
-  gas_dens = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='density',/verbose)  
+  gas_dens = loadSnapshotSubset(sP=sP,partType='gas',field='density',/verbose)  
   
   ; reorder gas densities to correspond to tr_dens parents
   gas_dens = gas_dens[tr_par_ind]  
@@ -1038,7 +1034,7 @@ pro cosmoTracerGasDensCompNGB
     foreach nNGB,nNGBs,i do begin
 
       ; estimate tracer densities
-      tr_dens  = getTracerSpatialDens(sP=sP, nNGB=nNGB)
+      tr_dens  = getTracerVelSpatialDens(sP=sP, nNGB=nNGB)
       
       ypts = tr_dens / gas_dens
       ypts = ypts[where(ypts le xrange[1])]
@@ -1061,10 +1057,10 @@ pro cosmoTracerGasDensCompNGB
 
 end
 
-; cosmoTracerGasDensCompRedshift(): compare spatially estimated tracer density to parent cell gas density
+; cosmoTracerVel_GasDensCompRedshift(): compare spatially estimated tracer density to parent cell gas density
 ;                                   as a function of redshift
 
-pro cosmoTracerGasDensCompRedshift
+pro cosmoTracerVel_GasDensCompRedshift
 
   ; config
   res = 128
@@ -1100,17 +1096,17 @@ pro cosmoTracerGasDensCompRedshift
     sP = simParams(res=res,run=run,redshift=redshift)
 
     ; load
-    h = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
+    h = loadSnapshotHeader(sP=sP)
   
     ; load tracer parents and gas densities
-    tr_par_ind = cosmoTracerParents(sP=sP, /getInds)
-    gas_dens   = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='density',/verbose)  
+    tr_par_ind = cosmoTracerVelParents(sP=sP, /getInds)
+    gas_dens   = loadSnapshotSubset(sP=sP,partType='gas',field='density',/verbose)  
     
     ; reorder gas densities to correspond to tr_dens parents
     gas_dens = gas_dens[tr_par_ind]  
   
     ; estimate tracer densities
-    tr_dens  = getTracerSpatialDens(sP=sP, nNGB=nNGB)
+    tr_dens  = getTracerVelSpatialDens(sP=sP, nNGB=nNGB)
       
     ypts = tr_dens / gas_dens
     ypts = ypts[where(ypts le xrange[1])]
@@ -1128,5 +1124,5 @@ pro cosmoTracerGasDensCompRedshift
   ; end plot
   legend,legendStrs,textcolors=legendColors,/right,margin=0.25,charsize=!p.charsize-0.5,box=0
   end_PS
-stop
+
 end

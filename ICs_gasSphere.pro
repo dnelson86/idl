@@ -99,12 +99,12 @@ pro setupSingleSphereIso
   nBackGrid = 16 ;^3, nested twice
   
   ; load input sphere
-  h = loadSnapshotHeader(input_fname,snapNum='none',/verbose)
+  h = loadSnapshotHeader(fileName=input_fname,/verbose)
 
-  gas_pos  = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='pos')
-  gas_vel  = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='vel')
-  gas_id   = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='ids')
-  gas_u    = loadSnapshotSubset(input_fname,snapNum='none',partType='gas',field='u')
+  gas_pos  = loadSnapshotSubset(fileName=input_fname,partType='gas',field='pos')
+  gas_vel  = loadSnapshotSubset(fileName=input_fname,partType='gas',field='vel')
+  gas_id   = loadSnapshotSubset(fileName=input_fname,partType='gas',field='ids')
+  gas_u    = loadSnapshotSubset(fileName=input_fname,partType='gas',field='u')
   
   ; offset template position to box center
   gas_pos += boxSize/2.0
@@ -117,7 +117,8 @@ pro setupSingleSphereIso
   ; add nested background grid
   boxSizeInner = ceil((max(gas.pos)-min(gas.pos))/100) * 100.0
 
-  gas = addICBackgroundGrid(gas, boxSize=boxSizeInner, boxCen=boxSize/2.0, nBackGrid=nBackGrid)
+  gas = addICBackgroundGrid(gas, boxSize=boxSizeInner, $
+                            boxCen=[boxSize/2.0,boxSize/2.0,boxSize/2.0], nBackGrid=nBackGrid)
   gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid)
 
   ; save
