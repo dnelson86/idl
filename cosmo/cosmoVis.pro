@@ -8,20 +8,21 @@ pro makeArepoFoFBsub
 
   ; config
   res = 256
-  run = 'gadget'
+  run = 'tracerMC'
   ;f = '10'
   
   sP = simParams(res=res,run=run)
 
-  snapRange = [60,99,1]
+  snapRange = [189,189,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 32 ; needed nodes: 128^3=0.5 (n4tile4), 256^3=4 (n32tile4)
+  nProcs    = 32 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
+                 ;               256^3=4 (n32tile4 PartAllocFactor=3)
   ptile     = 4 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
-  excludeHosts = ['hero2701','hero1008','hero2405','hero1603'] ;leave empty otherwise
+  excludeHosts = ['hero2402'] ;leave empty otherwise
  
   paramFile = "param_fof.txt"
 
@@ -50,10 +51,10 @@ pro makeArepoFoFBsub
     
     ; write header
     printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q keck'
+    printf,lun,'#BSUB -q nancy'
     printf,lun,'#BSUB -J fof_' + str(snap) + ''
     printf,lun,'#BSUB -n ' + str(nProcs)
-    printf,lun,'#BSUB -R "' + selectStr + 'rusage[mem=31000] span[ptile=' + str(ptile) + ']"'
+    printf,lun,'#BSUB -R "' + selectStr + 'span[ptile=' + str(ptile) + ']"' ;rusage[mem=31000]
     printf,lun,'#BSUB -x'
     printf,lun,'#BSUB -o run_fof_'+str(snap)+'.out'
     printf,lun,'#BSUB -g /dnelson/fof' ; 4 concurrent jobs limit automatically

@@ -252,7 +252,7 @@ end
 
 ; galCatRepParentIDs(): for the galaxy catalog, replicate the list of ordered parent IDs such that
 ;                       the return array is the same size as the number of gas particle ids with
-;                       each element the id of its parent
+;                       each element the id of its parent subgroup/galaxy group/groupmember group
 ;
 ; priParentIDs=1 : should be the primary parent group ID for each group,
 ;                  e.g. priParentIDs=gcIDList(gc=gc,select='pri')
@@ -299,13 +299,15 @@ function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs
     return,r
 end
 
-; galCatParentProperties: calculate some property of the parent galaxy/group for every gas particle
+; galCatParentProperties: calculate some property of the parent galaxy/group for every gas elements
 ;                         in the galaxy catalog at some snapshot
 ; virTemp=1 : virial temperature
 ; mass=1    : total mass (from catalog, dm+baryon)
 ; rVir=1    : virial radius (r_200 critical)
+; parNorm   : 'pri' or 'sec' (if pri then return properties of primary parent even for gas elements
+;             in secondary/"satelitte" subgroups) (if sec effectively ignored, this is default behavior)
 
-function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir
+function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir, parNorm=parNorm
 
   forward_function galaxyCat, snapNumToRedshift, codeMassToLogMsun
 
@@ -316,8 +318,23 @@ function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir
   galcat = galaxyCat(sP=sP)
 
   ; replicate parent IDs
-  gcInd = galCatRepParentIDs(galcat=galcat)
-  
+  if keyword_set(parNorm) then begin
+    if parNorm eq 'pri' then begin
+      ; replicate parent IDs (of PRIMARY)
+      priParentIDs = gcIDList(gc=gc,select='pri')
+      gcInd = galCatRepParentIDs(galcat=galcat,priParentIDs=priParentIDs)
+      priParentIDs = !NULL
+    endif
+    if parNorm eq 'sec' then begin
+      ; do the usual (use most direct, e.g. secondary, parent)
+      gcInd = galCatRepParentIDs(galcat=galcat)
+    endif
+    if parNorm ne 'pri' and parNorm ne 'sec' then message,'Error! Unrecognized parNorm'
+  endif else begin
+    ; parNorm not specified, do the usual (use most direct, e.g. secondary, parent)
+    gcInd = galCatRepParentIDs(galcat=galcat)
+  endelse
+   
   ; arrays
   gal  = fltarr(n_elements(galcat.galaxyIDs))
   gmem = fltarr(n_elements(galcat.groupmemIDs))
@@ -336,10 +353,10 @@ function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir
     gal  = gc.subgroupMass[gcInd.gal]
     gmem = gc.subgroupMass[gcInd.gmem]
     
-    redshift = snapNumToRedshift(snap=sP.snap)
+    redshift = snapNumToRedshift(sP=sP)
   
-    gal  = codeMassToVirTemp(gal,redshift)
-    gmem = codeMassToVirTemp(gmem,redshift)
+    gal  = codeMassToVirTemp(gal,sP=sP)
+    gmem = codeMassToVirTemp(gmem,sP=sP)
   endif
   
   if keyword_set(rVir) then begin
@@ -827,7 +844,7 @@ end
 
 function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap
 
-  if not keyword_set(sP) then stop
+  if not keyword_set(sP) then message,'Error: Need sP to convert snapshot number to redshift!'
 
   saveFileName = sP.derivPath + sP.savPrefix + '_snapnum.redshift.sav'
 
@@ -879,18 +896,14 @@ function rhoTHisto, dens_in, temp_in, mass=mass, nbins=nbins, plot=plot
   binSizeRho  = (rMinMax[1]-rMinMax[0]) / nbins
   binSizeTemp = (tMinMax[1]-tMinMax[0]) / nbins
   
-  if not keyword_set(mass) then begin
-    ; hist_2d (no weighting)
-    h2rt = hist_2d(dens,temp,bin1=binSizeRho,bin2=binSizeTemp,$
-                   min1=rMinMax[0],min2=tMinMax[0],max1=rMinMax[1]+binSizeRho,max2=tMinMax[1]+binSizeTemp)
-    ; h2rt /= float(max(h2rt)) ;norm s.t. colorbar gives fraction wrt max cell
-  endif else begin
-    ; hist2d (weighted)
-    h2rt = hist2d(dens,temp,mass,$
-                  binsize1=binsizeRho,binsize2=binSizeTemp,$
-                  min1=rMinMax[0],min2=tMinMax[0],max1=rMinMax[1]+binSizeRho,max2=tMinMax[1]+binSizeTemp)
-  endelse
-
+  ; if not mass weighting assign equal weights
+  if not keyword_set(mass) then mass = replicate(1.0,n_elements(dens))
+  
+  ; use hist_nd with centered bins and boundary fixes
+  h2rt = hist_nd_weight(transpose([[dens],[temp]]),weight=mass,[binSizeRho,binSizeTemp],$
+                        min=[rMinMax[0]-binSizeRho*0.5,tMinMax[0]-binSizeTemp*0.5],$
+                        max=[rMinMax[1]+binSizeRho*0.49,tMinMax[1]+binSizeTemp*0.49])
+  
   ; plot
   if keyword_set(plot) then begin
     ; color table
@@ -898,7 +911,7 @@ function rhoTHisto, dens_in, temp_in, mass=mass, nbins=nbins, plot=plot
       
     tvim,h2rt,pcharsize=!p.charsize-1.0,scale=1,clip=[10,100],$;,/c_map
          xtitle="log ("+textoidl("\rho / \rho_{crit}")+")",ytitle="log (T [K])",$
-         stitle="Total Mass (Msun)",barwidth=0.5,lcharsize=!p.charsize-1.5,$
+         stitle="Total Mass ("+textoidl("M_{sun}")+")",barwidth=0.5,lcharsize=!p.charsize-1.5,$
          xrange=[-2.0,8.0],yrange=[3.0,7.0],$;xrange=rMinMax,yrange=tMinMax,$
          /rct;,nodata=0,rgb_nodata=[1.0,1.0,1.0] ;display zeros as white not black
   endif

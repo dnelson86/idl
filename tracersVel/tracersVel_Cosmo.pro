@@ -122,22 +122,24 @@ function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
     tr_par_ind = cosmoTracerVelParents(sP=sP,/getInds)
   
     ; reverse histogram
-    child_counts = histogram(tr_par_ind,rev=child_inds)
+    child_counts = histogram(tr_par_ind,min=0,rev=child_inds)
   endif  
   
   ; find gas cells with at least one child tracer
-  numChildren = child_inds[gasInds+1] - child_inds[gasInds]
+  ;numChildren = child_inds[gasInds+1] - child_inds[gasInds] ; equivalent to below
+  child_counts = child_counts[gasInds]
   
-  w = where(numChildren gt 0,count)
+  w = where(child_counts gt 0,count)
   if (count eq 0) then return, []
   
   ; add all children tracer indices to keeper array
-  tr_inds = lonarr(total(numChildren))
+  if total(child_counts,/pres) gt 2e9 then stop ; change tr_inds to lon64arr
+  tr_inds = ulonarr(total(child_counts,/pres))
   start = 0L
   
   foreach gasInd,gasInds[w],i do begin
-    tr_inds[start:start+numChildren[w[i]]-1] = child_inds[child_inds[gasInd]:child_inds[gasInd+1]-1]
-    start += numChildren[w[i]]
+    tr_inds[start:start+child_counts[w[i]]-1] = child_inds[child_inds[gasInd]:child_inds[gasInd+1]-1]
+    start += child_counts[w[i]]
   endforeach
   
   ; check for 32 bit long overflow
@@ -145,7 +147,7 @@ function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   
   ; reduce memory of return
   if max(child_counts) lt 32767 then child_counts = uint(child_counts)
-  
+
   ; debug: (slower loop with concat)
   ;tr_inds2 = []
   ;foreach gasInd,gasInds do begin

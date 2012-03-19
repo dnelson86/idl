@@ -127,21 +127,17 @@ function getDensityMinMax, densBase, nSnapshots
 
 end
 
-; loadSnapshot():
-;
-; inputs:  fBase, i
-; outputs: h=header returned
-;          pos,vel,id,mass,u,rho,hsml overwritten with data
+; loadSnapshot(): load an old (non-HDF5) snapshot, currently gas only
 
-function loadSnapshot, fBase, i, $
-                       pos, vel, id, mass, u, rho, hsml
-
+function loadSnapshot, fileBase, m
+  compile_opt obsolete
+  
   ;set filename
-  if (str(i) eq 'none') then begin
-    f = fBase
+  if (str(m) eq 'none') then begin
+    f = fileBase
   endif else begin  
-    ext = string(i,format='(i3.3)')
-    f = fBase + ext
+    ext = string(m,format='(i3.3)')
+    f = fileBase + ext
   endelse
   
   ; check HDF5 format
@@ -164,117 +160,56 @@ function loadSnapshot, fBase, i, $
       }
   
   openr,1,f,/f77_unformatted
-    ;read header
+    ; read header
     readu,1,h
 
     nGas = h.nPartTot[0]
     
-    ;read blocks for all gas particles
-    pos = fltarr(3,nGas)
-    vel = fltarr(3,nGas)
-    id  = lonarr(nGas)
-    readu,1, pos
-    readu,1, vel
-    readu,1, id
-    
     ; masses for variable mass particles (usually gas+stars)
-    ind=where((h.nPartTot gt 0) and (h.massTable eq 0))
+    ind = where((h.nPartTot gt 0) and (h.massTable eq 0))
     
-    if ind[0] ne -1 then begin
-      nMass = total(h.nPartTot[ind])
-      mass = fltarr(nMass)
-      readu,1,mass
-    endif
+    nMass = 0
+    if ind[0] ne -1 then nMass = total(h.nPartTot[ind])
     
-    ; internal energy per unit mass
-    u=fltarr(nGas)
-    readu,1,u
+    ; create structure for gas return
+    gas = { h    : h              ,$
+            pos  : fltarr(3,nGas) ,$
+            vel  : fltarr(3,ngas) ,$
+            id   : lonarr(nGas)   ,$
+            mass : fltarr(nMass)  ,$
+            u    : fltarr(nGas)    }
+            
+    ; read gas values that are always present
+    readu,1, gas.pos
+    readu,1, gas.vel
+    readu,1, gas.id
     
-    ; comoving gas density
-    if (str(i) ne 'none') then begin ;rho is added in snapshots but doesn't exist in ICs
-      rho=fltarr(nGas)
-      readu,1,rho
+    if nMass gt 0 then readu,1, gas.mass ; read masses if present
+    
+    readu,1, gas.u ; internal energy per unit mass
+    
+    ; fields that are written to snapshots but do not exist in ICs
+    if (str(i) ne 'none') then begin ; how to tell this is a snapshot?
+    
+      gas2 = { rho   : fltarr(nGas) ,$
+               nelec : fltarr(nGas) ,$
+               nh0   : fltarr(nGas) ,$
+               hsml  : fltarr(nGas)  }
+               
+      readu,1, gas2.rho
     
       if h.flagSFR gt 0 then begin
-        ; gas electron abundance relative to hydrogen
-        Nelec=fltarr(nGas)
-        readu,1,nElec
-        ; neutral hydrogen abundance relative to hydrogen
-        NH0=fltarr(nGas)
-        readu,1,NH0
+        readu,1, gas.nelec ; gas electron abundance relative to hydrogen
+        readu,1, gas.nh0   ; neutral hydrogen abundance relative to hydrogen
       endif
       
-      ; SPH smoothing length
-      hsml=fltarr(nGas)
-      readu,1,hsml  
+      readu,1, gas.hsml ; SPH smoothing length 
+      gas = create_struct(gas,gas2) ;concat
    endif                  
   
   close,1
   
-  return, h
-end
-
-; loadSnapshotHDF5(): GAS ONLY
-;
-; inputs:  fBase, i
-; outputs: h=header returned
-;          pos,vel,id,mass,u,rho overwritten with data
-
-function loadSnapshotHDF5, fBase, i, $
-                           pos, vel, id, mass, u, rho, vol, hsml
-
-  ; set filename
-  if (i ne 'none') then begin
-    ext = string(i,format='(i3.3)')
-    f = fBase + ext + '.hdf5'
-  endif else begin
-    f = fBase
-  endelse
-  
-  ; check HDF5 format
-  if not h5f_is_hdf5(f) then begin
-    print, 'error: snap is not HDF5.'
-    return,0
-  endif
-    
-  ; recursively load whole hdf5 file into a structure
-  s = h5_parse(f,/read_data)
-  
-  ; header structure
-  h = { headerHDF                                                      ,$
-        nPartThisFile       : s.header.numPart_ThisFile._DATA          ,$
-        nPartTot            : s.header.numPart_Total._DATA             ,$
-        nPartTotHighword    : s.header.numPart_Total_Highword._DATA    ,$
-        massTable           : s.header.massTable._DATA                 ,$
-        time                : s.header.time._DATA                      ,$
-        redshift            : s.header.redshift._DATA                  ,$
-        boxSize             : s.header.boxSize._DATA                   ,$
-        numFilesPerSnapshot : s.header.numFilesPerSnapshot._DATA       ,$
-        Omega0              : s.header.Omega0._DATA                    ,$
-        OmegaLambda         : s.header.OmegaLambda._DATA               ,$
-        hubbleParam         : s.header.hubbleParam._DATA               ,$
-        flagSFR             : s.header.flag_SFR._DATA                  ,$
-        flagCooling         : s.header.flag_Cooling._DATA              ,$
-        flagStellarAge      : s.header.flag_StellarAge._DATA           ,$
-        flagMetals          : s.header.flag_Metals._DATA               ,$
-        flagFeedback        : s.header.flag_Feedback._DATA             ,$
-        flagDoublePrecision : s.header.flag_DoublePrecision._DATA      $
-        ;compositionVecLen   : s.header.Composition_Vector_Length._DATA  $ ;not in Gadget3 output 
-      }
-  
-  ; particle type 0 (gas)
-  pos  = s.parttype0.coordinates._DATA
-  vel  = s.parttype0.velocities._DATA
-  id   = s.parttype0.particleIDs._DATA
-  mass = s.parttype0.masses._DATA
-  u    = s.parttype0.internalEnergy._DATA
-  rho  = s.parttype0.density._DATA
-  vol  = s.parttype0.volume._DATA
-  hsml = s.parttype0.smoothingLength._DATA
-  if (total(tag_names(s.parttype0) eq 'VOLUME') ge 1.0) then $
-    vol  = s.parttype0.volume._DATA
-
-  return, h
+  return, gas
 end
 
 ; writeICFile(): write old Gadget format IC file with gas particles and tracers
@@ -449,7 +384,7 @@ pro writeICFileHDF5, fOut, boxSize, pos, vel, id, massOrDens, u
   
   s.HEADER.COMPOSITION_VECTOR_LENGTH._DATA = 0 ;?
 
-  ; for some reason these are expected IO blocks even for ICs
+  ; these are IO blocks for snapshots but not for ICs
   s1 = mod_struct(s.PARTTYPE0,'DENSITY',/delete)
   s1 = mod_struct(s1,'SMOOTHINGLENGTH',/delete)
   s1 = mod_struct(s1,'VOLUME',/delete)
