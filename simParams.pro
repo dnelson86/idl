@@ -15,7 +15,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        arepoPath:    '',$    ; root path to Arepo and param.txt for e.g. projections/fof
        savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
        boxSize:      0.0,$   ; boxsize of simulation, kpc
-       trMassConst:  0.0,$   ; mass per tracer under equal mass assumption (=TargetGasMass)
+       targetGasMass:0.0,$   ; refinement/derefinement target, equal to SPH gas mass in equivalent run
+       trMassConst:  0.0,$   ; mass per tracerMC under equal mass assumption (=TargetGasMass/trMCPerCell)
        trMCPerCell:  0,$     ; starting number of monte carlo tracers per cell (copied from f input, 0=none)
        gravSoft:     0.0,$   ; gravitational softening length (ckpc)
        snapRange:    [0,0],$ ; snapshot range of simulation
@@ -48,6 +49,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     
     if keyword_set(f) then stop ; shouldn't be specified
   
+    if (res eq 128) then r.targetGasMass = 4.76446157e-03
+    if (res eq 256) then r.targetGasMass = 5.95556796e-04
+    if (res eq 512) then r.targetGasMass = 7.44447120e-05
+  
     if (res eq 128) then r.gravSoft = 4.0
     if (res eq 256) then r.gravSoft = 2.0
     if (res eq 512) then r.gravSoft = 1.0
@@ -74,9 +79,11 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     if keyword_set(f) then stop ; shouldn't be specified
     if (res eq 128) or (res eq 256) then stop ; DELETED
     
-    if (res eq 128) then r.trMassConst = 4.76446157e-03
-    if (res eq 256) then r.trMassConst = 5.95556796e-04
-    if (res eq 512) then r.trMassConst = 7.44447120e-05
+    if (res eq 128) then r.targetGasMass = 4.76446157e-03
+    if (res eq 256) then r.targetGasMass = 5.95556796e-04
+    if (res eq 512) then r.targetGasMass = 7.44447120e-05
+    
+    r.trMassConst = r.targetGasMass
     
     if (res eq 128) then r.gravSoft = 4.0
     if (res eq 256) then r.gravSoft = 2.0
@@ -104,9 +111,11 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     if keyword_set(f) then stop ; shouldn't be specified, fixed at 20
     if (res eq 512) then stop ; don't exist yet
     
-    if (res eq 128) then r.trMassConst = 4.76446157e-03 / r.trMCPerCell
-    if (res eq 256) then r.trMassConst = 5.95556796e-04 / r.trMCPerCell
-    if (res eq 512) then r.trMassConst = 7.44447120e-05 / r.trMCPerCell
+    if (res eq 128) then r.targetGasMass = 4.76446157e-03
+    if (res eq 256) then r.targetGasMass = 5.95556796e-04
+    if (res eq 512) then r.targetGasMass = 7.44447120e-05
+    
+    r.trMassConst = r.targetGasMass / r.trMCPerCell
     
     if (res eq 128) then r.gravSoft = 4.0
     if (res eq 256) then r.gravSoft = 2.0
@@ -132,8 +141,11 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.trMCPerCell   = -1 ; velocity tracers
 
     if keyword_set(f) then stop
+    if (res ne 128) then stop ; only 128 exists
     
-    r.trMassConst   = 4.76446157e-03
+    r.targetGasMass = 4.76446157e-03
+    r.trMassConst   = r.targetGasMass
+    
     r.gravSoft      = 4.0
 
     r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/output/'
@@ -155,10 +167,13 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = -1 ; velocity tracers
     
-    if keyword_set(f) then stop
+    if keyword_set(f) then stop ; shouldn't be set
+    if (res ne 128) and (res ne 256) then stop ; only 128 and 256 exist
   
-    if (res eq 128) then r.trMassConst = 4.76446157e-03
-    if (res eq 256) then r.trMassConst = 5.95556796e-04
+    if (res eq 128) then r.targetGasMass = 4.76446157e-03
+    if (res eq 256) then r.targetGasMass = 5.95556796e-04
+    
+    r.trMassConst   = r.targetGasMass
     
     if (res eq 128) then r.gravSoft = 4.0
     if (res eq 256) then r.gravSoft = 2.0
@@ -175,16 +190,19 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     return,r
   endif
   
-  if (run eq 'tracerMC.nonrad') then begin ; DEV
+  if (run eq 'tracerMC.nonrad') then begin ; DEV.ref
     r.boxSize       = 20000.0
     r.snapRange     = [0,38]
     r.groupCatRange = [15,38]
     
     if not keyword_set(f) then stop
+    if (res ne 128) and (res ne 256) then stop ; only 128 and 256 exist
     r.trMCPerCell = fix(f)
   
-    if (res eq 128) then r.trMassConst = 4.76446157e-03 / float(f)
-    if (res eq 256) then r.trMassConst = 5.95556796e-04 / float(f)
+    if (res eq 128) then r.targetGasMass = 4.76446157e-03
+    if (res eq 256) then r.targetGasMass = 5.95556796e-04
+    
+    r.trMassConst = r.targetGasMass / float(r.trMCPerCell)
     
     if (res eq 128) then r.gravSoft = 4.0
     if (res eq 256) then r.gravSoft = 2.0
@@ -201,68 +219,19 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     return,r
   endif
   
-  if (run eq 'tracerMC.nonrad.noref') then begin ; DEV
+  if (run eq 'tracerMC') then begin ; DEV coolSF.GFM.ref
     r.boxSize       = 20000.0
     r.snapRange     = [0,38]
     r.groupCatRange = [15,38]
     
     if not keyword_set(f) then stop
-    r.trMCPerCell = fix(f)
-    
-    if (res eq 128) then r.trMassConst = 4.76446157e-03 / float(f)
-    if (res eq 256) then r.trMassConst = 5.95556796e-04 / float(f)
-    
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-  
-    r.simPath    = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.nonrad.noref/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.nonrad.noref/'
-    r.savPrefix  = 'R.f'+f
-    r.plotPath   = '/n/home07/dnelson/dev.tracerMC/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.nonrad.noref/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'tracerMC.noref') then begin ; DEV coolSF.GFM
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-    
-    if not keyword_set(f) then stop
+    if (res ne 128) and (res ne 256) then stop ; only 128 and 256 exist
     r.trMCPerCell = fix(f)
   
-    if (res eq 128) then r.trMassConst = 4.76446157e-03 / float(f)
-    if (res eq 256) then r.trMassConst = 5.95556796e-04 / float(f)
+    if (res eq 128) then r.targetGasMass = 4.76446157e-03
+    if (res eq 256) then r.targetGasMass = 5.95556796e-04
     
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-  
-    r.simPath    = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.coolSF.GFM.noref/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.coolSF.GFM.noref/'
-    r.savPrefix  = 'S.f'+f
-    r.plotPath   = '/n/home07/dnelson/dev.tracerMC/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.coolSF.GFM.noref/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'tracerMC.ref') then begin ; DEV coolSF.GFM
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-    
-    if not keyword_set(f) then stop
-    r.trMCPerCell = fix(f)
-  
-    if (res eq 128) then r.trMassConst = 4.76446157e-03 / float(f)
-    if (res eq 256) then r.trMassConst = 5.95556796e-04 / float(f)
+    r.trMassConst = r.targetGasMass / float(r.trMCPerCell)
     
     if (res eq 128) then r.gravSoft = 4.0
     if (res eq 256) then r.gravSoft = 2.0

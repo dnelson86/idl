@@ -22,34 +22,47 @@ function getTypeSortedIDList, sP=sP, gc=gc
   endif
     
   ; for each type, load IDs, match to group cat IDs
-  gas_ids  = loadsnapshotSubset(sP=sP,partType='gas',field='ids')
-  match,gas_ids,gc.IDs,gas_ind,gc_ind_gas,count=count_gas,/sort
-  gas_ids  = !NULL
+  count_gas = 0
+  if h.nPartTot[partTypeNum('gas')] gt 0 then begin
+    gas_ids  = loadsnapshotSubset(sP=sP,partType='gas',field='ids')
+    match,gas_ids,gc.IDs,gas_ind,gc_ind_gas,count=count_gas,/sort
+    gas_ids  = !NULL
+    
+    ; reorder indices into ID arrays to match order found in gc.IDs
+    gc_ind_gas   = gc_ind_gas[sort(gc_ind_gas)]
+    
+    ; verify counts
+    if (count_gas ne total(gc.groupLenType[partTypeNum('gas'),*])) then stop
+  endif
   
-  dm_ids   = loadsnapshotSubset(sP=sP,partType='dm',field='ids')
-  match,dm_ids,gc.IDs,dm_ind,gc_ind_dm,count=count_dm,/sort
-  dm_ids   = !NULL
+  count_dm = 0
+  if h.nPartTot[partTypeNum('dm')] gt 0 then begin
+    dm_ids = loadsnapshotSubset(sP=sP,partType='dm',field='ids')
+    match,dm_ids,gc.IDs,dm_ind,gc_ind_dm,count=count_dm,/sort
+    dm_ids = !NULL
+    gc_ind_dm = gc_ind_dm[sort(gc_ind_dm)]
+    if (count_dm ne total(gc.groupLenType[partTypeNum('dm'),*])) then stop
+  endif
   
-  trvel_ids = loadsnapshotSubset(sP=sP,partType='tracerVel',field='ids')
-  match,trvel_ids,gc.IDs,trvel_ind,gc_ind_trvel,count=count_trvel,/sort
-  trvel_ids   = !NULL
+  count_trvel = 0
+  if h.nPartTot[partTypeNum('tracerVel')] gt 0 then begin
+    trvel_ids = loadsnapshotSubset(sP=sP,partType='tracerVel',field='ids')
+    match,trvel_ids,gc.IDs,trvel_ind,gc_ind_trvel,count=count_trvel,/sort
+    trvel_ids = !NULL
+    gc_ind_trvel = gc_ind_trvel[sort(gc_ind_trvel)]
+    if (count_trvel ne total(gc.groupLenType[partTypeNum('tracerVel'),*])) then stop
+  endif
   
-  star_ids = loadsnapshotSubset(sP=sP,partType='star',field='ids')
-  match,star_ids,gc.IDs,star_ind,gc_ind_star,count=count_star,/sort
-  star_ids = !NULL
+  count_star = 0
+  if h.nPartTot[partTypeNum('stars')] gt 0 then begin
+    star_ids = loadsnapshotSubset(sP=sP,partType='star',field='ids')
+    match,star_ids,gc.IDs,star_ind,gc_ind_star,count=count_star,/sort
+    star_ids = !NULL
+    gc_ind_star  = gc_ind_star[sort(gc_ind_star)]
+    if (count_star ne total(gc.groupLenType[partTypeNum('stars'),*])) then stop
+  endif
   
-  ; reorder indices into ID arrays to match order found in gc.IDs
-  gc_ind_gas   = gc_ind_gas[sort(gc_ind_gas)]
-  gc_ind_dm    = gc_ind_dm[sort(gc_ind_dm)]
-  gc_ind_trvel = gc_ind_trvel[sort(gc_ind_trvel)]
-  gc_ind_star  = gc_ind_star[sort(gc_ind_star)]
-  
-  ; verify counts
   if (count_gas + count_dm + count_trvel + count_star ne total(gc.groupLen)) then stop
-  if (count_gas ne total(gc.groupLenType[partTypeNum('gas'),*])) then stop
-  if (count_dm ne total(gc.groupLenType[partTypeNum('dm'),*])) then stop
-  if (count_trvel ne total(gc.groupLenType[partTypeNum('tracerVel'),*])) then stop
-  if (count_star ne total(gc.groupLenType[partTypeNum('stars'),*])) then stop
   
   start_gas   = 0L
   start_dm    = 0L

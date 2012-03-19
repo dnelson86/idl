@@ -8,10 +8,12 @@
 ; --------------------------
 
 function str, tString
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   return, strcompress(string(tString),/remove_all)
 end
 
 function isnumeric, input
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   on_ioerror, false
   test = double(input)
   return, 1
@@ -19,6 +21,7 @@ function isnumeric, input
 end
 
 function getColor, i, name=name
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function getUnits
   units = getUnits()
   ind = (i) mod (n_elements(units.colors)-1)
@@ -28,11 +31,13 @@ function getColor, i, name=name
 end
 
 function linspace, a, b, N
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   vals = findgen(N) / (N-1.0) * (b-a) + a
   return, vals
 end
 
 function logspace, a, b, N, mid=mid
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   vals = findgen(N) / (N-1.0) * (b-a) + a
   
   ; return mid-bin points instead
@@ -45,10 +50,12 @@ function logspace, a, b, N, mid=mid
 end
 
 function nuniq, arr
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   return, n_elements(uniq(arr,sort(arr)))
 end
 
 function shuffle, array, seed=seed
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   if n_elements(seed) ne 0 then iseed=seed
   return,array[sort(randomu(iseed,n_elements(array)))]
 end
@@ -56,6 +63,8 @@ end
 ; partTypeNum(): convert a string description of a particle type to its numeric value
 
 function partTypeNum, partType
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   if not isnumeric(partType) then partType = strlowcase(str(partType))
 
@@ -77,6 +86,71 @@ function partTypeNum, partType
   return, partType
 end
 
+; loadColorTable(): load a custom or builtin IDL color table into the display
+;                   if rgb_table specified do not load into display, just return the table
+
+pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  ; cubehelix CT implementation
+  if ctName eq 'helix' then begin
+    ; helix parameters
+    start = 1.5    ; color, 1=r,2=g,3=b,0.5=purple
+    rots  = -1.0 ; color rotations, typically -1.5 to 1.5
+    hue   = 1.0  ; hue intensity scaling, typically 0 (BW) to 1
+    gamma = 1.0  ; gamma intensity expontent (1=normal/linear,<1 emphasize low vals,>1 emphasize high vals)
+    
+    ; calculate R,G,B based on helix parameters
+    nlev = 256
+    RGB = fltarr(nlev,3)
+    
+    fracs = findgen(nlev)/float(nlev-1)
+    phi   = 2*!pi*(start/3.0 + 1.0 + rots*fracs)
+    fracs = fracs^float(gamma)
+    amplt = hue * fracs * (1-fracs)/2.0
+    
+    RGB[*,0] = fracs + amplt * (-0.14861*cos(phi) + 1.78277*sin(phi)) ;R
+    RGB[*,1] = fracs + amplt * (-0.29227*cos(phi) - 0.90649*sin(phi)) ;G
+    RGB[*,2] = fracs + amplt * (+1.97294*cos(phi)) ;B
+    
+    ; clip to [0,1] and expand to [0,255]
+    w = where(RGB lt 0.0,count)
+    if count gt 0 then RGB[w] = 0.0
+    w = where(RGB gt 1.0,count)
+    if count gt 0 then RGB[w] = 1.0
+    
+    RGB *= 255.0 ; cubehelix creates RGB in [0,1] but we use [0,255] for IDL display devices
+    RGB = fix(round(RGB)) ; rounded INT
+    
+    ; reverse (light=low to dark=high) if requested
+    if keyword_set(reverse) then RGB = reverse(RGB)
+
+    ; fill rgb_table if requested, or if not, load RGB into display
+    if arg_present(rgb_table) then rgb_table = RGB
+    
+    if not arg_present(rgb_table) then begin
+      ; start above zero on the CT?
+      cbot = 0
+      if n_elements(bottom) gt 0 then cbot = bottom > 0 < nlev-1
+      
+      tvlct, RGB, cbot
+    endif
+    return
+  endif
+  
+  ; otherwise, load normal IDL table
+  case ctName of
+    'bw linear'          : loadct,0,bottom=bottom,rgb_table=rgb_table,/silent
+    'green-white linear' : loadct,8,bottom=bottom,rgb_table=rgb_table,/silent
+    'green-white exp'    : loadct,9,bottom=bottom,rgb_table=rgb_table,/silent
+    'blue-red'           : loadct,11,bottom=bottom
+    'plasma'             : loadct,32,bottom=bottom,rgb_table=rgb_table,/silent
+    'blue-red2'          : loadct,33,bottom=bottom,rgb_table=rgb_table,/silent
+  endcase
+
+end
+
 ; basic IO
 ; --------
 
@@ -84,6 +158,8 @@ end
 ;            skip headerLines at the beginning and put their contents as a string into header
 
 function loadCSV, headerLines, fileName, ptStruct, header=header;, format=format
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ;prepare data containers
   nRows = File_Lines(fileName)
@@ -112,6 +188,8 @@ end
 
 function loadBinary, fileName, ptStruct
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
   openR, lun, fileName, /GET_LUN
   
     ; header
@@ -133,6 +211,8 @@ end
 ; loadBinarySequence(): right now just reads Stars_X_Y where X=num, Y=node
 
 function loadBinarySequence, fileBase, ptStruct
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   fileNames = file_search(fileBase+'*')
   pCount = 0UL
@@ -181,6 +261,8 @@ end
 
 pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
   if not keyword_set(xs) then xs=7.5
   if not keyword_set(ys) then ys=5.0
   if n_elements(eps) eq 0 then eps=1
@@ -209,6 +291,8 @@ end
 
 pro end_PS, pngResize=pngResize, deletePS=deletePS
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
  ;PNG size=[xs,ys]*300*(resize/100)
 
   if not keyword_set(pngResize) then $
@@ -222,6 +306,8 @@ end
 ; save_eps(): idl 8.x compatible EPS save
 
 pro save_eps, p, plotName, width=width, height=height, savePDF=savePDF, savePNG=savePNG
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   if not keyword_set(width)  then width=7.5
   if not keyword_set(height) then height=5.0
@@ -242,13 +328,14 @@ end
 ; reportCPUThreads(): return info from CPU structure for threading pool
 
 pro reportCPUThreads
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   print,'!CPU.HW_NCPU = ' + str(!CPU.HW_NCPU) + ' TPool_NThreads = ' + str(!CPU.TPOOL_NTHREADS)
 end
 
 ; testBridgePro
 
 pro testBridgePro
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   ; retrieve from $MAIN$
   ;redshift = SCOPE_VARFETCH("redshift", LEVEL=1)
   ;res      = SCOPE_VARFETCH("res", LEVEL=1)
@@ -266,7 +353,7 @@ end
 ; runBridge():
 
 pro runBridge, res=res
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   reportCPUThreads
   
   redshifts = [3.0,2.0,1.0,0.0]
@@ -295,7 +382,7 @@ end
 ; flatten_list
 
 function flatten_list, list
-  
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   if (list.Count() eq 0) then return,[0]
   
   arr = []
@@ -311,6 +398,8 @@ end
 
 function removeIntersectionFromB, A, B, union=union
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
     match, A, B, A_ind, B_ind, count=count
     
     A_ind = !NULL ;unused
@@ -321,10 +410,8 @@ function removeIntersectionFromB, A, B, union=union
       if (B_ind[0] ne -1L) then all[B_ind] = 1B
       w = where(all eq 0B, ncomp)
     
-      if (ncomp ne n_elements(B)-count) then begin
-        print,'removeIntersectionFromB: ERROR ',ncomp,n_elements(B),count
-        return,0
-      endif
+      if (ncomp ne n_elements(B)-count) then $
+        message,'removeIntersectionFromB: ERROR!'
       
       ; set union return
       if (keyword_set(union)) then union=B[B_ind]
@@ -341,6 +428,8 @@ end
 ;                  not repeated indices as in the case of parentIDs for tracers)
 
 function getIDIndexMap, ids, minid=minid
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   minid = long(min(ids))
   maxid = long(max(ids))
@@ -373,6 +462,8 @@ end
 
 function calcHSML, Pos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
   if (ndims ne 1 and ndims ne 2 and ndims ne 3) then stop
 
   ; prepare inputs
@@ -404,6 +495,8 @@ end
 
 function calcNN, Pos_SrcTargs, Pos_SrcOrigs, boxSize=boxSize, ndims=ndims
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
   ; prepare inputs
   n_srcTargs = long( n_elements(Pos_SrcTargs[0,*]) )
   n_srcOrigs = long( n_elements(Pos_SrcOrigs[0,*]) )
@@ -427,6 +520,8 @@ end
 
 function calcSphMap, pos, hsml, mass, axes=axes, boxSize=boxSize, boxCen=boxCen, $
                      nPixels=nPixels, ndims=ndims
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; prepare inputs
   npos = (size(pos))[2]
@@ -472,6 +567,8 @@ end
 
 function estimateDensityTophat, pos, mass=mass, ndims=ndims, nNGB=nNGB, boxSize=boxSize
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
   if (not keyword_set(nNGB) or not keyword_set(ndims)) then stop
 
   ; calculate smoothing lengths
@@ -503,6 +600,7 @@ end
 @cosmoLoad
 
 @cosmoAnalysis
+@cosmoHist
 @cosmoVis
 ;@cosmoSphere
 @cosmoPlot

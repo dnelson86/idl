@@ -84,10 +84,9 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
     endif
   
     ; color tables and scaling
-    loadct, 11, /silent ;11=blue-red
-    loadct, 11, rgb_table=rgbTable
-    tvlct, r, g, b, /get
-    
+    ;loadColorTable, 'blue-red', rgb_table=rgbTable
+    loadct,11,rgb_table=rgbTable
+
     if not keyword_set(minMax) then colorMinMax = minmax(df.dens)
     if keyword_set(minMax) then colorMinMax = minMax
     
@@ -109,9 +108,9 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
     pic = bytarr(3,df.nPixelsXY[0]*sideFac,df.nPixelsXY[1])
   
     ; stamp in main density
-    pic[0,0:df.nPixelsXY[0]-1,0:df.nPixelsXY[1]-1] = r[colindex]
-    pic[1,0:df.nPixelsXY[0]-1,0:df.nPixelsXY[1]-1] = g[colindex]
-    pic[2,0:df.nPixelsXY[0]-1,0:df.nPixelsXY[1]-1] = b[colindex]
+    pic[0,0:df.nPixelsXY[0]-1,0:df.nPixelsXY[1]-1] = rgbTable[colindex,0]
+    pic[1,0:df.nPixelsXY[0]-1,0:df.nPixelsXY[1]-1] = rgbTable[colindex,1]
+    pic[2,0:df.nPixelsXY[0]-1,0:df.nPixelsXY[1]-1] = rgbTable[colindex,2]
     
     if keyword_set(twoAxesSideBySide) then begin
       ; load other projection
@@ -137,9 +136,9 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
       colindex = byte(colindex)
       
       ; stamp in second density
-      pic[0,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = r[colindex]
-      pic[1,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = g[colindex]
-      pic[2,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = b[colindex]
+      pic[0,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = rgbTable[colindex,0]
+      pic[1,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = rgbTable[colindex,1]
+      pic[2,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = rgbTable[colindex,2]
     endif
     
     if keyword_set(densTempSideBySide) then begin
@@ -157,9 +156,9 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
       colindex = byte(colindex)
       
       ; stamp in temperature
-      pic[0,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = r[colindex]
-      pic[1,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = g[colindex]
-      pic[2,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = b[colindex]
+      pic[0,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = rgbTable[colindex,0]
+      pic[1,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = rgbTable[colindex,1]
+      pic[2,df.nPixelsXY[0]:2*df.nPixelsXY[0]-1,*] = rgbTable[colindex,2]
     endif
     
     ;rescale image
