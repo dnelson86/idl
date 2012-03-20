@@ -551,3 +551,75 @@ pro tracerMCGasStarBalance
   stop
   
 end
+
+; plotTracerMCTiming(): plot scalings for tracerMC+tracerVEL
+
+pro plotTracerMCTiming
+
+  ; data (n=1 MPI task, no domain decompositions)
+  trVel_trMC_perCell  = [1,     5,     20,    50]
+  trVel_trMC_runtimes = ([366.6, 384.0, 404.0, 462.8] + [364.7, 374.7, 403.3, 464.8])/2
+  
+  noVel_trMC_perCell  = [1,     5,     20,     50]
+  noVel_trMC_runtimes = ([346.0, 354.2, 384.9,  445.0] + [345.5, 355.2, 384.2, 446.0])/2
+  
+  noVel_noMC_runtime  = (342.0 + 343.3)/2
+  trVel_noMC_runtime  = (359.6 + 349.8)/2
+  
+  ; plot
+  start_PS, '/n/home07/dnelson/dev.tracerMC/trMC.timings.eps'
+    
+    xrange = [-2,52]
+    yrange = [0.98,1.4]
+    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+         xtitle="TracerMCPerCell",ytitle="CPU Time / No Tracer CPU Time",$
+         title="tracer timings (MPI n=1) evrard 1e4 gas (1e4 trVel)",$
+         xticks=3,xtickv=[1,5,20,50],xtickname=['1','5','20','50']
+         
+    fsc_plot,xrange,[1.0,1.0],line=1,color=fsc_color('light gray'),/overplot
+         
+    fsc_plot,trVel_trMC_perCell,trVel_trMC_runtimes/noVel_noMC_runtime,psym=-8,color=getColor(1),/overplot
+    fsc_plot,noVel_trMC_perCell,noVel_trMC_runtimes/noVel_noMC_runtime,psym=-8,color=getColor(2),/overplot
+    fsc_plot,[0.0],[trVel_noMC_runtime]/noVel_noMC_runtime,psym=8,color=getColor(3),/overplot
+    fsc_plot,[0.0],[noVel_noMC_runtime]/noVel_noMC_runtime,psym=8,color=getColor(4),/overplot
+    
+    ; legend
+    strings = ['trVel.trMC','noVel.trMC','trVel.noMC','noVel.noMC']
+    legend,strings,textcolor=getColor([1,2,3,4],/name),/top,/left,box=0
+         
+  end_PS
+  
+  ; data (n=2 MPI tasks, domain decomposition every timestep ~200 times)
+  trVel_trMC_perCell  = [1,     5,     20,    50]
+  trVel_trMC_runtimes = [474.6, 482.1, 520.6, 610.1] + [476.6, 486.9, 520.13, 597.8]
+  
+  noVel_trMC_perCell  = [1,     5,     20,     50]
+  noVel_trMC_runtimes = [446.0, 456.4, 494.4, 580.4] + [450.6, 458.4, 494.3, 573.4]
+  
+  noVel_noMC_runtime  = (445.4 + 444.4)/2
+  trVel_noMC_runtime  = (465.1 + 467.7)/2
+  
+  ; plot
+  start_PS, '/n/home07/dnelson/dev.tracerMC/trMC.timings2.eps'
+    
+    xrange = [-2,52]
+    yrange = [0.95,3.0]
+    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+         xtitle="TracerMCPerCell",ytitle="CPU Time / No Tracer CPU Time",$
+         title="tracer timings (MPI n=2, domain decomp everyTS)",$
+         xticks=3,xtickv=[1,5,20,50],xtickname=['1','5','20','50']
+         
+    fsc_plot,xrange,[1.0,1.0],line=1,color=fsc_color('light gray'),/overplot
+         
+    fsc_plot,trVel_trMC_perCell,trVel_trMC_runtimes/noVel_noMC_runtime,psym=-8,color=getColor(1),/overplot
+    fsc_plot,noVel_trMC_perCell,noVel_trMC_runtimes/noVel_noMC_runtime,psym=-8,color=getColor(2),/overplot
+    fsc_plot,[0.0],[trVel_noMC_runtime]/noVel_noMC_runtime,psym=8,color=getColor(3),/overplot
+    fsc_plot,[0.0],[noVel_noMC_runtime]/noVel_noMC_runtime,psym=8,color=getColor(4),/overplot
+    
+    ; legend
+    strings = ['trVel.trMC','noVel.trMC','trVel.noMC','noVel.noMC']
+    legend,strings,textcolor=getColor([1,2,3,4],/name),/top,/left,box=0
+         
+  end_PS
+
+end
