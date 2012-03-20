@@ -222,8 +222,9 @@ end
 ;             if this flag is set then read IDs and include them (if they exist)
 ;             also generate (GrNr,Type) sorted id list
 ; skipIDs=1 : acknowledge we are working with a STOREIDS type .hdf5 group cat and don't warn
+; getSortedIDs=1 : create a second ID list sorted by GrNr->Type for use with GroupOffsetType
 
-function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, verbose=verbose
+function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs=getSortedIDs, verbose=verbose
 
   if not keyword_set(verbose) then verbose = 0
   !except = 0 ;suppress floating point underflow/overflow errors
@@ -439,7 +440,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, verbose=verb
   endfor
   
   ; if ID read requested, create typeSortedIDList (and save), add to return structure
-  if keyword_set(readIDs) then begin
+  if keyword_set(readIDs) and keyword_set(getSortedIDs) then begin
     sfsorted = { IDsSorted:getTypeSortedIDList(sP=sP,gc=sf) }
     sf = create_struct(sf,sfsorted) ;concat
   endif

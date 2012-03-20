@@ -17,7 +17,7 @@ function cosmoCompMassFunctions, sP=sP, noPlot=noPlot
   units = getUnits()
 
   h  = loadSnapshotHeader(sP=sP)
-  gc = loadGroupCat(sP=sP,/verbose,/readIDs)
+  gc = loadGroupCat(sP=sP,/verbose,/readIDs,/getSortedIDs)
   
   dm_mass  = h.massTable[1]  
   
