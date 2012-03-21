@@ -603,6 +603,7 @@ end
 @cosmoHist
 @cosmoVis
 ;@cosmoSphere
+@cosmoPlotGalCat
 @cosmoPlot
 
 @tracersVel_Cosmo
