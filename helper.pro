@@ -599,6 +599,7 @@ end
 @cosmoUtil
 @cosmoLoad
 
+@mergerTree
 @cosmoAnalysis
 @cosmoHist
 @cosmoVis

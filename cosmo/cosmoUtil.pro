@@ -74,6 +74,37 @@ function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose
   return,snapNum
 end
 
+; mergerTreeChild(): construct a Child array given a Parent array
+; 
+; childPrev : if specified, compose the two mappings such that the returned Child points not at the
+;             immediate children of Parent but to a prior child of Parent (say, the first)
+
+function mergerTreeChild, Parent, ChildPrev=ChildPrev
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  Child = lonarr(max(Parent)+1)-1
+  for i=0UL,n_elements(Parent)-1L do if Parent[i] ne -1 then Child[Parent[i]] = i
+
+  ; compose with previous Child mapping?
+  if n_elements(ChildPrev) gt 0 then begin
+    ChildNew = lonarr(n_elements(Child))-1
+    
+    ; for each immediate Child, replace Cur->Child pointer by Cur->Child->PrevChild pointer
+    for i=0UL,n_elements(Child)-1 do begin
+      ; discard pointers to children greater than the maximum in ChildPrev, which can happen when
+      ; the Child pointed to is not part of the halo set being tracked (the composed mapping is
+      ; undefined for this Child)
+      if Child[i] lt n_elements(ChildPrev) then $
+        if Child[i] ne -1 then ChildNew[i] = ChildPrev[Child[i]] ; only follow valid Child links
+    endfor
+    
+    return, ChildNew
+  endif
+
+  return, Child
+end
+
 ; gcPriChildInd(): get the subgroup index of the primary subgroup of a given group, or -1 if none
 
 function gcPriChildInd, gc=gc, haloID=haloID
@@ -126,7 +157,7 @@ function gcIDList, sP=sP, gc=gc, select=select
   if (select eq 'pri') then begin
   
     ; "background"/"main subhalos"/"halos" only
-    for i=0,n_elements(gc.subgroupLen)-1 do begin
+    for i=0UL,n_elements(gc.subgroupLen)-1 do begin
       if (gc.subgroupGrnr[i] eq prevGrNr) then begin
         prevGrNr = gc.subgroupGrnr[i]
       endif else begin
@@ -147,7 +178,7 @@ function gcIDList, sP=sP, gc=gc, select=select
   if (select eq 'sec') then begin
   
     ; "satellites"/"subhalos" only
-    for i=0,n_elements(gc.subgroupLen)-1 do begin
+    for i=0UL,n_elements(gc.subgroupLen)-1 do begin
       if (gc.subgroupGrnr[i] ne prevGrNr) then begin
         prevGrNr = gc.subgroupGrnr[i]
       endif else begin
@@ -167,7 +198,7 @@ function gcIDList, sP=sP, gc=gc, select=select
   if (select eq 'all') then begin
   
     ; both primary and secondary
-    for i=0,n_elements(gc.subgroupLen)-1 do begin
+    for i=0UL,n_elements(gc.subgroupLen)-1 do begin
     
       if (keyword_set(minNumPart)) then begin
         if (gc.subgroupLen[i] ge minNumPartVal) then $
@@ -228,6 +259,7 @@ function gcPIDList, gc=gc, select=select, partType=PT
   ; check if this particle type is present in the subgroup selection
   if total(gc.subgroupLenType[partType,valGCids] gt 0) then begin
 
+    if max(gc.IDs) gt 2e9 then stop ; change to lon64arr
     subgroupPIDs = lonarr(total(gc.subGroupLenType[partType,valGCids],/pres))
 
     ; store particle IDs of this type from each subgroup
@@ -258,17 +290,24 @@ end
 ;                  e.g. priParentIDs=gcIDList(gc=gc,select='pri')
 ;                  if set, for secondary groups, return instead of the ID of the primary parent
 ;                  (for primary groups the return is unchanged)
+;
+; gcIDList : return only a replicated parent ID list of the specified subgroups in the groupcat
 
-function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs
+function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs, gcIDList=gcIDList
 
-    ; arrays to hold parent IDs for each gas particle
-    galcat_ind_gal  = lonarr(n_elements(galcat.galaxyIDs))
-    galcat_ind_gmem = lonarr(n_elements(galcat.groupmemIDs))
-    
     if not keyword_set(priParentIDs) then $
-      priParentIDs = indgen(n_elements(galcat.galaxyLen)) ; valid id list set to all
+      priParentIDs = lindgen(n_elements(galcat.galaxyLen)) ; valid id list set to all
     
-    for gcID=0,n_elements(galcat.galaxyLen)-1 do begin
+    if not keyword_set(gcIDList) then $
+      gcIDList = lindgen(n_elements(galcat.galaxyLen)) ; id list to process set to all
+    
+    r = { gal  : lonarr(total(galcat.galaxyLen[gcIDList],/pres))  ,$
+          gmem : lonarr(total(galcat.groupmemLen[gcIDList],/pres)) }
+    
+    offsetGal  = 0L
+    offsetGmem = 0L
+    
+    foreach gcID,gcIDList do begin
     
         ; parent ID (pri or sec)
         if (total(gcID eq priParentIDs) eq 0) then begin
@@ -281,21 +320,21 @@ function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs
         endelse
         
         ; galaxies
-        groupStart = galcat.galaxyOff[gcID]
-        groupEnd   = groupStart + galcat.galaxyLen[gcID]
+        if (galcat.galaxyLen[gcID] gt 0) then begin
+          r.gal[offsetGal:offsetGal+galcat.galaxyLen[gcID]-1] = $
+            cmreplicate(parID,galcat.galaxyLen[gcID])
+          offsetGal += galcat.galaxyLen[gcID]
+        endif
         
-        if (galcat.galaxyLen[gcID] gt 0) then $
-          galcat_ind_gal[groupStart:groupEnd-1] = cmreplicate(parID,groupEnd-groupStart)
-          
         ; group members
-        groupStart = galcat.groupmemOff[gcID]
-        groupEnd   = groupStart + galcat.groupmemLen[gcID]
+        if (galcat.groupmemLen[gcID] gt 0) then begin
+          r.gmem[offsetGmem:offsetGmem+galcat.groupmemLen[gcID]-1] = $
+            cmreplicate(parID,galcat.groupmemLen[gcID])
+          offsetGmem += galcat.groupmemLen[gcID]
+        endif
         
-        if (galcat.groupmemLen[gcID] gt 0) then $
-          galcat_ind_gmem[groupStart:groupEnd-1] = cmreplicate(parID,groupEnd-groupStart)
-    endfor
+    endforeach
     
-    r = {gal:galcat_ind_gal,gmem:galcat_ind_gmem}
     return,r
 end
 
@@ -386,25 +425,32 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList
     galcat = galaxyCat(sP=sP)
   endif
 
-  galaxyInds = []
-  groupmemInds = []
+  r = {gal  : ulonarr(total(galcat.galaxyLen[gcIDList],/pres)) ,$
+       gmem : ulonarr(total(galcat.groupmemLen[gcIDList],/pres)) }
+       
+  offsetGal  = 0L
+  offsetGmem = 0L
+  
+  if max(galcat.galaxyLen+galcat.galaxyOff) gt 2e9 then stop ; change to lon64arr
+  if max(galcat.groupmemLen+galcat.groupmemOff) gt 2e9 then stop
   
   foreach gcID, gcIDList do begin
     ; galaxy
     if (galcat.galaxyLen[gcID] gt 0) then begin
-      galInds    = ulindgen(galcat.galaxyLen[gcID]) + galcat.galaxyOff[gcID] ; int overflow on indgen
-      galaxyInds = [galaxyInds, galInds]
+      galInds    = ulindgen(galcat.galaxyLen[gcID]) + galcat.galaxyOff[gcID]
+      r.gal[offsetGal:offsetGal+galcat.galaxyLen[gcID]-1] = galInds
+      offsetGal += galcat.galaxyLen[gcID]
     endif
     
     ; group member
     if (galcat.groupmemLen[gcID] gt 0) then begin
       gmemInds     = ulindgen(galcat.groupmemLen[gcID]) + galcat.groupmemOff[gcID]
-      groupmemInds = [groupmemInds, gmemInds]
+      r.gmem[offsetGmem:offsetGmem+galcat.groupmemLen[gcID]-1] = gmemInds
+      offsetGmem += galcat.groupmemLen[gcID]
     endif    
     
   endforeach
   
-  r = {gal:galaxyInds,gmem:groupmemInds}
   return,r
   
 end

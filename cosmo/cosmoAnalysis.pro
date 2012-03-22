@@ -276,9 +276,9 @@ end
 ;                 return properties for each gas element (may or may not depend on parent halo)
 ;                 
 ;                 note: target redshift is read from sP.snap and values are returned for that
-;                       redshift unless oSnap is specified, in which case gasOrigins() is used and the
-;                       gas elements are matched to those existing in the subhalo catalog at the
-;                       earlier snapshot
+;                       redshift unless oSnap is specified, in which case mergerTree() and 
+;                       gasOrigins() are used and the quantities are returned for the gas 
+;                       particles/tracers at the earlier snapshot
 ;
 ; rVirNorm=1    : radial distances normalized by r_vir of either primary or secondary parent
 ;  parNorm      : either 'pri' or 'sec' if rVirNorm requested
