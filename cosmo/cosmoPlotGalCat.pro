@@ -2,7 +2,7 @@
 ; gas accretion project - plots related to galaxy catalog
 ; dnelson mar.2012
 
-; plotGalCatRedshift(): 
+; plotGalCatRedshift(): plot the total component masses in the catalog as a function of redshift
 
 pro plotGalCatRedshift, sP=sP
 
@@ -97,7 +97,7 @@ pro plotGalCatRedshift, sP=sP
 
 end
 
-; plotGalCatMassFunction(): 
+; plotGalCatMassFunction(): plot the galcat mass functions at a few redshifts and resolutions
 
 pro plotGalCatMassFunction, sP=sP
 
@@ -184,7 +184,7 @@ pro plotGalCatMassFunction, sP=sP
       
 end
 
-; plotGalCatRadii(): plot distribution of galaxy/groupmem radial distances
+; plotGalCatRadii(): plot distribution of galaxy/groupmem radial distances at one snapshot
 
 pro plotGalCatRadii, sP=sP
 
