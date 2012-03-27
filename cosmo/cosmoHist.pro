@@ -2,121 +2,12 @@
 ; gas accretion project - past history of gas (all routines that step through multiple snapshots)
 ; dnelson mar.2012
 
-; gasOrigins(): from sP.snap load the galaxy catalog and consider the evolution of all the gas 
-;               elements snapshot by snapshot backwards in time until either endingSnap (if specified) or
-;               back five snapshots (default). at each step save:
-;                 1. the radial distance of each from its primary/secondary parent
-;                 2. temperature and entropy
-;                 3. implicitly, whether the gas is in a primary or secondary subhalo (corresponding to 
-;                    the two radial distances being equal or different)              
-
-function gasOrigins, sP=sP, endingSnap=endingSnap
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-  print,'think more about this function (gadget only anyways?)' & stop
-  ; TODO: make this use the tracers if running on an Arepo SP?
-
-  ; if snap specified, run only one snapshot (and/or just return previous results)
-  if n_elements(endingSnap) gt 0 then begin
-    saveFilename = sP.derivPath + 'gas.origins.'+str(sP.res)+'.'+str(endingSnap)+'-'+str(sP.snap)+'.sav'
-    
-    ; results exist, return
-    if (file_test(saveFilename)) then begin
-      restore,saveFilename
-      r = {temp_gal:temp_gal,temp_gmem:temp_gmem,entropy_gal:entropy_gal,entropy_gmem:entropy_gmem,$
-           indMatch:indMatch}
-      return,r
-    endif
-    
-    ; need to compute, set restricted range of snapshots to process
-    snapRange = [sP.snap,endingSnap]
-  endif else begin
-    ; default config
-    numSnapsBack = 10
-    
-    snapRange = [sP.snap,sP.snap-numSnapsBack]
-  endelse  
-  
-  ; load galaxy catalog at starting redshift
-  galcat = galaxyCat(sP=sP)
-  
-  print,'Loaded  ['+str(n_elements(gc.galaxyIDs))+'] ['+str(n_elements(gc.groupmemIDs))+'] from galCat.'
-  
-  for m=snapRange[0],snapRange[1],-1 do begin
-  
-    ; set save filename and check for existence
-    sP.snap = m
-    saveFilename = sP.derivPath + 'gas.origins.'+str(sP.res)+'.'+str(endingSnap)+'-'+str(sP.snap)+'.sav'
-    
-    if (file_test(saveFilename)) then begin
-      print,'Skipping: '+strmid(saveFilename,strlen(sP.derivPath))
-      continue
-    endif  
-  
-    ; load gas IDs and match
-    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    
-    ; IMPORTANT! rearrange ids_ind to be in the order of galcat.IDs, need this if we want ids[ids_ind], 
-    ; temp[ids_ind], etc to be in the same order as the galaxy catalog id list     
-    match,galcat.galaxyIDs,ids,galcat_ind,ids_gal_ind,count=countGal,/sort
-    ids_gal_ind = ids_gal_ind[sort(galcat_ind)]
-    
-    match,galcat.groupmemIDs,ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-    ids_gmem_ind = ids_gmem_ind[sort(galcat_ind)]
-    
-    ids    = !NULL
-    galcat_ind = !NULL
-    
-    ; load u,nelec and calculate temp of gas
-    u     = loadSnapshotSubset(sP=sP,partType='gas',field='u')
-    nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec')
-
-    temp_gal  = convertUtoTemp(u[ids_gal_ind], nelec[ids_gal_ind])
-    temp_gmem = convertUtoTemp(u[ids_gmem_ind],nelec[ids_gmem_ind])
-    
-    nelec = !NULL
-    
-    ; load gas density to calculate entropy
-    dens = loadSnapshotSubset(sP=sP,partType='gas',field='density')
-    
-    entropy_gal  = calcEntropy(u[ids_gal_ind], dens[ids_gal_ind], sP=sP)
-    entropy_gmem = calcEntropy(u[ids_gmem_ind],dens[ids_gmem_ind], sP=sP)
-    
-    u    = !NULL
-    dens = !NULL
-    
-    ; load the galaxy catalog at this redshift and match IDs from the galCat at the target redshift
-    galcatCur = galaxyCat(sP=sP)
-    
-    match,galcat.galaxyIDs,galcatCur.galaxyIDs,galcat_ind_gal,galcatCur_ind_gal,count=countGal,/sort
-    match,galcat.galaxyIDs,galcatCur.groupmemIDs,galcat_ind_gal2,galcatCur_ind_gal2,count=countGal2,/sort
-    match,galcat.groupmemIDs,galcatCur.groupmemIDs,galcat_ind_gmem,galcatCur_ind_gmem,count=countGmem,/sort
-    match,galcat.groupmemIDs,galcatCur.galaxyIDs,galcat_ind_gmem2,galcatCur_ind_gmem2,count=countGmem2,/sort
-    
-    galcatCur = !NULL
-    
-    print,'['+str(endingSnap-m)+'] Matched ['+str(countGal)+' + '+str(countGal2)+'] ['+$
-          str(countGmem)+' + '+str(countGmem2)+'].'
-
-    ; keep the match indices relating gas elements in the two galaxy catalogs
-    ; NOTE: -1 for empty here    
-    indMatch = {galcat_ind_gal:galcat_ind_gal,         galcat_ind_gal2:galcat_ind_gal2,         $
-                galcatCur_ind_gal:galcatCur_ind_gal,   galcatCur_ind_gal2:galcatCur_ind_gal2,   $
-                galcat_ind_gmem:galcat_ind_gmem,       galcat_ind_gmem2:galcat_ind_gmem2,       $
-                galcatCur_ind_gmem:galcatCur_ind_gmem, galcatCur_ind_gmem2:galcatCur_ind_gmem2}
-    
-    ; save
-    save,temp_gal,temp_gmem,entropy_gal,entropy_gmem,indMatch,filename=saveFilename
-    print,'    Saved: '+strmid(saveFilename,strlen(sP.derivPath))
-
-  endfor
-
-end
-
+; -----------------------------------------------------------------------------------------------------
 ; accretionTimes(): for each gas particle/tracer, starting at some redshift, track backwards in time
 ;                   with respect to the tracked parent halos (using mergerTree) and determine the
 ;                   time when the particle radius = the virial radius (and record the virial temp of
 ;                   the parent halo at that time)
+; -----------------------------------------------------------------------------------------------------
 
 function accretionTimes, sP=sP
 
@@ -124,18 +15,24 @@ function accretionTimes, sP=sP
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
 
-  ; config
-  maxSnap = sP.snap             ; set maximum snapshot (minimum redshift)
-  minSnap = sP.groupCatRange[0] ; set minimum snapshot (maximum redshift, z=6)
-  ;minSnap = sP.snap - 10 ;debug
-
   ; first, walk back through the merger tree and find primary subhalos with good parent histories
-  print,'Pre-walking merger tree for halo selection...'
+  mt = mergerTreeSubset(sP=sP,/verbose)
+
+  ; set saveFilename and check for existence
+  saveTag = ''
+  if sP.trMCPerCell eq -1 then saveTag = '.trVel'
+  if sP.trMCPerCell gt 0  then saveTag = '.trMC'
+  if sP.trMCPerCell eq 0  then saveTag = '.SPH'
   
-  mt = mergerTreeSubset(sP=sP,maxSnap=maxSnap,minSnap=minSnap)
+  saveFilename = sP.derivPath + 'accTimes'+saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
+                 str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'  
+  
+  if file_test(saveFilename) then begin
+    restore, saveFilename
+    return, r
+  endif
   
   ; load galaxy/group member catalogs at zMin for gas ids to search for
-  sP.snap = maxSnap
   galcat = galaxyCat(sP=sP)
   
   accCount = { gal : 0UL, gmem : 0UL } ; count of how many particles/tracers we tracked through r_vir
@@ -145,7 +42,7 @@ function accretionTimes, sP=sP
   ; ---------------
   if sP.trMCPerCell eq 0 then begin
     print,'Calculating new accretion time using ( SPH Particles ) res = '+str(sP.res)+$
-      ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
+      ' in range ['+str(mt.minSnap)+'-'+str(mt.maxSnap)+'].'
       
     ; store the r/rvir of each at the previous snapshot for interpolation, and as a monotonic check
     prevRad = { gal  : fltarr(n_elements(mt.galcatSub.gal)) ,$
@@ -161,10 +58,10 @@ function accretionTimes, sP=sP
          accHaloTvir_gmem  : fltarr(n_elements(mt.galcatSub.gmem))    }
     
     ; debugging r(t)
-    radtemp = { gal  : fltarr(maxSnap-minSnap+1,n_elements(mt.galcatSub.gal)) ,$
-                gmem : fltarr(maxSnap-minSnap+1,n_elements(mt.galcatSub.gmem)) }
+    ;radtemp = { gal  : fltarr(mt.maxSnap-mt.minSnap+1,n_elements(mt.galcatSub.gal)) ,$
+    ;            gmem : fltarr(mt.maxSnap-mt.minSnap+1,n_elements(mt.galcatSub.gmem)) }
     
-    for m=maxSnap,minSnap,-1 do begin
+    for m=mt.maxSnap,mt.minSnap,-1 do begin
       sP.snap = m
       ; load gas ids and match to catalog
       h = loadSnapshotHeader(sP=sP)
@@ -189,12 +86,12 @@ function accretionTimes, sP=sP
       pos = !NULL
 
       ; calculate current distance of gas particle from smoothed halo center position for galaxy members
-      gal_pri  = periodicDists(reform(mt.hPos[maxSnap-m,*,mt.gcIndOrig.gal]),pos_gal,sP=sP)
-      gal_pri /= mt.hVirRad[maxSnap-m,mt.gcIndOrig.gal]
+      gal_pri  = periodicDists(reform(mt.hPos[mt.maxSnap-m,*,mt.gcIndOrig.gal]),pos_gal,sP=sP)
+      gal_pri /= mt.hVirRad[mt.maxSnap-m,mt.gcIndOrig.gal]
       
       ; for group members
-      gmem_pri = periodicDists(reform(mt.hPos[maxSnap-m,*,mt.gcIndOrig.gmem]),pos_gmem,sP=sP)
-      gmem_pri /= mt.hVirRad[maxSnap-m,mt.gcIndOrig.gmem]
+      gmem_pri = periodicDists(reform(mt.hPos[mt.maxSnap-m,*,mt.gcIndOrig.gmem]),pos_gmem,sP=sP)
+      gmem_pri /= mt.hVirRad[mt.maxSnap-m,mt.gcIndOrig.gmem]
       
       pos_gal  = !NULL
       pos_gmem = !NULL
@@ -219,8 +116,8 @@ function accretionTimes, sP=sP
       for i=0,count_gal-1 do begin
         radii = [ prevRad.gal[gal_w[i]],gal_pri[gal_w[i]] ]
         time = interpol(times,radii,1.0) ; lerp time to r/rvir=1
-        tvir = [ mt.hVirTemp[maxSnap-m-1,mt.gcIndOrig.gal[gal_w[i]]], $
-                 mt.hVirTemp[maxSnap-m,mt.gcIndOrig.gal[gal_w[i]]] ]
+        tvir = [ mt.hVirTemp[mt.maxSnap-m-1,mt.gcIndOrig.gal[gal_w[i]]], $
+                 mt.hVirTemp[mt.maxSnap-m,mt.gcIndOrig.gal[gal_w[i]]] ]
         tvir = interpol(tvir,times,time) ; lerp tvir to time=tcross
         r.accTime_gal[gal_w[i]] = time
         r.accHaloTvir_gal[gal_w[i]] = tvir
@@ -229,16 +126,16 @@ function accretionTimes, sP=sP
       for i=0,count_gmem-1 do begin
         radii = [ prevRad.gmem[gmem_w[i]],gmem_pri[gmem_w[i]] ]
         time = interpol(times,radii,1.0) ; lerp time to r/rvir=1
-        tvir = [ mt.hVirTemp[maxSnap-m-1,mt.gcIndOrig.gmem[gmem_w[i]]], $
-                 mt.hVirTemp[maxSnap-m,mt.gcIndOrig.gmem[gmem_w[i]]] ]
+        tvir = [ mt.hVirTemp[mt.maxSnap-m-1,mt.gcIndOrig.gmem[gmem_w[i]]], $
+                 mt.hVirTemp[mt.maxSnap-m,mt.gcIndOrig.gmem[gmem_w[i]]] ]
         tvir = interpol(tvir,times,time) ; lerp tvir to time=tcross
         r.accTime_gmem[gmem_w[i]] = time
         r.accHaloTvir_gmem[gmem_w[i]] = tvir
       endfor
       
       ; if we are on the first snapshot, override accretion times with -1 to indicate always outside rvir
-      if m eq maxSnap then r.accTime_gal[gal_w] = -1
-      if m eq maxSnap then r.accTime_gmem[gmem_w] = -1
+      if m eq mt.maxSnap then r.accTime_gal[gal_w] = -1
+      if m eq mt.maxSnap then r.accTime_gmem[gmem_w] = -1
       
       ; update counters for the number of particles we have found the accretion times of
       accMask.gal[gal_w]   = 1B
@@ -250,8 +147,8 @@ function accretionTimes, sP=sP
       prevRad.gal  = gal_pri
       prevRad.gmem = gmem_pri
      
-      radtemp.gal[maxSnap-m,*] = gal_pri ;debug
-      radtemp.gmem[maxSnap-m,*] = gmem_pri ;debug
+      ;radtemp.gal[mt.maxSnap-m,*] = gal_pri ;debug
+      ;radtemp.gmem[mt.maxSnap-m,*] = gmem_pri ;debug
       
       prevTime = h.time
       
@@ -265,7 +162,11 @@ function accretionTimes, sP=sP
     print,'found accretion times for ['+str(accCount.gal)+' of '+str(n_elements(mt.galcatSub.gal))+$
       '] gal, ['+str(accCount.gmem)+' of '+str(n_elements(mt.galcatSub.gmem))+'] gmem'
     
-    save,maxSnap,minSnap,radtemp,filename=sP.plotPath+'temprad.sav' ;debug
+    ;save,mt.maxSnap,mt.minSnap,radtemp,filename=sP.plotPath+'temprad.sav' ;debug
+    
+    ; save
+    save,r,filename=saveFilename
+    print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
     
   endif
   
@@ -273,6 +174,186 @@ function accretionTimes, sP=sP
   ; ------------------------
   if sP.trMCPerCell gt 0 then begin
 
+    print,'Calculating new accretion time using ( TracerMC ) res = '+str(sP.res)+$
+      ' in range ['+str(mt.minSnap)+'-'+str(mt.maxSnap)+'].'
+      
+    ; load gas ids
+    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+
+    ; match galcat IDs to gas_ids
+    match,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+    ids_gal = gas_ids[ids_gal_ind[sort(galcat_ind)]]
+    
+    match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+    ids_gmem = gas_ids[ids_gmem_ind[sort(galcat_ind)]]
+    
+    gas_ids = !NULL
+    
+    ; locate tracer children (indices) of gas id subsets
+    galcat_gal_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
+    galcat_gmem_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
+    
+    ; convert tracer children indices to tracer IDs at this zMin
+    tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
+    
+    galcat_gal_trids  = tr_ids[galcat_gal_trids]
+    galcat_gmem_trids = tr_ids[galcat_gmem_trids]
+
+    tr_ids   = !NULL
+    ids_gal  = !NULL
+    ids_gmem = !NULL
+    
+    ; create a gcIndOrig for the tracers
+    gc = loadGroupCat(sP=sP,/skipIDs)
+    priParentIDs = gcIDList(gc=gc,select='pri') ; this is the starting gcIDs from above
+
+    gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,$
+                                     child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc}) 
+                  
+    galcat = !NULL ; not used past this point
+    
+    ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
+    placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
+    gcIndOrigTr.gal = placeMap[gcIndOrigTr.gal-minid]
+    gcIndOrigTr.gmem = placeMap[gcIndOrigTr.gmem-minid]
+    placeMap = !NULL
+        
+    ; store the r/rvir of each at the previous snapshot for interpolation, and as a monotonic check
+    prevRad = { gal  : fltarr(n_elements(galcat_gal_trids)) ,$
+                gmem : fltarr(n_elements(galcat_gmem_trids)) }
+    
+    accMask = { gal  : bytarr(n_elements(galcat_gal_trids)), $
+                gmem : bytarr(n_elements(galcat_gmem_trids)) }
+    
+    ; store the main arrays as a structure so we can write them directly for all tracers
+    r = {accTime_gal       : fltarr(n_elements(galcat_gal_trids))-1  ,$
+         accTime_gmem      : fltarr(n_elements(galcat_gmem_trids))-1 ,$
+         accHaloTvir_gal   : fltarr(n_elements(galcat_gal_trids))    ,$
+         accHaloTvir_gmem  : fltarr(n_elements(galcat_gmem_trids))   ,$
+         child_counts_gal  : galcat_gal_cc                           ,$
+         child_counts_gmem : galcat_gmem_cc                           }
+
+    for m=mt.maxSnap,mt.minSnap,-1 do begin
+      sP.snap = m
+      ; load tracer ids and match to child ids from zMin
+      h = loadSnapshotHeader(sP=sP)
+      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
+      
+      ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
+      ; temp[ids_ind], etc to be in the same order as the group catalog id list    
+      match,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal,/sort
+      trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
+      
+      match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
+      trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
+      
+      tr_ids     = !NULL
+      galcat_ind = !NULL
+      
+      ; load tracer parents to match to gas
+      tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentid')
+      tr_parids_gal  = tr_parids[trids_gal_ind]
+      tr_parids_gmem = tr_parids[trids_gmem_ind]
+      tr_parids = !NULL
+      
+      ; load gas IDs and convert tracer parent IDs -> indices
+      gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+      gasIDMap = getIDIndexMap(gas_ids,minid=minid)
+      gas_ids = !NULL
+      
+      tr_parids_gal  = gasIDMap[tr_parids_gal-minid]  ; convert ID->index
+      tr_parids_gmem = gasIDMap[tr_parids_gmem-minid] ; convert ID->index
+      gasIDMap = !NULL
+      
+      ; load gas positions and convert to tracer positions
+      gas_pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+      tr_pos_gal  = gas_pos[*,tr_parids_gal]
+      tr_pos_gmem = gas_pos[*,tr_parids_gmem]
+      
+      gas_pos = !NULL
+      tr_parids_gal  = !NULL
+      tr_parids_gmem = !NULL
+
+      ; calculate current distance of gas particle from smoothed halo center position for galaxy members
+      gal_pri  = periodicDists(reform(mt.hPos[mt.maxSnap-m,*,gcIndOrigTr.gal]),tr_pos_gal,sP=sP)
+      gal_pri /= mt.hVirRad[mt.maxSnap-m,gcIndOrigTr.gal]
+      
+      ; for group members
+      gmem_pri = periodicDists(reform(mt.hPos[mt.maxSnap-m,*,gcIndOrigTr.gmem]),tr_pos_gmem,sP=sP)
+      gmem_pri /= mt.hVirRad[mt.maxSnap-m,gcIndOrigTr.gmem]
+      
+      tr_pos_gal  = !NULL
+      tr_pos_gmem = !NULL
+      
+      ; for particles who are past r_vir, sanity check that they are not now within
+      gal_err  = where(gal_pri lt 1.0 and prevRad.gal ge 1.0,count_gal_err)
+      gmem_err = where(gmem_pri lt 1.0 and prevRad.gmem ge 1.0,count_gmem_err)
+      print,' warning counts ',count_gal_err,count_gmem_err
+      
+      ; for particles who are still within r_vir, check if they have passed beyond
+      gal_w  = where(gal_pri ge 1.0 and prevRad.gal lt 1.0 and accMask.gal eq 0B,count_gal)
+      gmem_w = where(gmem_pri ge 1.0 and prevRad.gmem lt 1.0 and accMask.gmem eq 0B,count_gmem)
+      
+      print,' ['+string(m,format='(i3)')+'] accreted now counts '+string(count_gal,format='(i5)')+' ('+$
+        string(float(count_gal)/n_elements(gal_pri)*100,format='(f4.1)')+'%) '+$
+        string(count_gmem,format='(i5)')+' ('+$
+        string(float(count_gmem)/n_elements(gmem_pri)*100,format='(f4.1)')+'%)'
+      
+      ; interpolate these (time,radii) to find time crossing the virial radius
+      times = [prevTime,h.time]
+      
+      for i=0,count_gal-1 do begin
+        radii = [ prevRad.gal[gal_w[i]],gal_pri[gal_w[i]] ]
+        time = interpol(times,radii,1.0) ; lerp time to r/rvir=1
+        tvir = [ mt.hVirTemp[mt.maxSnap-m-1,gcIndOrigTr.gal[gal_w[i]]], $
+                 mt.hVirTemp[mt.maxSnap-m,gcIndOrigTr.gal[gal_w[i]]] ]
+        tvir = interpol(tvir,times,time) ; lerp tvir to time=tcross
+        r.accTime_gal[gal_w[i]] = time
+        r.accHaloTvir_gal[gal_w[i]] = tvir
+      endfor
+      
+      for i=0,count_gmem-1 do begin
+        radii = [ prevRad.gmem[gmem_w[i]],gmem_pri[gmem_w[i]] ]
+        time = interpol(times,radii,1.0) ; lerp time to r/rvir=1
+        tvir = [ mt.hVirTemp[mt.maxSnap-m-1,gcIndOrigTr.gmem[gmem_w[i]]], $
+                 mt.hVirTemp[mt.maxSnap-m,gcIndOrigTr.gmem[gmem_w[i]]] ]
+        tvir = interpol(tvir,times,time) ; lerp tvir to time=tcross
+        r.accTime_gmem[gmem_w[i]] = time
+        r.accHaloTvir_gmem[gmem_w[i]] = tvir
+      endfor
+      
+      ; if we are on the first snapshot, override accretion times with -1 to indicate always outside rvir
+      if m eq mt.maxSnap then r.accTime_gal[gal_w] = -1
+      if m eq mt.maxSnap then r.accTime_gmem[gmem_w] = -1
+      
+      ; update counters for the number of particles we have found the accretion times of
+      accMask.gal[gal_w]   = 1B
+      accMask.gmem[gmem_w] = 1B
+      accCount.gal  += count_gal
+      accCount.gmem += count_gmem
+      
+      ; store current radius of particles
+      prevRad.gal  = gal_pri
+      prevRad.gmem = gmem_pri
+     
+      ;radtemp.gal[mt.maxSnap-m,*] = gal_pri ;debug
+      ;radtemp.gmem[mt.maxSnap-m,*] = gmem_pri ;debug
+      
+      prevTime = h.time
+      
+      ; free some memory for next load
+      gal_w    = !NULL
+      gmem_w   = !NULL
+      gal_pri  = !NULL
+      gmem_pri = !NULL
+    endfor
+    
+    print,'found accretion times for ['+str(accCount.gal)+' of '+str(n_elements(galcat_gal_trids))+$
+      '] galtr, ['+str(accCount.gmem)+' of '+str(n_elements(galcat_gmem_trids))+'] gmemtr'
+    ; save
+    save,r,filename=saveFilename
+    print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
+    
   endif
   
   
@@ -283,7 +364,7 @@ function accretionTimes, sP=sP
   endif
   
 end
-
+; -----------------------------------------------------------------------------------------------------
 ; maxTemps(): find maximum temperature for gas particles in galaxy/group member catalogs at redshift
 ;             through the redshift range (redshift,zStart] where zStart is typically the start of 
 ;             the simulation
@@ -291,6 +372,7 @@ end
 ; NOTE: currently temps are only saved for gas in groups at the end of the interval (not all gas)
 ; saveRedshifts: if not set, then the history trace runs down to sP.snap and is saved
 ;                if set, save at each redshift as it is reached, running to the lowest
+; -----------------------------------------------------------------------------------------------------
 
 function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
                    loadByGas=loadByGas, loadAllTrGal=loadAllTrGal, loadAllTrGmem=loadAllTrGmem ; load opt

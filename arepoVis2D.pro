@@ -263,37 +263,42 @@ end
 pro scatterPlotPos
 
   ; config
-  workingPath = '/n/home07/dnelson/dev.tracer/'
-  filePath    = workingPath + 'col2Sph.gastr.1e5.f1/output/'
+  sP = { simPath  : '/n/home07/dnelson/dev.tracerMC/gasSphere.cylTest.1e4.norot.nocool.nosg/output/' ,$
+         plotPath : '/n/home07/dnelson/dev.tracerMC/' ,$
+         snap     : 0 }
   
   zoomSize = 1000.0 ;kpc
   partType = 'gas'
 
+  axes = [0,2] ;x,z
+
   ; find number of snapshots and loop
   ;nSnaps = n_elements(file_search(filepath+'snap_*'))
-  snapRange = [10,40,5]
+  snapRange = [0,20,1]
   
   for snap=snapRange[0],snapRange[1],snapRange[2] do begin
     ; sizes
-    h = loadSnapshotHeader(filePath,snapNum=snap)
+    sP.snap = snap
+    h = loadSnapshotHeader(sP=sP)
       
     boxCen = h.boxSize/2.0 ;kpc
     
     ; load positions and densities
-    pos  = loadSnapshotSubset(filePath,snapNum=snap,partType=partType,field='pos')
+    pos  = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
   
     ; make spatial subset
     if keyword_set(zoomSize) then begin
-      w = where(abs(pos[0,*]-boxCen) le zoomSize*1.0 and abs(pos[1,*]-boxCen) le zoomSize*1.0,count)
+      w = where(abs(pos[axes[0],*]-boxCen) le zoomSize*1.0 and $
+                abs(pos[axes[1],*]-boxCen) le zoomSize*1.0,count)
   
       print,'['+str(snap)+'] Found ['+str(count)+'] of ['+str((size(pos))[2])+'] particles inside zoomBox.'
       
-      x = pos[0,w]; - boxCen
-      y = pos[1,w]; - boxCen
+      x = pos[axes[0],w]; - boxCen
+      y = pos[axes[1],w]; - boxCen
     endif
     
     ; start plot
-    start_PS, workingPath + 'scatter_snap='+str(snap)+'_'+str(partType)+'.eps'
+    start_PS, sP.plotPath + 'scatter_snap='+str(snap)+'_'+str(partType)+'.eps'
     
       xyrange = [boxCen-zoomSize/2.0,boxCen+zoomSize/2.0]
     

@@ -127,6 +127,91 @@ pro setupSingleSphereIso
 
 end
 
+; setupFilamentTest(): single cold filament accreting onto an isolated gas sphere
+
+pro setupFilamentTest
+
+  ; cylinder config
+  r200 = 162.6 ; kpc nfw
+  cyl_length = 100.0  ;kpc
+  cyl_radius = 5.0   ;kpc
+  cyl_rstart = 1.0*r200 ;kpc (r200 nfw)
+
+  cyl_r_res = 5
+  cyl_l_res = cyl_r_res * (cyl_length/cyl_radius)
+  
+  seed = 424242L
+
+  ; gasSphere config
+  input_fname  = "gasSphere.gasonly.1e4.nfw.M1e2.norot.dat.hdf5"
+  output_fname = "gasSphere.cylTest.1e4.nfw.M1e2.norot.withBack.dat"
+
+  boxSize   = 5000.0 ;kpc
+  nBackGrid = 16 ;^3, nested twice
+  
+  ; load input sphere
+  h = loadSnapshotHeader(fileName=input_fname,/verbose)
+
+  gas_pos  = loadSnapshotSubset(fileName=input_fname,partType='gas',field='pos')
+  gas_vel  = loadSnapshotSubset(fileName=input_fname,partType='gas',field='vel')
+  gas_id   = loadSnapshotSubset(fileName=input_fname,partType='gas',field='ids')
+  gas_u    = loadSnapshotSubset(fileName=input_fname,partType='gas',field='u')
+  
+  ; offset template position to box center
+  gas_pos += boxSize/2.0
+  
+  ; form gas for sphere
+  gas_mass = fltarr(n_elements(gas_id)) + float(h.masstable[0]) ;copy same const gas mass
+
+  ; cylinder properties
+  halo_vol = 4.0/3.0*!pi*r200^3.0
+  halo_meandens = total(gas_mass) / halo_vol ;1e10 msun/kpc^3
+  
+  cyl_vol   = !pi*cyl_radius^2.0*cyl_length
+  cyl_npart = cyl_r_res * cyl_l_res
+  
+  ; form gas for cylinder (along z-axis)
+  rnd_angle = randomu(seed,cyl_npart,/double) * 360.0
+  rnd_radii = randomu(seed,cyl_npart,/double) * cyl_radius
+  
+  cyl_x = rnd_radii * sin(rnd_angle*!dtor)
+  cyl_y = rnd_radii * cos(rnd_angle*!dtor)
+  cyl_z = randomu(seed,cyl_npart,/double) * cyl_length
+  
+  cyl_z += cyl_rstart ; displace cylinder to starting radius
+  
+  cyl_pos = fltarr(3,cyl_npart)
+  cyl_pos[0,*] = cyl_x
+  cyl_pos[1,*] = cyl_y
+  cyl_pos[2,*] = cyl_z
+  cyl_pos += boxSize/2.0 ; offset to box center  
+  
+  ; other cylinder properties
+  cyl_vel = fltarr(3,cyl_npart)
+  cyl_vel[2,*] = -200.0 ;km/s towards halo
+  cyl_id  = lindgen(cyl_npart) + max(gas_id) + 1L
+  cyl_u   = fltarr(cyl_npart) + 500.0 ;~2500K similar to the outskirts of the halo
+  cyl_mass = fltarr(cyl_npart) + float(h.masstable[0]) ; same mass as halo particles for noww
+
+  ; create combined gas struct
+  gas = {pos:[[gas_pos],[cyl_pos]],vel:[[gas_vel],[cyl_vel]],id:[gas_id,cyl_id],$
+         u:[gas_u,cyl_u],mass:[gas_mass,cyl_mass]}
+
+  ; add nested background grid
+  boxSizeInner = ceil((max(gas.pos)-min(gas.pos))/200) * 200.0
+  uthermBackGrid = 10000.0
+
+  gas = addICBackgroundGrid(gas, boxSize=boxSizeInner, uthermBackGrid=uthermBackGrid, $
+                            boxCen=[boxSize/2.0,boxSize/2.0,boxSize/2.0], nBackGrid=nBackGrid)
+  gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid, uthermBackGrid=uthermBackGrid)
+
+  ; save
+  writeICFile,output_fname,part0=gas
+  print,'Cylinder particle count: '+string(cyl_npart)
+  print,'Suggested target gas mass: '+string(h.masstable[0])
+
+end
+
 ; profile/value functions
 function GasRho, r
   COMMON gv

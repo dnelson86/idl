@@ -40,28 +40,42 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   if n_elements(snap) gt 0 then $
     r.snap = snap
  
-  if (run eq 'gadget') then begin ; ComparisonProject GADGET 128,256,512
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,314]
-    r.groupCatRange = [50,314]
+  ; ComparisonProject GADGET 128,256,512 @ 20Mpc, 320,640 @ 40Mpc
+  if (run eq 'gadget') then begin
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 0  ; none (SPH)
     
     if keyword_set(f) then stop ; shouldn't be specified
+    if res ne 128 and res ne 256 and res ne 512 then stop ; only resolutions that exist now
   
-    if (res eq 128) then r.targetGasMass = 4.76446157e-03
-    if (res eq 256) then r.targetGasMass = 5.95556796e-04
-    if (res eq 512) then r.targetGasMass = 7.44447120e-05
+    if res eq 128 or res eq 256 or res eq 512 then begin 
+      r.boxSize       = 20000.0
+      r.snapRange     = [0,313]
+      r.groupCatRange = [50,313]
+    endif
+    if res eq 320 or res eq 640 then begin
+      r.boxSize       = 40000.0
+      r.snapRange     = [0,0]
+      r.groupCatRange = [0,0]
+    endif
   
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-    if (res eq 512) then r.gravSoft = 1.0
-  
-    r.simPath   = '/n/home07/dnelson/sims.gadget/'+str(res)+'_20Mpc/output/'
-    r.arepoPath = '/n/home07/dnelson/sims.gadget/'+str(res)+'_20Mpc/'
+    if res eq 128 then r.targetGasMass = 4.76446157e-03
+    if res eq 256 then r.targetGasMass = 5.95556796e-04
+    if res eq 512 then r.targetGasMass = 7.44447120e-05
+    if res eq 320 then r.targetGasMass = 2.43940430e-03
+    if res eq 640 then r.targetGasMass = 3.04925537e-04
+    
+    if res eq 128 then r.gravSoft = 4.0
+    if res eq 256 then r.gravSoft = 2.0
+    if res eq 512 then r.gravSoft = 1.0
+    if res eq 320 then r.gravSoft = 3.2
+    if res eq 640 then r.gravSoft = 1.6
+    
+    r.simPath   = '/n/home07/dnelson/sims.gadget/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/output/'
+    r.arepoPath = '/n/home07/dnelson/sims.gadget/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/'
     r.savPrefix = 'G'
     r.plotPath  = '/n/home07/dnelson/coldflows/'
-    r.derivPath = '/n/home07/dnelson/sims.gadget/'+str(res)+'_20Mpc/data.files/'
+    r.derivPath = '/n/home07/dnelson/sims.gadget/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
     
     ; if redshift passed in, convert to snapshot number and save
     if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
@@ -69,63 +83,43 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     return,r
   endif
   
-  if (run eq 'tracer') then begin ; sims.tracers (velocity field) 128,256,512
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,313]
-    r.groupCatRange = [50,313]
-    r.minNumGasPart = -1 ; no additional cut
-    r.trMCPerCell   = -1 ; velocity tracers
-    
-    if keyword_set(f) then stop ; shouldn't be specified
-    if (res eq 128) or (res eq 256) then stop ; DELETED
-    
-    if (res eq 128) then r.targetGasMass = 4.76446157e-03
-    if (res eq 256) then r.targetGasMass = 5.95556796e-04
-    if (res eq 512) then r.targetGasMass = 7.44447120e-05
-    
-    r.trMassConst = r.targetGasMass
-    
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-    if (res eq 512) then r.gravSoft = 1.0
-  
-    r.simPath   = '/n/home07/dnelson/sims.tracers/'+str(res)+'_20Mpc/output/'
-    r.arepoPath = '/n/home07/dnelson/sims.tracers/'+str(res)+'_20Mpc/'
-    r.savPrefix = 'T'
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
-    r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_20Mpc/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'tracerMC') then begin ; sims.tracersMC (Monte Carlo) 128,256,512
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,313]
-    r.groupCatRange = [50,313]
+  ; sims.tracers (Velocity + f=20 Monte Carlo) 128,256 @ 20Mpc, 320,640 @ 40Mpc
+  if (run eq 'tracer') then begin
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 20
     
     if keyword_set(f) then stop ; shouldn't be specified, fixed at 20
-    if (res eq 512) then stop ; don't exist yet
+    if res eq 320 or res eq 640 then stop ; don't exist yet
+    if res eq 512 then stop ; doesn't exist
     
-    if (res eq 128) then r.targetGasMass = 4.76446157e-03
-    if (res eq 256) then r.targetGasMass = 5.95556796e-04
-    if (res eq 512) then r.targetGasMass = 7.44447120e-05
+    if res eq 128 or res eq 256 then begin 
+      r.boxSize       = 20000.0
+      r.snapRange     = [0,313]
+      r.groupCatRange = [50,313]
+    endif
+    if res eq 320 or res eq 640 then begin
+      r.boxSize       = 40000.0
+      r.snapRange     = [0,0]
+      r.groupCatRange = [0,0]
+    endif
+    
+    if res eq 128 then r.targetGasMass = 4.76446157e-03
+    if res eq 256 then r.targetGasMass = 5.95556796e-04
+    if res eq 320 then r.targetGasMass = 2.43940430e-03
+    if res eq 640 then r.targetGasMass = 3.04925537e-04
     
     r.trMassConst = r.targetGasMass / r.trMCPerCell
     
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-    if (res eq 512) then r.gravSoft = 1.0
+    if res eq 128 then r.gravSoft = 4.0
+    if res eq 256 then r.gravSoft = 2.0
+    if res eq 320 then r.gravSoft = 3.2
+    if res eq 640 then r.gravSoft = 1.6
   
-    r.simPath   = '/n/home07/dnelson/sims.tracersMC/'+str(res)+'_20Mpc/output/'
-    r.arepoPath = '/n/home07/dnelson/sims.tracersMC/'+str(res)+'_20Mpc/'
+    r.simPath   = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/output/'
+    r.arepoPath = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/'
     r.savPrefix = 'M'
     r.plotPath   = '/n/home07/dnelson/coldflows/'
-    r.derivPath  = '/n/home07/dnelson/sims.tracersMC/'+str(res)+'_20Mpc/data.files/'
+    r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
     
     ; if redshift passed in, convert to snapshot number and save
     if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
@@ -190,7 +184,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     return,r
   endif
   
-  if (run eq 'tracerMC.nonrad') then begin ; DEV.ref
+  if (run eq 'dev.tracerMC.nonrad') then begin ; DEV.ref
     r.boxSize       = 20000.0
     r.snapRange     = [0,38]
     r.groupCatRange = [15,38]
@@ -219,7 +213,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     return,r
   endif
   
-  if (run eq 'tracerMC') then begin ; DEV coolSF.GFM.ref
+  if (run eq 'dev.tracerMC') then begin ; DEV coolSF.GFM.ref
     r.boxSize       = 20000.0
     r.snapRange     = [0,38]
     r.groupCatRange = [15,38]
