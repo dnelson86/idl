@@ -93,34 +93,37 @@ end
 pro makeArepoProjBsub
 
   ; config - path and snapshot
-  res = 256
-  run = 'tracerMC.ref'
-  f   = '1'
-  subBox = 1 ; search for subbox snapshot versus normal
+  ;res = 256
+  ;run = 'tracerMC.ref'
+  ;f   = '1'
+  ;subBox = 0 ; search for subbox snapshot versus normal
   
-  snapRange = [1,847,1]
+  snapRange = [0,20,1]
   
   ; config - viewsize / object
-  sP = simParams(res=res,run=run,f=f,snap=snapRange[0])
+  ;sP = simParams(res=res,run=run,f=f,snap=snapRange[0])
+  sP = { simPath   : '/n/home07/dnelson/dev.tracerMC/gasSphere.cylTest.1e4.norot.nocool.nosg/output/' ,$
+         arepoPath : '/n/home07/dnelson/dev.tracerMC/gasSphere.cylTest.1e4.norot.nocool.nosg/',$
+         snap      : 0 }
   h = loadSnapshotHeader(sP=sP,subBox=subBox)
   
   ;boxSize = h.boxSize ; full box
-  boxSize = 2000.0 ; subbox
+  boxSize = 5000.0 ; subbox
   
   ;xyzCen = [1123.20,7568.80,16144.2] ;dusan 512
   xyzCen = [boxSize/2.0,boxSize/2.0,boxSize/2.0]
 
   sliceWidth  = boxSize ; cube sidelength
-  zoomFac     = 1.1   ; final image is boxSize/zoomFac in extent
+  zoomFac     = 10.0   ; final image is boxSize/zoomFac in extent
 
   ; render config
   spawnJobs   = 1    ; execute bsub?
   nProcs      = 1    ; 128^3=8, 256^3=24, 512^3=256 (minimum for memory)
   ptile       = 1
-  dimX        = 800  ; image dimensions (x pixels)
-  dimY        = 800  ; image dimensions (y pixels)
+  dimX        = 1000  ; image dimensions (x pixels)
+  dimY        = 1000  ; image dimensions (y pixels)
   
-  axesStr = ['0 1 2','0 2 1'] ;['0 1 2','0 2 1','1 2 0'] ;xy,xz,yz
+  axesStr = ['0 1 2','0 2 1','1 2 0'] ;xy,xz,yz
   
   ; bbox and projection setup
   cmdCode = 5 ;projection

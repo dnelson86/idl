@@ -329,6 +329,7 @@ end
 
 pro reportCPUThreads
   compile_opt idl2, hidden, strictarr, strictarrsubs
+  help,/memory
   print,'!CPU.HW_NCPU = ' + str(!CPU.HW_NCPU) + ' TPool_NThreads = ' + str(!CPU.TPOOL_NTHREADS)
 end
 

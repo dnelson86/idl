@@ -31,7 +31,7 @@ function mergerTree, sP=sP, makeNum=makeNum
 
   ; check for existing catalog
   if ~keyword_set(makeNum) then begin
-    saveFilename = sP.derivPath+'mergerTree.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.sav'
+    saveFilename = sP.derivPath+'mergerTree/mergerTree.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.sav'
     
     restore, saveFilename
     return, Parent
@@ -171,7 +171,7 @@ function mergerTree, sP=sP, makeNum=makeNum
     delta_age = (redshiftToAgeFlat(sP.redshift) - redshiftToAgeFlat(cur_z))*1000 ;Myr
     
     ; save Parent ("merger tree") for this snapshot
-    saveFilename = sP.derivPath+'mergerTree.'+sP.savPrefix+str(sP.res)+'.'+str(m)+'.sav'
+    saveFilename = sP.derivPath+'mergerTree/mergerTree.'+sP.savPrefix+str(sP.res)+'.'+str(m)+'.sav'
     if file_test(saveFilename) then begin
       print,'SKIP : '+strmid(saveFilename,strlen(sp.derivPath))
     endif else begin
@@ -193,13 +193,13 @@ pro debugPlt, sP=sP
     xpts = indgen(maxSnap-minSnap)
     num = 100
     off = 11
-    xrange = [min(xpts)*0.9,max(xpts)]
+    xrange = [1,max(xpts)]
     yrange = [0.0,2.0]
         
     start_PS, sP.plotPath + 'debug_radgal-1.eps'
         fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
            title=str(sP.res)+textoidl("^3")+" z = "+string(sP.redshift,format='(f3.1)')+" gal-1",$
-           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys
+           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys,/xlog
         for i=0,num-1 do $
           fsc_plot,xpts,radtemp.gal[*,i],line=0,thick=!p.thick-1.0,/overplot,color=getColor(i)
     end_PS
@@ -207,7 +207,7 @@ pro debugPlt, sP=sP
     start_PS, sP.plotPath + 'debug_radgal-2.eps'
         fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
            title=str(sP.res)+textoidl("^3")+" z = "+string(sP.redshift,format='(f3.1)')+" gal-2",$
-           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys
+           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys,/xlog
         for i=off*num,off*num+num-1 do $
           fsc_plot,xpts,radtemp.gal[*,i],line=0,thick=!p.thick-1.0,/overplot,color=getColor(i)
     end_PS
@@ -215,7 +215,7 @@ pro debugPlt, sP=sP
     start_PS, sP.plotPath + 'debug_radgmem-1.eps'
         fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
            title=str(sP.res)+textoidl("^3")+" z = "+string(sP.redshift,format='(f3.1)')+" gmem-1",$
-           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys
+           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys,/xlog
         for i=0,num-1 do $
           fsc_plot,xpts,radtemp.gmem[*,i],line=0,thick=!p.thick-1.0,/overplot,color=getColor(i)
     end_PS
@@ -223,25 +223,42 @@ pro debugPlt, sP=sP
     start_PS, sP.plotPath + 'debug_radgmem-2.eps'
         fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
            title=str(sP.res)+textoidl("^3")+" z = "+string(sP.redshift,format='(f3.1)')+" gmem-2",$
-           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys
+           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys,/xlog
         for i=off*num,off*num+num-1 do $
           fsc_plot,xpts,radtemp.gmem[*,i],line=0,thick=!p.thick-1.0,/overplot,color=getColor(i)
     end_PS
 stop
 end
 
-; mergerTreeSubset(): walk the merger tree from maxSnap back to minSnap and return the subset of the 
-;                     subgroups at maxSnap that are well-connected all the way back. also calculate
+; mergerTreeSubset(): walk the merger tree from sP.snap back to some min snap and return the subset of the 
+;                     subgroups at sP.snap that are well-connected all the way back. also calculate
 ;                     a few properties for these subgroups back in time (r_vir,T_vir,position) and 
 ;                     the subset of the galaxycat at maxSnap that we can track back using this selection
+;
+; NOTE: minSnap is decided here (change will require recalculation of all accretionTimes)
 
-function mergerTreeSubset, sP=sP, maxSnap=maxSnap, minSnap=minSnap, verbose=verbose
+function mergerTreeSubset, sP=sP, verbose=verbose
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
+  maxSnap = sP.snap
+  ;minSnap = sP.groupCatRange[0] + 1 ;z=6
+  minSnap = redshiftToSnapnum(4.0,sP=sP)
+  
   smoothKer = 3 ; 1,3,5 number of snapshots
   units = getUnits()
+  
+  ; set saveFilename and check for existence
+  saveFilename = sP.derivPath + 'mTreeSub.'+sP.savPrefix+str(sP.res)+'.'+$
+                 str(maxSnap)+'-'+str(minSnap)+'.sK'+str(smoothKer)+'.sav'  
+
+  if file_test(saveFilename) then begin
+    restore, saveFilename
+    return, r
+  endif
+
+  print,'Walking merger tree for halo selection...'
 
   numBack = maxSnap - minSnap
   
@@ -256,9 +273,10 @@ function mergerTreeSubset, sP=sP, maxSnap=maxSnap, minSnap=minSnap, verbose=verb
       gcIDs = gcIDList(gc=gc,select='pri')
 
       gcIDPlace = lindgen(n_elements(gcIDs)) ; initial placement in ascending order of ID
-
+      
       times     = fltarr(numBack+floor(smoothKer/2.0))
       hPos      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDPlace))
+      hMass     = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
       hVirRad   = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
       hVirTemp  = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
       noParMask = bytarr(n_elements(gcIDPlace))
@@ -270,13 +288,16 @@ function mergerTreeSubset, sP=sP, maxSnap=maxSnap, minSnap=minSnap, verbose=verb
     noParMask[wNoPar] = 1B ; mark halos with no parents
     gcIDs[wNoPar] = 0 ; from this point on, will contain incorrect values, must use noParMask to select
     
+    wPar = where(noParMask eq 0B,nleft)
+    
     if keyword_set(verbose) then $
-      print,' ['+str(sP.snap)+'] lost: '+string(count,format='(i3)')+' ('+$
-        string(float(count)/n_elements(gcIDs)*100,format='(f4.1)')+'%)'
+      print,' ['+string(sP.snap,format='(i3)')+'] remaining: '+string(nleft,format='(i5)')+' ('+$
+        string(float(nleft)/n_elements(gcIDs)*100,format='(f4.1)')+'%)
      
     ; store
     times[i] = h.time
     hPos[i,*,gcIDPlace]   = subgroupCen[*,gcIDs]
+    hMass[i,gcIDPlace]    = gc.subgroupMass[gcIDs]
     hVirRad[i,gcIDPlace]  = gc.group_r_crit200[gc.subgroupGrNr[gcIDs]]
     hVirTemp[i,gcIDPlace] = alog10(codeMassToVirTemp(gc.subgroupMass[gcIDs],sP=sP))
 
@@ -297,8 +318,9 @@ function mergerTreeSubset, sP=sP, maxSnap=maxSnap, minSnap=minSnap, verbose=verb
   noParMask = !NULL
   subgroupCen = !NULL
   
-  ; created smoothed estimates of pos(t), r_vir(t) and T_vir(t) for only those kept halos
+  ; created smoothed estimates of pos(t), mass(t),  r_vir(t) and T_vir(t) for only those kept halos
   hPos     = hPos[*,*,galcatIDList] ; need a smooth_periodic, but positions not really in need
+  hMass    = smooth(hMass[*,galcatIDList],[1,smoothKer])
   hVirRad  = smooth(hVirRad[*,galcatIDList],[1,smoothKer])
   hVirTemp = smooth(hVirTemp[*,galcatIDList],[1,smoothKer])
   
@@ -322,11 +344,16 @@ function mergerTreeSubset, sP=sP, maxSnap=maxSnap, minSnap=minSnap, verbose=verb
   gcIndOrig.gmem = placeMap[gcIndOrig.gmem-minid]
   placeMap = !NULL
   
-  ; get the subset of the galcat IDs in sgIDList
-  galcatSub = galcatINDList(galcat=galcat,gcIDList=galcatIDList) 
+  ; get the subset of the galcat indices in sgIDList
+  galcatSub = galcatINDList(galcat=galcat,gcIDList=galcatIDList)
   
   r = {galcatIDList:galcatIDList,gcIndOrig:gcIndOrig,galcatSub:galcatSub,$
-       hPos:hPos,hVirRad:hVirRad,hVirTemp:hVirTemp}
+       hPos:hPos,hVirRad:hVirRad,hVirTemp:hVirTemp,hMass:hMass,$
+       times:times,minSnap:minSnap,maxSnap:maxSnap,smoothKer:smoothKer}
+       
+  ; save
+  save,r,filename=saveFilename
+  print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
        
   return,r
 end
@@ -335,78 +362,35 @@ end
 
 pro plotHaloEvo, sP=sP
 
-  numBack = 28
   minLogM = 10.0
   
-  ; load prior group catalogs and track using mergerTree
-  for i=0,numBack-1 do begin
-  
-    ; load
-    h = loadSnapshotHeader(sP=sP)
-    gc = loadGroupCat(sP=sP,/skipIDs)
-    subgroupCen = subgroupPosByMostBoundID(sP=sP)
-
-    ; on first snapshot select primary halos and allocate arrays
-    if i eq 0 then begin
-      gcIDs = gcIDList(gc=gc,select='pri')
-
-      ; enforce minimum mass
-      w = where(codeMassToLogMsun(gc.subgroupMass[gcIDs]) ge minLogM,count)
-      gcIDs = gcIDs[w]
-      
-      gcIDPlace = lindgen(n_elements(gcIDs[w])) ; initial placement in ascending order of ID
-
-      times    = fltarr(numBack)
-      hPos     = fltarr(numBack,3,count)
-      hMasses  = fltarr(numBack,count)
-      hVirRad  = fltarr(numBack,count)
-      hVirTemp = fltarr(numBack,count)
-      
-      noParMask = bytarr(count)
-    endif
-  
-    ; which gcIDs still valid?
-    wPar = where(gcIDs ne -1,ncomp=count,comp=wNoPar)
-    
-    noParMask[wNoPar] = 1B ; mark halos with no parents
-    gcIDs[wNoPar] = 0 ; from this point on, will contain incorrect values, must use noParMask to select
-    
-    print,' ['+str(sP.snap)+'] lost: '+string(count,format='(i3)')+' ('+$
-      string(float(count)/n_elements(gcIDs)*100,format='(f4.1)')+'%)'
-  
-    ; store
-    times[i] = h.time
-    
-    hPos[i,*,gcIDPlace]   = subgroupCen[*,gcIDs]
-    hMasses[i,gcIDPlace]  = codeMassToLogMsun(gc.subgroupMass[gcIDs])
-    hVirRad[i,gcIDPlace]  = gc.group_r_crit200[gc.subgroupGrNr[gcIDs]]
-    hVirTemp[i,gcIDPlace] = alog10(codeMassToVirTemp(gc.subgroupMass[gcIDs],sP=sP))
-
-    ; load mergerTree and change subgroup IDs to parents at the prior snapshot
-    Parent = mergerTree(sP=sP)
-    
-    gcIDs = Parent[gcIDs] ; change to parent IDs
-
-    sP.snap -= 1
-  endfor
-  
-  ; select subset with complete parent histories
-  w = where(noParMask eq 0B,countParHist)
-  print,countParHist,n_elements(hMasses),float(countParHist)/n_elements(hMasses)*100.0
-  
-  hPos     = hPos[*,*,w]
-  hMasses  = hMasses[*,w]
-  hVirRad  = hVirRad[*,w]
-  hVirTemp = hVirTemp[*,w]
+  mt = mergerTreeSubset(sP=sP,/verbose)
   
   ; convert times into delta_times from starting redshift
-  redshifts = 1/times-1
+  redshifts = 1/mt.times-1
   ages = redshiftToAgeFlat(redshifts)
   ages = (ages-ages[0])*1000.0 ;Myr
   
-  ;massBins = [11.6,11.7,11.8,12.0,12.4]
-  massBins = [10.5,10.55,10.6,10.65,10.7]
+  ; convert masses into log
+  mt.hMass = codeMassToLogMsun(mt.hMass)
   
+  ; convert positions into relative to the starting position
+  for i=0,n_elements(mt.hPos[0,0,*])-1 do begin
+    startPos = reform(mt.hPos[0,*,i])
+    
+    dists_xyz = [[mt.hPos[*,0,i] - startPos[0]],$
+                 [mt.hPos[*,1,i] - startPos[1]],$
+                 [mt.hPos[*,2,i] - startPos[2]]]
+                 
+    correctPeriodicDistVecs, dists_xyz, sP=sP
+   
+    mt.hPos[*,*,i] = dists_xyz
+  endfor
+  
+  ;massBins = [11.6,11.7,11.8,12.0,12.4]
+  ;massBins = [10.5,10.55,10.6,10.65,10.7]
+  massBins = [10.0,10.5,11.0,11.5,12.0]
+
   ires = 20
   respts = findgen(ires)/(ires-1) * min(ages)
   
@@ -416,10 +400,10 @@ pro plotHaloEvo, sP=sP
     !p.charsize -= 0.4
     
     for i=0,n_elements(massBins)-2 do begin
-      w = where(hMasses[0,*] ge massBins[i] and hMasses[0,*] lt massBins[i+1],count)
+      w = where(mt.hMass[0,*] ge massBins[i] and mt.hMass[0,*] lt massBins[i+1],count)
   
       xrange = [min(ages),0.0]
-      yrange = [min(hMasses[*,w])*0.99,max(hMasses[*,w])*1.01]
+      yrange = [min(mt.hMass[*,w])*0.99,max(mt.hMass[*,w])*1.01]
       
       fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
                xtitle="Time Back [Myr]",ytitle="log ( halo mass [M"+textoidl("_{sun}")+"] )",$
@@ -428,12 +412,12 @@ pro plotHaloEvo, sP=sP
       
       ; smooth/interpolate testing
       for j=0,count-1 do begin
-        fsc_plot,ages,smooth(hMasses[*,w[j]],5),line=0,color=getColor(j),/overplot
-        ;res=interpol(hMasses[*,w[j]],ages,respts,/lsquadratic)
+        fsc_plot,ages,smooth(mt.hMass[*,w[j]],5),line=0,color=getColor(j),/overplot
+        ;res=interpol(mt.hMass[*,w[j]],ages,respts,/lsquadratic)
         ;fsc_plot,respts,res,line=0,color=getColor(j),/overplot
       endfor
       ; original data
-      for j=0,count-1 do fsc_plot,ages,hMasses[*,w[j]],line=1,color=getColor(j),/overplot
+      for j=0,count-1 do fsc_plot,ages,mt.hMass[*,w[j]],line=1,color=getColor(j),/overplot
     endfor
     
   end_PS
@@ -443,18 +427,18 @@ pro plotHaloEvo, sP=sP
     !p.charsize -= 0.4
     
     for i=0,n_elements(massBins)-2 do begin
-      w = where(hMasses[0,*] ge massBins[i] and hMasses[0,*] lt massBins[i+1],count)
+      w = where(mt.hMass[0,*] ge massBins[i] and mt.hMass[0,*] lt massBins[i+1],count)
       
       xrange = [min(ages),0.0]
-      yrange = [min(hVirTemp[*,w])*0.99,max(hVirTemp[*,w])*1.01]
+      yrange = [min(mt.hVirTemp[*,w])*0.99,max(mt.hVirTemp[*,w])*1.01]
       
       fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
                xtitle="Time Back [Myr]",ytitle="halo T"+textoidl("_{vir}")+" [K]",$
                title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
                string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
                
-      for j=0,count-1 do fsc_plot,ages,smooth(hVirTemp[*,w[j]],5),line=0,color=getColor(j),/overplot
-      for j=0,count-1 do fsc_plot,ages,hVirTemp[*,w[j]],line=1,color=getColor(j),/overplot
+      for j=0,count-1 do fsc_plot,ages,smooth(mt.hVirTemp[*,w[j]],5),line=0,color=getColor(j),/overplot
+      for j=0,count-1 do fsc_plot,ages,mt.hVirTemp[*,w[j]],line=1,color=getColor(j),/overplot
     endfor
     
   end_PS
@@ -464,18 +448,18 @@ pro plotHaloEvo, sP=sP
     !p.charsize -= 0.4
     
     for i=0,n_elements(massBins)-2 do begin
-      w = where(hMasses[0,*] ge massBins[i] and hMasses[0,*] lt massBins[i+1],count)
+      w = where(mt.hMass[0,*] ge massBins[i] and mt.hMass[0,*] lt massBins[i+1],count)
       
       xrange = [min(ages),0.0]
-      yrange = [min(hVirRad[*,w])*0.94,max(hVirRad[*,w])*1.06]
+      yrange = [min(mt.hVirRad[*,w])*0.94,max(mt.hVirRad[*,w])*1.06]
       
       fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
                xtitle="Time Back [Myr]",ytitle="log ( halo R"+textoidl("_{vir}")+" [kpc] )",$
                title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
                string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
                
-      for j=0,count-1 do fsc_plot,ages,smooth(hVirRad[*,w[j]],5),line=0,color=getColor(j),/overplot
-      for j=0,count-1 do fsc_plot,ages,hVirRad[*,w[j]],line=1,color=getColor(j),/overplot
+      for j=0,count-1 do fsc_plot,ages,smooth(mt.hVirRad[*,w[j]],5),line=0,color=getColor(j),/overplot
+      for j=0,count-1 do fsc_plot,ages,mt.hVirRad[*,w[j]],line=1,color=getColor(j),/overplot
     endfor
     
   end_PS
@@ -485,20 +469,22 @@ pro plotHaloEvo, sP=sP
     !p.charsize -= 0.4
     
     for i=0,n_elements(massBins)-2 do begin
-      w = where(hMasses[0,*] ge massBins[i] and hMasses[0,*] lt massBins[i+1],count)
+      w = where(mt.hMass[0,*] ge massBins[i] and mt.hMass[0,*] lt massBins[i+1],count)
       
       xrange = [min(ages),0.0]
       yrange = [-300,300] ;kpc offset from initial
       
       fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-               xtitle="Time Back [Myr]",ytitle="log ( halo R"+textoidl("_{vir}")+" [kpc] )",$
+               xtitle="Time Back [Myr]",ytitle="Delta Position X [kpc]",$
                title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
                string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
                
-      for j=0,count-1 do fsc_plot,ages,smooth(hPos[*,0,w[j]],5)-hPos[0,0,w[j]],line=0,color=getColor(j),/overplot
-      for j=0,count-1 do fsc_plot,ages,hPos[*,0,w[j]]-hPos[0,0,w[j]],line=1,color=getColor(j),/overplot
+      for j=0,count-1 do fsc_plot,ages,smooth(mt.hPos[*,0,w[j]],5),$
+        line=0,color=getColor(j),/overplot
+      for j=0,count-1 do fsc_plot,ages,mt.hPos[*,0,w[j]],$
+        line=1,color=getColor(j),/overplot
     endfor
     
   end_PS
-
+  stop
 end

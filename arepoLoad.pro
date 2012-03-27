@@ -438,7 +438,8 @@ end
 ;                        centered at [0,0,0] (or [boxCen,boxCen,boxCen] if specified) to gas ICs 
 ;                        (only add background cells that would be empty)
 
-function addICBackgroundGrid, gas, boxSize=boxSize, boxCen=boxCen, nBackGrid=nBackGrid
+function addICBackgroundGrid, gas, boxSize=boxSize, boxCen=boxCen, nBackGrid=nBackGrid, $
+                              massBackGrid=massBackGrid, uthermBackGrid=uthermBackGrid
 
   ; if not requested, return un-altered
   if (nBackGrid eq 0) then return, gas
@@ -446,8 +447,8 @@ function addICBackgroundGrid, gas, boxSize=boxSize, boxCen=boxCen, nBackGrid=nBa
   if (n_elements(boxSize) eq 0 or n_elements(gas) eq 0) then stop
 
   ; config
-  massBackGrid   = 1e-20
-  uthermBackGrid = 0.0
+  if ~keyword_set(massBackGrid) then massBackGrid   = 1e-20
+  if ~keyword_set(uthermBackGrid) then uthermBackGrid = 0.0
 
   backCellSize = boxSize / nBackGrid
   

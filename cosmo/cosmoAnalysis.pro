@@ -110,7 +110,7 @@ function galaxyCat, sP=sP
       ; match indices between gas ids and group member ids
       match,ids_groupmem,gc.IDs,ids_ind,gcIDs_ind,count=countID,/sort
       
-      for gcID=0,gc.nSubgroupsTot-1 do begin
+      for gcID=0L,gc.nSubgroupsTot-1 do begin
         ; select ids in group
         groupStart = gc.subGroupOffset[gcID]
         groupEnd   = groupStart + gc.subGroupLen[gcID]
@@ -118,11 +118,10 @@ function galaxyCat, sP=sP
         w = where(gcIDs_ind ge groupStart and gcIDs_ind lt groupEnd,count)
         
         ; save in similar 1D offset format
+        groupmemLen[gcID] = count
+        groupmemOff[gcID] = nextOff
         if (count gt 0) then begin
-          groupmemLen[gcID] = count
-          groupmemOff[gcID] = nextOff
           nextOff = groupmemOff[gcID] + groupmemLen[gcID]
-    
           groupmemIDs[groupmemOff[gcID]:nextOff-1] = ids_groupmem[ids_ind[w]]
         endif      
         
@@ -153,7 +152,7 @@ function galaxyCat, sP=sP
       ; match indices between galaxy ids and group ids
       match,ids,gc.IDs,ids_ind,gcIDs_ind,count=countID,/sort
       
-      for gcID=0,gc.nSubgroupsTot-1 do begin
+      for gcID=0L,gc.nSubgroupsTot-1 do begin
         ; select ids in group
         groupStart = gc.subGroupOffset[gcID]
         groupEnd   = groupStart + gc.subGroupLen[gcID]
@@ -161,11 +160,10 @@ function galaxyCat, sP=sP
         w = where(gcIDs_ind ge groupStart and gcIDs_ind lt groupEnd,count)
         
         ; save in similar 1D offset format
+        galaxyLen[gcID] = count
+        galaxyOff[gcID] = nextOff
         if (count gt 0) then begin
-          galaxyLen[gcID] = count
-          galaxyOff[gcID] = nextOff
           nextOff = galaxyOff[gcID] + galaxyLen[gcID]
-    
           galaxyIDs[galaxyOff[gcID]:nextOff-1] = ids[ids_ind[w]]
         endif      
         
@@ -493,7 +491,7 @@ function gcSubsetProp, sP=sP, select=select, oSnap=oSnap, $
     ; otherwise, load maximum past temperature (statistics for the child population of each gas cell)
     maxt = maxTemps(sP=sP,/loadByGas)
 
-    ; restrict temps to subset of galaxy cat
+    ; restrict temps to subset of galaxy cat (tracers)
     if keyword_set(trPopMax) then begin
       temp_gal  = maxt.maxTemps_gal[galcatInds.gal]
       temp_gmem = maxt.maxTemps_gmem[galcatInds.gmem]
@@ -506,6 +504,13 @@ function gcSubsetProp, sP=sP, select=select, oSnap=oSnap, $
       temp_gal  = maxt.maxTemps_mean_gal[galcatInds.gal]
       temp_gmem = maxt.maxTemps_mean_gmem[galcatInds.gmem]
     endif
+    
+    ; restrict temps to subset of galaxy cat (sph)
+    if sP.trMCPerCell eq 0 then begin
+      temp_gal  = maxt.maxTemps_gal[galcatInds.gal]
+      temp_gmem = maxt.maxTemps_gmem[galcatInds.gmem]
+    endif
+    
     maxt = !NULL
     
     r = {gal:temp_gal,gmem:temp_gmem}
@@ -522,8 +527,8 @@ function gcSubsetProp, sP=sP, select=select, oSnap=oSnap, $
     rtr = !NULL
     
     ; create new return arrays
-    rr = { gal  : fltarr(total(gal_child_counts)) ,$
-           gmem : fltarr(total(gmem_child_counts)) }
+    rr = { gal  : fltarr(total(gal_child_counts,/int)) ,$
+           gmem : fltarr(total(gmem_child_counts,/int)) }
     
     ; replicate byGas arrays into byTracer arrays
     offset = 0L
