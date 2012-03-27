@@ -926,11 +926,9 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   h5g_close, headerID
   h5f_close, fileID
   
-  if (nSplits ne nFiles) then begin
-    print,'ERROR: NumFilesPerSnapshot ['+str(nSplits)+'] differs from number of split files found ['+$
+  if (nSplits ne nFiles) then $
+    message,'ERROR: NumFilesPerSnapshot ['+str(nSplits)+'] differs from number of split files found ['+$
            str(nFiles)+'].'
-    stop
-  endif
   
   ; double precision
   if (flagDbl eq 1 and not keyword_set(doublePrec)) then $
@@ -962,6 +960,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   if (field eq 'particleids' or field eq 'ids') then begin
     rType = 'long'
     fieldName = 'ParticleIDs'
+    if partType eq partTypeNum('tracerMC') then message,'Error: tracersMC use tracerids not ids'
   endif
   if (field eq 'potential' or field eq 'phi') then begin
     rType = 'float'
@@ -981,73 +980,73 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     fieldName = 'Center-of-Mass'
     rDims = 3
     rType = 'float'
-    if (partType ne 0) then begin & print,'Error: CoM is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: CoM is gas only!'
   endif
   if (field eq 'coolingrate' or field eq 'coolrate') then begin
     rType = 'float'
     fieldName = 'CoolingRate'
-    if (partType ne 0) then begin & print,'Error: CoolingRate is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: CoolingRate is gas only!'
   endif
   if (field eq 'density' or field eq 'rho' or field eq 'dens') then begin
     rType = 'float'
     fieldName = 'Density'
-    if (partType ne 0) then begin & print,'Error: Density is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: Density is gas only!'
   endif
   if (field eq 'electronabundance' or field eq 'ne' or field eq 'nelec') then begin
     rType = 'float'
     fieldName = 'ElectronAbundance'
-    if (partType ne 0) then begin & print,'Error: NE is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: NE is gas only!'
   endif
   if (field eq 'internalenergy' or field eq 'u') then begin
     rType = 'float'
     fieldName = 'InternalEnergy'
-    if (partType ne 0) then begin & print,'Error: U is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: U is gas only!'
   endif
   if (field eq 'machnumber' or field eq 'machnum') then begin
     rType = 'float'
     fieldName = 'MachNumber'
-    if (partType ne 0) then begin & print,'Error: MachNum is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: MachNum is gas only!'
   endif
   if (field eq 'maxfaceangle') then begin
     rType = 'float'
     fieldName = 'MaxFaceAngle'
-    if (partType ne 0) then begin & print,'Error: MaxFaceAngle is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: MaxFaceAngle is gas only!'
   endif
   if (field eq 'neutralhydrogenabundance' or field eq 'nh') then begin
     rType = 'float'
     fieldName = 'NeutralHydrogenAbundance'
-    if (partType ne 0) then begin & print,'Error: NH is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: NH is gas only!'
   endif
   if (field eq 'number_of_faces_of_cell' or field eq 'num_cell_faces' or field eq 'numcellfaces' or $
       field eq 'numfaces') then begin
     rType = 'float'
     fieldName = 'Number of faces of cell'
-    if (partType ne 0) then begin & print,'Error: NumFaces is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: NumFaces is gas only!'
   endif
   if (field eq 'pressure' or field eq 'pres') then begin
     rType = 'float'
-    if (partType ne 0) then begin & print,'Error: Pressure is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: Pressure is gas only!'
     fieldName = 'Pressure'
   endif
   if (field eq 'smoothinglength' or field eq 'hsml') then begin
     rType = 'float'
     fieldName = 'SmoothingLength'
-    if (partType ne 0) then begin & print,'Error: HSML is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: HSML is gas only!'
   endif
   if (field eq 'starformationrate' or field eq 'sfr') then begin
     rType = 'float'
     fieldName = 'StarFormationRate'
-    if (partType ne 0) then begin & print,'Error: SFR is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: SFR is gas only!'
   endif
   if (field eq 'surface_area' or field eq 'surfarea') then begin
     rType = 'float'
     fieldName = 'Surface Area'
-    if (partType ne 0) then begin & print,'Error: SurfArea is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: SurfArea is gas only!'
   endif
   if (field eq 'volume' or field eq 'vol') then begin
     rType = 'float'
     fieldName = 'Volume'
-    if (partType ne 0) then begin & print,'Error: Vol is gas only!' & return,0 & endif
+    if (partType ne 0) then message,'Error: Vol is gas only!'
   endif
   
   ; gas/stars only
@@ -1055,17 +1054,17 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   if (field eq 'masses' or field eq 'mass') then begin
     rType = 'float'
     fieldName = 'Masses'
-    if (partType ne 0 and partType ne 4) then begin & print,'Error: Mass is gas/stars only!' & return,0 & endif
+    if (partType ne 0 and partType ne 4) then message,'Error: Mass is gas/stars only!'
   endif
   if (field eq 'metallicity' or field eq 'metal') then begin
     rType = 'float'
     fieldName = 'Metallicity'
-    if (partType ne 0 and partType ne 4) then begin & print,'Error: Z is gas/stars only!' & return,0 & endif
+    if (partType ne 0 and partType ne 4) then message,'Error: Z is gas/stars only!'
   endif
   if (field eq 'numtr' or field eq 'numtracers') then begin
     rType = 'long'
     fieldName = 'NumTracers'
-    if (partType ne 0 and partType ne 4) then begin & print,'Error: NumTracers is gas/stars only!' & return,0 & endif
+    if (partType ne 0 and partType ne 4) then message,'Error: NumTracers is gas/stars only!'
   endif
   
   ; stars only (TODO: GFM)
@@ -1073,7 +1072,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   if (field eq 'stellarformationtime' or field eq 'sftime') then begin
     rType = 'float'
     fieldName = 'StellarFormationTime'
-    if (partType ne 4) then begin & print,'Error: SFTime is stars only!' & return,0 & endif
+    if (partType ne 4) then message,'Error: SFTime is stars only!'
   endif
   
   ; tracers (Monte Carlo)
@@ -1081,12 +1080,12 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   if (field eq 'parentid' or field eq 'parentids') then begin
     rType = 'long'
     fieldName = 'ParentID'
-    if (partType ne 3) then begin & print,'Error: ParentID is tracerMC only!' & return,0 & endif
+    if (partType ne 3) then message,'Error: ParentID is tracerMC only!'
   endif
   if (field eq 'tracerid' or field eq 'tracerids') then begin
     rType = 'long'
     fieldName = 'TracerID'
-    if (partType ne 3) then begin & print,'Error: TracerID is tracerMC only!' & return,0 & endif
+    if (partType ne 3) then message,'Error: TracerID is tracerMC only!'
   endif
   
   ; tracers (common)
@@ -1097,7 +1096,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     fieldName = 'FluidQuantities'
     rDims = 5 ; WARNING: must match to setup in Arepo run
     rType = 'float'
-    if (partType ne 3 and partType ne 2) then begin & print,'Error: Fluid quantities are tracerMC/Vel only!' & return,0 & endif
+    if (partType ne 3 and partType ne 2) then message,'Error: Fluid quantities are tracerMC/Vel only!'
   endif
   
   if (fieldName eq '') then begin
@@ -1197,10 +1196,8 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       h5g_close, headerID
       h5f_close, fileID
       
-      if ((size(groupData))[0] ne rDims and (size(groupData))[1] ne rDims) then begin
-        print,'ERROR: Return dimensionality of requested field not expected.'
-        return,0
-      endif
+      if ((size(groupData))[0] ne rDims and (size(groupData))[1] ne rDims) then $
+        message,'ERROR: Return dimensionality of requested field not expected.'
   
       ; fill return array
       if (rDims eq 1) then $

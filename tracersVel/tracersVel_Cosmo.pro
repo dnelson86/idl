@@ -161,7 +161,7 @@ function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   
   ; if IDs requested, load tracer IDs and do crossmatch
   if keyword_set(getIDs) then begin
-    tr_ids = loadSnapshotSubset(sP.simPath, snapNum=sP.snap, field='ids', partType='tracerVel')
+    tr_ids = loadSnapshotSubset(sP=sP, field='ids', partType='tracerVel')
     
     ; return children tracer ids
     return,tr_ids[tr_inds]
