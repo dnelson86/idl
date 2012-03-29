@@ -7,6 +7,8 @@
 
 pro plotTmaxVsTvirAcc
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
   ; config
   res = 256
   redshift = 2.0
@@ -193,6 +195,8 @@ end
 
 pro plotAccTimeVsTmaxTime, sP=sP
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
   binsizeGyr = 0.15 / (sP.res/128)
 
   ; config

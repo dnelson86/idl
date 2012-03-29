@@ -242,6 +242,32 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     return,r
   endif
   
+  if (run eq 'dev.tracerMC.SPT') then begin ; shy's bugtest
+    r.boxSize       = 20000.0
+    r.snapRange     = [1,2]
+    r.groupCatRange = [1,2]
+    
+    if keyword_set(f) then message,'do not set f'
+    f = '10'
+
+    if res ne 128 then message,'only res 128 exists'
+    r.trMCPerCell = fix(f)
+  
+    r.targetGasMass = 4.76446157e-03
+    r.trMassConst = r.targetGasMass / float(r.trMCPerCell)
+    r.gravSoft = 4.0
+  
+    r.simPath    = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.SPT/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.SPT/'
+    r.savPrefix  = 'S.f'+f
+    r.plotPath   = '/n/home07/dnelson/dev.tracerMC/'
+    r.derivPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.SPT/data.files/'
+    
+    if (n_elements(redshift) eq 1) then message,'error'
+    
+    return,r
+  endif
+  
   print,'simParams: ERROR.'
   stop
 end

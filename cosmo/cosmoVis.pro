@@ -7,17 +7,17 @@
 pro makeArepoFoFBsub
 
   ; config
-  res = 256
-  run = 'tracerMC'
+  res = 128
+  run = 'dev.tracerMC.SPT'
   ;f = '10'
   
   sP = simParams(res=res,run=run)
 
-  snapRange = [189,189,1]
+  snapRange = [2,2,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 32 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
+  nProcs    = 8 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
                  ;               256^3=4 (n32tile4 PartAllocFactor=3)
   ptile     = 4 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
@@ -51,7 +51,7 @@ pro makeArepoFoFBsub
     
     ; write header
     printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q nancy'
+    printf,lun,'#BSUB -q keck'
     printf,lun,'#BSUB -J fof_' + str(snap) + ''
     printf,lun,'#BSUB -n ' + str(nProcs)
     printf,lun,'#BSUB -R "' + selectStr + 'span[ptile=' + str(ptile) + ']"' ;rusage[mem=31000]
