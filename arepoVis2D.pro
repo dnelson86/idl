@@ -263,8 +263,9 @@ end
 pro scatterPlotPos
 
   ; config
-  sP = { simPath  : '/n/home07/dnelson/dev.tracerMC/gasSphere.cylTest.1e4.norot.nocool.nosg/output/' ,$
-         plotPath : '/n/home07/dnelson/dev.tracerMC/' ,$
+  basePath = '/n/home07/dnelson/sims.idealized/'
+  sP = { simPath  : basePath+'arepo.gasSphere.cylTest.1e4.norot.nocool.nosg/output/' ,$
+         plotPath : basePath ,$
          snap     : 0 }
   
   zoomSize = 1000.0 ;kpc
@@ -285,7 +286,7 @@ pro scatterPlotPos
     
     ; load positions and densities
     pos  = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
-  
+
     ; make spatial subset
     if keyword_set(zoomSize) then begin
       w = where(abs(pos[axes[0],*]-boxCen) le zoomSize*1.0 and $
@@ -303,7 +304,7 @@ pro scatterPlotPos
       xyrange = [boxCen-zoomSize/2.0,boxCen+zoomSize/2.0]
     
       fsc_plot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,xstyle=1,ystyle=1,$
-           xtitle="x [kpc]",ytitle="y [kpc]",aspect=1.0,charsize=!p.charsize-1.0,$
+           xtitle="x [kpc]",ytitle="y [kpc]",aspect=1.0,charsize=!p.charsize-0.5,$
            title="particle scatterplot - part ["+str(partType)+"] snap ["+str(snap)+"]"
     
       fsc_plot,x,y,psym=3,/overplot

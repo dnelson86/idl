@@ -92,8 +92,8 @@ end
 
 pro setupSingleSphereIso
 
-  input_fname  = "gasSphere.gasonly.1e4.nfw.M1e2.L0.2.dat.hdf5"
-  output_fname = "gasSphere.gasonly.1e4.nfw.M1e2.L0.2.withBack.dat"
+  input_fname  = "gasSphere.gasonly.1e4.nfw.M1e2.norot.dat.hdf5"
+  output_fname = "gasSphere.gasonly.1e4.nfw.M1e2.norot.noBack.dat"
 
   boxSize   = 5000.0 ;kpc
   nBackGrid = 16 ;^3, nested twice
@@ -116,14 +116,16 @@ pro setupSingleSphereIso
 
   ; add nested background grid
   boxSizeInner = ceil((max(gas.pos)-min(gas.pos))/100) * 100.0
-
-  gas = addICBackgroundGrid(gas, boxSize=boxSizeInner, $
-                            boxCen=[boxSize/2.0,boxSize/2.0,boxSize/2.0], nBackGrid=nBackGrid)
-  gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid)
+  uthermBackGrid = 0 ;1.0e4
+  
+  ;gas = addICBackgroundGrid(gas, boxSize=boxSizeInner,uthermBackGrid=uthermBackGrid, $
+  ;                          boxCen=[boxSize/2.0,boxSize/2.0,boxSize/2.0], nBackGrid=nBackGrid)
+  ;gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid, uthermBackGrid=uthermBackGrid)
 
   ; save
   writeICFile,output_fname,part0=gas
   print,'Suggested target gas mass: '+string(h.masstable[0])
+  print,minmax(gas.pos)
 
 end
 
@@ -134,17 +136,18 @@ pro setupFilamentTest
   ; cylinder config
   r200 = 162.6 ; kpc nfw
   cyl_length = 100.0  ;kpc
-  cyl_radius = 5.0   ;kpc
+  cyl_radius = 2.0   ;kpc
   cyl_rstart = 1.0*r200 ;kpc (r200 nfw)
+  cyl_dens = 0.0001 ;code units TODO in terms of critical density at z=2
 
-  cyl_r_res = 5
+  cyl_r_res = 10
   cyl_l_res = cyl_r_res * (cyl_length/cyl_radius)
   
   seed = 424242L
 
   ; gasSphere config
   input_fname  = "gasSphere.gasonly.1e4.nfw.M1e2.norot.dat.hdf5"
-  output_fname = "gasSphere.cylTest.1e4.nfw.M1e2.norot.withBack.dat"
+  output_fname = "gasSphere.cylTest.1e4.nfw.M1e2.norot.noBack.dat"
 
   boxSize   = 5000.0 ;kpc
   nBackGrid = 16 ;^3, nested twice
@@ -169,7 +172,8 @@ pro setupFilamentTest
   
   cyl_vol   = !pi*cyl_radius^2.0*cyl_length
   cyl_npart = cyl_r_res * cyl_l_res
-  
+  cyl_masspart = cyl_vol * cyl_dens / cyl_npart
+
   ; form gas for cylinder (along z-axis)
   rnd_angle = randomu(seed,cyl_npart,/double) * 360.0
   rnd_radii = randomu(seed,cyl_npart,/double) * cyl_radius
@@ -188,10 +192,10 @@ pro setupFilamentTest
   
   ; other cylinder properties
   cyl_vel = fltarr(3,cyl_npart)
-  cyl_vel[2,*] = -200.0 ;km/s towards halo
+  cyl_vel[2,*] = -100.0 ;km/s towards halo
   cyl_id  = lindgen(cyl_npart) + max(gas_id) + 1L
-  cyl_u   = fltarr(cyl_npart) + 500.0 ;~2500K similar to the outskirts of the halo
-  cyl_mass = fltarr(cyl_npart) + float(h.masstable[0]) ; same mass as halo particles for noww
+  cyl_u   = fltarr(cyl_npart) + 200.0 ;~10000K similar to the outskirts of the halo
+  cyl_mass = fltarr(cyl_npart) + cyl_masspart
 
   ; create combined gas struct
   gas = {pos:[[gas_pos],[cyl_pos]],vel:[[gas_vel],[cyl_vel]],id:[gas_id,cyl_id],$
@@ -199,15 +203,16 @@ pro setupFilamentTest
 
   ; add nested background grid
   boxSizeInner = ceil((max(gas.pos)-min(gas.pos))/200) * 200.0
-  uthermBackGrid = 10000.0
+  uthermBackGrid = 0 ;1.0e4
 
-  gas = addICBackgroundGrid(gas, boxSize=boxSizeInner, uthermBackGrid=uthermBackGrid, $
-                            boxCen=[boxSize/2.0,boxSize/2.0,boxSize/2.0], nBackGrid=nBackGrid)
-  gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid, uthermBackGrid=uthermBackGrid)
+  ;gas = addICBackgroundGrid(gas, boxSize=boxSizeInner, uthermBackGrid=uthermBackGrid, $
+  ;                          boxCen=[boxSize/2.0,boxSize/2.0,boxSize/2.0], nBackGrid=nBackGrid)
+  ;gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid, uthermBackGrid=10*uthermBackGrid)
 
   ; save
   writeICFile,output_fname,part0=gas
   print,'Cylinder particle count: '+string(cyl_npart)
+  print,'t=0 Cylinder id range: '+string(min(cyl_id))+" - "+string(max(cyl_id))
   print,'Suggested target gas mass: '+string(h.masstable[0])
 
 end

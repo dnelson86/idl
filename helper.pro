@@ -289,7 +289,7 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big
             
 end
 
-pro end_PS, pngResize=pngResize, deletePS=deletePS
+pro end_PS, pngResize=pngResize, deletePS=deletePS, im_options=im_options
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -299,7 +299,7 @@ pro end_PS, pngResize=pngResize, deletePS=deletePS
     PS_End
     
   if keyword_set(pngResize) then $
-    PS_End, /PNG, Delete_PS=deletePS, Resize=pngResize
+    PS_End, /PNG, Delete_PS=deletePS, im_options=im_options, Resize=pngResize
 
 end
 
@@ -604,7 +604,7 @@ end
 @cosmoAnalysis
 @cosmoHist
 @cosmoVis
-;@cosmoSphere
+@cosmoSphere
 @cosmoPlotGalCat
 @cosmoPlot
 
@@ -622,3 +622,6 @@ end
 @arepoLoad
 @arepoVis2D
 @arepoSphSym
+
+@filamentTest
+
