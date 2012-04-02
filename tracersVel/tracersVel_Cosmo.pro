@@ -102,8 +102,8 @@ function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
                                  gasInds=gasInds, gasIDs=gasIDs, $ ; input: gas cells to search
                                  child_counts=child_counts, child_inds=child_inds
 
-  if (n_elements(gasInds) eq 0 and n_elements(gasIDs) eq 0) then stop
-  if (not keyword_set(getInds) and not keyword_set(getIDs)) then stop
+  if (n_elements(gasInds) eq 0 and n_elements(gasIDs) eq 0) then message,'need gasInds or gasIDs'
+  if (not keyword_set(getInds) and not keyword_set(getIDs)) then message,'return type needed'
 
   if (n_elements(gasInds) eq 0) then begin
     ; convert input gas IDs into indices
@@ -133,8 +133,8 @@ function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   if (count eq 0) then return, []
   
   ; add all children tracer indices to keeper array
-  if total(child_counts,/pres) gt 2e9 then stop ; change tr_inds to lon64arr
-  tr_inds = ulonarr(total(child_counts,/pres))
+  if total(child_counts,/int) gt 2e9 then stop ; change tr_inds to lon64arr
+  tr_inds = ulonarr(total(child_counts,/int))
   start = 0L
   
   foreach gasInd,gasInds[w],i do begin

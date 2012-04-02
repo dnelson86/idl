@@ -236,39 +236,35 @@ function interpHaloShell, sP=sP, haloID=haloID, radFac=radFac, Nside=Nside
     restore,saveFilename,/verbose
   endif else begin
     ; load catalog and find halo position
-    h  = loadSnapshotHeader(sP.simPath, snapNum=sP.snap)
-    gc = loadGroupCat(sP.simPath,sP.snap,/verbose)
+    h  = loadSnapshotHeader(sP=sP)
+    gc = loadGroupCat(sP=sP,/verbose,/skipIDs)
     
     haloPos = gc.groupPos[*,haloID]
     radius  = radFac * gc.group_r_crit200[haloID] ;kpc
     
     ; load gas positions and densities
-    pos  = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='pos')
-    dens = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='dens')
+    pos  = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+    dens = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
       
     ; correction if shell is near or crosses periodic box edge (add ghosts)
     ; TODO
-    if (total(haloPos-2*radius lt 0.0 or haloPos+2*radius gt h.boxSize) ne 0) then begin
-      print,'Warning: Halo near box edge. Periodic not implemented.'
-      stop
-    endif
+    if (total(haloPos-2*radius lt 0.0 or haloPos+2*radius gt h.boxSize) ne 0) then $
+      message,'Warning: Halo near box edge. Periodic not implemented.'
     
     ; take conservative subset of points
     rad = reform( sqrt( (pos[0,*]-haloPos[0])*(pos[0,*]-haloPos[0]) + $
                         (pos[1,*]-haloPos[1])*(pos[1,*]-haloPos[1]) + $
                         (pos[2,*]-haloPos[2])*(pos[2,*]-haloPos[2]) ) )
     
-    minMax = [0.1*radius,5.0*radius]
+    minMax = [0.1*radius,2.0*radius]
     if (minMax[0] lt 10.0) then minMax[0] = 0.0
     if (minMax[1] lt gc.group_r_crit200[haloID]) then minMax[1] = gc.group_r_crit200[haloID]
-    w = where(rad ge 0.1 * radius and rad le 5.0 * radius,count)
-    if (count gt 0) then begin
-      pos  = pos[*,w]
-      dens = dens[w]
-    endif else begin
-      print,'Error: No positions found near specified radius.'
-      stop
-    endelse
+    
+    w = where(rad ge minMax[0] and rad le minMax[1],count)
+    if ~count then message,'Error: No positions found near specified radius.'
+
+    pos  = pos[*,w]
+    dens = alog10(rhoRatioToCrit(dens[w],redshift=sP.redshift))
     
     rad = !NULL
     
@@ -280,10 +276,10 @@ function interpHaloShell, sP=sP, haloID=haloID, radFac=radFac, Nside=Nside
     sphereXYZ /= h.boxSize
   
     ; interpolate
-    val_interp = sphereInterp(pos,dens*1e10,sphereXYZ,/verbose)
-    
+    val_interp = sphereInterp(pos,dens,sphereXYZ,/verbose)
+
     ; save
-    save,val_interp,Nside,radFac,haloID,count,filename=saveFilename
+    ;save,val_interp,Nside,radFac,haloID,count,filename=saveFilename
   endelse
   
   return, val_interp
@@ -294,21 +290,23 @@ end
 pro plotHaloShell
 
   ; config
-  Nside  = 32 ;256~750k, 512~3M
-  radFac = 0.94 ; times r_vir
+  Nside  = 64 ;256~750k, 512~3M
+  radFac = 0.25 ; times r_vir
   haloID = 0
-  sP = simParams(res=128,run='dev.tracer.nonrad',redshift=2.0)
+  
+  sP = simParams(res=128,run='tracer',redshift=3.0)
 
   ; interpolate onto the shell
   val_interp = interpHaloShell(sP=sP,haloID=haloID,radFac=radFac,Nside=Nside)
   
   ; plot
-  ;start_PS, sP.plotPath + 'shell.eps'
+  start_PS, sP.plotPath + 'shell_r'+str(fix(radFac*100))+'.eps'
     latLongCen = [60,-45] ;deg (left,up)
     
-    mollview,val_interp,/online,/nested,PS=sP.plotPath + 'shell.eps',$
-      title="density on shell",subtitle="",rot=latLongCen
+    mollview,val_interp,/online,/nested,$
+      title=sP.run+" "+str(sP.res)+textoidl("^3")+textoidl("\rho_{gas}  -  r / r_{vir} = "+$
+      string(radFac,format='(f4.2)')),subtitle="",rot=latLongCen
   
- ; end_PS
+  end_PS
   stop
 end
