@@ -204,9 +204,6 @@ function accretionTimes, sP=sP
     ids_gmem = !NULL
     
     ; create a gcIndOrig for the tracers
-    gc = loadGroupCat(sP=sP,/skipIDs)
-    priParentIDs = gcIDList(gc=gc,select='pri') ; this is the starting gcIDs from above
-
     gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,$
                                      child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc}) 
                   
@@ -364,6 +361,256 @@ function accretionTimes, sP=sP
   endif
   
 end
+
+; -----------------------------------------------------------------------------------------------------
+; accretionTraj(): for each gas particle/tracer, starting at some redshift, track backwards in time
+;                  with respect to the tracked parent halos (using mergerTree) and save the relative
+;                  position and temperature (for visualization)
+; -----------------------------------------------------------------------------------------------------
+
+function accretionTraj, sP=sP
+
+  forward_function cosmoTracerChildren, cosmoTracerVelParents
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+
+  ; first, walk back through the merger tree and find primary subhalos with good parent histories
+  mt = mergerTreeSubset(sP=sP,/verbose)
+
+  ; set saveFilename and check for existence
+  saveTag = ''
+  if sP.trMCPerCell eq -1 then saveTag = '.trVel'
+  if sP.trMCPerCell gt 0  then saveTag = '.trMC'
+  if sP.trMCPerCell eq 0  then saveTag = '.SPH'
+  
+  saveFilename = sP.derivPath + 'accTraj'+saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
+                 str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'  
+  
+  if file_test(saveFilename) then begin
+    restore, saveFilename
+    return, r
+  endif
+  
+  ; load galaxy/group member catalogs at zMin for gas ids to search for
+  galcat = galaxyCat(sP=sP)
+  
+  nSnapsTot = mt.maxSnap - mt.minSnap + 1 ; how many values to store in time dimension
+
+  ; NO TRACERS CASE - track the particles themselves back in time (SPH)
+  ; ---------------
+  if sP.trMCPerCell eq 0 then begin
+    print,'Calculating new accretion time using ( SPH Particles ) res = '+str(sP.res)+$
+      ' in range ['+str(mt.minSnap)+'-'+str(mt.maxSnap)+'].'
+         
+    ; store the main arrays as a structure so we can write them directly
+    r = {relPos_gal    : fltarr(nSnapsTot,3,n_elements(mt.galcatSub.gal))    ,$
+         relPos_gmem   : fltarr(nSnapsTot,3,n_elements(mt.galcatSub.gmem))   ,$
+         curTemp_gal   : fltarr(nSnapsTot,n_elements(mt.galcatSub.gal))      ,$
+         curTemp_gmem  : fltarr(nSnapsTot,n_elements(mt.galcatSub.gmem))      }
+    
+    for m=mt.maxSnap,mt.minSnap,-1 do begin
+      sP.snap = m
+      print,m
+      ; load gas ids and match to catalog
+      h = loadSnapshotHeader(sP=sP)
+      ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+      
+      ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs   
+      match,galcat.galaxyIDs[mt.galcatSub.gal],ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+      ids_gal_ind = ids_gal_ind[sort(galcat_ind)]
+      
+      match,galcat.groupmemIDs[mt.galcatSub.gmem],ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+      ids_gmem_ind = ids_gmem_ind[sort(galcat_ind)]
+      
+      ids        = !NULL
+      galcat_ind = !NULL
+      
+      ; load pos to calculate positions relative to halo centers
+      pos   = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+      
+      pos_gal  = pos[*,ids_gal_ind]
+      pos_gmem = pos[*,ids_gmem_ind]
+      
+      pos = !NULL
+
+      ; calculate current distance of gas particle from smoothed halo center position for galaxy members
+      pos_gal[0,*] = reform(mt.hPos[mt.maxSnap-m,0,mt.gcIndOrig.gal]) - pos_gal[0,*]
+      pos_gal[0,*] = reform(mt.hPos[mt.maxSnap-m,1,mt.gcIndOrig.gal]) - pos_gal[1,*]
+      pos_gal[0,*] = reform(mt.hPos[mt.maxSnap-m,2,mt.gcIndOrig.gal]) - pos_gal[2,*]
+
+      correctPeriodicDistVecs, pos_gal, sP=sP ; account for periodic distance function
+      
+      r.relPos_gal[mt.maxSnap-m,0,*] = pos_gal[0,*]
+      r.relPos_gal[mt.maxSnap-m,1,*] = pos_gal[1,*]
+      r.relPos_gal[mt.maxSnap-m,2,*] = pos_gal[2,*]
+      pos_gal = !NULL
+      
+      ; for group members
+      pos_gmem[0,*] = reform(mt.hPos[mt.maxSnap-m,0,mt.gcIndOrig.gmem]) - pos_gmem[0,*]
+      pos_gmem[1,*] = reform(mt.hPos[mt.maxSnap-m,1,mt.gcIndOrig.gmem]) - pos_gmem[1,*]
+      pos_gmem[2,*] = reform(mt.hPos[mt.maxSnap-m,2,mt.gcIndOrig.gmem]) - pos_gmem[2,*]
+
+      correctPeriodicDistVecs, pos_gmem, sP=sP ; account for periodic distance function
+      
+      r.relPos_gmem[mt.maxSnap-m,0,*] = pos_gmem[0,*]
+      r.relPos_gmem[mt.maxSnap-m,1,*] = pos_gmem[1,*]
+      r.relPos_gmem[mt.maxSnap-m,2,*] = pos_gmem[2,*]
+      pos_gmem = !NULL
+      
+      ; load gas u,nelec and calculate temperatures
+      u     = loadSnapshotSubset(sP=sP,partType='gas',field='u')
+      nelec = loadSnapshotSubset(sP=sP,partType='gas',field='ne')
+      
+      u_gal  = u[ids_gal_ind]
+      u_gmem = u[ids_gmem_ind]
+      u = !NULL
+      
+      nelec_gal  = nelec[ids_gal_ind]
+      nelec_gmem = nelec[ids_gmem_ind]
+      nelec = !NULL
+      
+      r.curTemp_gal[mt.maxSnap-m,*]  = convertUtoTemp(u_gal,nelec_gal,/log)
+      r.curTemp_gmem[mt.maxSnap-m,*] = convertUtoTemp(u_gmem,nelec_gmem,/log)
+
+      u_gal  = !NULL
+      u_gmem = !NULL
+      nelec_gal  = !NULL
+      nelec_gmem = !NULL
+      
+      prevTime = h.time
+
+    endfor
+    
+    ; save
+    save,r,filename=saveFilename
+    print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
+    
+  endif
+  
+  ; MONTE CARLO TRACERS CASE - for all gas cells, track back all child tracers
+  ; ------------------------
+  if sP.trMCPerCell gt 0 then begin
+    message,'todo'
+  endif
+  
+  
+  ; VELOCITY TRACERS case - will be similar to above since there could be multiple
+  ; ---------------------
+  if sP.trMCPerCell eq -1 then begin
+  
+    ; load gas ids
+    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+
+    ; match galcat IDs to gas_ids
+    match,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+    inds_gal = ids_gal_ind[sort(galcat_ind)]
+    
+    match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+    inds_gmem = ids_gmem_ind[sort(galcat_ind)]
+
+    gas_ids = !NULL
+    
+    ; locate tracer children (indices) of gas id subsets
+    galcat_gal_trids  = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gal,child_counts=galcat_gal_cc)
+    galcat_gmem_trids = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gmem,child_counts=galcat_gmem_cc)
+    
+    ; convert tracer children indices to tracer IDs at this zMin
+    tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
+    
+    galcat_gal_trids  = tr_ids[galcat_gal_trids]
+    galcat_gmem_trids = tr_ids[galcat_gmem_trids]
+
+    tr_ids    = !NULL
+    inds_gal  = !NULL
+    inds_gmem = !NULL
+    
+    ; create a gcIndOrig for the tracers
+    gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,$
+                                     child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc}) 
+                                     
+    galcat = !NULL ; not used past this point
+    
+    ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
+    placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
+    gcIndOrigTr.gal = placeMap[gcIndOrigTr.gal-minid]
+    gcIndOrigTr.gmem = placeMap[gcIndOrigTr.gmem-minid]
+    placeMap = !NULL
+    
+    ; store the main arrays as a structure so we can write them directly for all tracers
+    r = {relPos_gal    : fltarr(nSnapsTot,3,n_elements(galcat_gal_trids))    ,$
+         relPos_gmem   : fltarr(nSnapsTot,3,n_elements(galcat_gmem_trids))   ,$
+         curTemp_gal   : fltarr(nSnapsTot,n_elements(galcat_gal_trids))      ,$
+         curTemp_gmem  : fltarr(nSnapsTot,n_elements(galcat_gmem_trids))      }
+
+    for m=mt.maxSnap,mt.minSnap,-1 do begin
+      sP.snap = m
+      print,m
+      ; load tracer ids and match to child ids from zMin
+      h = loadSnapshotHeader(sP=sP)
+      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
+      
+      ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
+      ; temp[ids_ind], etc to be in the same order as the group catalog id list    
+      match,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal,/sort
+      trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
+      
+      match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
+      trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
+      
+      tr_ids     = !NULL
+      galcat_ind = !NULL
+      
+      ; load tracer maxtemps for this timestep (best proxy for current temp without doing NN parent finds)
+      tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxtemp')
+      
+      r.curTemp_gal[mt.maxSnap-m,*]  = codeTempToLogK(tr_maxtemp[trids_gal_ind])
+      r.curTemp_gmem[mt.maxSnap-m,*] = codeTempToLogK(tr_maxtemp[trids_gmem_ind])
+
+      tr_maxtemp = !NULL
+      
+      ; load pos to calculate tracer positions relative to halo centers
+      pos = loadSnapshotSubset(sP=sP,partType='tracerVel',field='pos')
+      
+      tr_pos_gal  = pos[*,trids_gal_ind]
+      tr_pos_gmem = pos[*,trids_gmem_ind]
+      
+      tr_parids_gal  = !NULL
+      tr_parids_gmem = !NULL
+      pos = !NULL
+
+      ; calculate current distance of all tracers from smoothed halo center position for galaxy members
+      tr_pos_gal[0,*] = reform(mt.hPos[mt.maxSnap-m,0,gcIndOrigTr.gal]) - tr_pos_gal[0,*]
+      tr_pos_gal[1,*] = reform(mt.hPos[mt.maxSnap-m,1,gcIndOrigTr.gal]) - tr_pos_gal[1,*]
+      tr_pos_gal[2,*] = reform(mt.hPos[mt.maxSnap-m,2,gcIndOrigTr.gal]) - tr_pos_gal[2,*]
+      
+      correctPeriodicDistVecs, tr_pos_gal, sP=sP ; account for periodic distance function
+      
+      r.relPos_gal[mt.maxSnap-m,0,*] = tr_pos_gal[0,*]
+      r.relPos_gal[mt.maxSnap-m,1,*] = tr_pos_gal[1,*]
+      r.relPos_gal[mt.maxSnap-m,2,*] = tr_pos_gal[2,*]
+      tr_pos_gal = !NULL
+      
+      ; for group members
+      tr_pos_gmem[0,*]  = reform(mt.hPos[mt.maxSnap-m,0,gcIndOrigTr.gmem]) - tr_pos_gmem[0,*]
+      tr_pos_gmem[1,*]  = reform(mt.hPos[mt.maxSnap-m,1,gcIndOrigTr.gmem]) - tr_pos_gmem[1,*]
+      tr_pos_gmem[2,*]  = reform(mt.hPos[mt.maxSnap-m,2,gcIndOrigTr.gmem]) - tr_pos_gmem[2,*]
+
+      correctPeriodicDistVecs, tr_pos_gmem, sP=sP ; account for periodic distance function
+      
+      r.relPos_gmem[mt.maxSnap-m,0,*] = tr_pos_gmem[0,*]
+      r.relPos_gmem[mt.maxSnap-m,1,*] = tr_pos_gmem[1,*]
+      r.relPos_gmem[mt.maxSnap-m,2,*] = tr_pos_gmem[2,*]
+      tr_pos_gmem = !NULL
+    endfor
+    
+    ; save
+    save,r,filename=saveFilename
+    print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))    
+    
+  endif
+
+end
+
 ; -----------------------------------------------------------------------------------------------------
 ; maxTemps(): find maximum temperature for gas particles in galaxy/group member catalogs at redshift
 ;             through the redshift range (redshift,zStart] where zStart is typically the start of 
@@ -490,8 +737,8 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       nelec_gmem = nelec[ids_gmem_ind]
       nelec = !NULL
       
-      temp_gal  = convertUtoTemp(u_gal,nelec_gal)
-      temp_gmem = convertUtoTemp(u_gal,nelec_gal)
+      temp_gal  = convertUtoTemp(u_gal,nelec_gal,/log)
+      temp_gmem = convertUtoTemp(u_gal,nelec_gal,/log)
       
       ; load gas SFR and select off the effective EOS (SFR must be zero)
       sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
@@ -500,15 +747,6 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       sfr_gmem = sfr[ids_gmem_ind]
       
       sfr = !NULL
-      
-      ; take log of temperatures
-      w = where(temp_gal le 0,count_gal)
-      if (count_gal ne 0) then temp_gal[w] = 1.0
-      temp_gal = alog10(temp_gal)
-      
-      w = where(temp_gmem le 0,count_gmem)
-      if (count_gmem ne 0) then temp_gmem[w] = 1.0
-      temp_gmem = alog10(temp_gmem)
       
       ; replace existing values if current snapshot has higher temps (enforce off effective EOS)
       w1 = where(temp_gal gt r.maxTemps_gal and sfr_gal eq 0.0,count1)
@@ -609,8 +847,8 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       ; load tracer maximum temperature and sub-snapshot time at this snapshot
       tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp')
       
-      temp_gal  = tr_maxtemp[trids_gal_ind]  * units.UnitTemp_in_cgs ; tracer output still in unit system
-      temp_gmem = tr_maxtemp[trids_gmem_ind] * units.UnitTemp_in_cgs
+      temp_gal  = codeTempToLogK(tr_maxtemp[trids_gal_ind]) ; tracer output still in unit system
+      temp_gmem = codeTempToLogK(tr_maxtemp[trids_gmem_ind])
       tr_maxtemp = !NULL
       
       tr_maxtemp_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp_time')
@@ -618,15 +856,6 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       temp_time_gal  = tr_maxtemp_time[trids_gal_ind]
       temp_time_gmem = tr_maxtemp_time[trids_gmem_ind]
       tr_maxtemp_time = !NULL
-      
-      ; take log of temperatures
-      w = where(temp_gal le 0,count_gal)
-      if (count_gal ne 0) then temp_gal[w] = 1.0
-      temp_gal = alog10(temp_gal)
-      
-      w = where(temp_gmem le 0,count_gmem)
-      if (count_gmem ne 0) then temp_gmem[w] = 1.0
-      temp_gmem = alog10(temp_gmem)
       
       ; replace existing values if current snapshot has higher temps (galaxy members)
       w1 = where(temp_gal gt rtr_gal.maxTemps,count1)
@@ -829,8 +1058,8 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       ; load tracer maximum temperature and sub-snapshot time at this snapshot
       tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxtemp')
       
-      temp_gal  = tr_maxtemp[trids_gal_ind]  * units.UnitTemp_in_cgs ; tracer output still in unit system
-      temp_gmem = tr_maxtemp[trids_gmem_ind] * units.UnitTemp_in_cgs
+      temp_gal  = codeTempToLogK(tr_maxtemp[trids_gal_ind]) ; tracer output still in unit system
+      temp_gmem = codeTempToLogK(tr_maxtemp[trids_gmem_ind])
       tr_maxtemp = !NULL
       
       tr_maxtemp_time = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxtemp_time')
@@ -838,15 +1067,6 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       temp_time_gal  = tr_maxtemp_time[trids_gal_ind]
       temp_time_gmem = tr_maxtemp_time[trids_gmem_ind]
       tr_maxtemp_time = !NULL
-      
-      ; take log of temperatures
-      w = where(temp_gal le 0,count_gal)
-      if (count_gal ne 0) then temp_gal[w] = 1.0
-      temp_gal = alog10(temp_gal)
-      
-      w = where(temp_gmem le 0,count_gmem)
-      if (count_gmem ne 0) then temp_gmem[w] = 1.0
-      temp_gmem = alog10(temp_gmem)
       
       ; replace existing values if current snapshot has higher temps (galaxy members)
       w1 = where(temp_gal gt rtr_gal.maxTemps,count1)

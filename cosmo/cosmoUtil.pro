@@ -354,7 +354,7 @@ function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs, $
           tot_children = total(child_counts.gal[offsetGal_c:offsetGal_c+galcat.galaxyLen[gcID]-1],/int)
           gal_ind_end = offsetGal+tot_children-1
 
-          r.gal[offsetGal:gal_ind_end] = cmreplicate(parID,tot_children)
+          if tot_children gt 0 then r.gal[offsetGal:gal_ind_end] = cmreplicate(parID,tot_children)
           offsetGal += tot_children
           offsetGal_c += galcat.galaxyLen[gcID]
           
@@ -368,17 +368,16 @@ function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs, $
           tot_children = total(child_counts.gmem[offsetGmem_c:offsetGmem_c+galcat.groupmemLen[gcID]-1],/int)
           gmem_ind_end = offsetGmem+tot_children-1
 
-          r.gmem[offsetGmem:gmem_ind_end] = cmreplicate(parID,tot_children)
+          if tot_children gt 0 then r.gmem[offsetGmem:gmem_ind_end] = cmreplicate(parID,tot_children)
           offsetGmem += tot_children
           offsetGmem_c += galcat.groupmemLen[gcID]
-          
           ;r.gmem[offsetGamem:offsetGmem+galcat.groupmemLen[gcID]-1] = $
           ;  cmreplicate(parID,galcat.groupmemLen[gcID])
           ;offsetGmem += galcat.groupmemLen[gcID]
         endif
         
     endforeach
-    
+
     return,r
 end
 
@@ -439,8 +438,8 @@ function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir, p
     
     redshift = snapNumToRedshift(sP=sP)
   
-    gal  = codeMassToVirTemp(gal,sP=sP)
-    gmem = codeMassToVirTemp(gmem,sP=sP)
+    gal  = alog10(codeMassToVirTemp(gal,sP=sP))
+    gmem = alog10(codeMassToVirTemp(gmem,sP=sP))
   endif
   
   if keyword_set(rVir) then begin
@@ -885,9 +884,18 @@ function findMatchedHalos, sP1=sP1, sP2=sP2
   distTol = 10.0 ;kpc
   massTol = 0.1  ;10%
   
+  ; save/restore
+  saveFilename = sP1.derivPath + 'matchCat_'+str(sP1.snap)+'_m'+str(fix(massTol*100))+'_d'+$
+    str(fix(distTol))+'.sav'
+    
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,r
+  endif  
+  
   ; load group catalogs
-  gc1 = loadGroupCat(sP=sP1)
-  gc2 = loadGroupCat(sP=sP2)
+  gc1 = loadGroupCat(sP=sP1,/skipIDs)
+  gc2 = loadGroupCat(sP=sP2,/skipIDs)
 
   ; matched Ind in groupcat2 for each FoF halo in groupcat1
   matchedInds = lonarr(gc1.nGroupsTot) - 1
@@ -945,6 +953,11 @@ function findMatchedHalos, sP1=sP1, sP2=sP2
   wMatch = where(matchedInds ne -1,nMatched)
 
   r = {matchedInds:matchedInds,massDiffs:massDiffs,posDiffs:posDiffs,wMatch:wMatch,nMatched:nMatched}
+  
+  ;save
+  ; save
+  save,r,filename=saveFilename
+  
   return,r
 end
 

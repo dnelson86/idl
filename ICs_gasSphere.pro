@@ -138,7 +138,9 @@ pro setupFilamentTest
   cyl_length = 100.0  ;kpc
   cyl_radius = 2.0   ;kpc
   cyl_rstart = 1.0*r200 ;kpc (r200 nfw)
-  cyl_dens = 0.0001 ;code units TODO in terms of critical density at z=2
+  
+  cyl_densratio = 1000 ; specify density as ratio to critical baryon density at z=3
+  cyl_dens = critBaryonRatioToCode(cyl_densratio,redshift=3.0)
 
   cyl_r_res = 10
   cyl_l_res = cyl_r_res * (cyl_length/cyl_radius)
@@ -147,7 +149,8 @@ pro setupFilamentTest
 
   ; gasSphere config
   input_fname  = "gasSphere.gasonly.1e4.nfw.M1e2.norot.dat.hdf5"
-  output_fname = "gasSphere.cylTest.1e4.nfw.M1e2.norot.noBack.dat"
+  output_fname = "cylTest.1e4.M1e2.norot.c"+str(cyl_r_res)+".d"+str(cyl_densratio)+$
+    ".r"+str(fix(cyl_radius))+".withBack.dat"
 
   boxSize   = 5000.0 ;kpc
   nBackGrid = 16 ;^3, nested twice
@@ -205,9 +208,9 @@ pro setupFilamentTest
   boxSizeInner = ceil((max(gas.pos)-min(gas.pos))/200) * 200.0
   uthermBackGrid = 0 ;1.0e4
 
-  ;gas = addICBackgroundGrid(gas, boxSize=boxSizeInner, uthermBackGrid=uthermBackGrid, $
-  ;                          boxCen=[boxSize/2.0,boxSize/2.0,boxSize/2.0], nBackGrid=nBackGrid)
-  ;gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid, uthermBackGrid=10*uthermBackGrid)
+  gas = addICBackgroundGrid(gas, boxSize=boxSizeInner, uthermBackGrid=uthermBackGrid, $
+                            boxCen=[boxSize/2.0,boxSize/2.0,boxSize/2.0], nBackGrid=nBackGrid)
+  gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid, uthermBackGrid=10*uthermBackGrid)
 
   ; save
   writeICFile,output_fname,part0=gas
@@ -217,59 +220,13 @@ pro setupFilamentTest
 
 end
 
-; profile/value functions
-function GasRho, r
-  COMMON gv
-  x0=gas_R0
-  x=r/HQ_a
-  return, HQ_M/(2*!pi*HQ_a^3.0) * 1/(x+x0) * 1/(x+1)^3.0
-end
-
-function HaloRho, r
-  COMMON gv
-  x=r/HQ_a
-  return, HQ_M/(2*!pi*HQ_a^3.0) * 1/x * 1/(x+1)^3.0
-end
-
-function Rho, r
-  COMMON gv
-  return, gas_frac*GasRho(r) + (1.0-gas_frac)*HaloRho(r)
-end
-
-function GasMass, r
-  COMMON gv
-  x0=gas_R0
-  x=r/HQ_a
-  return, HQ_M * ((1-x0)*x*(x0*(2+3*x)-x)/(1+x)^2.0 + 2*x0^2.0*alog(x0*(1+x)/(x0+x))) / (x0-1)^3.0
-end
-
-function HaloMass, r
-  COMMON gv
-  x=r/HQ_a
-  return, HQ_M*x^2.0/(1+x)^2.0
-end
-
-function Mass, r
-  COMMON gv
-  return, gas_frac*GasMass(r) + (1.0-gas_frac)*HaloMass(r)
-end
-
-function Sigma_Integrand, r
-  COMMON gv
-  return, G*Mass(r)*Rho(r)/r^2.0
-end
-
-function Sigma, r
-  COMMON gv
-  ;sqrt(quad(Sigma_Integrand, r, INTERPOL_R_MAX_GAS, epsrel=0.1)[0]/Rho(r))
-  val = qpint1d('Sigma_Integrand', r, INTERPOL_R_MAX_GAS, epsrel=0.1)
-  test = sqrt(val/Rho(r))
-  return,test
-end
+; generate hot gas sphere in hydrostatic equilibrium with a Hernquist halo profile (based on Mark's)
 
 pro gen_ICs_gasSphere
-
+  forward_function GasRho,HaloRho,Rho,GasMass,HaloMass,Mass,Sigma_Integrand,Sigma
   COMMON gv,gas_R0,HQ_a,HQ_M,gas_frac,INTERPOL_R_MAX_GAS,G ;globals
+
+  message,'doublecheck before using'
 
   ; INPUT PARAMETERS
   fOut     = 'ics.dat'
@@ -396,4 +353,54 @@ pro gen_ICs_gasSphere
     print, "N_halo = ", N_halo
   endif
   stop
+end
+
+; profile/value functions
+function GasRho, r
+  COMMON gv
+  x0=gas_R0
+  x=r/HQ_a
+  return, HQ_M/(2*!pi*HQ_a^3.0) * 1/(x+x0) * 1/(x+1)^3.0
+end
+
+function HaloRho, r
+  COMMON gv
+  x=r/HQ_a
+  return, HQ_M/(2*!pi*HQ_a^3.0) * 1/x * 1/(x+1)^3.0
+end
+
+function Rho, r
+  COMMON gv
+  return, gas_frac*GasRho(r) + (1.0-gas_frac)*HaloRho(r)
+end
+
+function GasMass, r
+  COMMON gv
+  x0=gas_R0
+  x=r/HQ_a
+  return, HQ_M * ((1-x0)*x*(x0*(2+3*x)-x)/(1+x)^2.0 + 2*x0^2.0*alog(x0*(1+x)/(x0+x))) / (x0-1)^3.0
+end
+
+function HaloMass, r
+  COMMON gv
+  x=r/HQ_a
+  return, HQ_M*x^2.0/(1+x)^2.0
+end
+
+function Mass, r
+  COMMON gv
+  return, gas_frac*GasMass(r) + (1.0-gas_frac)*HaloMass(r)
+end
+
+function Sigma_Integrand, r
+  COMMON gv
+  return, G*Mass(r)*Rho(r)/r^2.0
+end
+
+function Sigma, r
+  COMMON gv
+  ;sqrt(quad(Sigma_Integrand, r, INTERPOL_R_MAX_GAS, epsrel=0.1)[0]/Rho(r))
+  val = qpint1d('Sigma_Integrand', r, INTERPOL_R_MAX_GAS, epsrel=0.1)
+  test = sqrt(val/Rho(r))
+  return,test
 end

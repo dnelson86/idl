@@ -401,7 +401,7 @@ function removeIntersectionFromB, A, B, union=union
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-    match, A, B, A_ind, B_ind, count=count
+    match, A, B, A_ind, B_ind, count=count, /sort
     
     A_ind = !NULL ;unused
     

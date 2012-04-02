@@ -271,181 +271,169 @@ function galaxyCatRadii, sP=sP
 end
 
 ; gcSubsetProp(): read galaxy catalog for a specific subgroup selection (pri,sec,all) and
-;                 return properties for each gas element (may or may not depend on parent halo)
-;                 
-;                 note: target redshift is read from sP.snap and values are returned for that
-;                       redshift unless oSnap is specified, in which case mergerTree() and 
-;                       gasOrigins() are used and the quantities are returned for the gas 
-;                       particles/tracers at the earlier snapshot
+;                 return properties for each gas element/tracer (may or may not depend on parent halo)
+;                 at the redshift specified by sP.snap (may or may not depend on previous time)
 ;
 ; rVirNorm=1    : radial distances normalized by r_vir of either primary or secondary parent
 ;  parNorm      : either 'pri' or 'sec' if rVirNorm requested
-; virTemp=1     : virial temperatures of parent halos
+; virTemp=1     : current virial temperatures of parent halos
 ; parMass=1     : total mass (dm+baryonic) of parent halos (from catalog)
 ; curTemp=1     : current temperature of each element
 ; maxPastTemp=1 : maximum past previous temperature of each element
+; maxTempTime=1 : time when maximum past previous temperature was reached (in redshift)
 ;  trPopMin,trPopMean,trPopMax : return the respective statistic for each gas cell for the tracers
 ;
 ; curSingleVal=1  : current single quantity (e.g. mass, density) returned without manipulation
 ;  singleValField : field name in snapshot file for the above
-; allTR=1         : instead of returning one value per gas element, return one value for every tracer
-;                   in all of those gas elements
+;
+; mergerTreeSubset    : return values only for the subset of halos tracked in the merger tree subset
+; accretionTimeSubset : return values only for the subset of particles/tracers with recorded accretion times
+;  accTime,accTvir : time of accretion (in redshift) or virial temp of parent halo at time of accretion
 
-function gcSubsetProp, sP=sP, select=select, oSnap=oSnap, $
-                       rVirNorm=rVirNorm, virTemp=virTemp, parMass=parMass, $
-                       curTemp=curTemp, maxPastTemp=maxPastTemp, $
-                       trPopMin=trPopMin, trPopMax=trPopMax, trPopMean=trPopMean, $ ; for maxPastTemp only
-                       curSingleVal=curSingleVal, singleValField=singleValField, $
-                       parNorm=parNorm, $ ; for rVirNorm,virTemp,parMass only
-                       allTR=allTR ; expand 1 result per gas element into 1 for every tracer
+function gcSubsetProp, sP=sP, select=select, $
+           rVirNorm=rVirNorm, virTemp=virTemp, parMass=parMass, $
+           curTemp=curTemp, maxPastTemp=maxPastTemp, maxTempTime=maxTempTime, $
+           trPopMin=trPopMin, trPopMax=trPopMax, trPopMean=trPopMean, $ ; for maxPastTemp/maxTempTime only
+           curSingleVal=curSingleVal, singleValField=singleValField, $
+           parNorm=parNorm, $ ; for rVirNorm,virTemp,parMass only
+           mergerTreeSubset=mergerTreeSubset, accretionTimeSubset=accretionTimeSubset,$
+           accTime=accTime,accTvir=accTvir ; for accretionTimeSubset only
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; check combinations of input options for validity
+  if keyword_set(accretionTimeSubset) and ~keyword_set(mergerTreeSubset) then $
+    message,'Error: Can only subselect the mtS with the atS.'
+  if keyword_set(mergerTreeSubset) and select ne 'pri' then $
+    print,'Warning: The merger tree subset actually contains only pri subgroups.'
+  if (keyword_set(accTime) or keyword_set(accTvir)) and ~keyword_set(accretionTimeSubset) then $
+    message,'Error: Can only return accretion time or Tvir at accretion time for atS.'
+
+  ; default behavior: return 1 value per tracer for tracer sims, 1 value per gas particle for sph
+  allTR = 0 ; sph
+  if sP.trMCPerCell ne 0 then allTR = 1
   
   ; select primary,secondary,or all subhalos subject to minimum number of particles
   gcIDList = gcIDList(sP=sP,select=select)
 
-  ; select galaxycat indices corresponding to this list of subgroup ids
-  galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList)
+  ; subset subgroup id list by only those with good merger histories
+  if keyword_set(mergerTreeSubset) then begin
+    mt = mergerTreeSubset(sP=sP)
+    
+    ; use intersection of (pri,sec,all) list and tracked list
+    match,gcIDList,mt.galcatIDList,ind1,ind2,count=count,/sort
+    if count eq 0 then message,'Error: mtS and gcIDList intersection empty.'
+    ;print,'gcSubsetProp intersect',n_elements(gcIDList),n_elements(mt.galcatIDList),count
+    
+    gcIDList = gcIDList[ind1]
+    
+    mt   = !NULL
+    ind1 = !NULL
+    ind2 = !NULL
+  endif
+  
+  ; select galaxycat indices corresponding to the list of subgroup ids
+  galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList) ;identical to mt.galcatSub
+  
+  ; subset galcat member indlist by those with recorded accretion times (and associated properties)
+  if keyword_set(accretionTimeSubset) then begin
+    at = accretionTimes(sP=sP)
+    
+    gal_w  = where(at.AccTime_gal ne -1,count_gal)
+    gmem_w = where(at.AccTime_gmem ne -1,count_gmem)
+    
+    ; sph case: modify galcatInds such that the accretionTimes subset is taken
+    if ~allTR then galcatInds = { gal : galcatInds.gal[gal_w] ,gmem : galcatInds.gmem[gmem_w] }
+    ; tracer case: handle only after we have child counts (after expansion or in allTR for maxTemps)
+    
+    ; this is used to access accretionTimes
+    accTimeInds = { gal : gal_w, gmem: gmem_w }
+  endif
+  
+  ; ----- values -----
+  
+  if keyword_set(accTime) then begin
+    ;convert scale factors -> redshift
+    r = { gal  : 1/at.AccTime_gal[accTimeInds.gal]-1    ,$
+          gmem : 1/at.AccTime_gmem[accTimeInds.gmem]-1   } 
+    return,r
+  endif
+  
+  if keyword_set(accTvir) then begin
+    ; take accretionTime subset and return
+    r = { gal  : at.AccHaloTvir_gal[accTimeInds.gal]    ,$
+          gmem : at.AccHaloTvir_gmem[accTimeInds.gmem]   } 
+    return,r
+  endif
 
   if keyword_set(rVirNorm) then begin
-    ; gasOrigins - return this quantity for the gas elements at the different snapshot oSnap
-    if (keyword_set(oSnap)) then begin
-    
-      snapSwap = sP.snap
-      sP.snap = oSnap
-      gasOrig = gasOrigins(sP=sP)
-      
-      ; load parent r_vir and galaxy radii catalog at oSnap     
-      r_vir = galCatParentProperties(sP=sP, /rVir)
-      gcr   = galaxyCatRadii(sP=sP)
-      
-      sP.snap = snapSwap
-      
-      ; arrays
-      rad_gal  = fltarr(n_elements(gcr.gal_pri)) - 1.0
-      rad_gmem = fltarr(n_elements(gcr.gmem_pri)) - 1.0
-      
-      ; store radial distance of gas elements to parents for matching IDs
-      if (parNorm eq 'pri') then begin
-        rad_gal[gasOrig.indMatch.gc_ind_gal]  = gcr.gal_pri[gasOrig.indMatch.gcCur_ind_gal] / $
-                                                r_vir.gal[gasOrig.indMatch.gcCur_ind_gal]
-                                                
-        if (n_elements(gasOrig.indMatch.gc_ind_gal2) gt 0) then $
-          rad_gal[gasOrig.indMatch.gc_ind_gal2] = gcr.gmem_pri[gasOrig.indMatch.gcCur_ind_gal2] / $
-                                                  r_vir.gmem[gasOrig.indMatch.gcCur_ind_gal2]
-        
-        rad_gmem[gasOrig.indMatch.gc_ind_gmem]  = gcr.gmem_pri[gasOrig.indMatch.gcCur_ind_gmem] / $
-                                                r_vir.gmem[gasOrig.indMatch.gcCur_ind_gmem]
-                                                
-        if (n_elements(gasOrig.indMatch.gc_ind_gmem2) gt 0) then $
-          rad_gmem[gasOrig.indMatch.gc_ind_gmem2] = gcr.gal_pri[gasOrig.indMatch.gcCur_ind_gmem2] / $
-                                                  r_vir.gal[gasOrig.indMatch.gcCur_ind_gmem2]
-      endif
-      
-      if (parNorm eq 'sec') then begin
-        rad_gal[gasOrig.indMatch.gc_ind_gal]  = gcr.gal_sec[gasOrig.indMatch.gcCur_ind_gal] / $
-                                                r_vir.gal[gasOrig.indMatch.gcCur_ind_gal]
-        rad_gal[gasOrig.indMatch.gc_ind_gal2] = gcr.gmem_sec[gasOrig.indMatch.gcCur_ind_gal2] / $
-                                                r_vir.gmem[gasOrig.indMatch.gcCur_ind_gal2]
-        
-        rad_gmem[gasOrig.indMatch.gc_ind_gmem]  = gcr.gmem_sec[gasOrig.indMatch.gcCur_ind_gmem] / $
-                                                r_vir.gmem[gasOrig.indMatch.gcCur_ind_gmem]
-        rad_gmem[gasOrig.indMatch.gc_ind_gmem2] = gcr.gal_sec[gasOrig.indMatch.gcCur_ind_gmem2] / $
-                                                r_vir.gal[gasOrig.indMatch.gcCur_ind_gmem2]
-      endif
-    endif else begin
-      ; load parent r_vir and galaxy radii catalog at sP.snap
-      r_vir = galCatParentProperties(sP=sP, /rVir)
-      gcr   = galaxyCatRadii(sP=sP)
+    ; load parent r_vir and galaxy radii catalog at sP.snap
+    r_vir = galCatParentProperties(sP=sP, /rVir)
+    gcr   = galaxyCatRadii(sP=sP)
 
-      ; store radial distance normalized by parent r_vir
-      ; note: if SO values not calculated (no subgroup in fof group), rvir=0 and rad->Inf (not plotted)
-      ; note: since using most bound particle for subgroup centers, one per subgroup will have r=0
-      if (parNorm eq 'pri') then begin
-        rad_gal  = gcr.gal_pri / r_vir.gal
-        rad_gmem = gcr.gmem_pri / r_vir.gmem
-      endif
+    ; store radial distance normalized by parent r_vir
+    ; note: if SO values not calculated (no subgroup in fof group), rvir=0 and rad->Inf (not plotted)
+    ; note: since using most bound particle for subgroup centers, one per subgroup will have r=0
+    if (parNorm eq 'pri') then begin
+      rad_gal  = gcr.gal_pri / r_vir.gal
+      rad_gmem = gcr.gmem_pri / r_vir.gmem
+    endif
+    
+    if (parNorm eq 'sec') then begin
+      rad_gal  = gcr.gal_sec / r_vir.gal
+      rad_gmem = gcr.gmem_sec / r_vir.gmem
+    endif
       
-      if (parNorm eq 'sec') then begin
-        rad_gal  = gcr.gal_sec / r_vir.gal
-        rad_gmem = gcr.gmem_sec / r_vir.gmem
-      endif
-    endelse
-    
-    ; restrict to subset
-    rad_gal  = rad_gal[galcatInds.gal]
-    rad_gmem = rad_gmem[galcatInds.gmem]
-    
-    r = {gal:rad_gal,gmem:rad_gmem}
+    ; restrict to subgroup type / merger tree / accretion time subset
+    r = { gal  : rad_gal[galcatInds.gal]   ,$
+          gmem : rad_gmem[galcatInds.gmem]  }
   endif
   
   if keyword_set(virTemp) then begin
     ; load parent t_vir
     t_vir = galCatParentProperties(sP=sP, /virTemp, parNorm=parNorm)
     
-    ; create subsets for subhalo selection
-    temp_gal  = t_vir.gal[galcatInds.gal]
-    temp_gmem = t_vir.gmem[galcatInds.gmem]
-    
-    r = {gal:temp_gal,gmem:temp_gmem}
+    ; restrict to subgroup type / merger tree / accretion time subset
+    r = { gal  : t_vir.gal[galcatInds.gal]   ,$
+          gmem : t_vir.gmem[galcatInds.gmem]  }
   endif
   
   if keyword_set(parMass) then begin
     ; load parent total mass
     mass = galCatParentProperties(sP=sP, /mass, parNorm=parNorm)
     
-    ; create subsets for subhalo selection
-    mass_gal  = mass.gal[galcatInds.gal]
-    mass_gmem = mass.gmem[galcatInds.gmem]
-    
-    r = {gal:mass_gal,gmem:mass_gmem}
+    ; restrict to subgroup type / merger tree / accretion time subset
+    r = { gal  : mass.gal[galcatInds.gal]   ,$
+          gmem : mass.gmem[galcatInds.gmem]  }
   endif
   
   if keyword_set(curTemp) then begin
-    ; gasOrigins - return this quantity for the gas elements at the different snapshot oSnap
-    if (keyword_set(oSnap)) then begin
-      sP.snap = oSnap
-      gasOrig = gasOrigins(sP=sP)
-      
-      temp_gal  = gasOrig.temp_gal[galcatInds.gal]
-      temp_gmem = gasOrig.temp_gmem[galcatInds.gmem]
-    endif else begin
-      ; load gas ids and make ID->index map
-      ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-      idsIndMap = getIDIndexMap(ids,minid=minid)
-      ids = !NULL
-      
-      ; load galaxy catalog to change INDs to gas IDs
-      galcat = galaxyCat(sP=sP)
-      
-      ; load gas u and restrict to subset of galaxy cat
-      u      = loadSnapshotSubset(sP=sP,partType='gas',field='u')
-      u_gal  = u[idsIndMap[galcat.galaxyIDs[galcatInds.gal]-minid]]
-      u_gmem = u[idsIndMap[galcat.groupmemIDs[galcatInds.gmem]-minid]]
-      u      = !NULL
-      
-      ; load gas nelec and restrict to subset of galaxy cat
-      nelec      = loadSnapshotSubset(sP=sP,partType='gas',field='nelec')
-      nelec_gal  = nelec[idsIndMap[galcat.galaxyIDs[galcatInds.gal]-minid]]
-      nelec_gmem = nelec[idsIndMap[galcat.groupmemIDs[galcatInds.gmem]-minid]]
-      nelec      = !NULL
-      
-      idsIndMap = !NULL
-      galcat    = !NULL
-      
-      ; calculate temperature
-      temp_gal  = convertUtoTemp(u_gal,nelec_gal)
-      temp_gmem = convertUtoTemp(u_gmem,nelec_gmem)
-        
-      ; take log of temperatures
-      w = where(temp_gal le 0,count)
-      if (count ne 0) then temp_gal[w] = 1.0
-      w = where(temp_gmem le 0,count)
-      if (count ne 0) then temp_gmem[w] = 1.0
-    endelse
-  
-    temp_gal  = alog10(temp_gal)
-    temp_gmem = alog10(temp_gmem)
+    ; load gas ids and make ID->index map
+    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    idsIndMap = getIDIndexMap(ids,minid=minid)
+    ids = !NULL
+    
+    ; load galaxy catalog to change INDs to gas IDs
+    galcat = galaxyCat(sP=sP)
+    
+    ; load gas u and restrict to subset of galaxy cat
+    u      = loadSnapshotSubset(sP=sP,partType='gas',field='u')
+    u_gal  = u[idsIndMap[galcat.galaxyIDs[galcatInds.gal]-minid]]
+    u_gmem = u[idsIndMap[galcat.groupmemIDs[galcatInds.gmem]-minid]]
+    u      = !NULL
+    
+    ; load gas nelec and restrict to subset of galaxy cat
+    nelec      = loadSnapshotSubset(sP=sP,partType='gas',field='nelec')
+    nelec_gal  = nelec[idsIndMap[galcat.galaxyIDs[galcatInds.gal]-minid]]
+    nelec_gmem = nelec[idsIndMap[galcat.groupmemIDs[galcatInds.gmem]-minid]]
+    nelec      = !NULL
+    
+    idsIndMap = !NULL
+    galcat    = !NULL
+    
+    ; calculate temperature
+    temp_gal  = convertUtoTemp(u_gal,nelec_gal,/log)
+    temp_gmem = convertUtoTemp(u_gmem,nelec_gmem,/log)
     
     r = {gal:temp_gal,gmem:temp_gmem}
   endif
@@ -462,7 +450,7 @@ function gcSubsetProp, sP=sP, select=select, oSnap=oSnap, $
     ; load galaxy catalog to change INDs to gas IDs
     galcat = galaxyCat(sP=sP)
 
-    ; restrict densities to subset of galaxy cat
+    ; restrict to subgroup type / merger tree / accretion time subset
     val_gal  = singleVal[idsIndMap[galcat.galaxyIDs[galcatInds.gal]-minid]]
     val_gmem = singleVal[idsIndMap[galcat.groupmemIDs[galcatInds.gmem]-minid]]
 
@@ -473,47 +461,75 @@ function gcSubsetProp, sP=sP, select=select, oSnap=oSnap, $
     r = {gal:val_gal,gmem:val_gmem}
   endif
   
-  if keyword_set(maxPastTemp) then begin
+  if keyword_set(maxPastTemp) or keyword_set(maxTempTime) then begin
     ; if all tracers requested, load directly and immediately return
     if keyword_set(allTR) then begin
       maxt = maxTemps(sP=sP,/loadAllTRGal)
-      val_gal = maxt.maxTemps
+      if keyword_set(maxPastTemp) then val_gal = maxt.maxTemps
+      if keyword_set(maxTempTime) then val_gal = 1/maxt.maxTempTime-1
       maxt = !NULL
       
       maxt = maxTemps(sP=sP,/loadAllTRGmem)
-      val_gmem = maxt.maxTemps
+      if keyword_set(maxPastTemp) then val_gmem = maxt.maxTemps
+      if keyword_set(maxTempTime) then val_gmem = 1/maxt.maxTempTime-1
       maxt = !NULL
       
       r = {gal:val_gal,gmem:val_gmem}
+      
+      ; take accretionTime subset and return
+      if keyword_set(accretionTimeSubset) then begin
+        r = { gal:r.gal[gal_w], gmem:r.gmem[gmem_w] }
+      endif
       return,r
     endif
     
-    ; otherwise, load maximum past temperature (statistics for the child population of each gas cell)
+    ; otherwise, load maximum past temperature per gas particle
+    ; (or statistics for the child population of each gas cell)
     maxt = maxTemps(sP=sP,/loadByGas)
 
-    ; restrict temps to subset of galaxy cat (tracers)
-    if keyword_set(trPopMax) then begin
-      temp_gal  = maxt.maxTemps_gal[galcatInds.gal]
-      temp_gmem = maxt.maxTemps_gmem[galcatInds.gmem]
-    endif
-    if keyword_set(trPopMin) then begin
-      temp_gal  = maxt.maxTemps_min_gal[galcatInds.gal]
-      temp_gmem = maxt.maxTemps_min_gmem[galcatInds.gmem]
-    endif
-    if keyword_set(trPopMean) then begin
-      temp_gal  = maxt.maxTemps_mean_gal[galcatInds.gal]
-      temp_gmem = maxt.maxTemps_mean_gmem[galcatInds.gmem]
+    ; restrict maxPastTemp to subset of galaxycat (tracers)
+    if keyword_set(maxPastTemp) then begin
+      if keyword_set(trPopMax) then begin
+        val_gal  = maxt.maxTemps_gal[galcatInds.gal]
+        val_gmem = maxt.maxTemps_gmem[galcatInds.gmem]
+      endif
+      if keyword_set(trPopMin) then begin
+        val_gal  = maxt.maxTemps_min_gal[galcatInds.gal]
+        val_gmem = maxt.maxTemps_min_gmem[galcatInds.gmem]
+      endif
+      if keyword_set(trPopMean) then begin
+        val_gal  = maxt.maxTemps_mean_gal[galcatInds.gal]
+        val_gmem = maxt.maxTemps_mean_gmem[galcatInds.gmem]
+      endif
     endif
     
-    ; restrict temps to subset of galaxy cat (sph)
+    ; restrict maxTempTime to subset of galaxycat (and convert to redshift)
+    if keyword_set(maxTempTime) then begin
+      if keyword_set(trPopMax) then begin
+        val_gal  = 1/maxt.maxTempTime_gal[galcatInds.gal]-1
+        val_gmem = 1/maxt.maxTempTime_gmem[galcatInds.gmem]-1
+      endif
+      if keyword_set(trPopMin) then begin
+        val_gal  = 1/maxt.maxTempTime_min_gal[galcatInds.gal]-1
+        val_gmem = 1/maxt.maxTempTime_min_gmem[galcatInds.gmem]-1
+      endif
+      if keyword_set(trPopMean) then begin
+        val_gal  = 1/maxt.maxTempTime_mean_gal[galcatInds.gal]-1
+        val_gmem = 1/maxt.maxTempTime_mean_gmem[galcatInds.gmem]-1
+      endif
+    endif
+    
+    ; restrict temps/times to subset of galaxy cat (sph)
     if sP.trMCPerCell eq 0 then begin
-      temp_gal  = maxt.maxTemps_gal[galcatInds.gal]
-      temp_gmem = maxt.maxTemps_gmem[galcatInds.gmem]
+      if keyword_set(maxPastTemp) then val_gal  = maxt.maxTemps_gal[galcatInds.gal]
+      if keyword_set(maxPastTemp) then val_gmem = maxt.maxTemps_gmem[galcatInds.gmem]
+      if keyword_set(maxTempTime) then val_gal  = 1/maxt.maxTempTime_gal[galcatInds.gal]-1
+      if keyword_set(maxTempTime) then val_gmem = 1/maxt.maxTempTime_gmem[galcatInds.gmem]-1
     endif
     
     maxt = !NULL
     
-    r = {gal:temp_gal,gmem:temp_gmem}
+    r = {gal:val_gal,gmem:val_gmem}
   endif
   
   ; tracer expansion if requested
@@ -524,7 +540,7 @@ function gcSubsetProp, sP=sP, select=select, oSnap=oSnap, $
     
     rtr = maxTemps(sP=sP,/loadAllTRGmem)
     gmem_child_counts = rtr.child_counts
-    rtr = !NULL
+    rtr = !NULL  
     
     ; create new return arrays
     rr = { gal  : fltarr(total(gal_child_counts,/int)) ,$
@@ -550,9 +566,14 @@ function gcSubsetProp, sP=sP, select=select, oSnap=oSnap, $
       endif
     endfor
     
-    ; return tracer expanded array
+    ; take accretionTime subset and return tracer expanded array
+    if keyword_set(accretionTimeSubset) then begin
+      rr = { gal:rr.gal[gal_w], gmem:rr.gmem[gmem_w] }
+    endif
     return,rr
   endif
   
   return,r
 end
+
+
