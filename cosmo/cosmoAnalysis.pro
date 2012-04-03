@@ -464,19 +464,23 @@ function gcSubsetProp, sP=sP, select=select, $
   if keyword_set(maxPastTemp) or keyword_set(maxTempTime) then begin
     ; if all tracers requested, load directly and immediately return
     if keyword_set(allTR) then begin
-      maxt = maxTemps(sP=sP,/loadAllTRGal)
-      if keyword_set(maxPastTemp) then val_gal = maxt.maxTemps
-      if keyword_set(maxTempTime) then val_gal = 1/maxt.maxTempTime-1
-      maxt = !NULL
+      maxt_gal = maxTemps(sP=sP,/loadAllTRGal)
+      maxt_gmem = maxTemps(sP=sP,/loadAllTRGmem)
       
-      maxt = maxTemps(sP=sP,/loadAllTRGmem)
-      if keyword_set(maxPastTemp) then val_gmem = maxt.maxTemps
-      if keyword_set(maxTempTime) then val_gmem = 1/maxt.maxTempTime-1
-      maxt = !NULL
+      ; make indices for mergerTreeSubset
+      galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList,$
+                     child_counts={gal:maxt_gal.child_counts,gmem:maxt_gmem.child_counts})
+                       
+      ; return temps (logK) or times (converted to redshift)
+      if keyword_set(maxPastTemp) then $
+        r = {gal:maxt_gal.maxTemps[galcatInds.gal],gmem:maxt_gmem.maxTemps[galcatInds.gmem]}
+      if keyword_set(maxTempTime) then $
+        r = {gal:1/maxt_gal.maxTempTime[galcatInds.gal]-1,gmem:1/maxt_gmem.maxTempTime[galcatInds.gmem]-1}
       
-      r = {gal:val_gal,gmem:val_gmem}
+      maxt_gal  = !NULL
+      maxt_gmem = !NULL
       
-      ; take accretionTime subset and return
+      ; take accretionTime subset of mtS of all tracers and return
       if keyword_set(accretionTimeSubset) then begin
         r = { gal:r.gal[gal_w], gmem:r.gmem[gmem_w] }
       endif

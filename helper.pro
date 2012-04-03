@@ -274,14 +274,15 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big
   endif 
 
   PS_Start, FILENAME=filename, /nomatch, /quiet, bits_per_pixel=8, color=1, $
-            encapsulated=eps, decomposed=0, xs=xs, ys=ys, /inches, font=0, tt_font='Times' ;3/2  
+            encapsulated=eps, decomposed=0, xs=xs, ys=ys, /inches, font=0;, tt_font='Helvetica' ;3/2  
  
-  !p.charsize = 1.4
+  !p.charsize  = 1.4
+  ;!p.charthick = 1.4
   !p.thick    = 5.0
   
-  !x.thick += 2.0
-  !y.thick += 2.0
-  !z.thick += 2.0
+  !x.thick += 1.0
+  !y.thick += 1.0
+  !z.thick += 1.0
   
   ; make default custom psym (8) a filled circle
   plotsym,0,/fill
@@ -599,6 +600,7 @@ end
 @simParams
 @cosmoUtil
 @cosmoLoad
+@LSF
 
 @mergerTree
 @cosmoAnalysis

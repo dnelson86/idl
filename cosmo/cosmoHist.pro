@@ -1,6 +1,154 @@
 ; cosmoHist.pro
 ; gas accretion project - past history of gas (all routines that step through multiple snapshots)
-; dnelson mar.2012
+; dnelson apr.2012
+
+; -----------------------------------------------------------------------------------------------------
+; accretionMode(): for eaching gas particle/tracer with a recorded accretion time, starting at some 
+;                  redshift, track backwards in time with respect to the tracked parent halos (using 
+;                  mergerTree) and classify the mode of accretion by considering its group membership
+;                  at the outer bracketing snapshot just prior to accretion (r>~r_vir) as:
+;                  
+;  1. smooth  = in the (primary) parent of the original halo or not in any subgroup
+;  2. sclumpy = in any subgroup other than the (primary) parent halo that is a secondary subgroup ("small")
+;  3. bclumpy = in any subgroup other than the (primary) parent halo that is a primary subgroup ("big")
+; -----------------------------------------------------------------------------------------------------
+
+function accretionMode, sP=sP
+
+  forward_function cosmoTracerChildren, cosmoTracerVelParents, accretionTimes
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+
+  ; first, walk back through the merger tree and find primary subhalos with good parent histories
+  mt = mergerTreeSubset(sP=sP,/verbose)
+  at = accretionTimes(sP=sP)
+
+  ; set saveFilename and check for existence
+  saveTag = ''
+  if sP.trMCPerCell eq -1 then saveTag = '.trVel'
+  if sP.trMCPerCell gt 0  then saveTag = '.trMC'
+  if sP.trMCPerCell eq 0  then saveTag = '.SPH'
+  
+  saveFilename = sP.derivPath + 'accMode'+saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
+                 str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'  
+  
+  if file_test(saveFilename) then begin
+    restore, saveFilename
+    return, r
+  endif
+  
+  ; select those particles/tracers with recorded accretion times
+  gal_w_at  = where(at.AccTime_gal ne -1,count_gal)
+  gmem_w_at = where(at.AccTime_gmem ne -1,count_gmem)
+  
+  galcatSub = { gal  : mt.galcatSub.gal[gal_w_at]    ,$
+                gmem : mt.galcatSub.gmem[gmem_w_at]   }
+  
+  ; load galaxy/group member catalogs at zMin for gas ids to search for
+  galcat = galaxyCat(sP=sP)  
+  
+  ; NO TRACERS CASE - track the particles themselves back in time (SPH)
+  ; ---------------
+  if sP.trMCPerCell eq 0 then begin
+    print,'Calculating new accretion mode using ( SPH Particles ) res = '+str(sP.res)+$
+      ' in range ['+str(mt.minSnap)+'-'+str(mt.maxSnap)+'].'
+      
+    ; convert the accretion time (scale factor) into the outer bracketing snapshot number for each member
+    bracketSnap = { gal  : intarr(n_elements(galcatSub.gal)), $
+                    gmem : intarr(n_elements(galcatSub.gmem)) }
+                    
+    ; TODO
+    
+    ; store the main arrays as a structure so we can write them directly
+    r = {accMode_gal       : intarr(n_elements(galcatSub.gal))-1  ,$
+         accMode_gmem      : intarr(n_elements(galcatSub.gmem))-1  }
+    
+    for m=mt.maxSnap,mt.minSnap,-1 do begin
+      sP.snap = m
+      ; load local group catalog
+      h = loadSnapshotHeader(sP=sP)
+      gc = loadGroupCat(sP=sP)
+      
+      ; create a list of IDs of all subgroups (exclude fuzz)
+      gcGasIDs = gcPIDList(gc=gc,select='all',partType='gas')
+
+      ; select those gas particles whose accretion modes are determined at this snapshot
+      w_gal  = where(bracketSnap.gal eq sP.snap,count_gal)
+      w_gmem = where(bracketSnap.gmem eq sP.snap,count_gmem)
+      
+      if count_gal gt 0 then begin
+        ; global match against subgroup ID list
+        match,galcat.galaxyIDs[galcatSub.gal[w_gal]],gcGasIDs,galcat_ind,gc_gal_ind,count=countGal,/sort
+        
+        ; those that don't match, assign to category 1. smooth
+        all = bytarr(count_gal)
+        if countGal lt count_gal then all[galcat_ind] = 1B
+        w = where(all eq 0B, ncomp)
+        
+        r.accMode_gal[w_gal[w]] = 1
+        
+        ; those that match, calculate subgroup ID they belong to
+        if countGal gt 0 then begin
+          ; loop over each matched particle
+          for i=0,countGal-1 do begin
+            ; calculate subgroup ID it belongs to
+            loc_pos = gc_gal_ind[i]
+            ;TODO
+            ; if their subgroup ID is the traced parent, assign to category 1. smooth
+  
+            ; if their subgroup ID is not the parent but is a primary sg, assign to category 3. bclumpy
+  
+            ; else (subgroup ID is not a primary sg), assign to category 2. sclumpy
+        
+          endfor
+        endif ; countGal
+      endif ; count_gal
+        
+      if count_gmem gt 0 then begin
+        ; global match against subgroup ID list
+        match,galcat.groupmemIDs[galcatSub.gmem[w_gmem]],gcGasIDs,galcat_ind,gc_gmem_ind,count=countGmem,/sort
+
+        ; those that don't match, assign to category 1. smooth
+        all = bytarr(count_gmem)
+        if countGal lt count_gmem then all[galcat_ind] = 1B
+        w = where(all eq 0B, ncomp)
+        
+        r.accMode_gmem[w_gmem[w]] = 1
+        
+        ; those that match, calculate subgroup ID they belong to
+        if countGal gt 0 then begin
+          ; loop over each matched particle
+          for i=0,countGal-1 do begin
+            ; calculate subgroup ID it belongs to
+            ; TODO
+            ; if their subgroup ID is the traced parent, assign to category 1. smooth
+  
+            ; if their subgroup ID is not the parent but is a primary sg, assign to category 3. bclumpy
+  
+            ; else (subgroup ID is not a primary sg), assign to category 2. sclumpy
+        
+          endfor
+        endif ; countGmem
+      endif ; count_gmem
+      
+      ; load mergerTree and move to Parent
+      
+      ; sanity check no IDs are -1 (we should only be processing the mergerTreeSubset)
+      
+      print,' ['+string(m,format='(i3)')+'] accreted mode counts ',count_smooth,count_sclumpy,count_bclumpy
+      
+      ; free some memory for next load
+      w_gal  = !NULL
+      w_gmem = !NULL
+    endfor
+    
+    ; save
+    ;save,r,filename=saveFilename
+    print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
+    
+  endif  
+  
+end
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionTimes(): for each gas particle/tracer, starting at some redshift, track backwards in time
