@@ -540,15 +540,18 @@ function gcSubsetProp, sP=sP, select=select, $
   if keyword_set(allTR) then begin
     ; load child counts for both galaxy members and group members
     rtr = maxTemps(sP=sP,/loadAllTRGal)
-    gal_child_counts = rtr.child_counts
+    gal_child_counts = rtr.child_counts[galcatInds.gal]
     
     rtr = maxTemps(sP=sP,/loadAllTRGmem)
-    gmem_child_counts = rtr.child_counts
+    gmem_child_counts = rtr.child_counts[galcatInds.gmem]
     rtr = !NULL  
     
     ; create new return arrays
     rr = { gal  : fltarr(total(gal_child_counts,/int)) ,$
            gmem : fltarr(total(gmem_child_counts,/int)) }
+    
+    if n_elements(gal_child_counts) ne n_elements(r.gal) then message,'Error'
+    if n_elements(gmem_child_counts) ne n_elements(r.gmem) then message,'Error'
     
     ; replicate byGas arrays into byTracer arrays
     offset = 0L
@@ -575,7 +578,7 @@ function gcSubsetProp, sP=sP, select=select, $
       rr = { gal:rr.gal[gal_w], gmem:rr.gmem[gmem_w] }
     endif
     return,rr
-  endif
+  endif ; allTR
   
   return,r
 end
