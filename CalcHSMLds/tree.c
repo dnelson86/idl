@@ -1,5 +1,5 @@
 //
-// CalcHSML Routine for IDL
+// CalcHSMLds Routine for IDL
 // dnelson apr.2012
 // tree.c based on CalcHsml (for Python) by Mark Vogelsberger
 //
