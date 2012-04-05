@@ -333,7 +333,7 @@ function gcSubsetProp, sP=sP, select=select, $
   endif
   
   ; select galaxycat indices corresponding to the list of subgroup ids
-  galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList) ;identical to mt.galcatSub
+  galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList) ;identical to mt.galcatSub if mtS
   
   ; subset galcat member indlist by those with recorded accretion times (and associated properties)
   if keyword_set(accretionTimeSubset) then begin

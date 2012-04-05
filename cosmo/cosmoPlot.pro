@@ -28,8 +28,22 @@ pro plotColdFracVsHaloMass, sP=sP
     
   ; reverse histogram parent IDs of all particles/tracers in this selection
   if sP.trMCPerCell eq 0 then begin
-    hist_gal  = histogram(mt.gcIndOrig.gal[gal_w],min=0,loc=loc_gal,rev=rev_gal)
-    hist_gmem = histogram(mt.gcIndOrig.gmem[gmem_w],min=0,loc=loc_gmem,rev=rev_gmem)
+    ; mtS = 0:
+    galcat = galaxyCat(sP=sP)
+    gcIDList = gcIDList(sP=sP,select=sgSelect)
+    gcIndOrig = galcatRepParentIDs(galcat=galcat,gcIDList=gcIDList)
+    
+    placeMap = getIDIndexMap(gcIDList,minid=minid)
+    gcIndOrig.gal = placeMap[gcIndOrig.gal-minid]
+    gcIndOrig.gmem = placeMap[gcIndOrig.gmem-minid]
+    placeMap = !NULL  
+    
+    hist_gal  = histogram(gcIndOrig.gal,min=0,loc=loc_gal,rev=rev_gal)
+    hist_gmem = histogram(gcIndOrig.gmem,min=0,loc=loc_gmem,rev=rev_gmem)
+
+    ; mtS=1:
+    ;hist_gal  = histogram(mt.gcIndOrig.gal[gal_w],min=0,loc=loc_gal,rev=rev_gal)
+    ;hist_gmem = histogram(mt.gcIndOrig.gmem[gmem_w],min=0,loc=loc_gmem,rev=rev_gmem)
   endif else begin
     ; create a gcIndOrig for the tracers
     galcat = galaxyCat(sP=sP)
@@ -50,17 +64,23 @@ pro plotColdFracVsHaloMass, sP=sP
 
     gcIndOrigTr = !NULL
   endelse
-
-  ; load max temps, current tvir, tvir at accretion, and parent masses
-  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset)
-  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset)
-  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset)
-  parentMass  = gcSubsetProp(sP=sP,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset)
+  
+  ; load max temps, current tvir, tvir at accretion
+  mtS = 0
+  atS = 0
+  ;accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,mergerTreeSubset=mtS,accretionTimeSubset=atS)
+  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,mergerTreeSubset=mtS,accretionTimeSubset=atS)
+  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,mergerTreeSubset=mtS,accretionTimeSubset=atS)
 
   ; load current temps and current SFR
-  curTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp,/mergerTreeSubset,/accretionTimeSubset)
+  curTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp,mergerTreeSubset=mtS,accretionTimeSubset=atS)
   curSFR  = gcSubsetProp(sP=sP,select=sgSelect,/curSingleVal,singleValField='sfr',$
-                         /mergerTreeSubset,/accretionTimeSubset)
+                         mergerTreeSubset=mtS,accretionTimeSubset=atS)
+
+  ; load group cat for subgroup masses
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  gcMasses = codeMassToLogMsun(gc.subgroupMass[mt.galcatIDList])
+  gc = !NULL
 
   ; structures to store results (Tmax)
   coldFrac = { gal_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
@@ -94,10 +114,10 @@ pro plotColdFracVsHaloMass, sP=sP
       ; count fraction Tmax below Tvir at current time
       w = where(loc_maxt_gal le curTvir.gal[loc_inds_gal],count_below)
       coldFrac.gal_tvircur[i] = float(count_below) / nloc
-      
+
       ; count fraction Tmax below Tvir at accretion time
-      w = where(loc_maxt_gal le accTvir.gal[loc_inds_gal],count_below)
-      coldFrac.gal_tviracc[i] = float(count_below) / nloc
+      ;w = where(loc_maxt_gal le accTvir.gal[loc_inds_gal],count_below)
+      ;coldFrac.gal_tviracc[i] = float(count_below) / nloc
     endif
   endfor
   
@@ -122,8 +142,8 @@ pro plotColdFracVsHaloMass, sP=sP
       coldFrac.gmem_tvircur[i] = float(count_below) / nloc
       
       ; count fraction Tmax below Tvir at accretion time
-      w = where(loc_maxt_gmem le accTvir.gmem[loc_inds_gmem],count_below)
-      coldFrac.gmem_tviracc[i] = float(count_below) / nloc
+      ;w = where(loc_maxt_gmem le accTvir.gmem[loc_inds_gmem],count_below)
+      ;coldFrac.gmem_tviracc[i] = float(count_below) / nloc
     endif
   endfor
   
@@ -179,8 +199,8 @@ pro plotColdFracVsHaloMass, sP=sP
         coldFrac_cur.gal_tvircur[i] = float(count_below) / count_nosfr
         
         ; count fraction Tmax below Tvir at accretion time
-        w = where(loc_curt_gal le accTvir.gal[loc_inds_gal],count_below)
-        coldFrac_cur.gal_tviracc[i] = float(count_below) / count_nosfr
+        ;w = where(loc_curt_gal le accTvir.gal[loc_inds_gal],count_below)
+        ;coldFrac_cur.gal_tviracc[i] = float(count_below) / count_nosfr
       endif ; cursfr!=0
     endif ; hist_gal>0
   endfor  
@@ -212,8 +232,8 @@ pro plotColdFracVsHaloMass, sP=sP
         coldFrac_cur.gmem_tvircur[i] = float(count_below) / count_nosfr
         
         ; count fraction Tmax below Tvir at accretion time
-        w = where(loc_curt_gmem le accTvir.gmem[loc_inds_gmem],count_below)
-        coldFrac_cur.gmem_tviracc[i] = float(count_below) / count_nosfr
+        ;w = where(loc_curt_gmem le accTvir.gmem[loc_inds_gmem],count_below)
+        ;coldFrac_cur.gmem_tviracc[i] = float(count_below) / count_nosfr
       endif ; cursfr!=0
     endif ; hist_gal>0
   endfor
@@ -229,11 +249,6 @@ pro plotColdFracVsHaloMass, sP=sP
     coldFrac_cur.both_const[j,*] = (coldFrac_cur.gal_const[j,*] * coldFrac_cur.gal_num + $
                                     coldFrac_cur.gmem_const[j,*] * coldFrac_cur.gmem_num) / $
                                    (coldFrac_cur.gal_num + coldFrac_cur.gmem_num)                       
-                                 
-  ; load group cat for subgroup masses
-  gc = loadGroupCat(sP=sP,/skipIDs)
-  gcMasses = codeMassToLogMsun(gc.subgroupMass[mt.galcatIDList])
-  gc = !NULL
   
   ; bin fractions into halo mass bins and make median lines
   logMassNbins  = (xrange[1]-xrange[0]) / logMassBinSize
@@ -461,6 +476,250 @@ pro plotColdFracVsHaloMass, sP=sP
     cgPlot,logMassBinCen,medianVals_cur.tViracc_both,color=getColor(2),/overplot
     for j=0,nCuts-1 do $
       cgPlot,logMassBinCen,medianVals_cur.const_both[j,*],color=getColor(3+j),/overplot
+    
+    ; legend
+    strings = [textoidl("T_{vir,cur}"),textoidl("T_{vir,acc}"),$
+               textoidl("T_{cut} = ")+string(TcutVals,format='(f4.1)')]
+    colors  = getColor([[1,2],indgen(nCuts)+3],/name)
+    legend,strings,textcolor=colors,box=0,/bottom,/left
+    legend,['gal','gmem','both'],linestyle=[1,2,0],box=0,linesize=0.25,/top,/left
+    
+  end_PS
+end
+
+; plotColdFracVsHaloMassAll(): plot the "cold mode fraction" vs halo mass in a few different ways
+;                              without making the mtS/atS cuts
+
+pro plotColdFracVsHaloMassAll, sP=sP
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  ; config
+  sgSelect = 'pri'
+  TcutVals = [5.3,5.4,5.5,5.6,5.7] ; for constant threshold
+  nCuts = n_elements(TcutVals)
+  
+  minNum = 32
+  xrange = [9.0,12.5]
+  yrange = [0.0,1.1]
+  
+  logMassBinSize = 0.1
+    
+  ; load galaxy catalog
+  galcat = galaxyCat(sP=sP)
+  gcIDList = gcIDList(sP=sP,select=sgSelect)    
+    
+  ; for all the child gas particles/tracers in the halo selection, replicate parent IDs
+  if sP.trMCPerCell eq 0 then begin
+    gcIndOrig = galcatRepParentIDs(galcat=galcat,gcIDList=gcIDList)
+  endif else begin
+    gcIndOrig = galCatRepParentIDs(galcat=galcat,gcIDList=gcIDList,$
+                  child_counts={gal:at.child_counts_gal,gmem:at.child_counts_gmem}) 
+  endelse
+  
+  ; compact parents (ascending ID->index)
+  placeMap = getIDIndexMap(gcIDList,minid=minid)
+  gcIndOrig.gal = placeMap[gcIndOrig.gal-minid]
+  gcIndOrig.gmem = placeMap[gcIndOrig.gmem-minid]
+  placeMap = !NULL  
+  
+  ; reverse histogram parent IDs of all particles/tracers in this selection
+  hist_gal  = histogram(gcIndOrig.gal,min=0,loc=loc_gal,rev=rev_gal)
+  hist_gmem = histogram(gcIndOrig.gmem,min=0,loc=loc_gmem,rev=rev_gmem)
+
+  gcIndOrig = !NULL
+  galcat = !NULL
+  
+  ; load max temps, current tvir, tvir at accretion
+  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp)
+  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp)
+
+  ; load group cat for subgroup masses
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  gcMasses = codeMassToLogMsun(gc.subgroupMass[mt.galcatIDList])
+  gc = !NULL
+
+  ; structures to store results (Tmax)
+  coldFrac = { gal_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+               gmem_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+               gal_tvircur  : fltarr(n_elements(mt.galcatIDList))         ,$
+               gmem_tvircur : fltarr(n_elements(mt.galcatIDList))         ,$
+               gal_tviracc  : fltarr(n_elements(mt.galcatIDList))         ,$
+               gmem_tviracc : fltarr(n_elements(mt.galcatIDList))         ,$
+               both_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+               both_tvircur : fltarr(n_elements(mt.galcatIDList))         ,$
+               both_tviracc : fltarr(n_elements(mt.galcatIDList))         ,$
+               gal_num      : lonarr(n_elements(mt.galcatIDList))         ,$
+               gmem_num     : lonarr(n_elements(mt.galcatIDList))          }
+  
+  ; loop over all tracked subgroups (galaxy, Tmax)
+  for i=0,n_elements(hist_gal)-1 do begin
+    if hist_gal[i] gt 0 then begin
+      ; list of indices of galaxy gas particles in this subgroup
+      loc_inds_gal = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
+      loc_maxt_gal = maxTemp.gal[loc_inds_gal]
+      nloc = n_elements(loc_maxt_gal)
+      
+      coldFrac.gal_num[i] = nloc
+      
+      ; count fraction Tmax below each constant temperature threshold
+      for j=0,nCuts-1 do begin
+        w = where(loc_maxt_gal le TcutVals[j],count_below)
+        coldFrac.gal_const[j,i] = float(count_below) / nloc
+      endfor
+      
+      ; count fraction Tmax below Tvir at current time
+      w = where(loc_maxt_gal le curTvir.gal[loc_inds_gal],count_below)
+      coldFrac.gal_tvircur[i] = float(count_below) / nloc
+    endif
+  endfor
+  
+  ; loop over all tracked subgroups (groupmem, Tmax)
+  for i=0,n_elements(hist_gmem)-1 do begin
+    if hist_gmem[i] gt 0 then begin
+      ; list of indices of groupmem gas particles in this subgroup
+      loc_inds_gmem = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
+      loc_maxt_gmem = maxTemp.gmem[loc_inds_gmem]
+      nloc = n_elements(loc_maxt_gmem)
+      
+      coldFrac.gmem_num[i] = nloc
+      
+      ; count fraction Tmax below each constant temperature threshold
+      for j=0,nCuts-1 do begin
+        w = where(loc_maxt_gmem le TcutVals[j],count_below)
+        coldFrac.gmem_const[j,i] = float(count_below) / nloc
+      endfor
+      
+      ; count fraction Tmax below Tvir at current time
+      w = where(loc_maxt_gmem le curTvir.gmem[loc_inds_gmem],count_below)
+      coldFrac.gmem_tvircur[i] = float(count_below) / nloc
+    endif
+  endfor
+  
+  ; create composite gal+gmem (Tmax)
+  coldFrac.both_tvircur = (coldFrac.gal_tvircur * coldFrac.gal_num + $
+                           coldFrac.gmem_tvircur * coldFrac.gmem_num) / $
+                          (coldFrac.gal_num + coldFrac.gmem_num)
+  coldFrac.both_tviracc = (coldFrac.gal_tviracc * coldFrac.gal_num + $
+                           coldFrac.gmem_tviracc * coldFrac.gmem_num) / $
+                          (coldFrac.gal_num + coldFrac.gmem_num)
+  for j=0,nCuts-1 do $
+    coldFrac.both_const[j,*] = (coldFrac.gal_const[j,*] * coldFrac.gal_num + $
+                                coldFrac.gmem_const[j,*] * coldFrac.gmem_num) / $
+                               (coldFrac.gal_num + coldFrac.gmem_num)             
+  
+  ; bin fractions into halo mass bins and make median lines
+  logMassNbins  = (xrange[1]-xrange[0]) / logMassBinSize
+  logMassBins   = linspace(xrange[0],xrange[1],logMassNbins+1) ; edges
+  logMassBinCen = linspace(xrange[0],xrange[1],logMassNbins+1) + logMassBinSize/2.0
+  
+  medianVals = { const_gal    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 const_gmem   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 const_both   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 tVircur_gal  : fltarr(logMassNbins)       + !values.f_nan ,$
+                 tVircur_gmem : fltarr(logMassNbins)       + !values.f_nan ,$
+                 tVircur_both : fltarr(logMassNbins)       + !values.f_nan ,$
+                 tViracc_gal  : fltarr(logMassNbins)       + !values.f_nan ,$
+                 tViracc_gmem : fltarr(logMassNbins)       + !values.f_nan ,$
+                 tViracc_both : fltarr(logMassNbins)       + !values.f_nan  }
+                 
+  ; calculate median in bins (Tmax) and enforce minimum particle numbers
+  for i=0,logMassNbins-2 do begin
+    ; gal (Tmax)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac.gal_num ge minNum,count)
+    if count gt 0 then begin
+      medianVals.tVircur_gal[i] = median(coldFrac.gal_tvircur[w])
+      medianVals.tViracc_gal[i] = median(coldFrac.gal_tviracc[w])
+      for j=0,nCuts-1 do medianVals.const_gal[j,i] = median(coldFrac.gal_const[j,w])
+    endif
+    
+    ; gmem (Tmax)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac.gmem_num ge minNum,count)
+    if count gt 0 then begin
+      medianVals.tVircur_gmem[i] = median(coldFrac.gmem_tvircur[w])
+      medianVals.tViracc_gmem[i] = median(coldFrac.gmem_tviracc[w])
+      for j=0,nCuts-1 do medianVals.const_gmem[j,i] = median(coldFrac.gmem_const[j,w])
+    endif
+    
+    ; both (Tmax)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac.gal_num+coldFrac.gmem_num ge minNum,count)
+    if count gt 0 then begin
+      medianVals.tVircur_both[i] = median(coldFrac.both_tvircur[w])
+      medianVals.tViracc_both[i] = median(coldFrac.both_tviracc[w])
+      for j=0,nCuts-1 do medianVals.const_both[j,i] = median(coldFrac.both_const[j,w])
+    endif
+  endfor
+  
+  ; plot (1) - all data points and median lines (Tmax)
+  start_PS, sP.plotPath + 'coldFrac_all.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      ytitle="Cold Fraction",xtitle=textoidl("log(M_{halo})")+"",$
+      title=str(sP.res)+textoidl("^3")+" "+sP.run+" (z="+string(sP.redshift,format='(f3.1)')+")"
+    cgPlot,xrange,[0.5,0.5],line=0,color=fsc_color('light gray'),/overplot
+    
+    ; plot raw points
+    psym = 4
+    symsize = 0.5
+    
+    w = where(coldFrac.gal_num+coldFrac.gmem_num ge minNum,count)
+    print,count,n_elements(coldFrac.gal_num)
+    
+    cgPlot,gcMasses,coldFrac.both_tVircur[w],psym=psym,symsize=symsize,thick=1.0,$
+      color=getColor(1),/overplot
+    cgPlot,gcMasses,coldFrac.both_tViracc[w],psym=psym,symsize=symsize,thick=1.0,$
+      color=getColor(2),/overplot
+    
+    for j=0,nCuts-1 do $
+      cgPlot,gcMasses,coldFrac.both_const[j,w],psym=psym,symsize=symsize,thick=1.0,$
+        color=getColor(3+j),/overplot
+        
+    ; plot median lines
+    cgPlot,logMassBinCen,medianVals.tVircur_both,color=getColor(1),/overplot
+    cgPlot,logMassBinCen,medianVals.tViracc_both,color=getColor(2),/overplot
+    for j=0,nCuts-1 do $
+      cgPlot,logMassBinCen,medianVals.const_both[j,*],color=getColor(3+j),/overplot
+    
+    ; legend
+    strings = [textoidl("T_{vir,cur}"),textoidl("T_{vir,acc}"),$
+               textoidl("T_{cut} = ")+string(TcutVals,format='(f4.1)')]
+    colors  = getColor([[1,2],indgen(nCuts)+3],/name)
+    legend,strings,textcolor=colors,box=0,/bottom,/left
+    
+  end_PS
+  
+  ; plot (2) - just median lines (Tmax)
+  start_PS, sP.plotPath + 'coldFrac_all2.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      ytitle="Cold Fraction",xtitle=textoidl("log(M_{halo})")+"",$
+      title=str(sP.res)+textoidl("^3")+" "+sP.run+" (z="+string(sP.redshift,format='(f3.1)')+")"
+    cgPlot,xrange,[0.5,0.5],line=0,color=fsc_color('light gray'),/overplot
+    
+    ; plot raw points
+    psym = 4
+    symsize = 0.5
+    
+    ; gal
+    cgPlot,logMassBinCen,medianVals.tVircur_gal,color=getColor(1),line=1,/overplot
+    cgPlot,logMassBinCen,medianVals.tViracc_gal,color=getColor(2),line=1,/overplot
+    for j=0,nCuts-1 do $
+      cgPlot,logMassBinCen,medianVals.const_gal[j,*],color=getColor(3+j),line=1,/overplot
+      
+    ; gmem
+    cgPlot,logMassBinCen,medianVals.tVircur_gmem,color=getColor(1),line=2,/overplot
+    cgPlot,logMassBinCen,medianVals.tViracc_gmem,color=getColor(2),line=2,/overplot
+    for j=0,nCuts-1 do $
+      cgPlot,logMassBinCen,medianVals.const_gmem[j,*],color=getColor(3+j),line=2,/overplot 
+    
+    ; both
+    cgPlot,logMassBinCen,medianVals.tVircur_both,color=getColor(1),/overplot
+    cgPlot,logMassBinCen,medianVals.tViracc_both,color=getColor(2),/overplot
+    for j=0,nCuts-1 do $
+      cgPlot,logMassBinCen,medianVals.const_both[j,*],color=getColor(3+j),/overplot
     
     ; legend
     strings = [textoidl("T_{vir,cur}"),textoidl("T_{vir,acc}"),$
@@ -1075,7 +1334,7 @@ pro plotTempRad2DHisto, sP=sP
   ; get normalized r/r_vir
   gcRad = gcSubsetProp(sP=sP,select=sgSelect,/rVirNorm,parNorm=parNorm,$
                        mergerTreeSubset=mergerTreeSubset,accretionTimeSubset=accretionTimeSubset)
-  stop
+
   ; get current or maxPast temperature, or accretion time / tvir at accretion
   gcTemp = gcSubsetProp(sP=sP,select=sgSelect,curTemp=curTemp,maxPastTemp=maxPastTemp,$
                         maxTempTime=maxTempTime,accTime=accTime,accTvir=accTvir,$
