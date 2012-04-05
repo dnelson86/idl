@@ -358,6 +358,132 @@ function mergerTreeSubset, sP=sP, verbose=verbose
   return,r
 end
 
+; mergerTreeINDList(): return a list of indices into the mergerTreeSubset/accretionTimes/Traj catalog 
+;                      for a subset of the members defined by the subgroup ID list gcIDList
+
+function mergerTreeINDList, sP=sP, galcat=galcat, mt=mt, gcIDList=gcIDList
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  forward_function galaxyCat
+
+  ; load galaxy cat and mergerTreeSubset if necessary
+  if ~keyword_set(galcat) then galcat = galaxyCat(sP=sP)
+  if ~keyword_set(mt) then mt = mergerTreeSubset(sP=sP)
+  
+  ; verify that all the requested subgroup IDs are part of the mergerTreeSubset
+  match,mt.galcatIDList,gcIDList,ind1,ind2,count=count
+  if count ne n_elements(gcIDList) then message,'Error: Not all gcIDs found in mergerTreeSubset.'
+  
+  ; make mask for requested subgroup IDs
+  gcIDMask = bytarr(n_elements(galcat.galaxyLen))
+  if keyword_set(gcIDList) then gcIDMask[gcIDList] = 1B  
+  if ~keyword_set(gcIDList) then gcIDMask[*] = 1B
+  
+  ; normal indices return (handle zeros which will happen for individual halo ID requests at low masses)
+  ; note: must handle the -1 return inside the calling function
+  tots = { gal : total(galcat.galaxyLen[gcIDList],/int), gmem : total(galcat.groupmemLen[gcIDList],/int) }
+  
+  if tots.gal gt 0 and tots.gmem gt 0 then r = {gal  : ulonarr(tots.gal) , gmem : ulonarr(tots.gmem) }
+  if tots.gal gt 0 and tots.gmem eq 0 then r = {gal  : ulonarr(tots.gal) , gmem : -1 }
+  if tots.gal eq 0 and tots.gmem gt 0 then r = {gal  : -1 , gmem : ulonarr(tots.gmem) }
+  
+  offsetGal  = 0L
+  offsetGmem = 0L
+  
+  offsetGal_mt  = 0L
+  offsetGmem_mt = 0L
+  
+  ; (1) make list for gas cells/particles
+  foreach gcID,mt.galcatIDList do begin
+    ; galaxy
+    if galcat.galaxyLen[gcID] gt 0 and gcIDMask[gcID] eq 1B then begin
+      galInds    = ulindgen(galcat.galaxyLen[gcID]) + offsetGal_mt
+      r.gal[offsetGal:offsetGal+galcat.galaxyLen[gcID]-1] = galInds
+      offsetGal += galcat.galaxyLen[gcID]
+    endif
+    
+    ; group member
+    if galcat.groupmemLen[gcID] gt 0 and gcIDMask[gcID] eq 1B then begin
+      gmemInds    = ulindgen(galcat.groupmemLen[gcID]) + offsetGmem_mt
+      r.gmem[offsetGmem:offsetGmem+galcat.groupmemLen[gcID]-1] = gmemInds
+      offsetGmem += galcat.groupmemLen[gcID]
+    endif
+    
+    offsetGal_mt  += galcat.galaxyLen[gcID]
+    offsetGmem_mt += galcat.groupmemLen[gcID]
+  endforeach
+  
+  ; (2) make list including child counts if simulation has a tracer type
+  if sP.trMCPerCell eq 0 then return,r
+  
+  ; load child counts
+  maxt_gal = maxTemps(sP=sP,/loadAllTRGal)
+  child_counts_gal = maxt_gal.child_counts
+  maxt_gal = !NULL
+  
+  maxt_gmem = maxTemps(sP=sP,/loadAllTRGmem)
+  child_counts_gmem   = maxt_gmem.child_counts
+  maxt_gmem = !NULL
+    
+  if n_elements(child_counts_gal) ne total(galcat.galaxyLen,/int) or $
+     n_elements(child_counts_gmem) ne total(galcat.groupmemLen,/int) then $
+     message,'Error: Child_counts gal/gmem should have same size as full galcat subset.'
+
+  if total(child_counts_gal,/int) gt 2e9 then stop ; consider lon64/removing /int
+  if total(child_counts_gmem,/int) gt 2e9 then stop
+
+  rcc = { gal  : ulonarr(total(child_counts_gal[r.gal],/int))  ,$
+          gmem : ulonarr(total(child_counts_gmem[r.gmem],/int)) }
+       
+  offsetGal  = 0L
+  offsetGmem = 0L
+  
+  offsetGal_all  = 0UL
+  offsetGmem_all = 0UL
+  
+  for gcID=0UL,n_elements(galcat.galaxyLen)-1 do begin
+    ; galaxy
+    if galcat.galaxyLen[gcID] gt 0 then begin
+      ; calculate total number of children in this subgroup
+      tot_children_gal  = total(child_counts_gal[galcat.galaxyOff[gcID]:$
+                                                 galcat.galaxyOff[gcID]+galcat.galaxyLen[gcID]-1],/int)
+      ; add indices only for specified galaxy IDs
+      if gcIDMask[gcID] then begin
+        ; calculate place and store indices
+        galInds = ulindgen(tot_children_gal) + offsetGal_all
+        rcc.gal[offsetGal:offsetGal+tot_children_gal-1] = galInds
+  
+        offsetGal += tot_children_gal
+      endif
+      
+      ; add child counts to indice array offset
+      offsetGal_all  += tot_children_gal
+    endif      
+                  
+    ; group member
+    if galcat.groupmemLen[gcID] gt 0 then begin
+      ; calculate total number of children in this subgroup             
+      tot_children_gmem = total(child_counts_gmem[galcat.groupmemOff[gcID]:$
+                                                  galcat.groupmemOff[gcID]+galcat.groupmemLen[gcID]-1],/int)
+            
+      ; add indices only for specified group member IDs
+      if gcIDMask[gcID] then begin
+        ; calculate place and store indices
+        gmemInds     = ulindgen(tot_children_gmem) + offsetGmem_all
+        rcc.gmem[offsetGmem:offsetGmem+tot_children_gmem-1] = gmemInds
+        
+        offsetGmem += tot_children_gmem
+      endif
+      
+      offsetGmem_all += tot_children_gmem
+    endif
+    
+  endfor
+  
+  return,rcc
+  
+end
+
 ; plotHaloEvo(): plot evolution of halo masses, virial temperatures, positions, r200 using mergerTree()
 
 pro plotHaloEvo, sP=sP
