@@ -22,13 +22,13 @@ int CalcNN_natural(int NumPart, int NumOrig, float* data_pos, float* src_pos, in
 
   P = (struct particle_data *) malloc (NumPart * sizeof (struct particle_data));
 	
-	// copy data into P
+  // copy data into P
   for (i=0; i < NumPart; i++)
   {
-		P[i].Pos[0] = data_pos[3*i+0];
-		P[i].Pos[1] = data_pos[3*i+1];
-		P[i].Pos[2] = data_pos[3*i+2];
-		P[i].Mass   = 1.0;
+    P[i].Pos[0] = data_pos[3*i+0];
+    P[i].Pos[1] = data_pos[3*i+1];
+    P[i].Pos[2] = data_pos[3*i+2];
+    P[i].Mass   = 1.0;
     P[i].Type   = 0; // search for type 0 (gas)
   }
 
@@ -39,24 +39,24 @@ int CalcNN_natural(int NumPart, int NumOrig, float* data_pos, float* src_pos, in
 #ifdef VERBOSE
   printf("Built tree, nodes = %d\n", nNodes);
 
-	// use tree for neighbor searches
+  // use tree for neighbor searches
   printf("finding neighbours...\n [");
   
-	int signal = 0;
+  int signal = 0;
 #endif
 	
   for (i=0; i < NumOrig; i++)
   {
 #ifdef VERBOSE
-	  // output progress marker
-		if (i > (signal / 100.0) * NumOrig)
-		{
-			printf("x");
-			fflush(stdout);
-			signal++;
-		}
+    // output progress marker
+    if (i > (signal / 100.0) * NumOrig)
+    {
+      printf("x");
+      fflush(stdout);
+      signal++;
+    }
 #endif
-		// set search position and find nearest neighbor
+    // set search position and find nearest neighbor
     pos[0] = src_pos[3*i+0];
     pos[1] = src_pos[3*i+1];
     pos[2] = src_pos[3*i+2];
@@ -65,7 +65,7 @@ int CalcNN_natural(int NumPart, int NumOrig, float* data_pos, float* src_pos, in
     ind = ngb_treefind_nearest_local(pos,-1,&mindist,guess);		
 
     // store result
-		ind_out[i] = ind;
+    ind_out[i] = ind;
 
     // due to peano hilbert ordering, set last result as guess for next (much faster)
     guess = ind;
@@ -105,19 +105,19 @@ int CalcNN(int argc, void* argv[])
   int *ind_out;
   int NumSrc;
 	
-	char buf[128];
+  char buf[128];
 
   // validate input
   if (argc != 6)
   {
-	  sprintf(buf,"Wrong number of arguments (%d)!\n",argc);
+    sprintf(buf,"Wrong number of arguments (%d)!\n",argc);
     IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,buf);
     return 0;
   } else {
 #ifdef TWODIMS
-	  IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcNN Loaded (TWODIMS!).");
+    IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcNN Loaded (TWODIMS!).");
 #else
-		IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcNN Loaded (NDIMS=3!).");
+    IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcNN Loaded (NDIMS=3!).");
 #endif
   }
 
@@ -129,8 +129,8 @@ int CalcNN(int argc, void* argv[])
   NumSrc  = *(int *)argv[1];
   Pos     = (float *)argv[2];
   PosSrc  = (float *)argv[3];
-	BoxSize = *(float *)argv[4];
-	ind_out = (int *)argv[5];
+  BoxSize = *(float *)argv[4];
+  ind_out = (int *)argv[5];
 
   // defaults
   Softening = 1.0;
@@ -139,11 +139,11 @@ int CalcNN(int argc, void* argv[])
 
 #ifdef VERBOSE
   printf("Input data:\n");
-	printf("NumPart      = %d\n", NumPart);
+  printf("NumPart      = %d\n", NumPart);
   printf("NumSrc       = %d\n", NumSrc);
   printf("BoxSize      = %g\n", BoxSize);
 #endif
 
-	// calculate NNs
-	return CalcNN_natural(NumPart,NumSrc,Pos,PosSrc,ind_out);
+  // calculate NNs
+  return CalcNN_natural(NumPart,NumSrc,Pos,PosSrc,ind_out);
 }
