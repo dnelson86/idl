@@ -27,8 +27,8 @@ function getUnits
             UnitMass_in_Msun    : 0.0D                        ,$
             
             ; constants
-            boltzmann   : double(1.38066e-16)                 ,$ ;cgs
-            mass_proton : double(1.6727e-24)                  ,$ ;cgs
+            boltzmann   : double(1.380650e-16)                ,$ ;cgs
+            mass_proton : double(1.672622e-24)                ,$ ;cgs
             
             ; derived constants
             H0      : 0.0D                                    ,$
@@ -39,11 +39,12 @@ function getUnits
             colors : strarr(18)                               ,$
             
             ; unit conversions
-            s_in_Myr  : 3.156e13                              ,$
-            Msun_in_g : 1.989*double(10.0)^33                 ,$
-            pc_in_cm  : 3.0868e18                             ,$
-            Mpc_in_cm : 3.0868e24                             ,$
-            kpc_in_km : 3.0856e16                              $
+            s_in_Myr  : 3.155693e13                           ,$
+            s_in_Gyr  : 3.155693e16                           ,$
+            Msun_in_g : 1.98892*double(10.0)^33               ,$
+            pc_in_cm  : 3.085680e18                           ,$
+            Mpc_in_cm : 3.085680e24                           ,$
+            kpc_in_km : 3.085680e16                            $
       }
       
   ; derived units
