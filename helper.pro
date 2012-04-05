@@ -459,7 +459,7 @@ end
 
 ; external C-routine interfaces
 ; -----------------------------
-; 
+
 ; calcHSML(): use CalcHSML external C-routine for the tree, neighbor searchings, and smoothing lengths
 
 function calcHSML, Pos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
@@ -486,6 +486,46 @@ function calcHSML, Pos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
   libName = '/n/home07/dnelson/idl/CalcHSML/CalcHSML_'+str(ndims)+'D.so'
   ret = Call_External(libName, 'CalcHSML', $
                       NumPart,Pos,Mass,DesNumNgb,DesNumNgbDev,boxSize,HsmlGuess,Softening,hsml_out, $
+                      /CDECL)
+   
+  return, hsml_out
+                     
+end
+
+; calcHSMLds(): use CalcHSMLds external C-routine to calculate the smoothing length needed to locate
+;               a given number of neighbors with positions Pos around each position in SearchPos
+;               where the two are generally different (e.g. the size of a tophat filter)
+
+function calcHSMLds, Pos, SearchPos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  npos = size(Pos)
+  nsrc = size(SearchPos)
+
+  if ndims ne 1 and ndims ne 2 and ndims ne 3 then message,'Error: Need ndims=1,2,3.'
+  if npos[0] ne 2 or npos[1] ne 3 then message,'Error: Point position array shape.'
+  if nsrc[0] ne 2 or nsrc[1] ne 3 then message,'Error: Search position array shape.'
+  if npos[2] lt nNGB then message,'Error: Point count too low for nNGB.'
+
+  ; prepare inputs
+  NumPart   = long(npos[2])
+  NumSearch = long(nsrc[2])
+  
+  DesNumNgb    = long(nNGB)     ; number of neighbors to use
+  DesNumNgbDev = long(0)        ; deviation allowed
+  boxSize      = float(boxSize) ; use zero for non-periodic search
+  
+  hsml_out = fltarr(NumSearch)
+  
+  ; make sure point arrays are float triples since we direct cast now
+  Pos = float(Pos)
+  SearchPos = float(SearchPos)
+  
+  ; call CalcHSML
+  libName = '/n/home07/dnelson/idl/CalcHSMLds/CalcHSMLds_'+str(ndims)+'D.so'
+  ret = Call_External(libName, 'CalcHSMLds', $
+                      NumPart,Pos,NumSearch,SearchPos,DesNumNgb,DesNumNgbDev,boxSize,hsml_out, $
                       /CDECL)
    
   return, hsml_out
