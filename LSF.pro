@@ -13,13 +13,14 @@ pro makeArepoFoFBsub
   
   sP = simParams(res=res,run=run)
 
-  snapRange = [210,249,1]
+  snapRange = [314,314,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 32 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
-                 ;               256^3=4 (n32tile4 PartAllocFactor=3)
-  ptile     = 4 ; span[ptile=X]
+  nProcs    = 64 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
+                 ;               256^3=4 (n32tile4 PartAllocFactor=2.5 MaxMemSize=7900)
+                 ;               512^3=16 (n64tile4 PartAllocFactor=1.5 though n32tile4 ok until z=2)
+  ptile     = 2 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
   excludeHosts = ['hero2402'] ;leave empty otherwise

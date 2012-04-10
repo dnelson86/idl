@@ -353,10 +353,10 @@ pro filInterpImage
   
   ; config
   basePath = '/n/home07/dnelson/sims.idealized/'
-  d = '1000'
+  d = '500'
   
   sPa = { simPath   : basePath+'cylTest.1e4.M1e2.norot.c10.d'+d+'.r2.arepo/output/' ,$
-          plotPath  : basePath ,$
+          plotPath  : basePath+'frames.cylTest2/',$
           derivPath : basePath+'cylTest.1e4.M1e2.norot.c10.d'+d+'.r2.arepo/data.files/',$
           savPrefix : 'F',$
           res       : '1',$
@@ -376,7 +376,7 @@ pro filInterpImage
   minFilID = 10001L ; for cylTest.1e4
   maxFilID = 15000L ; for cylTest.1e4
   
-  snapRange = [0,80]
+  snapRange = [0,72] ;--- 80@2Gyr
 
   ; get gas/tracer positions with time
   pos = filGetPositions(sPa=sPa,sPg=sPg,snapRange=snapRange,minFilID=minFilID,maxFilID=maxFilID)
@@ -393,9 +393,9 @@ pro filInterpImage
   axes     = [0,2]
   
   ; movie configuration
-  nFrames = 401
-  timeStart = 0.0 ;Gyr
-  timeEnd   = 2.0 ;Gyr
+  nFrames = 361 ;401  ;--- 80@2Gyr
+  timeStart = 0.0 + 1e-4 ;Gyr
+  timeEnd   = 1.8 - 1e-4 ;Gyr  ;--- 80@2Gyr
   
   if timeStart lt min(pos.times_arepo) then message,'Error: Requested timeStart beyond snapshot range.'
   if timeEnd gt max(pos.times_arepo) then message,'Error: Requested timeEnd beyond snapshot range.'
@@ -423,14 +423,14 @@ pro filInterpImage
   
   print,'interp vel...'
   for i=0,nTrVel-1 do begin
-    velPos[*,0,i] = spline(pos.times_arepo,pos.vel[*,axes[0],i],frameTimes)
-    velPos[*,1,i] = spline(pos.times_arepo,pos.vel[*,axes[1],i],frameTimes)
+    velPos[*,0,i] = hermite(pos.times_arepo,pos.vel[*,axes[0],i],frameTimes)
+    velPos[*,1,i] = hermite(pos.times_arepo,pos.vel[*,axes[1],i],frameTimes)
   endfor
   
   print,'interp sph...'
   for i=0,nSph-1 do begin
-    gaPos[*,0,i] = spline(pos.times_gadget,pos.ga[*,axes[0],i],frameTimes)
-    gaPos[*,1,i] = spline(pos.times_gadget,pos.ga[*,axes[1],i],frameTimes)
+    gaPos[*,0,i] = hermite(pos.times_gadget,pos.ga[*,axes[0],i],frameTimes)
+    gaPos[*,1,i] = hermite(pos.times_gadget,pos.ga[*,axes[1],i],frameTimes)
   endfor
 
   ; move tracers left a boxquarter, move sph right a boxquarter
@@ -438,8 +438,8 @@ pro filInterpImage
   gaPos[*,axes[0],*]  += zoomSize/4.0
   
   print,'rendering frames...'
-  ;for fn=0,nFrames-1 do begin
-  fn = 300
+  for fn=0,nFrames-1 do begin
+  ;fn = 300
     ; determine time of this frame and bracketing snapshots
     time = timeStart + timeStep * fn
     
@@ -493,6 +493,6 @@ pro filInterpImage
       
     end_PS, pngResize=60, im_options='-negate', /deletePS
 
-  ;endfor
+  endfor
 
 end

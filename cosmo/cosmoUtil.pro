@@ -224,20 +224,20 @@ end
 ;   'pri' : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
 ;   'sec' : members of the non-first subgroups of each group only ("satellites"/"subhalos")
 ;   'all' : all subgroups
+; valGCids: return member ids from only these groups
 ;
 ; partType=N     : use subgroup type offset table to return only IDs of a specific particle type
 ; partType='all' : return all particle IDs in that subgroup regardless of type
 
-function gcPIDList, gc=gc, select=select, partType=PT
+function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  if (n_elements(gc) eq 0 or n_elements(select) eq 0 or n_elements(PT) eq 0) then begin
-    print,'Error: gcPIDList: Bad inputs.' & stop
-  endif
+  if (n_elements(gc) eq 0 or (n_elements(select) eq 0 and n_elements(valGCids) eq 0) or $
+      n_elements(PT) eq 0) then message,'Error: gcPIDList: Bad inputs.'
 
   ; get list of appropriate group ids
-  valGCids = gcIDList(gc=gc,select=select)
+  if ~keyword_set(valGCids) then valGCids = gcIDList(gc=gc,select=select)
   
   ; make list of particle ids in these groups
   start = 0L
@@ -1054,17 +1054,15 @@ function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap
   restore,saveFilename
 
   if (not keyword_set(time)) then begin
+    if (keyword_set(all)) then return,redshifts
+    
     if (snap ge 0 and snap lt n_elements(redshifts)) then $
       return,redshifts[snap]
-      
-    if (keyword_set(all)) then $
-      return,redshifts
   endif else begin
+    if (keyword_set(all)) then return,times
+      
     if (snap ge 0 and snap lt n_elements(redshifts)) then $
       return,times[snap]
-      
-    if (keyword_set(all)) then $
-      return,times
   endelse
 
 end

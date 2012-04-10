@@ -60,12 +60,28 @@ function shuffle, array, seed=seed
   return,array[sort(randomu(iseed,n_elements(array)))]
 end
 
+function pSplit, arr, split=split ; split=[numProcs,curProc] with curProc zero indexed
+
+  ; no split, return whole job load to caller
+  if n_elements(split) ne 2 then return,arr
+
+  ; split arr into split[0] segments and return split[1] segment
+  splitSize = fix(n_elements(arr) / split[0])
+  arrSplit  = arr[split[1]*splitSize:(split[1]+1)*splitSize-1]
+  
+  ; for last split, make sure it takes any leftovers
+  if split[0]-1 eq split[1] then arrSplit = arr[split[1]*splitSize:*]
+  
+  return,arrSplit
+end
+
 ; partTypeNum(): convert a string description of a particle type to its numeric value
 
-function partTypeNum, partType
+function partTypeNum, PT
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
+  partType = PT ; so we don't change the input
   if not isnumeric(partType) then partType = strlowcase(str(partType))
 
   if (strcmp(partType,'gas')       or strcmp(partType,'hydro'))      then partType = 0
@@ -96,8 +112,8 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
   ; cubehelix CT implementation
   if ctName eq 'helix' then begin
     ; helix parameters
-    start = 1.5    ; color, 1=r,2=g,3=b,0.5=purple
-    rots  = -1.0 ; color rotations, typically -1.5 to 1.5
+    start = 2.0  ; color, 1=r,2=g,3=b,0.5=purple
+    rots  = 1.5  ; color rotations, typically -1.5 to 1.5
     hue   = 1.0  ; hue intensity scaling, typically 0 (BW) to 1
     gamma = 1.0  ; gamma intensity expontent (1=normal/linear,<1 emphasize low vals,>1 emphasize high vals)
     
@@ -105,7 +121,7 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
     nlev = 256
     RGB = fltarr(nlev,3)
     
-    fracs = findgen(nlev)/float(nlev-1)
+    fracs = findgen(nlev)/float(nlev-1) * 1.0; scale [0,1]
     phi   = 2*!pi*(start/3.0 + 1.0 + rots*fracs)
     fracs = fracs^float(gamma)
     amplt = hue * fracs * (1-fracs)/2.0
@@ -140,14 +156,12 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
   endif
   
   ; otherwise, load normal IDL table
-  case ctName of
-    'bw linear'          : loadct,0,bottom=bottom,rgb_table=rgb_table,/silent
-    'green-white linear' : loadct,8,bottom=bottom,rgb_table=rgb_table,/silent
-    'green-white exp'    : loadct,9,bottom=bottom,rgb_table=rgb_table,/silent
-    'blue-red'           : loadct,11,bottom=bottom
-    'plasma'             : loadct,32,bottom=bottom,rgb_table=rgb_table,/silent
-    'blue-red2'          : loadct,33,bottom=bottom,rgb_table=rgb_table,/silent
-  endcase
+  if ctName eq 'bw linear'          then loadct,0,bottom=bottom,/silent
+  if ctName eq 'green-white linear' then loadct,8,bottom=bottom,/silent
+  if ctName eq 'green-white exp'    then loadct,9,bottom=bottom,/silent
+  if ctName eq 'blue-red'           then loadct,11,bottom=bottom,/silent
+  if ctName eq 'plasma'             then loadct,32,bottom=bottom,/silent
+  if ctName eq 'blue-red2'          then loadct,33,bottom=bottom,/silent
 
 end
 
@@ -527,9 +541,8 @@ function calcHSMLds, Pos, SearchPos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
   ret = Call_External(libName, 'CalcHSMLds', $
                       NumPart,Pos,NumSearch,SearchPos,DesNumNgb,DesNumNgbDev,boxSize,hsml_out, $
                       /CDECL)
-   
-  return, hsml_out
-                     
+                      
+  return, hsml_out              
 end
 
 ; calcNN(): use CalcNN external C-routine for the tree and neighbor search
@@ -554,7 +567,6 @@ function calcNN, Pos_SrcTargs, Pos_SrcOrigs, boxSize=boxSize, ndims=ndims
                       /CDECL)
     
   return, ind_out
-  
 end
 
 ; calcSphMap(): use CalcSphMap external C-routine to calculate a map of projected densities
@@ -599,39 +611,32 @@ function calcSphMap, pos, hsml, mass, axes=axes, boxSize=boxSize, boxCen=boxCen,
                       mode,periodic,/CDECL)
 
   return, grid_out
-  
 end
 
 ; estimateDensityTophat(): spatial density estimator for an input position tuple array and
-;                          mass array for some particle type
-;   do density calculation by calculating smoothing lengths for all the particles
-;   
+;                          CONSTANT mass per particle, by using HSMLs as tophat filter sizes
+; pos_search : if specified, estimate density at this point set not at the positions of the particles
 
-function estimateDensityTophat, pos, mass=mass, ndims=ndims, nNGB=nNGB, boxSize=boxSize
+function estimateDensityTophat, pos, pos_search=pos_search, mass=mass, $
+                                ndims=ndims, nNGB=nNGB, boxSize=boxSize
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  if (not keyword_set(nNGB) or not keyword_set(ndims)) then stop
-
+  if ~keyword_set(nNGB) or ~keyword_set(ndims) then message,'Error: Must specify nNGB and ndims.'
+  if ~keyword_set(mass) or n_elements(mass) ne 1 then message,'Error: Expected one constant mass.'
+  
   ; calculate smoothing lengths
-  hsml_out = calcHSML(pos,ndims=ndims,nNGB=nNGB,boxSize=boxSize)
-                      
-  ; estimate densities on eval_pos using hsml
-  if (ndims eq 1) then $
-    eval_dens = nNGB / (2.0 * hsml_out)
-    
-  if (ndims eq 2) then $
-    eval_dens = nNGB / (!pi * hsml_out^2.0)
-    
-  if (ndims eq 3) then $
-    eval_dens = nNGB / (4.0*!pi/3.0 * hsml_out^3.0)
+  if ~keyword_set(pos_search) then $
+    hsml_out = calcHSML(pos,ndims=ndims,nNGB=nNGB,boxSize=boxSize)
+  if keyword_set(pos_search) then $
+    hsml_out = calcHSMLds(pos,pos_search,ndims=ndims,nNGB=nNGB,boxSize=boxSize)
   
-  ; add in mass
-  if keyword_set(mass) then $
-    eval_dens *= mass[0]
+  ; convert smoothing lengths to densities
+  if (ndims eq 1) then hsml_out = mass * nNGB / (2.0 * temporary(hsml_out))
+  if (ndims eq 2) then hsml_out = mass * nNGB / (!pi * temporary(hsml_out)^2.0)
+  if (ndims eq 3) then hsml_out = mass * nNGB / (4.0*!pi/3.0 * temporary(hsml_out)^3.0)
   
-  return,eval_dens
-
+  return,hsml_out
 end
 
 ; load routines for use
@@ -645,6 +650,7 @@ end
 @mergerTree
 @cosmoAnalysis
 @cosmoHist
+@accretionTraj
 @cosmoVis
 @cosmoSphere
 @cosmoPlotGalCat

@@ -43,11 +43,9 @@ int CalcHSMLds_natural(int NumPart, float* data_pos, int NumSearch, float* searc
   nNodes = tree_treebuild();
 	
 #ifdef VERBOSE
-  printf("Built tree, nodes = %d\n", nNodes);
-
   // use tree for neighbor searches
-  printf("finding neighbours...\n [");
-  
+  printf("Built tree with %d nodes. Finding neighbors...\n [", nNodes);
+
   int signal = 0;
 #endif
 	
@@ -55,7 +53,7 @@ int CalcHSMLds_natural(int NumPart, float* data_pos, int NumSearch, float* searc
   {
 #ifdef VERBOSE
     // output progress marker
-    if (i > (signal / 100.0) * NumPart)
+    if (i > (signal / 100.0) * NumSearch)
     {
       printf("x");
       fflush(stdout);
@@ -77,7 +75,7 @@ int CalcHSMLds_natural(int NumPart, float* data_pos, int NumSearch, float* searc
   tree_treefree();
   //free(P); // leave it alone
 
-  IF_VERBOSE(printf("]\ndone.\n"));
+  IF_VERBOSE(printf("]\n"));
 	
   return 1;
 }
@@ -145,12 +143,12 @@ IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSMLds Loaded (TWODIMS!).");
   hsml_out = (float *)argv[7];
 
 #ifdef VERBOSE
-  printf("Input data:\n");
-  printf("NumPart      = %d\n", NumPart);
-  printf("NumSearch    = %d\n", NumSearch);
-  printf("DesNumNgb    = %d\n", DesNumNgb);
-  printf("DesNumNgbDev = %d\n", DesNumNgbDev);
-  printf("BoxSize      = %g\n", BoxSize);
+  //printf("Input data:\n");
+  //printf("NumPart      = %d\n", NumPart);
+  //printf("NumSearch    = %d\n", NumSearch);
+  //printf("DesNumNgb    = %d\n", DesNumNgb);
+  //printf("DesNumNgbDev = %d\n", DesNumNgbDev);
+  //printf("BoxSize      = %g\n", BoxSize);
 #endif
 
   // calculate HSMLs
