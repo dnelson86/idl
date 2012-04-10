@@ -15,7 +15,8 @@ function mergerTree, sP=sP, makeNum=makeNum
   partMatchFracTol = 0.6   ; 60% minimum match between particle members of the specified type
   massDiffFracTol  = 0.2   ; 20% agreement in total mass or better
   positionDiffTol  = 200.0 ; 200kpc maximum separation
-  minSubgroupLen   = 20    ; do not try to match subgroups with less than N total particles
+  minSubgroupLen   = 64    ; do not try to match subgroups with less than N total particles
+                           ; 128,256=20 512=64 (for speed)
 
   ptNum = partTypeNum('dm') ; use dark matter particles (only) for matching
 
