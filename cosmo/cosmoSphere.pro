@@ -381,8 +381,8 @@ function haloShellDensity, sP=sP, partType=partType, subgroupID=subgroupID, $
   ; check for existence of a save
   csTag = ''
   if keyword_set(cutSubS) then csTag = '.cutSubS'
-  saveFilename = sP.derivPath+'hShells.'+sP.savPrefix+str(sP.res)+'.'+partType+csTag+'.ns'+str(Nside)+'.'+ $
-                 str(sP.snap) + '.' + str(subgroupID) + '.' + str(n_elements(radFacs)) + '.sav'
+  saveFilename = sP.derivPath+'hShells/hShells.'+sP.savPrefix+str(sP.res)+'.'+partType+csTag+'.ns'+$
+                 str(Nside)+'.'+str(sP.snap)+'.'+str(subgroupID)+'.'+str(n_elements(radFacs)) + '.sav'
                  
   if file_test(saveFilename) then begin
     restore,saveFilename
