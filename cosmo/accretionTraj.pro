@@ -132,13 +132,28 @@ function accretionTraj, sP=sP, getVel=getVel
       nelec_gmem = nelec[ids_gmem_ind]
       nelec = !NULL
       
-      r.curTemp_gal[mt.maxSnap-m,*]  = convertUtoTemp(u_gal,nelec_gal,/log)
-      r.curTemp_gmem[mt.maxSnap-m,*] = convertUtoTemp(u_gmem,nelec_gmem,/log)
+      ; load gas SFR and select off the effective EOS (SFR must be zero)
+      sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
+      
+      sfr_gal  = sfr[ids_gal_ind]
+      sfr_gmem = sfr[ids_gmem_ind]
+      sfr = !NULL
+      
+      ; replace existing values if current snapshot has higher temps (enforce off effective EOS)
+      w = where(sfr_gal eq 0.0,count)
+      if count gt 0 then $
+        r.curTemp_gal[mt.maxSnap-m,w]  = convertUtoTemp(u_gal[w],nelec_gal[w],/log)
+        
+      w = where(sfr_gmem eq 0.0,count)
+      if count gt 0 then $
+        r.curTemp_gmem[mt.maxSnap-m,w] = convertUtoTemp(u_gmem[w],nelec_gmem[w],/log)
 
-      u_gal  = !NULL
-      u_gmem = !NULL
+      u_gal      = !NULL
+      u_gmem     = !NULL
       nelec_gal  = !NULL
       nelec_gmem = !NULL
+      sfr_gal    = !NULL
+      sfr_gmem   = !NULL
     endfor
     
     ; save
@@ -294,8 +309,10 @@ end
 function smoothHaloPos, mt=mt, hInd=hInd, sP=sP
 
   ; apply smoothing to halo position over time
-  smoothKer = 5 ; 0 to disable
-  wrapTol   = 100.0 ;kpc 
+  smoothKer = 5     ; number of snapshots for boxcar window
+  wrapTol   = 100.0 ; kpc 
+  polyOrder = 3     ; order polynomial (2,3)
+  muxCoeff  = [0.8,0.2] ; [smooth,polyfit] linear combination coefficients, should add to 1
   
   hPos = mt.hPos[*,*,hInd]
   
@@ -303,6 +320,21 @@ function smoothHaloPos, mt=mt, hInd=hInd, sP=sP
   merrs = findgen(n_elements(mt.times))+0.1
   merrs[0:4] = [0.09,0.0925,0.095,0.0975,0.1]
   merrs[n_elements(merrs)-5:n_elements(merrs)-1] = [0.1,0.0975,0.095,0.0925,0.09]
+  
+  ; debug: plot fit
+  start_PS,'test_smoothHaloPos.eps',xs=10,ys=8
+    !p.multi = [0,1,3]
+    for i=0,2 do begin
+      cgPlot,mt.times,hPos[*,i],psym=4,xrange=minmax(mt.times),yrange=minmax(hPos[*,i]),/xs,/ys
+      for j=2,3 do begin
+        res = svdfit(mt.times,hPos[*,i],j,measure_errors=merrs,yfit=yfit)
+        hPosXyz = muxCoeff[0]*smooth(hPos[*,i],smoothKer) + muxCoeff[1]*yfit
+        cgPlot,mt.times,yfit,color=getColor(j),line=0,/overplot
+        cgPlot,mt.times,hPosXyz,color=getColor(j),line=1,/overplot
+      endfor
+      legend,['m='+['2','3']],textcolor=getColor([2,3],/name),box=0,/top,/left
+    endfor
+  end_PS  
   
   ; extract single coordinate separately
   for j=0,2 do begin
@@ -319,17 +351,18 @@ function smoothHaloPos, mt=mt, hInd=hInd, sP=sP
 
       hPosXyz[w] += sP.boxSize
       ; combine tophat smooth and n=3 cubic polyfit
-      result = svdfit(mt.times,hPosXyz,3,measure_errors=merrs,yfit=yfit)
-      hPosXyz = (smooth(hPosXyz,smoothKer) + yfit) / 2.0 
+      result = svdfit(mt.times,hPosXyz,polyOrder,measure_errors=merrs,yfit=yfit)
+      hPosXyz = muxCoeff[0]*smooth(hPosXyz,smoothKer) + muxCoeff[1]*yfit
       hPosXyz[w] -= sP.boxSize
     endif else begin
       ; no wrap, just smooth
-      result = svdfit(mt.times,hPosXyz,3,measure_errors=merrs,yfit=yfit)
-      hPosXyz = (smooth(hPosXyz,smoothKer) + yfit) / 2.0 
+      result = svdfit(mt.times,hPosXyz,polyOrder,measure_errors=merrs,yfit=yfit)
+      hPosXyz = muxCoeff[0]*smooth(hPosXyz,smoothKer) + muxCoeff[1]*yfit
     endelse
     
     ; save over original time sequence for this coordinate
-    if max(abs(hPos[*,j]-hPosXyz)) gt wrapTol then message,'Error: Big offset requested.'
+    if max(abs(hPos[*,j]-hPosXyz)) gt wrapTol then $
+      message,'Error: Big offset requested ('+str(j)+' max '+string(max(abs(hPos[*,j]-hPosXyz)))+').'
     hPos[*,j] = hPosXyz
 
   endfor ; j
@@ -366,6 +399,8 @@ function accretionTrajSingle, sP=sP, hInd=hInd
   
   ; load group catalog at zMin to find particle ids to track
   gc = loadGroupCat(sP=sP,/readIDs)
+  
+  print,'halo ['+str(hInd)+'] mass: ',codeMassToLogMsun(gc.subgroupMass[mt.galcatIDList[hInd]])
   
   nSnapsTot = mt.maxSnap - mt.minSnap + 1 ; how many values to store in time dimension
 
@@ -424,10 +459,16 @@ function accretionTrajSingle, sP=sP, hInd=hInd
       nelec = loadSnapshotSubset(sP=sP,partType='gas',field='ne')
       nelec = nelec[ids_gas_ind]
       
-      r.curTemp_gas[mt.maxSnap-m,*] = convertUtoTemp(u,nelec,/log)
+      ; load gas SFR and select off the effective EOS (SFR must be zero)
+      sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
+      sfr  = sfr[ids_gas_ind]
+
+      w = where(sfr eq 0.0,count)
+      if count gt 0 then r.curTemp_gas[mt.maxSnap-m,w] = convertUtoTemp(u[w],nelec[w],/log)
 
       u     = !NULL
       nelec = !NULL
+      sfr   = !NULL
       
       ; dark matter positions
       ids_local = loadSnapshotSubset(sP=sP,partType='dm',field='ids')

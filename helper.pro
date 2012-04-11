@@ -1,6 +1,6 @@
 ; helper.pro
 ; helper functions
-; dnelson mar.2012
+; dnelson apr.2012
 ;
 ; NOTE: all my IDL routines loaded at bottom of this file
 
@@ -314,7 +314,7 @@ pro end_PS, pngResize=pngResize, deletePS=deletePS, im_options=im_options
     PS_End
     
   if keyword_set(pngResize) then $
-    PS_End, /PNG, Delete_PS=deletePS, im_options=im_options, Resize=pngResize
+    PS_End, /PNG, Delete_PS=deletePS, im_options=im_options, Resize=pngResize, /showcmd
 
 end
 
@@ -651,8 +651,10 @@ end
 @cosmoAnalysis
 @cosmoHist
 @accretionTraj
+@accretionTrajVis
 @cosmoVis
 @cosmoSphere
+@cosmoSpherePlot
 @cosmoPlotGalCat
 @cosmoPlot
 

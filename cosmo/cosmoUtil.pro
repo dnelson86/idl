@@ -1,6 +1,6 @@
 ; cosmoUtil.pro
 ; cosmological simulations - utility functions
-; dnelson mar.2012
+; dnelson apr.2012
 
 ; redshiftToSnapNum(): convert redshift to the nearest snapshot number
 
@@ -285,6 +285,32 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
   print,'Warning! Empty gcPIDList return.'
   return,[]
 
+end
+
+; massTargetToHaloID(): return the halo ID (subgroupInd) nearest to the target mass in log(Msun)
+
+function massTargetToHaloID, hMassTargets, sP=sP, verbose=verbose
+
+  if ~keyword_set(sP) then message,'Error'
+  
+  ; load group catalog and calculate log(M) masses of all subgroups of the requested type
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  priSGIDs = gcIDList(gc=gc,select='pri')
+  hMasses = codeMassToLogMsun(gc.subgroupMass[priSGIDs])
+
+  ; locate nearest masses to requested masses in a consistent way
+  hInds = value_locate(hMasses,hMassTargets)
+  w = where(hInds eq -1,count)
+  if count gt 0 then hInds[w] = 0 ; largest mass halo available
+ 
+  ; convert indices in hMasses to sgIDs
+  subgroupIDs = priSGIDs[hInds] 
+
+  if keyword_set(verbose) then $
+      print,'selected halo ind ['+str(hInd)+'] sgID ['+str(subgroupID)+'] mass = '+$
+        string(hMasses[hInd],format='(f5.2)')
+
+  return,subgroupIDs
 end
 
 ; galCatRepParentIDs(): for the galaxy catalog, replicate the list of ordered parent IDs such that
