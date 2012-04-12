@@ -8,8 +8,8 @@
 pro plotHaloShellDensComp
 
   ; config
-  redshift = 3
-  partType = 'dm'
+  redshift = 2
+  partType = 'gas'
   radInds  = [6,11,15]  ; pre-saved radFacs
   minmax   = [-0.6,2.0] ; log (rho/mean rho)
   rot_ang  = [0,0]      ; [60,-45] ;[lat,long] center in deg (left,up)
@@ -66,7 +66,8 @@ end
 pro plotHaloShellDensMovie, redshift=redshift, hMassTarget=hMassTarget
   
   ; config
-  rot_ang = [0,0] ;[60,-45] ;[lat,long] center in deg (left,up)
+  rot_ang = [0,0] ; [lat,long] center in deg (left,up)
+  cutSubS = 0     ; cut satellite substructures out from halo
   
   sP = simParams(res=512,run='gadget',redshift=float(redshift))  
   
@@ -80,8 +81,8 @@ pro plotHaloShellDensMovie, redshift=redshift, hMassTarget=hMassTarget
   
   ; interpolate onto shells at a set of fixed radii
   print,'interpolating onto shells...'
-  hsd_gas = haloShellDensity(sP=sP,partType='gas',subgroupID=subgroupID,/save)
-  hsd_dm  = haloShellDensity(sP=sP,partType='dm',subgroupID=subgroupID,/save)  
+  hsd_gas = haloShellDensity(sP=sP,partType='gas',subgroupID=subgroupID,cutSubS=cutSubS,/save)
+  hsd_dm  = haloShellDensity(sP=sP,partType='dm',subgroupID=subgroupID,cutSubS=cutSubS,/save)  
 
   ; stepping in radius
   radStep    = (radEnd - radStart) / (nFrames-1)
@@ -146,6 +147,7 @@ pro haloShellAngPowerSpec
   ; config
   radInds      = [6,11,15]  ; pre-saved radFacs
   hMassTargets = [12.5,12.0,11.5,11.0]
+  cutSubS  = 1 ; cut satellite substructures out from halo
   redshift = 3
   
   sP = simParams(res=512,run='gadget',redshift=float(redshift))  
@@ -155,8 +157,8 @@ pro haloShellAngPowerSpec
  
   foreach subgroupID,subgroupIDs,m do begin
     ; interpolate onto shells at a set of fixed radii
-    hsd_gas = haloShellDensity(sP=sP,partType='gas',subgroupID=subgroupID,/save)
-    hsd_dm  = haloShellDensity(sP=sP,partType='dm',subgroupID=subgroupID,/save)
+    hsd_gas = haloShellDensity(sP=sP,partType='gas',subgroupID=subgroupID,cutSubS=cutSubS,/save)
+    hsd_dm  = haloShellDensity(sP=sP,partType='dm',subgroupID=subgroupID,cutSubS=cutSubS,/save)
     
     ; choose maximum spherical harmonic order l_max
     ;l_max = fix(3.0 * hsd_gas.nSide - 1)
