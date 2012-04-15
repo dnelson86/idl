@@ -536,13 +536,52 @@ function calcHSMLds, Pos, SearchPos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
   Pos = float(Pos)
   SearchPos = float(SearchPos)
   
-  ; call CalcHSML
+  ; call CalcHSMLds
   libName = '/n/home07/dnelson/idl/CalcHSMLds/CalcHSMLds_'+str(ndims)+'D.so'
   ret = Call_External(libName, 'CalcHSMLds', $
                       NumPart,Pos,NumSearch,SearchPos,DesNumNgb,DesNumNgbDev,boxSize,hsml_out, $
                       /CDECL)
                       
   return, hsml_out              
+end
+
+; calcTHVal(): use CalcTHVal external C-routine to calculate the tophat kernel estimated value of a 
+;              function specified for each particle/cell over a given number of neighbors with positions 
+;              Pos around each position in SearchPos, where the two are generally different (as in CalcHSMLds)
+
+function calcTHVal, PosVal, SearchPos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  npos = size(PosVal)
+  nsrc = size(SearchPos)
+
+  if ndims ne 1 and ndims ne 2 and ndims ne 3 then message,'Error: Need ndims=1,2,3.'
+  if npos[0] ne 2 or npos[1] ne 4 then message,'Error: Point position array shape.'
+  if nsrc[0] ne 2 or nsrc[1] ne 3 then message,'Error: Search position array shape.'
+  if npos[2] lt nNGB then message,'Error: Point count too low for nNGB.'
+
+  ; prepare inputs
+  NumPart   = long(npos[2])
+  NumSearch = long(nsrc[2])
+  
+  DesNumNgb    = long(nNGB)     ; number of neighbors to use
+  DesNumNgbDev = long(0)        ; deviation allowed
+  boxSize      = float(boxSize) ; use zero for non-periodic search
+  
+  val_out = fltarr(NumSearch)
+  
+  ; make sure point arrays are 32bit float since we direct cast now
+  PosVal    = float(PosVal)
+  SearchPos = float(SearchPos)
+  
+  ; call CalcTHVal
+  libName = '/n/home07/dnelson/idl/CalcTHVal/CalcTHVal_'+str(ndims)+'D.so'
+  ret = Call_External(libName, 'CalcTHVal', $
+                      NumPart,PosVal,NumSearch,SearchPos,DesNumNgb,DesNumNgbDev,boxSize,val_out, $
+                      /CDECL)
+                      
+  return, val_out              
 end
 
 ; calcNN(): use CalcNN external C-routine for the tree and neighbor search
@@ -657,6 +696,7 @@ end
 @cosmoSpherePlot
 @cosmoPlotGalCat
 @cosmoPlot
+@verifyOldShmass
 
 @tracersVel_Cosmo
 @tracersVel_Halos
