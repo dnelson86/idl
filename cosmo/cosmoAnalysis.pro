@@ -289,6 +289,7 @@ end
 ; mergerTreeSubset    : return values only for the subset of halos tracked in the merger tree subset
 ; accretionTimeSubset : return values only for the subset of particles/tracers with recorded accretion times
 ;  accTime,accTvir : time of accretion (in redshift) or virial temp of parent halo at time of accretion
+;  accMode : return values only for one accretionMode (all,smooth,bclumpy,sclumpy,smooth)
 
 function gcSubsetProp, sP=sP, select=select, $
            rVirNorm=rVirNorm, virTemp=virTemp, parMass=parMass, $
@@ -297,18 +298,20 @@ function gcSubsetProp, sP=sP, select=select, $
            curSingleVal=curSingleVal, singleValField=singleValField, $
            parNorm=parNorm, $ ; for rVirNorm,virTemp,parMass only
            mergerTreeSubset=mergerTreeSubset, accretionTimeSubset=accretionTimeSubset,$
-           accTime=accTime,accTvir=accTvir ; for accretionTimeSubset only
+           accTime=accTime,accTvir=accTvir,accMode=accMode ; for accretionTimeSubset only
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; check combinations of input options for validity
-  if keyword_set(accretionTimeSubset) and ~keyword_set(mergerTreeSubset) then $
-    message,'Error: Can only subselect the mtS with the atS.'
   if keyword_set(mergerTreeSubset) and select ne 'pri' then $
     print,'Warning: The merger tree subset actually contains only pri subgroups.'
   if (keyword_set(accTime) or keyword_set(accTvir)) and ~keyword_set(accretionTimeSubset) then $
     message,'Error: Can only return accretion time or Tvir at accretion time for atS.'
-
+  if keyword_set(accretionTimeSubset) and ~keyword_set(mergerTreeSubset) then $
+    message,'Error: Can only subselect the mtS with the atS.'
+  if keyword_set(accMode) and ~keyword_set(accretionTimeSubset) then $
+    message,'Error: Can only return accretion mode subsets of the accretionTime subset.'
+    
   ; default behavior: return 1 value per tracer for tracer sims, 1 value per gas particle for sph
   allTR = 0 ; sph
   if sP.trMCPerCell ne 0 then allTR = 1
@@ -342,10 +345,36 @@ function gcSubsetProp, sP=sP, select=select, $
     gal_w  = where(at.AccTime_gal ne -1,count_gal)
     gmem_w = where(at.AccTime_gmem ne -1,count_gmem)
     
+    if keyword_set(accMode) then begin
+      ; select on accretion mode by modifying gal_w and gmem_w
+      if accMode ne 'all' then begin
+        am = accretionMode(sP=sP)
+        
+        if accMode eq 'smooth' then begin
+          gal_w  = gal_w[where(am.accMode_gal eq 1,count_gal)]
+          gmem_w = gmem_w[where(am.accMode_gmem eq 1,count_gmem)]
+        endif
+        if accMode eq 'bclumpy' then begin
+          gal_w  = gal_w[where(am.accMode_gal eq 3,count_gal)]
+          gmem_w = gmem_w[where(am.accMode_gmem eq 3,count_gmem)]
+        endif
+        if accMode eq 'sclumpy' then begin
+          gal_w  = gal_w[where(am.accMode_gal eq 2,count_gal)]
+          gmem_w = gmem_w[where(am.accMode_gmem eq 2,count_gmem)]
+        endif
+        if accMode eq 'clumpy' then begin
+          gal_w  = gal_w[where(am.accMode_gal eq 2 or am.accMode_gal eq 3,count_gal)]
+          gmem_w = gmem_w[where(am.accMode_gmem eq 2 or am.accMode_gmem eq 3,count_gmem)]
+        endif
+      endif
+    
+      am = !NULL
+    endif
+
     ; sph case: modify galcatInds such that the accretionTimes subset is taken
     if ~allTR then galcatInds = { gal : galcatInds.gal[gal_w] ,gmem : galcatInds.gmem[gmem_w] }
     ; tracer case: handle only after we have child counts (after expansion or in allTR for maxTemps)
-    
+
     ; this is used to access accretionTimes
     accTimeInds = { gal : gal_w, gmem: gmem_w }
   endif
