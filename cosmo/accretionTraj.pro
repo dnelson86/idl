@@ -310,36 +310,25 @@ function smoothHaloPos, mt=mt, hInd=hInd, sP=sP
 
   ; apply smoothing to halo position over time
   smoothKer = 5     ; number of snapshots for boxcar window
-  wrapTol   = 100.0 ; kpc 
-  polyOrder = 3     ; order polynomial (2,3)
-  muxCoeff  = [0.8,0.2] ; [smooth,polyfit] linear combination coefficients, should add to 1
+  wrapTol   = 200.0 ; kpc 
+  polyOrder = 14    ; order polynomial (2,3)
+  muxCoeff  = [0.0,1.0] ; [smooth,polyfit] linear combination coefficients, should add to 1
   
   hPos = mt.hPos[*,*,hInd]
   
   ; uniform errors for cubic fit weighted towards the ends
   merrs = findgen(n_elements(mt.times))+0.1
-  merrs[0:4] = [0.09,0.0925,0.095,0.0975,0.1]
-  merrs[n_elements(merrs)-5:n_elements(merrs)-1] = [0.1,0.0975,0.095,0.0925,0.09]
+  ;merrs[0:4] = [0.09,0.0925,0.095,0.0975,0.1]
+  ;merrs[n_elements(merrs)-5:n_elements(merrs)-1] = [0.1,0.0975,0.095,0.0925,0.09]
   
   ; debug: plot fit
   start_PS,'test_smoothHaloPos.eps',xs=10,ys=8
     !p.multi = [0,1,3]
-    for i=0,2 do begin
-      cgPlot,mt.times,hPos[*,i],psym=4,xrange=minmax(mt.times),yrange=minmax(hPos[*,i]),/xs,/ys
-      for j=2,3 do begin
-        res = svdfit(mt.times,hPos[*,i],j,measure_errors=merrs,yfit=yfit)
-        hPosXyz = muxCoeff[0]*smooth(hPos[*,i],smoothKer) + muxCoeff[1]*yfit
-        cgPlot,mt.times,yfit,color=getColor(j),line=0,/overplot
-        cgPlot,mt.times,hPosXyz,color=getColor(j),line=1,/overplot
-      endfor
-      legend,['m='+['2','3']],textcolor=getColor([2,3],/name),box=0,/top,/left
-    endfor
-  end_PS  
-  
+      
   ; extract single coordinate separately
   for j=0,2 do begin
     hPosXyz = hPos[*,j]
-    
+   
     ; detect periodic wrap in x,y,z
     if min(hPosXyz) lt wrapTol and max(hPosXyz) gt sP.boxSize-wrapTol then begin
       ; middle should be empty if both edges are occupied, otherwise this halo moved too much
@@ -350,25 +339,33 @@ function smoothHaloPos, mt=mt, hInd=hInd, sP=sP
       w = where(hPosXyz lt sP.boxSize*0.5,count)
 
       hPosXyz[w] += sP.boxSize
+
       ; combine tophat smooth and n=3 cubic polyfit
-      result = svdfit(mt.times,hPosXyz,polyOrder,measure_errors=merrs,yfit=yfit)
+      result = svdfit(mt.times,hPosXyz,polyOrder,yfit=yfit,measure_errors=merrs)
+        cgPlot,mt.times,hPosXyz,psym=4,xrange=minmax(mt.times),yrange=minmax(hPosXyz)+[-100,100],/xs,/ys
       hPosXyz = muxCoeff[0]*smooth(hPosXyz,smoothKer) + muxCoeff[1]*yfit
+        cgPlot,mt.times,yfit,color=cgColor('red'),line=0,/overplot
+        cgPlot,mt.times,hPosXyz,color=cgColor('blue'),line=1,/overplot
       hPosXyz[w] -= sP.boxSize
     endif else begin
       ; no wrap, just smooth
-      result = svdfit(mt.times,hPosXyz,polyOrder,measure_errors=merrs,yfit=yfit)
+      result = svdfit(mt.times,hPosXyz,polyOrder,yfit=yfit,measure_errors=merrs)
+        cgPlot,mt.times,hPosXyz,psym=4,xrange=minmax(mt.times),yrange=minmax(hPosXyz)+[-100,100],/xs,/ys
       hPosXyz = muxCoeff[0]*smooth(hPosXyz,smoothKer) + muxCoeff[1]*yfit
+        cgPlot,mt.times,yfit,color=cgColor('red'),line=0,/overplot
+        cgPlot,mt.times,hPosXyz,color=cgColor('blue'),line=1,/overplot
     endelse
     
     ; save over original time sequence for this coordinate
     if max(abs(hPos[*,j]-hPosXyz)) gt wrapTol then $
-      message,'Error: Big offset requested ('+str(j)+' max '+string(max(abs(hPos[*,j]-hPosXyz)))+').'
+      print,'Error: Big offset requested ('+str(j)+' max '+string(max(abs(hPos[*,j]-hPosXyz)))+').'
     hPos[*,j] = hPosXyz
 
   endfor ; j
   
+  end_PS
+  
   return, hPos
-
 end
 
 ; -----------------------------------------------------------------------------------------------------
