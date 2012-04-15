@@ -106,16 +106,24 @@ function accretionMode, sP=sP
         match,galcat.galaxyIDs[galcatSub.gal[w_gal]],gc.IDs,galcat_ind,gc_gal_ind,count=countGal,/sort
         
         ; those that don't match, assign to category 1. smooth
-        if countGal le count_gal then begin
-          all = bytarr(count_gal)
-          all[galcat_ind] = 1B
-          wNotInSG = where(all eq 0B, ncomp)
-          
-          if ncomp gt 0 then begin
-            r.accMode_gal[w_gal[wNotInSG]] = 1
-            rMask.gal[w_gal[wNotInSG]] += 1 ;debug
-            count_smooth += ncomp
-          endif
+        if countGal lt count_gal then begin
+          ; if none matched, assign all the bracketed particles to smooth
+          if countGal eq 0 then begin
+            r.accMode_gal[w_gal] = 1
+            rMask.gal[w_gal] += 1
+            count_smooth += count_gal
+          endif else begin
+            ; if some matched, assign the complement of those to smooth
+            all = bytarr(count_gal)
+            all[galcat_ind] = 1B
+            wNotInSG = where(all eq 0B, ncomp)
+            
+            ;if ncomp gt 0 then begin
+              r.accMode_gal[w_gal[wNotInSG]] = 1
+              rMask.gal[w_gal[wNotInSG]] += 1 ;debug
+              count_smooth += ncomp
+            ;endif
+          endelse
         endif
         
         ; those that match, calculate subgroup ID they belong to
@@ -125,7 +133,7 @@ function accretionMode, sP=sP
           
           ; exclude those that aren't actually within the offsetLenType range
           diff = gc_gal_ind - gc.subgroupOffsetType[partTypeNum('gas'),parIDs]
-          wInSG = where(diff lt gc.subgroupLenType[partTypeNum('gas'),parIDs],count,comp=wc,ncomp=ncomp)
+          wInSG = where(diff lt gc.subgroupLenType[partTypeNum('gas'),parIDs],countInSG,comp=wc,ncomp=ncomp)
           
           ;print,'  ['+str(m)+'] sg gal bounds in: '+str(count)+' out: '+str(ncomp)
           
@@ -137,48 +145,50 @@ function accretionMode, sP=sP
             count_smooth += ncomp
           endif
           
-          ; if their subgroup ID is the traced parent, assign to category 1. smooth
-          rInds = w_gal[galcat_ind[wInSG]]
-          w0 = where(parIDs[wInSG] eq origParIDs.gal[galcat_ind[wInSG]],count,comp=wc,ncomp=ncomp)
-          if count gt 0 then begin
-            r.accMode_gal[rInds[w0]] = 1
-            count_smooth += count
-            rMask.gal[rInds[w0]] += 1 ;debug
-          endif
-          
-          ; only separate into sclumpy/bclumpy for the non-smooth remainder
-          if ncomp gt 0 then begin
-            wInSG = wInSG[wc]
-            rInds = rInds[wc]
-          endif
-          
-          ; make ID lists of primary,secondary subgroups
-          priSGids = gcIDList(gc=gc,select='pri')
-          secSGids = gcIDList(gc=gc,select='sec')
-          
-          ; if their subgroup ID is not the parent but is a primary sg, assign to category 3. bclumpy
-          qInds = value_locate(priSGids,parIDs[wInSG])
-          w1 = where(priSGids[qInds] eq parIDs[wInSG],count,comp=wc,ncomp=ncomp)
-          if count gt 0 then begin
-            r.accMode_gal[rInds[w1]] = 3
-            count_bclumpy += count
-            rMask.gal[rInds[w1]] += 1 ; debug
-          endif
-          
-          ; only search for secondary parents for the non-primary remainder (this is mainly a doublecheck
-          ; since we have already excluded every other possibility)
-          if ncomp gt 0 then begin
-            wInSG = wInSG[wc]
-            rInds = rInds[wc]
-          
-            qInds = value_locate(secSGids,parIDs[wInSG])
-            w2 = where(secSGids[qInds] eq parIDs[wInSG],count)
+          if countInSG gt 0 then begin
+            ; if their subgroup ID is the traced parent, assign to category 1. smooth
+            rInds = w_gal[galcat_ind[wInSG]]
+            w0 = where(parIDs[wInSG] eq origParIDs.gal[galcat_ind[wInSG]],count,comp=wc,ncomp=ncomp)
             if count gt 0 then begin
-              r.accMode_gal[rInds[w2]] = 2
-              count_sclumpy += count
-              rMask.gal[rInds[w2]] += 1 ; debug
+              r.accMode_gal[rInds[w0]] = 1
+              count_smooth += count
+              rMask.gal[rInds[w0]] += 1 ;debug
             endif
-          endif
+            
+            ; only separate into sclumpy/bclumpy for the non-smooth remainder
+            if ncomp gt 0 then begin
+              wInSG = wInSG[wc]
+              rInds = rInds[wc]
+            endif
+            
+            ; make ID lists of primary,secondary subgroups
+            priSGids = gcIDList(gc=gc,select='pri')
+            secSGids = gcIDList(gc=gc,select='sec')
+            
+            ; if their subgroup ID is not the parent but is a primary sg, assign to category 3. bclumpy
+            qInds = value_locate(priSGids,parIDs[wInSG])
+            w1 = where(priSGids[qInds] eq parIDs[wInSG],count,comp=wc,ncomp=ncomp)
+            if count gt 0 then begin
+              r.accMode_gal[rInds[w1]] = 3
+              count_bclumpy += count
+              rMask.gal[rInds[w1]] += 1 ; debug
+            endif
+            
+            ; only search for secondary parents for the non-primary remainder (this is mainly a doublecheck
+            ; since we have already excluded every other possibility)
+            if ncomp gt 0 then begin
+              wInSG = wInSG[wc]
+              rInds = rInds[wc]
+            
+              qInds = value_locate(secSGids,parIDs[wInSG])
+              w2 = where(secSGids[qInds] eq parIDs[wInSG],count)
+              if count gt 0 then begin
+                r.accMode_gal[rInds[w2]] = 2
+                count_sclumpy += count
+                rMask.gal[rInds[w2]] += 1 ; debug
+              endif
+            endif
+          endif ; countInSG
         endif ; countGal
         
         ; check that all bracketed gal particles found accretion modes
@@ -196,16 +206,24 @@ function accretionMode, sP=sP
         match,galcat.groupmemIDs[galcatSub.gmem[w_gmem]],gc.IDs,galcat_ind,gc_gmem_ind,count=countGmem,/sort
         
         ; those that don't match, assign to category 1. smooth
-        if countGmem le count_gmem then begin
-          all = bytarr(count_gmem)
-          all[galcat_ind] = 1B
-          wNotInSG = where(all eq 0B, ncomp)
-  
-          if ncomp gt 0 then begin
-            r.accMode_gmem[w_gmem[wNotInSG]] = 1
-            rMask.gmem[w_gmem[wNotInSG]] += 1 ;debug
-            count_smooth += ncomp
-          endif
+        if countGmem lt count_gmem then begin
+          ; if none matched, assign all the bracketed particles to smooth
+          if countGmem eq 0 then begin
+            r.accMode_gmem[w_gmem] = 1
+            rMask.gmem[w_gmem] += 1
+            count_smooth += count_gmem
+          endif else begin
+            ; if some matched, assign the complement of those to smooth
+            all = bytarr(count_gmem)
+            all[galcat_ind] = 1B
+            wNotInSG = where(all eq 0B, ncomp)
+    
+            ;if ncomp gt 0 then begin
+              r.accMode_gmem[w_gmem[wNotInSG]] = 1
+              rMask.gmem[w_gmem[wNotInSG]] += 1 ;debug
+              count_smooth += ncomp
+            ;endif
+          endelse
         endif
         
         ; those that match, calculate subgroup ID they belong to
@@ -215,8 +233,8 @@ function accretionMode, sP=sP
           
           ; exclude those that aren't actually within the offsetLenType range
           diff = gc_gmem_ind - gc.subgroupOffsetType[partTypeNum('gas'),parIDs]
-          wInSG = where(diff le gc.subgroupLenType[partTypeNum('gas'),parIDs],count,comp=wc,ncomp=ncomp)
-          
+          wInSG = where(diff lt gc.subgroupLenType[partTypeNum('gas'),parIDs],countInSG,comp=wc,ncomp=ncomp)
+
           ;print,'  ['+str(m)+'] sg gmem bounds in: '+str(count)+' out: '+str(ncomp)
           
           ; those failing the subgroup bound are smooth
@@ -227,48 +245,50 @@ function accretionMode, sP=sP
             count_smooth += ncomp
           endif
           
-          ; if their subgroup ID is the traced parent, assign to category 1. smooth
-          rInds = w_gmem[galcat_ind[wInSG]]
-          w0 = where(parIDs[wInSG] eq origParIDs.gmem[galcat_ind[wInSG]],count,comp=wc,ncomp=ncomp)
-          if count gt 0 then begin
-            r.accMode_gmem[rInds[w0]] = 1
-            count_smooth += count
-            rMask.gmem[rInds[w0]] += 1 ;debug
-          endif
-          
-          ; only separate into sclumpy/bclumpy for the non-smooth remainder
-          if ncomp gt 0 then begin
-            wInSG = wInSG[wc]
-            rInds = rInds[wc]
-          endif
-          
-          ; make ID lists of primary,secondary subgroups
-          priSGids = gcIDList(gc=gc,select='pri')
-          secSGids = gcIDList(gc=gc,select='sec')
-          
-          ; if their subgroup ID is not the parent but is a primary sg, assign to category 3. bclumpy
-          qInds = value_locate(priSGids,parIDs[wInSG])
-          w1 = where(priSGids[qInds] eq parIDs[wInSG],count,comp=wc,ncomp=ncomp)
-          if count gt 0 then begin
-            r.accMode_gmem[rInds[w1]] = 3
-            count_bclumpy += count
-            rMask.gmem[rInds[w1]] += 1 ; debug
-          endif
-          
-          ; only search for secondary parents for the non-primary remainder (this is mainly a doublecheck
-          ; since we have already excluded every other possibility)
-          if ncomp gt 0 then begin
-            wInSG = wInSG[wc]
-            rInds = rInds[wc]
-
-            qInds = value_locate(secSGids,parIDs[wInSG])
-            w2 = where(secSGids[qInds] eq parIDs[wInSG],count)
+          if countInSG gt 0 then begin
+            ; if their subgroup ID is the traced parent, assign to category 1. smooth
+            rInds = w_gmem[galcat_ind[wInSG]]
+            w0 = where(parIDs[wInSG] eq origParIDs.gmem[galcat_ind[wInSG]],count,comp=wc,ncomp=ncomp)
             if count gt 0 then begin
-              r.accMode_gmem[rInds[w2]] = 2
-              count_sclumpy += count
-              rMask.gmem[rInds[w2]] += 1 ; debug
+              r.accMode_gmem[rInds[w0]] = 1
+              count_smooth += count
+              rMask.gmem[rInds[w0]] += 1 ;debug
             endif
-          endif
+            
+            ; only separate into sclumpy/bclumpy for the non-smooth remainder
+            if ncomp gt 0 then begin
+              wInSG = wInSG[wc]
+              rInds = rInds[wc]
+            endif
+            
+            ; make ID lists of primary,secondary subgroups
+            priSGids = gcIDList(gc=gc,select='pri')
+            secSGids = gcIDList(gc=gc,select='sec')
+            
+            ; if their subgroup ID is not the parent but is a primary sg, assign to category 3. bclumpy
+            qInds = value_locate(priSGids,parIDs[wInSG])
+            w1 = where(priSGids[qInds] eq parIDs[wInSG],count,comp=wc,ncomp=ncomp)
+            if count gt 0 then begin
+              r.accMode_gmem[rInds[w1]] = 3
+              count_bclumpy += count
+              rMask.gmem[rInds[w1]] += 1 ; debug
+            endif
+            
+            ; only search for secondary parents for the non-primary remainder (this is mainly a doublecheck
+            ; since we have already excluded every other possibility)
+            if ncomp gt 0 then begin
+              wInSG = wInSG[wc]
+              rInds = rInds[wc]
+  
+              qInds = value_locate(secSGids,parIDs[wInSG])
+              w2 = where(secSGids[qInds] eq parIDs[wInSG],count)
+              if count gt 0 then begin
+                r.accMode_gmem[rInds[w2]] = 2
+                count_sclumpy += count
+                rMask.gmem[rInds[w2]] += 1 ; debug
+              endif
+            endif
+          endif ; countInSG
         endif ; countGmem
         
         ; check that all bracketed gmem particles found accretion modes
@@ -301,6 +321,10 @@ function accretionMode, sP=sP
       w_gal  = !NULL
       w_gmem = !NULL
     endfor
+    
+    ; verify we found an accretion mode for every gas particle
+    if min(rMask.gal)  lt 1 then message,'Error: Not all gal found.'
+    if min(rMask.gmem) lt 1 then message,'Error: Not all gmem found.'
     
     ; save
     save,r,filename=saveFilename
@@ -797,7 +821,7 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       nelec = !NULL
       
       temp_gal  = convertUtoTemp(u_gal,nelec_gal,/log)
-      temp_gmem = convertUtoTemp(u_gal,nelec_gal,/log)
+      temp_gmem = convertUtoTemp(u_gmem,nelec_gmem,/log)
       
       ; load gas SFR and select off the effective EOS (SFR must be zero)
       sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
