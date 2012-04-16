@@ -96,9 +96,9 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
     colindex = (df.dens - colorMinMax[0])/(colorMinMax[1]-colorMinMax[0])*255.0
     
     ind = where(colindex ge 256.0)
-    if ind(0) ne -1 then colindex(ind) = 255.9
+    if ind[0] ne -1 then colindex[ind] = 255.9
     ind = where(colindex lt 0)
-    if ind(0) ne -1 then colindex(ind) = 0
+    if ind[0] ne -1 then colindex[ind] = 0
     
     colindex = byte(colindex)
     
@@ -129,9 +129,9 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
       colindex = (df.dens - colorMinMax[0])/(colorMinMax[1]-colorMinMax[0])*255.0
       
       ind = where(colindex ge 256.0)
-      if ind(0) ne -1 then colindex(ind) = 255.9
+      if ind[0] ne -1 then colindex[ind] = 255.9
       ind = where(colindex lt 0)
-      if ind(0) ne -1 then colindex(ind) = 0
+      if ind[0] ne -1 then colindex[ind] = 0
       
       colindex = byte(colindex)
       
@@ -149,9 +149,9 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
       colindex = (df.temp - colorMinMax[0])/(colorMinMax[1]-colorMinMax[0])*255.0
       
       ind = where(colindex ge 256.0)
-      if ind(0) ne -1 then colindex(ind) = 255.9
+      if ind[0] ne -1 then colindex[ind] = 255.9
       ind = where(colindex lt 0)
-      if ind(0) ne -1 then colindex(ind) = 0
+      if ind[0] ne -1 then colindex[ind] = 0
       
       colindex = byte(colindex)
       

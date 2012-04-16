@@ -243,8 +243,8 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2, part3=part3, massa
   ; add to particle counts and concat arrays
   if keyword_set(part0) then begin
     ; GAS
-    npart(0)    = n_elements(part0.id)
-    npartall(0) = n_elements(part0.id)
+    npart[0]    = n_elements(part0.id)
+    npartall[0] = n_elements(part0.id)
     
     ; check typing
     if (size(part0.pos))[3] ne valTypeCode then print,'WARNING: part0 pos type.'
@@ -264,8 +264,8 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2, part3=part3, massa
 
   if keyword_set(part1) then begin
     ; DM
-    npart(1)    = n_elements(part1.id)
-    npartall(1) = n_elements(part1.id)
+    npart[1]    = n_elements(part1.id)
+    npartall[1] = n_elements(part1.id)
     
     pos  = [[pos], [part1.pos]]
     vel  = [[vel], [part1.vel]]
@@ -282,8 +282,8 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2, part3=part3, massa
   
   if keyword_set(part3) then begin
     ; TRACER
-    npart(3)    = n_elements(part3.id)
-    npartall(3) = n_elements(part3.id)
+    npart[3]    = n_elements(part3.id)
+    npartall[3] = n_elements(part3.id)
     
     ; check typing
     if (size(part3.pos))[3] ne valTypeCode then print,'WARNING: part3 pos type.'
