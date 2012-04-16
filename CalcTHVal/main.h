@@ -9,6 +9,9 @@
 #define IF_VERBOSE(expr) ((void)0)
 #endif
 
+#define PI 3.1415926535897932384626434
+#define PI_INV 0.31830988618379067153
+
 // tree.c definitions
 int tree_treebuild(void);
 float ngb_treefind(float[],float,float*);
@@ -21,6 +24,7 @@ void tree_update_node_recursive(int,int,int);
 int NumPart;
 int DesNumNgb;
 int DesNumNgbDev;
+int TophatMode;
 float BoxSize;
 float Softening;
 

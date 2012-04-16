@@ -21,7 +21,7 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
 {
   int i;
   int nNodes;
-  float hsml = 1.0, val = 0.0;
+  float hsml = 1.0, val;
   float pos[3];
 
   // instead of copying, just cast the input data as an array of particle_data structs
@@ -31,7 +31,7 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
   //  printf("[%d] %g %g %g val %g\n",i,P[i].Pos[0],P[i].Pos[1],P[i].Pos[2],P[i].Value);
 
   // allocate and build tree
-  tree_treeallocate(4.0 * NumPart, NumPart);
+  tree_treeallocate(2.0 * NumPart, NumPart);
   nNodes = tree_treebuild();
 	
 #ifdef VERBOSE
@@ -43,6 +43,7 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
 	
   for (i=0; i < NumSearch; i++)
   {
+    val = 0.0;
 #ifdef VERBOSE
     // output progress marker
     if (i > (signal / 100.0) * NumSearch)
@@ -62,7 +63,6 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
 
     // save value for this search position
     val_out[i] = val;
-    //printf("search [%d] %g %g %g hsml %g val %g\n",i,pos[0],pos[1],pos[2],hsml,val);
   }
 
   tree_treefree();
@@ -84,14 +84,14 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
     NumSrc    = long(nsearchpts)
     SearchPos = fltarr(3,nsearchpts)
     DesNumNgb    = long(nNGB)
-    DesNumNgbDev = long(0)
     BoxSize      = 0.0
+    TophatMode   = 1
     
     val_out = fltarr(NumSrc)
     
     ; call CalcTHVal
     ret = Call_External('/n/home07/dnelson/idl/CalcTHVal/CalcTHVal_3D.so', 'CalcTHVal', $
-                        NumPart,PosVal,NumSrc,SearchPos,DesNumNgb,DesNumNgbDev,BoxSize,val_out,/CDECL)
+                        NumPart,PosVal,NumSrc,SearchPos,DesNumNgb,TophatMode,BoxSize,val_out,/CDECL)
 */
 
 int CalcTHVal(int argc, void* argv[])
@@ -109,12 +109,12 @@ int CalcTHVal(int argc, void* argv[])
     return 0;
   } else {
 #ifdef   ONEDIMS
-IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSMLds Loaded (ONEDIMS!).");
+IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (ONEDIMS!).");
 #else
 #ifndef  TWODIMS
-IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSMLds Loaded (NDIMS=3!).");
+IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (NDIMS=3!).");
 #else
-IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSMLds Loaded (TWODIMS!).");
+IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (TWODIMS!).");
 #endif
 #endif /* ONEDIMS */
 
@@ -128,14 +128,15 @@ IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSMLds Loaded (TWODIMS!).");
   SrcPos    = (float *)argv[3];
 	
   DesNumNgb    = *(int *)argv[4];
-  DesNumNgbDev = *(int *)argv[5];
+  DesNumNgbDev = 0; // no deviation allowed
+  TophatMode   = *(int *)argv[5]; // 1=mean, 2=total, 3=total/volume (density)
   BoxSize      = *(float *)argv[6];
   Softening    = 1.0; // code units
-	
+
   val_out = (float *)argv[7];
 
-  // allocate Ngblist
-  Ngblist = (int *) malloc((DesNumNgb+DesNumNgbDev) * sizeof(int));
+  // allocate Ngblist (up to NumPart big?)
+  Ngblist = (int *) malloc(NumPart * sizeof(int));
 
 #ifdef VERBOSE
   //printf("Input data:\n");
@@ -150,6 +151,6 @@ IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSMLds Loaded (TWODIMS!).");
   int status = CalcTHVal_natural(NumPart,PosVal,NumSearch,SrcPos,DesNumNgb,DesNumNgbDev,BoxSize,val_out);
 
   // free Ngblist and return
-  free(Ngblist);
+  //free(Ngblist);
   return status;
 }

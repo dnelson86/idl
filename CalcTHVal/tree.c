@@ -319,9 +319,7 @@ float ngb_treefind (float xyz[3], float hguess, float *val_out)
   float dmax1, dmax2;
 
   if (hguess == 0)
-    {
       hguess = 1.;
-    }
 
   iter = 0;
 
@@ -337,7 +335,6 @@ float ngb_treefind (float xyz[3], float hguess, float *val_out)
       numngb = ngb_treefind_variable (xyz, hguess, &numngb_int);
       if (numngb < (DesNumNgb-DesNumNgbDev) || numngb >= (DesNumNgb+DesNumNgbDev))
       {
-
 
       if (left > 0 && right > 0)
        if (right-left < 0.001 * left)
@@ -382,8 +379,33 @@ float ngb_treefind (float xyz[3], float hguess, float *val_out)
   {
     fval += P[Ngblist[n]].Value;
   }
-  //printf("  numngb=%d Value[0]=%g\n",numngb_int,P[Ngblist[0]].Value);
-  *val_out = fval / numngb_int;
+
+  //if (numngb_int != DesNumNgb)
+  //  printf("  numngb_int=%d DesNumNgb=%d Value[0]=%g\n",numngb_int,DesNumNgb,P[Ngblist[0]].Value);
+
+    // save value for this search position
+    if (TophatMode == 1) {
+      /* mean */
+      *val_out = fval / numngb_int;
+    } else if (TophatMode == 2) {
+      /* total = mean*number */
+      *val_out = fval;
+    } else if (TophatMode == 3) {
+      /* total/volume = mean*number/volume */
+#ifdef   ONEDIMS
+      *val_out = fval * 0.5 / hguess;
+#else
+#ifndef  TWODIMS
+      //*val_out = fval * PI_INV * 0.75 / (hguess*hguess*hguess);
+      // old method assuming we always got DesNumNgb within the returned hguess:
+      *val_out = (fval/numngb_int)*DesNumNgb * PI_INV * 0.75 / (hguess*hguess*hguess);
+#else
+      *val_out = fval * PI_INV / (hguess*hguess);
+#endif
+#endif /* ONEDIMS */
+    }
+
+  //*val_out = fval / numngb_int; // old return always mean
 
   return hguess;
 }

@@ -14,12 +14,12 @@ pro plotColdFracVsHaloMass, sP=sP
   TcutVals = [5.3,5.4,5.5,5.6,5.7] ; for constant threshold
   nCuts = n_elements(TcutVals)
   
-  accMode = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
+  accMode = 'all' ; accretion mode: all, smooth, bclumpy, sclumpy
   minNum = 6
   xrange = [9.0,12.5]
   yrange = [0.0,1.1]
   
-  logMassBinSize = 0.1
+  logMassBinSize = 0.2
   
   ; make a uniform gas selection at the start
   at = accretionTimes(sP=sP)
@@ -63,7 +63,7 @@ pro plotColdFracVsHaloMass, sP=sP
    ; placeMap = getIDIndexMap(gcIDList,minid=minid)
    ; gcIndOrig.gal = placeMap[gcIndOrig.gal-minid]
    ; gcIndOrig.gmem = placeMap[gcIndOrig.gmem-minid]
-   ; placeMap = !NULL  
+   ; placeMap = !NULL
     ;
     ;hist_gal  = histogram(gcIndOrig.gal,min=0,loc=loc_gal,rev=rev_gal)
     ;hist_gmem = histogram(gcIndOrig.gmem,min=0,loc=loc_gmem,rev=rev_gmem)
@@ -279,9 +279,15 @@ pro plotColdFracVsHaloMass, sP=sP
                                    (coldFrac_cur.gal_num + coldFrac_cur.gmem_num)                       
   
   ; bin fractions into halo mass bins and make median lines
-  logMassNbins  = (xrange[1]-xrange[0]) / logMassBinSize
+  logMassNbins  = floor((xrange[1]-xrange[0]) / logMassBinSize)
   logMassBins   = linspace(xrange[0],xrange[1],logMassNbins+1) ; edges
   logMassBinCen = linspace(xrange[0],xrange[1],logMassNbins+1) + logMassBinSize/2.0
+  
+  ; combine last two bins (always poor statistics)
+  logMassNbins  -= 1
+  logMassBins   = [logMassBins[0:n_elements(logMassBins)-3],logMassBins[n_elements(logMassBins)-1]]
+  logMassBinCen = [logMassBinCen[0:n_elements(logMassBinCen)-3],$
+                   mean(logMassBinCen[n_elements(logMassBinCen)-2:n_elements(logMassBinCen)-1])]
   
   medianVals = { const_gal    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
                  const_gmem   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
@@ -768,7 +774,7 @@ pro plotTmaxVsTvirAccComp
   
   ; config
   res = 256
-  redshift = 3.0
+  redshift = 2.0
 
   sP1 = simParams(res=res,run='gadget',redshift=redshift)
   sP2 = simParams(res=res,run='tracer',redshift=redshift)

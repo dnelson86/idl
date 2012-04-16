@@ -1,12 +1,13 @@
-
 ; cosmoSpherePlot.pro
 ; gas accretion project - visualization/plotting of quantities onto healpix spheres
 ; dnelson apr.2012
 
-; plotHaloShellDensComp(): compare different mass halos at one radial shell and one redshift
+; plotHaloShellDensComp(): compare shell density for four different mass halos at one redshift
 
 pro plotHaloShellDensComp
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
   ; config
   redshift = 2
   partType = 'gas'
@@ -61,10 +62,145 @@ pro plotHaloShellDensComp
   
 end
 
+; plotHaloShellValueComp(): compare four different particle fields for one halo at one redshift
+
+pro plotHaloShellValueComp
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; config
+  redshift = 2
+  
+  hMassTargets = [12.5] ;[12.5,12.0,11.5,11.0]
+  radInds  = [6,11,15]  ; pre-saved radFacs
+  ;minmax   = [-0.6,2.0] ; log (rho/mean rho)
+  rot_ang  = [0,0]      ; [60,-45] ;[lat,long] center in deg (left,up)
+  cutSubS  = 0          ; cut satellite substructures out from halo
+  
+  ; value config
+  partTypes = ['gas','gas','gas','gas']
+  valNames  = ['temp','density','radvel','radmassflux']
+  ctNames   = ['helix','helix','brewer-redpurple','brewer-redblue']
+  
+  bartitles = [textoidl("log ( T_{gas} ) [K]"),$
+               "log ( "+textoidl("\rho / <\rho>")+" )",$
+               textoidl("v_{rad}")+" [km/s]",$
+               "Radial Mass Flux ["+textoidl('M_{sun}')+" kpc"+textoidl('^{-2}')+" yr"+textoidl('^{-1}')+"]"]
+  ratioToMean = [0,1,0,0]
+  plotLog     = [0,1,0,0]
+  
+  sP = simParams(res=512,run='gadget',redshift=float(redshift))
+  
+  foreach hMassTarget,hMassTargets do begin
+    ; get IDs of mass target (just one)
+    subgroupIDs  = massTargetToHaloID(hMassTarget,sP=sP)
+  
+    ; plot
+    foreach radInd,radInds do begin
+      print,radInd
+      
+      if cutSubS then csTag = '.cutSubS' else csTag = ''
+      start_PS, sP.plotPath+'shell_valcomp_z'+str(redshift)+'_h'+str(subgroupIDs[0])+'_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=6
+        
+        pos = ['ul','ur','ll','lr']
+        ;xtpos = [0.06,0.56,0.06,0.56]
+        ;ytpos = [0.55,0.55,0.13,0.13]
+        
+
+        for i=0,3 do begin
+          ; interpolate onto the shell
+          hsv = haloShellValue(sP=sP,partType=partTypes[i],valName=valNames[i],$
+                               subgroupID=subgroupIDs[0],cutSubS=cutSubS,/save)
+
+          ; convert values into ratios to the mean
+          if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
+          else healpix_data = reform(hsv.value[*,radInd])
+          if plotLog[i] then healpix_data = alog10(healpix_data)
+          
+          title = sP.run+" "+str(sP.res)+textoidl("^3")+"  z = "+string(sP.redshift,format='(f3.1)')+" "+$
+                  textoidl("M_{halo} = ")+string(hMassTargets[0],format='(f4.1)')+" ("+$
+                  textoidl("r / r_{vir} = ")+string(hsv.radFacs[radInd],format='(f4.2)')+")"
+    
+          if i eq 0 then $
+            plotMollweideProj,healpix_data,rot_ang=rot_ang,title=title,bartitle=bartitles[i],pos=pos[i],$
+              ctName=ctNames[i]
+          if i gt 0 then $
+            plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle=bartitles[i],pos=pos[i],$
+              /noerase,ctName=ctNames[i]
+    
+          ;cgText,xtpos[i],ytpos[i],"M = "+string(hMassTargets[i],format='(f4.1)'),$
+          ;  /normal,alignment=0.5,color=cgColor('dark gray'),charsize=1.0
+        endfor
+      end_PS, pngResize=60, /deletePS
+    
+    endforeach ;radInds
+  endforeach ;masstargets
+end
+
+; plotHaloShellSingleVal():
+
+pro plotHaloShellSingleVal
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; config
+  redshift = 2
+  
+  hMassTarget = 12.5 ;12.5,12.0,11.5,11.0
+  radInd   = 6  ; pre-saved radFacs
+  ;minmax   = [-0.6,2.0] ; log (rho/mean rho)
+  minmax = [-1e-2,1e-2] ; km/s outflow/inflow
+  ctName   = 'brewer-redpurple'
+  rot_ang  = [0,0]      ; [60,-45] ;[lat,long] center in deg (left,up)
+  cutSubS  = 1          ; cut satellite substructures out from halo
+  
+  ; value config
+  partType = 'gas'
+  valName  = 'radmassflux'
+  
+  bartitle    = "Radial Mass Flux ["+textoidl('M_{sun}')+" kpc"+textoidl('^{-2}')+" yr"+textoidl('^{-1}')+"]"
+  ratioToMean = 0
+  plotLog     = 0
+  
+  sP = simParams(res=512,run='gadget',redshift=float(redshift))
+  
+  ; get IDs of mass target (just one)
+  subgroupIDs  = massTargetToHaloID([hMassTarget],sP=sP)
+
+  ; plot
+  if cutSubS then csTag = '.cutSubS' else csTag = ''
+  start_PS, sP.plotPath+'shell_'+partType+'-'+valName+'_z'+str(redshift)+'_h'+str(subgroupIDs[0])+$
+            '_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=6
+    
+    ; interpolate onto the shell
+    hsv = haloShellValue(sP=sP,partType=partType,valName=valName,subgroupID=subgroupIDs[0],$
+                         cutSubS=cutSubS,/save)
+
+    ; max clip
+    w = where(hsv.value[*,radInd] gt minmax[1],count)
+    if count gt 0 then hsv.value[w,radInd] = minmax[1]
+
+    ; convert values into ratios to the mean
+    if ratioToMean then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
+    else healpix_data = reform(hsv.value[*,radInd])
+    if plotLog then healpix_data = alog10(healpix_data)
+    
+    title = sP.run+" "+str(sP.res)+textoidl("^3")+"  z = "+string(sP.redshift,format='(f3.1)')+" "+$
+            textoidl("M_{halo} = ")+string(hMassTarget,format='(f4.1)')+" ("+$
+            textoidl("r / r_{vir} = ")+string(hsv.radFacs[radInd],format='(f4.2)')+")"
+
+    plotMollweideProj,healpix_data,rot_ang=rot_ang,title=title,bartitle=bartitle,ctName=ctName,minmax=minmax
+
+  end_PS, pngResize=60, /deletePS
+    stop
+end
+
 ; plotHaloShellDensMovie(): 
 
 pro plotHaloShellDensMovie, redshift=redshift, hMassTarget=hMassTarget
-  
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+    
   ; config
   rot_ang = [0,0] ; [lat,long] center in deg (left,up)
   cutSubS = 0     ; cut satellite substructures out from halo
