@@ -44,7 +44,10 @@ function getUnits
             Msun_in_g : 1.98892*double(10.0)^33               ,$
             pc_in_cm  : 3.085680e18                           ,$
             Mpc_in_cm : 3.085680e24                           ,$
-            kpc_in_km : 3.085680e16                            $
+            kpc_in_km : 3.085680e16                           ,$
+            
+            ; derived unit conversions
+            kmS_in_kpcYr : 0.0                                 $
       }
       
   ; derived units
@@ -63,6 +66,9 @@ function getUnits
   units.G  = Gravity / units.UnitLength_in_cm^3.0 * units.UnitMass_in_g * units.UnitTime_in_s^2.0
   
   units.rhoCrit = 3.0 * units.H0^2.0 / (8.0*!pi*units.G) ;code, z=0
+
+  ; derived unit conversions
+  units.kmS_in_kpcYr = units.s_in_Myr / units.kpc_in_km / 1e6 ; Myr->yr
 
   ; color list
   units.colors = ['black','blue','green','red','cyan','magenta','gray','orange', $

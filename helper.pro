@@ -162,6 +162,17 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
   if ctName eq 'blue-red'           then loadct,11,bottom=bottom,/silent
   if ctName eq 'plasma'             then loadct,32,bottom=bottom,/silent
   if ctName eq 'blue-red2'          then loadct,33,bottom=bottom,/silent
+  
+  ; brewer (nice diverging options) (17-26)
+  if ctName eq 'brewer-brownpurple' then cgLoadct,18,ncolors=255,bottom=bottom,/brewer
+  if ctName eq 'brewer-browngreen'  then cgLoadct,19,ncolors=255,bottom=bottom,/brewer
+  if ctName eq 'brewer-purplegreen' then cgLoadct,20,ncolors=255,bottom=bottom,/brewer
+  if ctName eq 'brewer-pinkgreen'   then cgLoadct,21,ncolors=255,bottom=bottom,/brewer
+  if ctName eq 'brewer-redblue'     then cgLoadct,22,ncolors=255,bottom=bottom,/brewer
+  if ctName eq 'brewer-redpurple'   then cgLoadct,25,ncolors=255,bottom=bottom,/brewer
+  if ctName eq 'brewer-redgreen'    then cgLoadct,26,ncolors=255,bottom=bottom,/brewer
+ 
+  ; brewer (sequential) (0-16)
 
 end
 
@@ -549,7 +560,7 @@ end
 ;              function specified for each particle/cell over a given number of neighbors with positions 
 ;              Pos around each position in SearchPos, where the two are generally different (as in CalcHSMLds)
 
-function calcTHVal, PosVal, SearchPos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
+function calcTHVal, PosVal, SearchPos, thMode=thMode, ndims=ndims, nNGB=nNGB, boxSize=boxSize
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -557,6 +568,7 @@ function calcTHVal, PosVal, SearchPos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
   nsrc = size(SearchPos)
 
   if ndims ne 1 and ndims ne 2 and ndims ne 3 then message,'Error: Need ndims=1,2,3.'
+  if thMode ne 1 and thMode ne 2 and thMode ne 3 then message,'Error: Need thMode=1,2,3.'
   if npos[0] ne 2 or npos[1] ne 4 then message,'Error: Point position array shape.'
   if nsrc[0] ne 2 or nsrc[1] ne 3 then message,'Error: Search position array shape.'
   if npos[2] lt nNGB then message,'Error: Point count too low for nNGB.'
@@ -566,8 +578,8 @@ function calcTHVal, PosVal, SearchPos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
   NumSearch = long(nsrc[2])
   
   DesNumNgb    = long(nNGB)     ; number of neighbors to use
-  DesNumNgbDev = long(0)        ; deviation allowed
   boxSize      = float(boxSize) ; use zero for non-periodic search
+  thMode       = fix(thMode)    ; 1=mean, 2=total, 3=total/volume (density)
   
   val_out = fltarr(NumSearch)
   
@@ -578,7 +590,7 @@ function calcTHVal, PosVal, SearchPos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
   ; call CalcTHVal
   libName = '/n/home07/dnelson/idl/CalcTHVal/CalcTHVal_'+str(ndims)+'D.so'
   ret = Call_External(libName, 'CalcTHVal', $
-                      NumPart,PosVal,NumSearch,SearchPos,DesNumNgb,DesNumNgbDev,boxSize,val_out, $
+                      NumPart,PosVal,NumSearch,SearchPos,DesNumNgb,thMode,boxSize,val_out, $
                       /CDECL)
                       
   return, val_out              
