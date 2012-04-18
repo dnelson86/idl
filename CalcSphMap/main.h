@@ -3,9 +3,8 @@
 
 #define VERBOSE
 
-//#define TWODIMS // affects kernel coefficients, set in makefile
-
-#define NEAREST(x, BoxSize) (((x)>BoxSize)?((x)-BoxSize):(((x)<0)?((x)+BoxSize):(x)))
+//#define NEAREST(x) (((x)>BoxSize)?((x)-BoxSize):(((x)<0)?((x)+BoxSize):(x))) //no
+#define NEAREST(x) (((x)>BoxHalf)?((x)-BoxSize):(((x)<-BoxHalf)?((x)+BoxSize):(x))) //yes
 
 #ifdef VERBOSE
 #define IF_VERBOSE(expr) (expr)
@@ -14,10 +13,12 @@
 #endif
 
 int NumPart;
-float BoxSize_Lx, BoxSize_Ly, BoxSize_Lz;
+double BoxSize;
+double BoxHalf;
+float BoxSize_ImageX, BoxSize_ImageY, BoxSize_ImageZ;
 float BoxCen_X, BoxCen_Y, BoxCen_Z;
 int axis0, axis1;
-int Xpixels, Ypixels, mode, Periodic;
+int Xpixels, Ypixels;
 
 #ifdef   ONEDIMS
 #define  NUMDIMS 1
