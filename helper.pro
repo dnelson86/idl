@@ -620,48 +620,56 @@ function calcNN, Pos_SrcTargs, Pos_SrcOrigs, boxSize=boxSize, ndims=ndims
   return, ind_out
 end
 
-; calcSphMap(): use CalcSphMap external C-routine to calculate a map of projected densities
-;               with the sph spline kernel
+; calcSphMap(): use CalcSphMap external C-routine to simultaneously calculate a map of projected 
+;               density and some other mass weighted quantity (e.g. temperature) with the sph 
+;               spline kernel (for non-periodic set boxsize=0)
 
-function calcSphMap, pos, hsml, mass, axes=axes, boxSize=boxSize, boxCen=boxCen, $
-                     nPixels=nPixels, ndims=ndims
+function calcSphMap, pos, hsml, mass, quant, axes=axes, boxSizeImg=boxSizeImg, boxSizeSim=boxSizeSim, $
+                     boxCen=boxCen, nPixels=nPixels, ndims=ndims
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; prepare inputs
-  npos = (size(pos))[2]
+  NumPart = (size(pos))[2]
   
-  boxSize  = float(boxSize)
-  boxCen   = float(boxCen)
-  nPixels  = fix(nPixels)
-  axes     = fix(axes)
-  
-  mode     = fix(1)
-  periodic = fix(1)
+  boxSizeImg = float(boxSizeImg)
+  boxSizeSim = float(boxSizeSim)
+  boxCen     = float(boxCen)
+  nPixels    = fix(nPixels)
+  axes       = fix(axes)
   
   ; check inputs
-  if (n_elements(boxSize) ne 3) then stop
+  if (n_elements(boxSizeImg) ne 3) then stop
+  if (n_elements(boxSizeSim) ne 1) then stop
   if (n_elements(boxCen)  ne 3) then stop
   if (n_elements(nPixels) ne 2) then stop
   if (n_elements(axes)    ne 2) then stop
   
-  if (mode ne 1 and mode ne 2 and mode ne 3) then stop
-  if (periodic ne 0 and periodic ne 1) then stop
+  if (size(pos))[0] ne 2 or (size(pos))[1] ne 3 then stop
+  if (size(hsml))[0] ne 1 then stop
+  if (size(mass))[0] ne 1 then stop
+  if (size(quant))[0] ne 1 then stop
+  
+  if (size(pos))[2] ne (size(hsml))[1] or $
+     (size(pos))[2] ne (size(mass))[1] or $
+     (size(pos))[2] ne (size(quant))[1] then stop
   
   if (axes[0] ne 0 and axes[0] ne 1 and axes[0] ne 2) then stop
   if (axes[1] ne 0 and axes[1] ne 1 and axes[1] ne 2) then stop
   
   ; make return
-  grid_out = fltarr(nPixels[0],nPixels[1])
-  
+  dens_out  = fltarr(nPixels[0],nPixels[1])
+  quant_out = fltarr(nPixels[0],nPixels[1])
+
   ; call CalcSphMap
   libName = '/n/home07/dnelson/idl/CalcSphMap/CalcSphMap_'+str(ndims)+'D.so'
   ret = Call_External(libName, 'CalcSphMap', $
-                      npos,pos,hsml,mass,grid_out,boxSize[0],boxSize[1],boxSize[2],$
+                      NumPart,pos,hsml,mass,quant,dens_out,quant_out,$
+                      boxSizeImg[0],boxSizeImg[1],boxSizeImg[2],boxSizeSim,$
                       boxCen[0],boxCen[1],boxCen[2],axes[0],axes[1],nPixels[0],nPixels[1],$
-                      mode,periodic,/CDECL)
+                      /CDECL)
 
-  return, grid_out
+  return, { dens_out:dens_out, quant_out:quant_out }
 end
 
 ; estimateDensityTophat(): spatial density estimator for an input position tuple array and

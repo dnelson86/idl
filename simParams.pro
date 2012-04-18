@@ -127,6 +127,40 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     return,r
   endif
   
+  ; ComparisonProject arepo (no tracers) 128,256,512 @ 20Mpc
+  if (run eq 'arepo') then begin
+    r.minNumGasPart = -1 ; no additional cut
+    r.trMCPerCell   = 1 ; no actual tracers, but flag as non-sph
+    
+    if keyword_set(f) then stop ; shouldn't be specified
+    if res ne 512 then stop
+    
+    r.boxSize       = 20000.0
+    r.snapRange     = [0,313]
+    r.groupCatRange = [50,313]
+    
+    if res eq 128 then r.targetGasMass = 4.76446157e-03
+    if res eq 256 then r.targetGasMass = 5.95556796e-04
+    if res eq 512 then r.targetGasMass = 7.44447120e-05
+    
+    r.trMassConst = 0.0
+    
+    if res eq 128 then r.gravSoft = 4.0
+    if res eq 256 then r.gravSoft = 2.0
+    if res eq 512 then r.gravSoft = 1.0
+  
+    r.simPath   = '/n/home07/dnelson/sims.tracers/A'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/output/'
+    r.arepoPath = '/n/home07/dnelson/sims.tracers/A'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/'
+    r.savPrefix = 'A'
+    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.derivPath  = '/n/home07/dnelson/sims.tracers/A'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
+  
   if (run eq 'dev.tracer') then begin
     r.boxSize       = 20000.0
     r.snapRange     = [0,76]

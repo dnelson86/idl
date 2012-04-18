@@ -202,10 +202,8 @@ function getGroupCatFilename, fileBase, snapNum=m
     
       ; check existance and multiple outputs
       if not file_test(f+'.hdf5') then begin
-        if not file_test(f+'.0.hdf5') then begin
-          print, 'ERROR: group catalog [' + str(m) + '] at ' + fileBase + ' does not exist!'
-          stop
-        endif
+        if not file_test(f+'.0.hdf5') then $
+          print, 'WARNING: new group catalog [' + str(m) + '] at ' + fileBase + ' does not exist!'
       endif
       
     endelse
@@ -226,22 +224,24 @@ end
 
 function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs=getSortedIDs, verbose=verbose
 
+  forward_function loadSubhaloGroups
   if not keyword_set(verbose) then verbose = 0
   !except = 0 ;suppress floating point underflow/overflow errors
 
   fileList = getGroupCatFileName(sP.simPath,snapNum=sP.snap)
 
   nFiles = n_elements(fileList)
-  
+
+  ; if new group catalog not found, look for old format
+  if fileList[0] eq '' then return,loadSubhaloGroups(sP=sP,skipIDs=skipIDs,verbose=verbose)
+
   ; load number of split files from header of first part
   hdf5s    = h5_parse(fileList[0]) ;structure only
   NumFiles = hdf5s.Header.NumFiles._DATA
   SubfindExistsFlag = tag_exist(hdf5s,'SubhaloLen')
   
-  if (NumFiles ne nFiles) then begin
-    print,'ERROR: NumFiles ['+str(NumFiles)+'] differs from number of files found ['+str(nFiles)+'].'
-    stop
-  endif
+  if (NumFiles ne nFiles) then $
+    message,'ERROR: NumFiles ['+str(NumFiles)+'] differs from number of files found ['+str(nFiles)+'].'
   
   if (verbose) then $
     print,'Loading group catalog from snapshot ('+str(sP.snap)+') in [' + str(NumFiles) + '] files.'  
@@ -471,11 +471,12 @@ end
 ; skipIDs=1 : don't load actual group member particle IDs
 
 function loadSubhaloGroups, sP=sP, verbose=verbose, skipIDs=skipIDs
-  print,'REWRITE' & stop
+
+  print,'WARNING: OLD GROUP CATALOG'
   if not keyword_set(verbose) then verbose = 0
 
   ; set filename
-  ext = string(m,format='(I3.3)')
+  ext = string(sP.snap,format='(I3.3)')
   fIDs = sP.simPath + 'groups_' + ext + '/subhalo_ids_' + ext
   fTab = sP.simPath + 'groups_' + ext + '/subhalo_tab_' + ext
   
@@ -486,15 +487,11 @@ function loadSubhaloGroups, sP=sP, verbose=verbose, skipIDs=skipIDs
       nSplit_IDs = n_elements(file_search(fIDs+".*"))
       nSplit_tab = n_elements(file_search(fTab+".*"))
     endif else begin
-      print, 'ERROR: group_ids file ' + sP.simPath + str(sP.snap) + ' does not exist!'
-      return,0
+      message, 'ERROR: group_ids file ' + sP.simPath + str(sP.snap) + ' does not exist!'
     endelse
   endif
   
-  if (nSplit_IDs ne nSplit_tab) then begin
-    print, 'ERROR: different number of ids and tab files'
-    return,0
-  endif
+  if (nSplit_IDs ne nSplit_tab) then message,'ERROR: different number of ids and tab files'
   
   if (verbose) then $
     print,'Loading subhalo groups from snapshot ('+str(sP.snap)+') in [' + str(nSplit_IDs) + '] files.'

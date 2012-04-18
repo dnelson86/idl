@@ -907,12 +907,12 @@ function findMatchedHalos, sP1=sP1, sP2=sP2
   forward_function loadGroupCat
 
   ; config
-  distTol = 10.0 ;kpc
-  massTol = 0.1  ;10%
+  distTol = 40.0 ; kpc
+  massTol = 0.4  ; 40%
   
   ; save/restore
-  saveFilename = sP1.derivPath + 'matchCat_'+str(sP1.snap)+'_m'+str(fix(massTol*100))+'_d'+$
-    str(fix(distTol))+'.sav'
+  saveFilename = sP1.derivPath + 'matchCat_'+sP2.run+'_'+str(sP2.res)+'-'+str(sP1.snap)+'_m'+$
+                 str(fix(massTol*10))+'_d'+str(fix(distTol))+'.sav'
     
   if file_test(saveFilename) then begin
     restore,saveFilename
