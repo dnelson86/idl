@@ -276,6 +276,186 @@ function sphDensityProjection, pos, hsml, mass, quantity=quantity, imgSize=imgSi
 
 end
 
+; scatterMapHalos: plot temperature colored scatter plots with velocity vectors on boxes centered on halos
+
+pro scatterMapHalos, sP=sP, gcIDs=gcIDs
+
+  if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
+
+  ; config
+  sizeFac = 3.5       ; times rvir
+  cutFac  = 1.0       ; times boxSize
+  nPixels = [800,800] ; px
+  
+  tempMinMax  = [4.0,7.0] ; log(K)
+  coldTempCut = 5.0       ; log(K)
+  velVecFac   = 0.001     ; times velocity (km/s) in plotted kpc
+  
+  axes = list([0,1],[0,2],[1,2]) ;xy,xz,yz
+  ;axes = list([0,1])
+  
+  ; target list
+  print,'loading...'
+  gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
+  sgcen = subgroupPosByMostBoundID(sP=sP) 
+
+  ; load u,nelec and calculate temperature
+  u     = loadSnapshotSubset(sP=sP,partType='gas',field='u')
+  nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec')
+  temp  = alog10(convertUtoTemp(u,nelec))
+  u     = !NULL
+  nelec = !NULL
+
+  ; load gas positions and velocities
+  pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+  vel = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
+  
+  ; randomly shuffle the points (break the peano orderin to avoid "square" visualization artifacts)
+  print,'shuffling...'
+  iseed = 424242L
+  sort_inds = sort(randomu(iseed,n_elements(temp)))
+  
+  temp = temp[sort_inds]
+  pos  = pos[*,sort_inds]
+  vel  = vel[*,sort_inds]
+  
+  sort_inds = !NULL
+  
+  print,'rendering...'
+  ; loop over all requested halos and image
+  foreach gcID, gcIDs do begin
+  
+    ; get subhalo position and size of imaging box
+    boxCen     = sgcen[*,gcID]
+    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]] / 10.0) * 10.0
+    boxSizeImg = [boxSize,boxSize,boxSize] ; cube
+  
+    ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
+    xDist = boxCen[0] - pos[0,*]
+    yDist = boxCen[1] - pos[1,*]
+    zDist = boxCen[2] - pos[2,*]
+    
+    correctPeriodicDistVecs, xDist, sP=sP
+    correctPeriodicDistVecs, yDist, sP=sP
+    correctPeriodicDistVecs, zDist, sP=sP
+  
+    ; local (cube) cutout
+    wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
+                 abs(zDist) le 0.5*cutFac*boxSize,nCutout)
+    
+    loc_temp = temp[wCut]
+    loc_pos  = fltarr(3,nCutout)
+    loc_pos[0,*] = xDist[wCut] ; delta
+    loc_pos[1,*] = yDist[wCut]
+    loc_pos[2,*] = zDist[wCut]
+    
+    xDist = !NULL
+    yDist = !NULL
+    zDist = !NULL
+    
+    loc_vel = vel[*,wCut]
+    
+    ; create endpoint for each position point for the velocity vector line
+    loc_pos2 = fltarr(3,nCutout)
+    loc_pos2[0,*] = loc_pos[0,*] + loc_vel[0,*]*velVecFac
+    loc_pos2[1,*] = loc_pos[1,*] + loc_vel[1,*]*velVecFac
+    loc_pos2[2,*] = loc_pos[2,*] + loc_vel[2,*]*velVecFac
+    loc_vel = !NULL
+  
+    ; create color index mapping
+    colorinds = (loc_temp-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
+    colorinds = fix(colorinds + 50.0) ;50-255  
+  
+    ; local (cold) cutout
+    wCold = where(loc_temp le coldTempCut,nCutoutCold)
+    loc_temp = !NULL
+    print,nCutout,nCutoutCold
+    
+    loc_pos_cold   = loc_pos[*,wCold]
+    loc_pos2_cold  = loc_pos2[*,wCold]
+    colorinds_cold = colorinds[wCold]
+  
+    ; make a plot for each requested projection direction
+    foreach axisPair, axes do begin
+           
+      ; get box center (in terms of specified axes)
+      boxCenImg  = [sgcen[axisPair[0],gcID],sgcen[axisPair[1],gcID],sgcen[3-axisPair[0]-axisPair[1],gcID]]
+      
+      print,'['+string(gcID,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
+            str(axisPair[1])+'] with '+str(boxSize[0])+$
+            ' kpc box around subhalo center ['+str(boxCen[0])+' '+str(boxCen[1])+' '+str(boxCen[2])+']'
+
+      xMinMax = [-boxSizeImg[0]/2.0,boxSizeImg[0]/2.0]
+      yMinMax = [-boxSizeImg[1]/2.0,boxSizeImg[1]/2.0]
+      
+      plotFilename = 'scatter.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
+                     '.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
+      
+      start_PS, sP.plotPath + plotFilename, xs=8, ys=4
+      
+        ; color table and establish temperature -> color mapping
+        loadColorTable,'helix',/reverse
+        
+        TVLCT, rr, gg, bb, /GET
+
+        newcolors = getColor24([[rr[colorinds]], [gg[colorinds]], [bb[colorinds]]])
+        newcolors_cold = getColor24([[rr[colorinds_cold]], [gg[colorinds_cold]], [bb[colorinds_cold]]])
+
+        ; all gas
+        cgPlot, /nodata, xMinMax, yMinMax, pos=[0.0,0.0,0.5,1.0], xs=5, ys=5
+        
+        haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcID]] ;ckpc
+        tvcircle,haloVirRad,0,0,cgColor('dark gray'),thick=0.6,/data
+        
+        ; particle loop for velocity vector plotting
+        for i=0L,nCutout-1 do $
+          plots,reform([loc_pos[axisPair[0],i],loc_pos2[axisPair[0],i]]),$
+                 reform([loc_pos[axisPair[1],i],loc_pos2[axisPair[1],i]]),$
+                 line=0,color=newcolors[i]
+
+        ; scale bar
+        len = 100.0 ;ckpc
+        cgText,mean([-boxSizeImg[0]/2.2,-boxSizeImg[0]/2.2+len]),boxSizeImg[0]/2.4,$
+               string(len,format='(i3)')+' ckpc',alignment=0.5,charsize=!p.charsize-0.6,color=cgColor('dark gray')
+        cgPlot,[-boxSizeImg[0]/2.2,-boxSizeImg[0]/2.2+len],[boxSizeImg[1]/2.2,boxSizeImg[1]/2.2],$
+               color=cgColor('dark gray'),/overplot
+               
+        ; cold only
+        cgPlot, /nodata, xMinMax, yMinMax, pos=[0.5,0.0,1.0,1.0], xs=5, ys=5, /noerase
+
+        tvcircle,haloVirRad,0,0,cgColor('dark gray'),thick=0.6,/data
+        
+        ; particle loop for velocity vector plotting (cold gas only)
+        for i=0L,nCutoutCold-1 do $
+          plots,reform([loc_pos_cold[axisPair[0],i],loc_pos2_cold[axisPair[0],i]]),$
+                 reform([loc_pos_cold[axisPair[1],i],loc_pos2_cold[axisPair[1],i]]),$
+                 line=0,color=newcolors_cold[i]
+        
+        ; redshift and halo mass
+        !p.charsize = 1.0
+        haloMass = codeMassToLogMsun(gc.subgroupMass[gcID])
+        cgText,0.98,0.94,"z = "+string(sP.redshift,format='(f3.1)'),alignment=1.0,color=cgColor('dark gray'),/normal
+        cgText,0.98,0.89,"M = "+string(haloMass,format='(f4.1)'),alignment=1.0,color=cgColor('dark gray'),/normal
+        
+        ; dividing line
+        cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('light gray'),/overplot
+        
+        ; temp colorbar on right
+        !x.thick = 1.0
+        !y.thick = 1.0
+        colorbar,position=[0.02,0.35,0.08,0.65],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+        cgText,0.5,0.04,textoidl("log T_{gas} [K]"),alignment=0.5,charsize=!p.charsize-0.2,color=cgColor('white'),/normal
+        cgText,0.365,0.04,'4',alignment=0.5,charsize=!p.charsize-0.2,color=cgColor('white'),/normal
+        cgText,0.635,0.04,'7',alignment=0.5,charsize=!p.charsize-0.2,color=cgColor('white'),/normal
+        
+      end_PS, pngResize=60, im_options='-negate', /deletePS
+
+    endforeach ;axisPair
+
+  endforeach ;gcIDs
+
+end
+
 ; sphMapHalos: run sph kernel density projection on boxes centered on halos
 
 pro sphMapHalos, sP=sP, gcIDs=gcIDs, coldOnly=coldOnly
@@ -309,11 +489,11 @@ pro sphMapHalos, sP=sP, gcIDs=gcIDs, coldOnly=coldOnly
   ; load HSMLs or volumes (convert to sizes)
   if sP.trMCPerCell eq 0 then begin
     hsml = loadSnapshotSubset(sP=sP,partType='gas',field='hsml')
-    hsml *= 1.25 ; increase hsml to decrease visualization noise
+    hsml = 1.25 * temporary(hsml); increase hsml to decrease visualization noise
   endif else begin
     hsml = loadSnapshotSubset(sP=sP,partType='gas',field='vol')
-    hsml = (hsml * 3.0 / (4*!pi))^(1.0/3.0) ;cellrad [ckpc]
-    hsml *= 1.75 ; increase hsml to decrease visualization noise
+    hsml = (temporary(hsml) * 3.0 / (4*!pi))^(1.0/3.0) ;cellrad [ckpc]
+    hsml = 1.75 * temporary(hsml) ; increase hsml to decrease visualization noise
   endelse
   
   ; cold only
@@ -334,11 +514,6 @@ pro sphMapHalos, sP=sP, gcIDs=gcIDs, coldOnly=coldOnly
     boxCen = sgcen[*,gcID]
     boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]] / 10.0) * 10.0
     boxSizeImg = [boxSize,boxSize,boxSize] ; cube
-  
-    ; make conservative cutout greater than boxsize
-    dists = periodicDists(boxCen,pos,sP=sP)
-    wCut = where(dists le cutFac*boxSize,nCutout)
-    print,nCutout
   
     foreach axisPair, axes do begin
   
@@ -445,8 +620,14 @@ pro makeHaloComparisonImages, select=select
     w = where(priGMasses ge minLogMsun,countG)
     gcIDs_gadget = priGIDs[w]
     
+    gcIDs_gadget = [10233,10264,10288,10311,10348,10384,10403,10439,10472,10487,10503,10526,$
+                    10544,10577,10615,10649,10666,10686,10706,10727,10757,10786,10800,10826,$
+                    10865,10881,10889,10936,10953,10980,10994,11020,11041,11061,11074,11088,$
+                    11109,11122,11155,11185]
+    
     print,'Mapping ['+str(countG)+'] gadget halos above minLogMsun.'
     sphMapHalos,sP=sPg,gcIDs=gcIDs_gadget;,/coldOnly
+    ;scatterMapHalos,sP=sPg,gcIDs=gcIDs_gadget
   endif
   
   ; arepo group catalog
@@ -455,13 +636,18 @@ pro makeHaloComparisonImages, select=select
     priAIDs = gcIDList(gc=gca,select='pri')
     priAMasses = codeMassToLogMsun(gca.subgroupMass[priAIDs])
     w = where(priAMasses ge minLogMsun,countA)
-    gcIDs_arepo = priAIDs[w]
+    ;gcIDs_arepo = priAIDs[w]
+    
+    gcIDs_arepo = [9249,9270,9275,9291,9312,9327,9350,9386,9400,9417,9427,9442,9466,9480,9481,9490,$
+                   9504,9522,9523,9531,9543,9559,9588,9604,9620,9635,9662,9679,9694,9700,9716,9739,$
+                   9759,9772,9782,9787,9798,9820,9831,9846,9868,9889,9907,9919,9934,9946,9961]
     
     print,'Mapping ['+str(countA)+'] arepo halos above minLogMsun.'
-    sphMapHalos,sP=sPa,gcIDs=gcIDs_arepo;,/coldOnly
+    ;sphMapHalos,sP=sPa,gcIDs=gcIDs_arepo;,/coldOnly
+    scatterMapHalos,sP=sPa,gcIDs=gcIDs_arepo
   endif
   
-  stop
+  print,'done.'
 
 end
 
@@ -469,185 +655,295 @@ pro makeHaloComparisonPage
   
   ; config
   res = 512
-  redshifts = [0.0] ;[0.0,0.5,1.0,2.0]
+  redshifts = [0.0,0.5,1.0,2.0]
   
-  massBins = [12.0,14.0] ;[11.0,11.5,12.0,14.0]
+  massBins = [10.5,11.0,11.5,12.0,14.0]
   
   axesPairs = ['01','02','12']
   axesNames = ['xy','xz','yz']
   
-  ; open file and write header with links
-  openw,lun,'page.htm',/get_lun
-  printf,lun,"<div class='compHead'><table>"
-  printf,lun,"  <tr><th>Redshift</th><th colspan='4'>Log(Msun) Bins</th></tr>"
-  foreach redshift,redshifts,k do begin
-    printf,lun,"  <tr><td>"+string(redshift,format='(f3.1)')+"</td>"
-    for j=0,n_elements(massBins)-2 do begin
-      printf,lun,"    <td><a href='#z"+str(k)+"_massbin"+str(j)+"'>"+string(massBins[j],format='(f4.1)')+$
-                 " - "+string(massBins[j+1],format='(f4.1)')+"</a></td>"
-    endfor
-    printf,lun,"  </tr>"
-  endforeach
-  printf,lun,"</table></div>"
+  redshift = 2.0
   
-  printf,lun,""
-  printf,lun,"<div class='compBody'>"
+  haloCounter = 0UL
   
-  foreach redshift,redshifts,k do begin
-    print,' z = '+string(redshift,format='(f3.1)')
+  ; load group catalogs and find halo IDs
+  sPa = simParams(res=res,run='arepo',redshift=redshift)
+  sPg = simParams(res=res,run='gadget',redshift=redshift)
+  
+  gcg = loadGroupCat(sP=sPg,/skipIDs)
+  gca = loadGroupCat(sP=sPa,/skipIDs)
+  
+  sgceng = subgroupPosByMostBoundID(sP=sPg)
+  sgcena = subgroupPosByMostBoundID(sP=sPa)
+  
+  priGIDs = gcIDList(gc=gcg,select='pri')
+  priGMasses = codeMassToLogMsun(gcg.subgroupMass[priGIDs])   
+  priAIDs = gcIDList(gc=gca,select='pri')
+  priAMasses = codeMassToLogMsun(gca.subgroupMass[priAIDs])
+  
+  ; match only for webpage output (maybe redo with higher tols)
+  match = findMatchedHalos(sP1=sPa,sP2=sPg)  
+  
+  ; loop over mass bins
+  for j=0,n_elements(massBins)-2 do begin
+    print,massBins[j],massBins[j+1]
+    
+    ; open file and write header with links
+    outputName = "HaloComp_z"+string(redshift,format='(f3.1)')+"mb"+string(massBins[j],format='(f4.1)')+".htm"
+    openw,lun,outputName,/get_lun
+    
+    printf,lun,"<div class='compHead'><table>"
+    printf,lun,"  <tr><th>Redshifts</th><th colspan='4'>Log(Msun) Bins</th></tr>"
+    foreach red,redshifts,k do begin
+      printf,lun,"  <tr><td>"+string(red,format='(f3.1)')+"</td>"
+      for mb=0,n_elements(massBins)-2 do begin
+        printf,lun,"    <td><a href='HaloComp_z"+string(red,format='(f3.1)')+"mb"+$
+                   string(massBins[mb],format='(f4.1)')+".htm'>"+string(massBins[mb],format='(f4.1)')+$
+                   " - "+string(massBins[mb+1],format='(f4.1)')+"</a></td>"
+      endfor
+      printf,lun,"  </tr>"
+    endforeach
+    printf,lun,"</table></div>"
+    
+    printf,lun,""
+    printf,lun,"<div class='compBody'>"
+    
     ; redshift header
     printf,lun,""
     printf,lun,"<h2>z = "+string(redshift,format='(f3.1)')+"</h2>"
     printf,lun,""
+  
+    ; halo IDs in this mass bin
+    wG = where(priGMasses ge massBins[j] and priGMasses lt massBins[j+1],countG)
+    if countG gt 0 then gcIDs_gadget = priGIDs[wG]
+    wA = where(priAMasses ge massBins[j] and priAMasses lt massBins[j+1],countA)
+    if countA gt 0 then gcIDs_arepo = priAIDs[wA]
     
-    ; load group catalogs and find halo IDs
-    sPa = simParams(res=res,run='arepo',redshift=redshift)
-    sPg = simParams(res=res,run='gadget',redshift=redshift)
+    ; decide which arepo halos have matching gadget halos
+    matchedInds = match.matchedInds[wA]
+    wMatch = where(matchedInds ne -1,countMatch,comp=wNoMatch,ncomp=countNoMatchA)
     
-    gcg = loadGroupCat(sP=sPg,/skipIDs)
-    gca = loadGroupCat(sP=sPa,/skipIDs)
+    ; find subset of gadget halos that were not matched
+    match,match.matchedInds,wG,inds_match,inds_wG,count=countNoMatchG,/sort
+    if countNoMatchG gt 0 then wGNoMatch = wG[inds_wG]
     
-    sgceng = subgroupPosByMostBoundID(sP=sPg)
-    sgcena = subgroupPosByMostBoundID(sP=sPa)
+    ; mass bin header
+    printf,lun,""
+    printf,lun,"<a name='z"+str(k)+"_massbin"+str(j)+"'></a>"
+    printf,lun,"<h3>"+string(massBins[j],format='(f4.1)')+" < log(M) < "+$
+                      string(massBins[j+1],format='(f4.1)')+"</h3>"
+    printf,lun,""
     
-    priGIDs = gcIDList(gc=gcg,select='pri')
-    priGMasses = codeMassToLogMsun(gcg.subgroupMass[priGIDs])   
-    priAIDs = gcIDList(gc=gca,select='pri')
-    priAMasses = codeMassToLogMsun(gca.subgroupMass[priAIDs])
-    
-    ; match only for webpage output (maybe redo with higher tols)
-    match = findMatchedHalos(sP1=sPa,sP2=sPg)    
-    
-    ; loop over mass bins
-    for j=0,n_elements(massBins)-2 do begin
-      print,massBins[j],massBins[j+1]
-      ; halo IDs in this mass bin
-      wG = where(priGMasses ge massBins[j] and priGMasses lt massBins[j+1],countG)
-      gcIDs_gadget = priGIDs[wG]
-      wA = where(priAMasses ge massBins[j] and priAMasses lt massBins[j+1],countA)
-      gcIDs_arepo = priAIDs[wA]
-      
-      ; decide which arepo halos have matching gadget halos
-      matchedInds = match.matchedInds[wA]
-      wMatch = where(matchedInds ne -1,countMatch,comp=wNoMatch,ncomp=countNoMatch)
-      
-      ; find subset of gadget
-      
-      ; mass bin header
+    ; TEMPORARY: skip lowest mass bin (not run)
+    if j eq 0 then begin
+      printf,lun,"(Not yet rendered)."
+      printf,lun,"</div>"
       printf,lun,""
-      printf,lun,"<a name='z"+str(k)+"_massbin"+str(j)+"'></a>"
-      printf,lun,"<h3>"+string(massBins[j],format='(f4.1)')+" < log(M) < "+$
-                        string(massBins[j+1],format='(f4.1)')+"</h3>"
-      printf,lun,""
-      printf,lun,"<table>"
-      printf,lun," <tr><th>Info</th><th>Gadget</th><th>Arepo</th></tr>"
+      printf,lun,"</body>"
+      printf,lun,"</html>"
+       
+      ; close file
+      free_lun,lun
       
-      ; matched
-      ; -------
-      for i=0,countMatch-1 do begin
-        ; make stats string
-        gcIndA = priAIDs[wA[wMatch[i]]]
-        gcIndG = priGIDs[matchedInds[wMatch[i]]]
-        
-        haloMassA = codeMassToLogMsun(gca.subgroupMass[gcIndA])
-        haloMassG = codeMassToLogMsun(gcg.subgroupMass[gcIndG])
-        ;print,haloMassA,haloMassG
-        ;stop
-        
-        virRadA  = gca.group_r_crit200[gca.subgroupGrNr[gcIndA]]
-        virRadG  = gcg.group_r_crit200[gcg.subgroupGrNr[gcIndG]]
-        virTempA = alog10(codeMassToVirTemp(gca.subgroupMass[gcIndA],sP=sPa))
-        virTempG = alog10(codeMassToVirTemp(gcg.subgroupMass[gcIndG],sP=sPg))
-        
-        statsString = "Gadget:<br> log(M) = "+string(haloMassG,format='(f5.2)')+" <br> "+$
-                      " xyz = "+string(sgceng[0,gcIndG],format='(f7.1)')+" "+$
-                                string(sgceng[1,gcIndG],format='(f7.1)')+" "+$
-                                string(sgceng[2,gcIndG],format='(f7.1)')+" <br> "+$
-                      " virRad = "+string(virRadG,format='(i3)')+" ckpc<br> "+$
-                      " virTemp = "+string(virTempG,format='(f3.1)')+" <br><br> "+$
-                      "Arepo:<br> log(M) = "+string(haloMassA,format='(f5.2)')+" <br> "+$
-                      " xyz = "+string(sgcena[0,gcIndA],format='(f7.1)')+" "+$
-                                string(sgcena[1,gcIndA],format='(f7.1)')+" "+$
-                                string(sgcena[2,gcIndA],format='(f7.1)')+" <br> "+$
-                      " virRad = "+string(virRadA,format='(i3)')+" ckpc<br> "+$
-                      " virTemp = "+string(virTempA,format='(f3.1)')+" <br> "
-                                
-        ; make gadget image thumbnail/link string
-        gadgetString = ''
-        
-        foreach axisPair,axesPairs,m do begin
-          fname = "map.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
-          gadgetString += axesNames[m]+": <a href='sphMaps/"+fname+"'><img src='sphMaps/thumbnails/"+$
-                          fname+"'></a><br>"
-        endforeach
-        
-        gadgetString = strmid(gadgetString,0,strlen(gadgetString)-4)
-        
-        ; make arepo image thumbnail/link string
-        arepoString = ''
-        
-        foreach axisPair,axesPairs,m do begin
-          fname = "map.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
-          arepoString += axesNames[m]+": <a href='sphMaps/"+fname+"'><img src='sphMaps/thumbnails/"+$
-                         fname+"'></a><br>"
-        endforeach
-        
-        arepoString = strmid(arepoString,0,strlen(arepoString)-4)
-        
-        printf,lun," <tr class='row'>"
-        printf,lun,"  <td class='stcell'>"+statsString+"</td>"
-        printf,lun,"  <td class='gacell'>"+gadgetString+"</td>"
-        printf,lun,"  <td class='arcell'>"+arepoString+"</td>"
-        printf,lun," </tr>"
-      endfor
+      ; if header.txt exists, cat the two together
+      if file_test("header.txt") then begin
+        print,' added header (skipped lowest massbin)'
+        spawn,'cat header.txt '+outputName+' > newpage.htm' ;make new
+        spawn,'mv newpage.htm '+outputName ;overwrite original
+      endif
       
-      ; arepo (unmatched)
-      ; -----------------
-      for i=0,countNoMatch-1 do begin
-        ; make stats string
-        gcIndA = priAIDs[wA[wNoMatch[i]]]
-        
-        haloMassA = codeMassToLogMsun(gca.subgroupMass[gcIndA])
-        virRadA  = gca.group_r_crit200[gca.subgroupGrNr[gcIndA]]
-        virTempA = alog10(codeMassToVirTemp(gca.subgroupMass[gcIndA],sP=sPa))
-        
-        statsString = "Gadget:<br> <i>Unmatched.</i> <br><br> "+$
-                      "Arepo:<br> log(M) = "+string(haloMassA,format='(f5.2)')+" <br> "+$
-                      " xyz = "+string(sgcena[0,gcIndA],format='(f7.1)')+" "+$
-                                string(sgcena[1,gcIndA],format='(f7.1)')+" "+$
-                                string(sgcena[2,gcIndA],format='(f7.1)')+" <br> "+$
-                      " virRad = "+string(virRadA,format='(i3)')+" ckpc<br> "+$
-                      " virTemp = "+string(virTempA,format='(f3.1)')+" <br> "
-                         
-        ; make arepo image thumbnail/link string
-        arepoString = ''
-        
-        foreach axisPair,axesPairs,m do begin
-          fname = "map.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
-          arepoString += axesNames[m]+": <a href='sphMaps/"+fname+"'><img src='sphMaps/thumbnails/"+$
-                         fname+"'></a><br>"
-        endforeach
-        
-        arepoString = strmid(arepoString,0,strlen(arepoString)-4)
-        
-        printf,lun," <tr class='row'>"
-        printf,lun,"  <td class='stcell'>"+statsString+"</td>"
-        printf,lun,"  <td class='gacell'><i>(Unmatched)</i></td>"
-        printf,lun,"  <td class='arcell'>"+arepoString+"</td>"
-        printf,lun," </tr>"
-      endfor
+      continue
+    endif
+    
+    printf,lun,"<table>"
+    printf,lun," <tr><th>Info</th><th>Gadget</th><th>Arepo</th></tr>"
+    
+    ; matched
+    ; -------
+    for i=0,countMatch-1 do begin
+      haloCounter += 1
       
-      printf,lun,"</table>"
-      printf,lun,""
+      ; make stats string
+      gcIndA = priAIDs[wA[wMatch[i]]]
+      gcIndG = priGIDs[matchedInds[wMatch[i]]]
       
+      haloMassA = codeMassToLogMsun(gca.subgroupMass[gcIndA])
+      haloMassG = codeMassToLogMsun(gcg.subgroupMass[gcIndG])
+      
+      virRadA  = gca.group_r_crit200[gca.subgroupGrNr[gcIndA]]
+      virRadG  = gcg.group_r_crit200[gcg.subgroupGrNr[gcIndG]]
+      virTempA = alog10(codeMassToVirTemp(gca.subgroupMass[gcIndA],sP=sPa))
+      virTempG = alog10(codeMassToVirTemp(gcg.subgroupMass[gcIndG],sP=sPg))
+      
+      statsString = "<span class='haloid'>ID: "+str(haloCounter)+"</span><br><br> "+$
+                    "Gadget:<br> log(M) = "+string(haloMassG,format='(f5.2)')+" <br> "+$
+                    " xyz = "+string(sgceng[0,gcIndG],format='(f7.1)')+" "+$
+                              string(sgceng[1,gcIndG],format='(f7.1)')+" "+$
+                              string(sgceng[2,gcIndG],format='(f7.1)')+" <br> "+$
+                    " virRad = "+string(virRadG,format='(i3)')+" ckpc<br> "+$
+                    " virTemp = "+string(virTempG,format='(f3.1)')+" <br><br> "+$
+                    "Arepo:<br> log(M) = "+string(haloMassA,format='(f5.2)')+" <br> "+$
+                    " xyz = "+string(sgcena[0,gcIndA],format='(f7.1)')+" "+$
+                              string(sgcena[1,gcIndA],format='(f7.1)')+" "+$
+                              string(sgcena[2,gcIndA],format='(f7.1)')+" <br> "+$
+                    " virRad = "+string(virRadA,format='(i3)')+" ckpc<br> "+$
+                    " virTemp = "+string(virTempA,format='(f3.1)')+" <br> "
+                              
+      ; make gadget image thumbnail/link string
+      gadgetString = ''
+      
+      foreach axisPair,axesPairs,m do begin        
+        ; sphMap
+        fpath = "sphMaps.gadget.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "map.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
+        
+        gadgetString += axesNames[m]+": <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a>"
+                        
+        ; scatterMap
+        fpath = "scatterMaps.gadget.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "scatter.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
+        
+        gadgetString += " <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a><br>"
+      endforeach
+      
+      gadgetString = strmid(gadgetString,0,strlen(gadgetString)-4)
+      
+      ; make arepo image thumbnail/link string
+      arepoString = ''
+      
+      foreach axisPair,axesPairs,m do begin        
+        ; sphMap
+        fpath = "sphMaps.arepo.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "map.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
+        
+        arepoString += axesNames[m]+": <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a>"
+                        
+        ; scatterMap
+        fpath = "scatterMaps.arepo.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "scatter.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
+        
+        arepoString += " <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a><br>"
+      endforeach
+      
+      arepoString = strmid(arepoString,0,strlen(arepoString)-4)
+      
+      printf,lun," <tr class='row'>"
+      printf,lun,"  <td class='stcell'>"+statsString+"</td>"
+      printf,lun,"  <td class='gacell'>"+gadgetString+"</td>"
+      printf,lun,"  <td class='arcell'>"+arepoString+"</td>"
+      printf,lun," </tr>"
     endfor
-
-  endforeach ;redshifts
-  
-  printf,lun,"</div>"
-  printf,lun,""
-  
-  ; close file
-  free_lun,lun
+    
+    ; arepo (unmatched)
+    ; -----------------
+    for i=0,countNoMatchA-1 do begin
+      haloCounter += 1
+      
+      ; make stats string
+      gcIndA = priAIDs[wA[wNoMatch[i]]]
+      
+      haloMassA = codeMassToLogMsun(gca.subgroupMass[gcIndA])
+      virRadA  = gca.group_r_crit200[gca.subgroupGrNr[gcIndA]]
+      virTempA = alog10(codeMassToVirTemp(gca.subgroupMass[gcIndA],sP=sPa))
+      
+      statsString = "<span class='haloid'>ID: "+str(haloCounter)+"</span><br><br> "+$
+                    "Gadget:<br> <i>Unmatched.</i> <br><br> "+$
+                    "Arepo:<br> log(M) = "+string(haloMassA,format='(f5.2)')+" <br> "+$
+                    " xyz = "+string(sgcena[0,gcIndA],format='(f7.1)')+" "+$
+                              string(sgcena[1,gcIndA],format='(f7.1)')+" "+$
+                              string(sgcena[2,gcIndA],format='(f7.1)')+" <br> "+$
+                    " virRad = "+string(virRadA,format='(i3)')+" ckpc<br> "+$
+                    " virTemp = "+string(virTempA,format='(f3.1)')+" <br> "
+                       
+      ; make arepo image thumbnail/link string
+      arepoString = ''
+      
+      foreach axisPair,axesPairs,m do begin        
+        ; sphMap
+        fpath = "sphMaps.arepo.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "map.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
+        
+        arepoString += axesNames[m]+": <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a>"
+                        
+        ; scatterMap
+        fpath = "scatterMaps.arepo.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "scatter.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
+        
+        arepoString += " <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a><br>"
+      endforeach
+      
+      arepoString = strmid(arepoString,0,strlen(arepoString)-4)
+      
+      printf,lun," <tr class='row'>"
+      printf,lun,"  <td class='stcell'>"+statsString+"</td>"
+      printf,lun,"  <td class='gacell'><i>(Unmatched)</i></td>"
+      printf,lun,"  <td class='arcell'>"+arepoString+"</td>"
+      printf,lun," </tr>"
+    endfor
+    
+    ; gadget (unmatched)
+    ; -----------------
+    for i=0,countNoMatchG-1 do begin
+      haloCounter += 1
+      ; make stats string
+      gcIndG = priGIDs[wGNoMatch[i]]
+      
+      haloMassG = codeMassToLogMsun(gcg.subgroupMass[gcIndG])
+      virRadG   = gcg.group_r_crit200[gcg.subgroupGrNr[gcIndG]]
+      virTempG  = alog10(codeMassToVirTemp(gcg.subgroupMass[gcIndG],sP=sPg))
+      
+      statsString = "<span class='haloid'>ID: "+str(haloCounter)+"</span><br><br> "+$
+                    "Gadget:<br> log(M) = "+string(haloMassG,format='(f5.2)')+" <br> "+$
+                    " xyz = "+string(sgceng[0,gcIndG],format='(f7.1)')+" "+$
+                              string(sgceng[1,gcIndG],format='(f7.1)')+" "+$
+                              string(sgceng[2,gcIndG],format='(f7.1)')+" <br> "+$
+                    " virRad = "+string(virRadG,format='(i3)')+" ckpc<br> "+$
+                    " virTemp = "+string(virTempG,format='(f3.1)')+" <br><br> "+$
+                    "Arepo:<br> <i>Unmatched.</i>  <br> "
+                       
+      ; make arepo image thumbnail/link string
+      gadgetString = ''
+      
+      foreach axisPair,axesPairs,m do begin        
+        ; sphMap
+        fpath = "sphMaps.gadget.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "map.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
+        
+        gadgetString += axesNames[m]+": <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a>"
+                        
+        ; scatterMap
+        fpath = "scatterMaps.gadget.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "scatter.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
+        
+        gadgetString += " <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a><br>"
+      endforeach
+      
+      gadgetString = strmid(gadgetString,0,strlen(gadgetString)-4)
+      
+      printf,lun," <tr class='row'>"
+      printf,lun,"  <td class='stcell'>"+statsString+"</td>"
+      printf,lun,"  <td class='gacell'>"+gadgetString+"</td>"
+      printf,lun,"  <td class='arcell'><i>(Unmatched)</i></td>"
+      printf,lun," </tr>"
+    endfor
+    
+    printf,lun,"</table>"
+    printf,lun,""
+    printf,lun,"</div>"
+    printf,lun,""
+    printf,lun,"</body>"
+    printf,lun,"</html>"
+     
+    ; close file
+    free_lun,lun
+    
+    ; if header.txt exists, cat the two together
+    if file_test("header.txt") then begin
+      print,' added header'
+      spawn,'cat header.txt '+outputName+' > newpage.htm' ;make new
+      spawn,'mv newpage.htm '+outputName ;overwrite original
+    endif
+        
+  endfor ;massBins
   
 end
