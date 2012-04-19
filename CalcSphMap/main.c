@@ -2,6 +2,7 @@
 // CalcSphMap (sph kernel density estimation for projected maps) Routine for IDL
 // dnelson apr.2012
 // based on SphMap (for Python) by Mark Vogelsberger (based on HsmlAndProject for IDL)
+// note: changed to column major output to match IDL convention
 //
 
 #include <stdio.h>
@@ -178,8 +179,8 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
             if(r2 < h2)
             {
 		// divide by sum for normalization
-		dens_out[i * Ypixels + j]  += _getkernel(h, r2) * v / sum;
-		quant_out[i * Ypixels + j] += _getkernel(h, r2) * v * w / sum;
+		dens_out[j * Ypixels + i]  += _getkernel(h, r2) * v / sum;
+		quant_out[j * Ypixels + i] += _getkernel(h, r2) * v * w / sum;
             }
           } //j
         } //i
@@ -189,10 +190,10 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
   } //k
 
   // normalize mass weighted quantity
-  for(i = 0; i < Xpixels; i++)
-    for(j = 0; j < Ypixels; j++)
-      if(dens_out[i * Ypixels + j] > 0)
-        quant_out[i * Ypixels + j] /= dens_out[i * Ypixels + j];
+  for(j = 0; j < Ypixels; j++)
+    for(i = 0; i < Xpixels; i++)
+      if(dens_out[j * Ypixels + i] > 0)
+        quant_out[j * Ypixels + i] /= dens_out[j * Ypixels + i];
 
   IF_VERBOSE(printf("]\n"));	
 	
