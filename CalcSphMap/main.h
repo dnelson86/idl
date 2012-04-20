@@ -3,6 +3,8 @@
 
 #define VERBOSE
 
+/* note the changed KERNEL_COEFF_3 with respect to allvars.h (not sure if this should be there for 1d/2d */
+
 //#define NEAREST(x) (((x)>BoxSize)?((x)-BoxSize):(((x)<0)?((x)+BoxSize):(x))) //no
 #define NEAREST(x) (((x)>BoxHalf)?((x)-BoxSize):(((x)<-BoxHalf)?((x)+BoxSize):(x))) //yes
 
@@ -24,18 +26,21 @@ int Xpixels, Ypixels;
 #define  NUMDIMS 1
 #define  KERNEL_COEFF_1  (4.0/3)
 #define  KERNEL_COEFF_2  (8.0)
-#define  KERNEL_COEFF_3  (24.0)
+//#define  KERNEL_COEFF_3  (24.0)
+#define  KERNEL_COEFF_3  (2.6666666667)
 #else
 #ifndef  TWODIMS
 #define  NUMDIMS 3    /**< For 3D-normalized kernel */
 #define  KERNEL_COEFF_1  2.546479089470 /**< Coefficients for SPH spline kernel and its derivative */
 #define  KERNEL_COEFF_2  15.278874536822
-#define  KERNEL_COEFF_3  45.836623610466
+//#define  KERNEL_COEFF_3  45.836623610466
+#define  KERNEL_COEFF_3  5.092958178941
 #else
 #define  NUMDIMS 2    /**< For 2D-normalized kernel */
 #define  KERNEL_COEFF_1  (5.0/7*2.546479089470) /**< Coefficients for SPH spline kernel and its derivative */
 #define  KERNEL_COEFF_2  (5.0/7*15.278874536822)
-#define  KERNEL_COEFF_3  (5.0/7*45.836623610466)
+//#define  KERNEL_COEFF_3  (5.0/7*45.836623610466)
+#define  KERNEL_COEFF_3  (5.0/7*5.092958178941)
 #endif
 #endif /* ONEDIMS */
 
