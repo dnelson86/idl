@@ -27,7 +27,18 @@ function getColor, i, name=name
   ind = (i) mod (n_elements(units.colors)-1)
   
   if keyword_set(name) then return,units.colors[ind]
-  return,fsc_color(units.colors[ind])
+  return,cgColor(units.colors[ind])
+end
+
+function getColor24, color
+    s = size(color)
+    if s[0] eq 1 then begin
+       if s[1] ne 3 then message, 'Error: Color must be a size 3 vector.'
+       return, color[0] + (color[1] * 2L^8) + (color[2] * 2L^16)
+    endif else begin
+       if s[2] gt 3 then message, 'Error: Color must be an Nx3 array.'
+       return, color[*,0] + (color[*,1] * 2L^8) + (color[*,2] * 2L^16)
+    endelse
 end
 
 function linspace, a, b, N
@@ -607,8 +618,13 @@ function calcNN, Pos_SrcTargs, Pos_SrcOrigs, boxSize=boxSize, ndims=ndims
   n_srcTargs = long( n_elements(Pos_SrcTargs[0,*]) )
   n_srcOrigs = long( n_elements(Pos_SrcOrigs[0,*]) )
   
-  boxSize   = float(boxSize)
+  boxSize = float(boxSize)
   
+  ; make sure floats for direct cast
+  Pos_SrcTargs = float(Pos_SrcTargs)
+  Pos_SrcOrigs = float(Pos_SrcOrigs)
+  
+  ; prepare return
   ind_out = lonarr(n_srcOrigs)
   
   ; call CalcNN
@@ -656,6 +672,12 @@ function calcSphMap, pos, hsml, mass, quant, axes=axes, boxSizeImg=boxSizeImg, b
   
   if (axes[0] ne 0 and axes[0] ne 1 and axes[0] ne 2) then stop
   if (axes[1] ne 0 and axes[1] ne 1 and axes[1] ne 2) then stop
+  
+  ; we direct case so ensure everything is the right size
+  pos   = float(pos)
+  hsml  = float(hsml)
+  mass  = float(hsml)
+  quant = float(quant)
   
   ; make return
   dens_out  = fltarr(nPixels[0],nPixels[1])
@@ -716,7 +738,7 @@ end
 @cosmoSpherePlot
 @cosmoPlotGalCat
 @cosmoPlot
-@verifyOldShmass
+@cosmoOverDens
 
 @tracersVel_Cosmo
 @tracersVel_Halos
