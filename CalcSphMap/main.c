@@ -83,7 +83,7 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
     // clip points outside box (z) dimension
     if(BoxSize)
     {
-      if(NEAREST(fabs(p[3-axis0-axis1]-BoxCen_Z)) > 0.5*BoxSize_ImageZ)
+      if(fabs(NEAREST(p[3-axis0-axis1]-BoxCen_Z)) > 0.5*BoxSize_ImageZ)
         continue;
     } else {
       if(fabs(p[3 - axis0 - axis1] - BoxCen_Z) > 0.5*BoxSize_ImageZ)
