@@ -801,6 +801,161 @@ function loadSubhaloGroups, sP=sP, verbose=verbose, skipIDs=skipIDs
   return,sf
 end
 
+; loadHsmlDir(): load (OLD, not HDF5) "hsmldir" with Hsml,Density,VelDisp of -all- particles
+;                may be ID ordered or "IC ID" (effectively snapshot index) ordered
+
+function loadHsmlDir, sP=sP, verbose=verbose, partType=partType, $
+                      readHsml=readHsml, readDens=readDens, readVelDisp=readVelDisp
+
+  if not keyword_set(verbose) then verbose = 0
+  if ~keyword_set(readHsml) and ~keyword_set(readDens) and ~keyword_set(readVelDisp) then $
+    message,'Error: Need to specify at least one field to read.'
+
+  ; set filename
+  ext = string(sP.snap,format='(I3.3)')
+  fName = sP.simPath + 'hsmldir_' + ext + '/hsml_' + ext
+  
+  ; check existance and multiple outputs
+  if not file_test(fName) then begin
+    if (file_test(fName+'.0')) then begin
+      ; split into multiples, get count
+      nSplit = n_elements(file_search(fName+".*"))
+    endif else begin
+      message, 'ERROR: hsmldir file ' + sP.simPath + str(sP.snap) + ' does not exist!'
+    endelse
+  endif
+  
+  if (verbose) then $
+    print,'Loading hsmldir from snapshot ('+str(sP.snap)+') in [' + str(nSplit) + '] files.'
+  
+  ; counters
+  nHSMLTot = 0L
+  skip     = 0L
+  
+  ; headers
+  h  = { nHSML:          0L,  $
+         SendOffset:     0L,  $
+         nTotal:        0LL,  $
+         nTask:          0L   }
+             
+  ; load 0 for header
+  openr,lun,fName+'.0',/GET_LUN
+  readu,lun,h
+  close,lun
+  free_lun,lun
+  
+  if (h.nTask ne nSplit) then $
+     print,'WARNING: h.nTask='+str(h.nTask)+' differs from number of split files ('+str(nSplit)
+  
+  for i=0,h.nTask-1 do begin
+  
+    fNameCur = fName + '.' + str(i)
+    
+    ; open and read header
+    openr,lun,fNameCur,/GET_LUN
+    readu,lun,h
+      
+    ; skip loading actual particle IDs
+    if keyword_set(skipIDs) then h.nIDsTot = 1
+  
+    ; add counters and error check
+    nHSMLTot    += h.nHSML
+    
+    ; allocate storage if this is the first iteration
+    if (i eq 0) then begin
+      if keyword_set(readHsml) and keyword_set(readDens) and keyword_set(readVelDisp) then $
+        hd = { hsml : fltarr(h.nTotal), density : fltarr(h.nTotal), veldisp : fltarr(h.nTotal) }
+      if keyword_set(readHsml) and keyword_set(readDens) and ~keyword_set(readVelDisp) then $
+        hd = { hsml : fltarr(h.nTotal), density : fltarr(h.nTotal) }
+      if keyword_set(readHsml) and ~keyword_set(readDens) and keyword_set(readVelDisp) then $
+        hd = { hsml : fltarr(h.nTotal), veldisp : fltarr(h.nTotal) }
+      if ~keyword_set(readHsml) and keyword_set(readDens) and keyword_set(readVelDisp) then $
+        hd = { density : fltarr(h.nTotal), veldisp : fltarr(h.nTotal) }
+      if ~keyword_set(readHsml) and ~keyword_set(readDens) and keyword_set(readVelDisp) then $
+        hd = { veldisp : fltarr(h.nTotal) }
+      if keyword_set(readHsml) and ~keyword_set(readDens) and ~keyword_set(readVelDisp) then $
+        hd = { hsml : fltarr(h.nTotal) }
+      if ~keyword_set(readHsml) and keyword_set(readDens) and ~keyword_set(readVelDisp) then $
+        hd = { density : fltarr(h.nTotal) }
+    endif
+    
+    ; allocate temporary storage for groups in this part
+    if (h.nHSML gt 0) then $
+      part = { hsml : fltarr(h.nHSML), density : fltarr(h.nHSML), veldisp : fltarr(h.nHSML) }
+    
+    ; load group data from this part
+    readu,lun,part
+    
+    ; fill hd with group data from this part
+    if keyword_set(readHsml) then hd.hsml[skip:(skip+h.nHSML-1)]       = part.hsml
+    if keyword_set(readDens) then hd.density[skip:(skip+h.nHSML-1)]    = part.density
+    if keyword_set(readVelDisp) then hd.veldisp[skip:(skip+h.nHSML-1)] = part.veldisp
+    
+    skip += h.nHSML
+    
+    ; close file
+    close,lun
+    free_lun, lun
+  
+  endfor
+  
+  ; verify accumulated totals with last header totals
+  if nHSMLTot ne h.nTotal then message,'ERROR: Totals do not add up.'
+  
+  ; restrict to a particle type if requested
+  if keyword_set(partType) then begin
+    if partType eq 'dm' then begin
+      ; ID ordered assumption
+      ids_dm    = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
+      ids_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+      ids_stars = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+      
+      ids = [ids_dm,ids_gas,ids_stars] ; concat
+      ids_gas   = !NULL
+      ids_stars = !NULL
+      
+      idsMask = bytarr(n_elements(ids)) ; mask to keep track of DM
+      idsMask[0:n_elements(ids_dm)-1] = 1B ; DM first
+      ids_sort = sort(ids) ; ID sort ascending
+      idsMask = idsMask[ids_sort] ; sort mask
+      ids = !NULL
+      ids_sort = !NULL
+      
+      dm_hsml_inds = where(idsMask eq 1B,count) ; dm locations in hsmldir (ascending id order)
+      dm_hsml_inds = dm_hsml_inds[ids_dm-min(ids_dm)] ; put back in snapshot order
+      
+      if count ne n_elements(ids_dm) then message,'Error: Bad location search.'
+      idsMask = !NULL
+      ids_dm  = !NULL
+      
+      ; if just one field requested, return it as an array
+      if ~keyword_set(readHsml) and ~keyword_set(readDens) and keyword_set(readVelDisp) then $
+        return, hd.veldisp[dm_hsml_inds]
+      if keyword_set(readHsml) and ~keyword_set(readDens) and ~keyword_set(readVelDisp) then $
+        return, hd.hsml[dm_hsml_inds]
+      if ~keyword_set(readHsml) and keyword_set(readDens) and ~keyword_set(readVelDisp) then $
+        return, hd.density[dm_hsml_inds]
+      
+      ; otherwise modify hd and return
+      if keyword_set(readHsml) and keyword_set(readDens) and keyword_set(readVelDisp) then $
+        hd2 = { hsml : hd.hsml[dm_hsml_inds], density : hd.density[dm_hsml_inds], veldisp : hd.veldisp[dm_hsml_inds] }
+      if keyword_set(readHsml) and keyword_set(readDens) and ~keyword_set(readVelDisp) then $
+        hd2 = {  hsml : hd.hsml[dm_hsml_inds], density : hd.density[dm_hsml_inds] }
+      if keyword_set(readHsml) and ~keyword_set(readDens) and keyword_set(readVelDisp) then $
+        hd2 = {  hsml : hd.hsml[dm_hsml_inds], veldisp : hd.veldisp[dm_hsml_inds] }
+      if ~keyword_set(readHsml) and keyword_set(readDens) and keyword_set(readVelDisp) then $
+        hd2 = { density : hd.density[dm_hsml_inds], veldisp : hd.veldisp[dm_hsml_inds] }
+        
+      return,hd2
+    endif
+    message,'Error: Other part type returns not generalized yet.'
+  endif
+  
+  if (verbose) then print,'Load complete for all particle types. (nHSMLTot = ' + str(nHSMLTot) + ')'
+        
+  return,hd
+end
+
 ; getSnapFilelist(): take input path and snapshot number and find snapshot filename
 
 function getSnapFilelist, fileBase, snapNum=m, groupOrdered=groupOrdered, subBox=subBox

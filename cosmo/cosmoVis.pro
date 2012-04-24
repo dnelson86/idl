@@ -6,6 +6,8 @@
 
 pro sphMapBox, res=res, run=run, partType=partType
 
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
   ; config
   ;res = 128
   ;run = 'dev.tracer.nocomov'
@@ -50,11 +52,12 @@ pro sphMapBox, res=res, run=run, partType=partType
     ; load positions from snapshot
     pos  = loadSnapshotSubset(sP.simPath,snapNum=snap,partType=partType,field='pos',/verbose) 
     
-    hsml = calcHSML(pos,ndims=3,nNGB=nNGB,boxSize=boxSize[0])
-
-    ; OR: load HSML from snapshot (only stored for gas)
-    ;hsml = loadSnapshotSubset(sP.simPath,snapNum=snap,partType='gas',field='hsml',/verbose)
-      
+    ; load HSML from snapshot (only stored for gas)
+    if partType eq 'gas' then $
+      hsml = loadSnapshotSubset(sP.simPath,snapNum=snap,partType='gas',field='hsml',/verbose) $
+    ; if different particle type, calculate HSMLs
+    else hsml = calcHSML(pos,ndims=3,nNGB=nNGB,boxSize=boxSize[0])
+    
     colMassMap = calcSphMap(pos,hsml,mass,boxSize=boxSize,boxCen=boxCen,nPixels=nPixels,$
                             axes=axes,ndims=3)
               
@@ -89,196 +92,115 @@ pro sphMapBox, res=res, run=run, partType=partType
   
 end
 
-; sphDensityProjection(): (OLD) make density projection using SPH kernel (inspired by Mark's sphMap)
-;                         NOTE: kernel coeffs only valid for 3D!
+; plotScatterComp(): plot side by side colored/vectorized scatter plots
 
-function sphDensityProjection, pos, hsml, mass, quantity=quantity, imgSize=imgSize, boxSize=boxSize,$
-                               boxCen=boxCen, axis0=axis0, axis1=axis1, mode=mode, periodic=periodic,$
-                               verbose=verbose
+pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cinds_right, config=config
 
-  print,'You should switch this to the calcSphMap C-routine.'
-  stop
-
-  ; config
-  if not keyword_set(axis0) then axis0 = 0
-  if not keyword_set(axis1) then axis1 = 1
-  if not keyword_set(verbose) then verbose = 0
-  
-  if keyword_set(periodic) then begin
-    print,'ERROR: PERIODIC not supported.'
-    return,0
-  endif
-  
-  if (mode ne 1 and mode ne 2 and mode ne 3) then begin
-    print,'ERROR: Unsupported mode='+str(mode)+' parameter.'
-    return,0
-  endif
-  
-  ; storage
-  p    = dblarr(3)
-  pos0 = double(0.0)
-  pos1 = double(0.0)
-  binnedParticles = 0UL
-  
-  ; init
-  npart = n_elements(hsml)
-
-  grid = fltarr(imgSize[0],imgSize[1])
-  
-  if keyword_set(quantity) then $
-    gridQuantity = fltarr(imgSize[0],imgSize[1])
-  
-  pxSize = [float(boxSize[0]) / imgSize[0], float(boxSize[1]) / imgSize[1]]
-  pxArea = pxSize[0] * pxSize[1]
-
-  if (pxSize[0] lt pxSize[1]) then $
-    hMin = 1.001 * pxSize[0] / 2.0
-  if (pxSize[0] ge pxSize[1]) then $
-    hMin = 1.001 * pxSize[1] / 2.0
-    
-  hMax = pxSize[0] * 50.0
-  
-  for part=0, npart-1, 1 do begin
-    ; progress report
-    if (part mod round(npart/10.0) eq 0 and verbose) then $
-      print,'Progress: '+string(100.0*part/npart,format='(I3)')+'%'
+      xMinMax = [-config.boxSizeImg[0]/2.0,config.boxSizeImg[0]/2.0]
+      yMinMax = [-config.boxSizeImg[1]/2.0,config.boxSizeImg[1]/2.0]
       
-    ; get particle data
-    p[0] = pos[0,part]
-    p[1] = pos[1,part]
-    p[2] = pos[2,part]
-    h    = double(hsml[part])
-    v    = double(mass[part])
-    
-    if keyword_set(quantity) then $
-      w    = double(quantity[part])
-    
-    ; early exit if out of z-bounds
-    if (abs(p[3-axis0-axis1] - boxCen[2]) gt boxSize[2] / 2.0) then $
-      continue
+      plotPath = '/n/home07/dnelson/data3/HaloComp/'
       
-    pos0 = p[axis0] - (boxCen[0] - boxSize[0] / 2.0)
-    pos1 = p[axis1] - (boxCen[1] - boxSize[1] / 2.0)
-    
-    ; clamp hsml
-    if (h lt hMin) then h = hMin;
-    if (h gt hMax) then h = hMax;
-    
-    ; early exit if ...
-    if (pos0 - 0.0 lt -h or pos1 - 0.0 lt -h or pos0 - boxSize[0] gt h or pos1 - boxSize[1] gt h) then $
-      continue
+      start_PS, plotPath + config.plotFilename, xs=8, ys=4
       
-    binnedParticles += 1
-    
-    h2 = h * h;
-    
-    ; number of pixels covered by particle
-    nx = h / pxSize[0] + 1;
-    ny = h / pxSize[1] + 1;
-    
-    ; coordinates of pixel center of particle
-    x = (floor(pos0 / pxSize[0]) + 0.5) * pxSize[0]
-    y = (floor(pos1 / pxSize[1]) + 0.5) * pxSize[1]
-    
-    ; normalization constant
-    sum = 0.0
-    
-    for dx = -nx, nx, 1 do begin
-      for dy = -ny, ny, 1 do begin
-        ; dist of covered pixel from actual position
-        xx = x + dx * pxSize[0] - pos0
-        yy = y + dy * pxSize[1] - pos1
-        r2 = xx*xx + yy*yy
+        !p.thick = 1.0
+        !p.charsize = 0.8
+      
+        ; color table and establish temperature -> color mapping
+        loadColorTable,'helix',/reverse
         
-        if (r2 < h2) then begin
-          ; sph kernel (inlined): sum += _getkernel(h,r2);
-          hinv = double(1.0) / h
-          u    = sqrt(r2) * hinv
-          
-          if (u lt 0.5) then begin
-            sum += (2.546479089470 + 15.278874536822 * (u - 1.0) * u * u)
-          endif else begin
-            sum += (5.092958178941 * (1.0 - u) * (1.0 - u) * (1.0 - u))
-          endelse
-        endif ;r2 < h2
-      endfor
-    endfor
-    
-    ; exit if negligible
-    if (sum lt 1.0e-10) then $
-      continue
-      
-    ; add contribution to image
-    for dx = -nx, nx, 1 do begin
-      for dy = -ny, ny, 1 do begin
-        ; coordinates of pixel center of covering pixels
-        xxx = x + dx * pxSize[0]
-        yyy = y + dy * pxSize[1]
-        
-        ; pixel array indices
-        i = floor(xxx / pxSize[0]) ;implicit C cast to int
-        j = floor(yyy / pxSize[1]) ;same
-        
-        if (i ge 0 and i lt imgSize[0] and j ge 0 and j lt imgSize[1]) then begin
-          xx = x + dx * pxSize[0] - pos0
-          yy = y + dy * pxSize[1] - pos1
-          r2 = xx*xx + yy*yy
-          
-          if (r2 lt h2) then begin
-            ; divide by sum for normalization
-            ; divide by pixelarea to get column density (optional: /pxArea)
-            ; sph kernel (inlined): grid[] += _getkernel(h,r2) * v / sum
-            hinv = double(1.0) / h
-            u    = sqrt(r2) * hinv
-            
-            if (u lt 0.5) then begin
-              grid[i * imgSize[1] + j] += $
-                (2.546479089470 + 15.278874536822 * (u - 1.0) * u * u) * v / sum
-              if keyword_set(quantity) then $
-                gridQuantity[i * imgSize[1] + j] += $
-                  (2.546479089470 + 15.278874536822 * (u - 1.0) * u * u) * v * w / sum
-            endif else begin
-              grid[i * imgSize[1] + j] += $
-                (5.092958178941 * (1.0 - u) * (1.0 - u) * (1.0 - u)) * v / sum
-                  if keyword_set(quantity) then $
-                  gridQuantity[i * imgSize[1] + j] += $
-                  (5.092958178941 * (1.0 - u) * (1.0 - u) * (1.0 - u)) * v * w / sum
-            endelse
-          
-          endif ;r2 < h2
-        endif ;i,j
-      
-      endfor
-    endfor
+        TVLCT, rr, gg, bb, /GET
 
-  endfor ;part
-  
-  if (verbose) then print,'Number of binned particles: ',binnedParticles
-  
-  if (mode eq 1) then begin
-    if (verbose) then print,'Returning: Column Mass Map'
-    return,grid
-  endif
-  if (mode eq 2) then begin
-    if (verbose) then print,'Returning: Quantity Mass-Weighted Map'
-    return,gridQuantity
-  endif
-  if (mode eq 3) then begin
-    if (verbose) then print,'Returning: Column Density Map'
-    for i=0,i lt imgSize[0] do begin
-      for j=0,j lt imgSize[1] do begin
-        grid[i + imgSize[1] * j] /= pxArea
-      endfor
-    endfor
-    
-    return,grid
-  endif
+        newcolors_left = getColor24([[rr[cinds_left]], [gg[cinds_left]], [bb[cinds_left]]])
 
+        ; all gas
+        cgPlot, /nodata, xMinMax, yMinMax, pos=[0.0,0.0,0.5,1.0], xs=5, ys=5
+        
+        ; circle at virial radius
+        tvcircle,config.haloVirRad,0,0,cgColor('dark gray'),thick=0.6,/data
+        
+        ; particle loop for velocity vector plotting
+        nCutoutLeft = n_elements(pos_left[0,*])
+        for i=0L,nCutoutLeft-1 do $
+          oplot,[pos_left[config.axisPair[0],i],pos2_left[config.axisPair[0],i]],$
+                 [pos_left[config.axisPair[1],i],pos2_left[config.axisPair[1],i]],$
+                 line=0,color=newcolors_left[i]
+                 
+        newcolors_left = !NULL
+        
+        ; scale bar
+        len = 250.0 ;ckpc
+        cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.3,$
+               string(len,format='(i3)')+' ckpc',alignment=0.5,color=cgColor('dark gray')
+        cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
+               [config.boxSizeImg[1]/2.1,config.boxSizeImg[1]/2.1],$
+               color=cgColor('dark gray'),thick=4.0,/overplot
+               
+        ; dark matter
+        cgPlot, /nodata, xMinMax, yMinMax, pos=[0.5,0.0,1.0,1.0], xs=5, ys=5, /noerase
+
+        tvcircle,config.haloVirRad,0,0,cgColor('dark gray'),thick=0.6,/data
+        
+        newcolors_right = getColor24([[rr[cinds_right]], [gg[cinds_right]], [bb[cinds_right]]])
+        
+        ; particle loop for velocity vector plotting (cold gas only)
+        nCutoutRight = n_elements(pos_right[0,*])
+        for i=0L,nCutoutRight-1 do $
+          oplot,[pos_right[config.axisPair[0],i],pos2_right[config.axisPair[0],i]],$
+                 [pos_right[config.axisPair[1],i],pos2_right[config.axisPair[1],i]],$
+                 line=0,color=newcolors_right[i]
+                 
+        newcolors_right = !NULL
+        
+        ; redshift and halo mass
+        cgText,0.99,0.96,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,color=cgColor('dark gray'),/normal
+        cgText,0.99,0.92,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,color=cgColor('dark gray'),/normal
+        
+        ; dividing line
+        cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('light gray'),/overplot
+        
+        ; colorbar(s) on bottom
+        !x.thick = 1.0
+        !y.thick = 1.0
+        
+        if config.barType eq '2tempvdisp' then begin
+          ; temp and veldisp separate colorbars
+          colorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+          cgText,0.25,0.0375,textoidl("log T_{gas} [K]"),alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.115,0.036,'4',alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.385,0.036,'7',alignment=0.5,color=cgColor('white'),/normal
+          
+          colorbar,position=[0.02,0.6,0.076,0.9],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+          cgText,0.75,0.0375,textoidl("\sigma_{vel} [km/s]"),alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.615,0.036,'0',alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.875,0.036,string(config.barMM_right[1],format='(i3)'),$
+            alignment=0.5,color=cgColor('white'),/normal
+        endif
+        
+        if config.barType eq '1temp' then begin
+          ; gas temperature one colorbar (centered)
+          colorbar,position=[0.02,0.35,0.076,0.65],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+          cgText,0.5,0.0375,textoidl("log T_{gas} [K]"),alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.365,0.036,'4',alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.635,0.036,'7',alignment=0.5,color=cgColor('white'),/normal
+        endif
+        
+        if config.barType eq '1overdens' then begin
+          ; local overdensity one colorbar (centered)
+          colorbar,position=[0.02,0.35,0.076,0.65],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+          cgText,0.5,0.0375,textoidl("log \rho_{DM} / <\rho_{DM}>"),alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.365,0.036,string(config.barMM[0],format='(i3)'),alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.635,0.036,string(config.barMM[1],format='(i3)'),alignment=0.5,color=cgColor('white'),/normal
+        endif
+        
+      end_PS, pngResize=60, im_options='-negate', /deletePS
 end
 
 ; scatterMapHalos: plot temperature colored scatter plots with velocity vectors on boxes centered on halos
 
 pro scatterMapHalos, sP=sP, gcIDs=gcIDs
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
 
@@ -289,13 +211,11 @@ pro scatterMapHalos, sP=sP, gcIDs=gcIDs
   
   tempMinMax  = [4.0,7.0] ; log(K)
   coldTempCut = 5.0       ; log(K)
-  velVecFac   = 0.001     ; times velocity (km/s) in plotted kpc
+  velVecFac   = 0.01     ; times velocity (km/s) in plotted kpc
   
   axes = list([0,1],[0,2],[1,2]) ;xy,xz,yz
-  ;axes = list([0,1])
   
   ; target list
-  print,'loading...'
   gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
   sgcen = subgroupPosByMostBoundID(sP=sP) 
 
@@ -310,7 +230,7 @@ pro scatterMapHalos, sP=sP, gcIDs=gcIDs
   pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
   vel = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
   
-  ; randomly shuffle the points (break the peano orderin to avoid "square" visualization artifacts)
+  ; randomly shuffle the points (break the peano ordering to avoid "square" visualization artifacts)
   print,'shuffling...'
   iseed = 424242L
   sort_inds = sort(randomu(iseed,n_elements(temp)))
@@ -331,9 +251,9 @@ pro scatterMapHalos, sP=sP, gcIDs=gcIDs
     boxSizeImg = [boxSize,boxSize,boxSize] ; cube
   
     ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
-    xDist = boxCen[0] - pos[0,*]
-    yDist = boxCen[1] - pos[1,*]
-    zDist = boxCen[2] - pos[2,*]
+    xDist = pos[0,*] - boxCen[0]
+    yDist = pos[1,*] - boxCen[1]
+    zDist = pos[2,*] - boxCen[2]
     
     correctPeriodicDistVecs, xDist, sP=sP
     correctPeriodicDistVecs, yDist, sP=sP
@@ -364,7 +284,7 @@ pro scatterMapHalos, sP=sP, gcIDs=gcIDs
   
     ; create color index mapping
     colorinds = (loc_temp-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
-    colorinds = fix(colorinds + 50.0) ;50-255  
+    colorinds = fix(colorinds + 50.0) > 0 < 255 ;50-255  
   
     ; local (cold) cutout
     wCold = where(loc_temp le coldTempCut,nCutoutCold)
@@ -380,75 +300,21 @@ pro scatterMapHalos, sP=sP, gcIDs=gcIDs
            
       ; get box center (in terms of specified axes)
       boxCenImg  = [sgcen[axisPair[0],gcID],sgcen[axisPair[1],gcID],sgcen[3-axisPair[0]-axisPair[1],gcID]]
+      haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcID]] ;ckpc
+      haloMass = codeMassToLogMsun(gc.subgroupMass[gcID])
       
       print,'['+string(gcID,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
             str(axisPair[1])+'] with '+str(boxSize[0])+$
             ' kpc box around subhalo center ['+str(boxCen[0])+' '+str(boxCen[1])+' '+str(boxCen[2])+']'
 
-      xMinMax = [-boxSizeImg[0]/2.0,boxSizeImg[0]/2.0]
-      yMinMax = [-boxSizeImg[1]/2.0,boxSizeImg[1]/2.0]
-      
       plotFilename = 'scatter.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
                      '.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
+
+      config = {boxSizeImg:boxSizeImg,plotFilename:plotFilename,haloVirRad:haloVirRad,haloMass:haloMass,$
+                axisPair:axisPair,sP:sP,barMM:tempMinMax,barType:'1temp'}
       
-      start_PS, sP.plotPath + plotFilename, xs=8, ys=4
-      
-        ; color table and establish temperature -> color mapping
-        loadColorTable,'helix',/reverse
-        
-        TVLCT, rr, gg, bb, /GET
-
-        newcolors = getColor24([[rr[colorinds]], [gg[colorinds]], [bb[colorinds]]])
-        newcolors_cold = getColor24([[rr[colorinds_cold]], [gg[colorinds_cold]], [bb[colorinds_cold]]])
-
-        ; all gas
-        cgPlot, /nodata, xMinMax, yMinMax, pos=[0.0,0.0,0.5,1.0], xs=5, ys=5
-        
-        haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcID]] ;ckpc
-        tvcircle,haloVirRad,0,0,cgColor('dark gray'),thick=0.6,/data
-        
-        ; particle loop for velocity vector plotting
-        for i=0L,nCutout-1 do $
-          plots,reform([loc_pos[axisPair[0],i],loc_pos2[axisPair[0],i]]),$
-                 reform([loc_pos[axisPair[1],i],loc_pos2[axisPair[1],i]]),$
-                 line=0,color=newcolors[i]
-
-        ; scale bar
-        len = 100.0 ;ckpc
-        cgText,mean([-boxSizeImg[0]/2.2,-boxSizeImg[0]/2.2+len]),boxSizeImg[0]/2.4,$
-               string(len,format='(i3)')+' ckpc',alignment=0.5,charsize=!p.charsize-0.6,color=cgColor('dark gray')
-        cgPlot,[-boxSizeImg[0]/2.2,-boxSizeImg[0]/2.2+len],[boxSizeImg[1]/2.2,boxSizeImg[1]/2.2],$
-               color=cgColor('dark gray'),/overplot
-               
-        ; cold only
-        cgPlot, /nodata, xMinMax, yMinMax, pos=[0.5,0.0,1.0,1.0], xs=5, ys=5, /noerase
-
-        tvcircle,haloVirRad,0,0,cgColor('dark gray'),thick=0.6,/data
-        
-        ; particle loop for velocity vector plotting (cold gas only)
-        for i=0L,nCutoutCold-1 do $
-          plots,reform([loc_pos_cold[axisPair[0],i],loc_pos2_cold[axisPair[0],i]]),$
-                 reform([loc_pos_cold[axisPair[1],i],loc_pos2_cold[axisPair[1],i]]),$
-                 line=0,color=newcolors_cold[i]
-        
-        ; redshift and halo mass
-        !p.charsize = 1.0
-        haloMass = codeMassToLogMsun(gc.subgroupMass[gcID])
-        cgText,0.98,0.94,"z = "+string(sP.redshift,format='(f3.1)'),alignment=1.0,color=cgColor('dark gray'),/normal
-        cgText,0.98,0.89,"M = "+string(haloMass,format='(f4.1)'),alignment=1.0,color=cgColor('dark gray'),/normal
-        
-        ; dividing line
-        cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('light gray'),/overplot
-        
-        ; temp colorbar on right
-        !x.thick = 1.0
-        !y.thick = 1.0
-        colorbar,position=[0.02,0.35,0.08,0.65],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
-        cgText,0.5,0.04,textoidl("log T_{gas} [K]"),alignment=0.5,charsize=!p.charsize-0.2,color=cgColor('white'),/normal
-        cgText,0.365,0.04,'4',alignment=0.5,charsize=!p.charsize-0.2,color=cgColor('white'),/normal
-        cgText,0.635,0.04,'7',alignment=0.5,charsize=!p.charsize-0.2,color=cgColor('white'),/normal
-        
-      end_PS, pngResize=60, im_options='-negate', /deletePS
+      ; plot
+      plotScatterComp,loc_pos,loc_pos2,loc_pos_cold,loc_pos2_cold,colorinds,colorinds_cold,config=config            
 
     endforeach ;axisPair
 
@@ -456,15 +322,387 @@ pro scatterMapHalos, sP=sP, gcIDs=gcIDs
 
 end
 
-; sphMapHalos: run sph kernel density projection on boxes centered on halos
+; scatterMapHalosGasDM: plot temperature colored scatter plots with velocity vectors on boxes centered on halos
+;                       gas on left and DM on right (usually more zoomed out)
 
-pro sphMapHalos, sP=sP, gcIDs=gcIDs, coldOnly=coldOnly
+pro scatterMapHalosGasDM, sP=sP, gcIDs=gcIDs
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
 
   ; config
-  sizeFac = 2.0       ; times rvir
-  cutFac  = 1.1       ; times boxSize
+  sizeFac = 10.0      ; times rvir
+  cutFac  = 1.0       ; times boxSize
+  nPixels = [800,800] ; px
+  
+  tempMinMax  = [4.0,7.0] ; log(K)
+  velVecFac   = 0.01      ; times velocity (km/s) in plotted kpc
+  
+  axes = list([0,1],[0,2],[1,2]) ;xy,xz,yz
+  
+  ; target list
+  h     = loadSnapshotHeader(sP=sP)
+  gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
+  sgcen = subgroupPosByMostBoundID(sP=sP) 
+
+  ; load u,nelec and calculate temperature
+  u     = loadSnapshotSubset(sP=sP,partType='gas',field='u')
+  nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec')
+  temp  = convertUtoTemp(u,nelec,/log)
+  u     = !NULL
+  nelec = !NULL
+
+  ; load gas positions and velocities
+  pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+  vel = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
+  
+  ; randomly shuffle the points (break the peano ordering to avoid "square" visualization artifacts)
+  print,'shuffling gas...'
+  iseed = 424242L
+  sort_inds = sort(randomu(iseed,n_elements(temp)))
+  
+  temp = temp[sort_inds]
+  pos  = pos[*,sort_inds]
+  vel  = vel[*,sort_inds]
+  
+  sort_inds = !NULL
+
+  ; find the DM positions in the hsmldir for the veldisps (have to load all particle IDs)
+  veldisp = loadHsmlDir(sP=sP,partType='dm',/readVelDisp,/verbose)
+  
+  ; load dm positions and velocities
+  print,'loading dm...'
+  pos_dm  = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
+  vel_dm  = loadSnapshotSubset(sP=sP,partType='dm',field='vel')
+  
+  ; randomly shuffle the points (break the peano ordering to avoid "square" visualization artifacts)
+  print,'shuffling dm...'
+  iseed = 434343L
+  sort_inds = sort(randomu(iseed,n_elements(veldisp)))
+  
+  veldisp = veldisp[sort_inds]
+  pos_dm  = pos_dm[*,sort_inds]
+  vel_dm  = vel_dm[*,sort_inds]
+  
+  sort_inds = !NULL
+  
+  print,'rendering...'
+  ; loop over all requested halos and image
+  foreach gcID, gcIDs do begin
+  
+    ; get subhalo position and size of imaging box
+    boxCen     = sgcen[*,gcID]
+    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]] / 10.0) * 10.0
+    boxSizeImg = [boxSize,boxSize,boxSize] ; cube
+  
+    ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
+    xDist = pos[0,*] - boxCen[0]
+    yDist = pos[1,*] - boxCen[1]
+    zDist = pos[2,*] - boxCen[2]
+    
+    correctPeriodicDistVecs, xDist, sP=sP
+    correctPeriodicDistVecs, yDist, sP=sP
+    correctPeriodicDistVecs, zDist, sP=sP
+  
+    ; local (cube) cutout
+    wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
+                 abs(zDist) le 0.5*cutFac*boxSize,nCutout)
+    
+    loc_temp = temp[wCut]
+    loc_pos  = fltarr(3,nCutout)
+    loc_pos[0,*] = xDist[wCut] ; delta
+    loc_pos[1,*] = yDist[wCut]
+    loc_pos[2,*] = zDist[wCut]
+    
+    xDist = !NULL
+    yDist = !NULL
+    zDist = !NULL
+    
+    loc_vel = vel[*,wCut]
+    
+    ; create endpoint for each position point for the velocity vector line
+    loc_pos2 = fltarr(3,nCutout)
+    loc_pos2[0,*] = loc_pos[0,*] + loc_vel[0,*]*velVecFac
+    loc_pos2[1,*] = loc_pos[1,*] + loc_vel[1,*]*velVecFac
+    loc_pos2[2,*] = loc_pos[2,*] + loc_vel[2,*]*velVecFac
+    loc_vel = !NULL
+  
+    ; create color index mapping
+    colorinds = (loc_temp-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
+    colorinds = fix(colorinds + 50.0) > 0 < 255 ;50-255
+    loc_temp = !NULL
+  
+    ; DM: make cutout
+    xDist = pos_dm[0,*] - boxCen[0]
+    yDist = pos_dm[1,*] - boxCen[1]
+    zDist = pos_dm[2,*] - boxCen[2]
+    
+    correctPeriodicDistVecs, xDist, sP=sP
+    correctPeriodicDistVecs, yDist, sP=sP
+    correctPeriodicDistVecs, zDist, sP=sP
+    
+    ; local (cube) cutout
+    wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
+                 abs(zDist) le 0.5*cutFac*boxSize,nCutoutDM)
+    
+    loc_veldisp = veldisp[wCut]
+    loc_pos_dm  = fltarr(3,nCutoutDM)
+    
+    loc_pos_dm[0,*] = xDist[wCut] ; delta
+    loc_pos_dm[1,*] = yDist[wCut]
+    loc_pos_dm[2,*] = zDist[wCut]
+    
+    xDist = !NULL
+    yDist = !NULL
+    zDist = !NULL
+    
+    loc_vel_dm = vel_dm[*,wCut]
+    
+    ; create endpoint for each position point for the velocity vector line
+    loc_pos2_dm = fltarr(3,nCutoutDM)
+    loc_pos2_dm[0,*] = loc_pos_dm[0,*] + loc_vel_dm[0,*]*velVecFac
+    loc_pos2_dm[1,*] = loc_pos_dm[1,*] + loc_vel_dm[1,*]*velVecFac
+    loc_pos2_dm[2,*] = loc_pos_dm[2,*] + loc_vel_dm[2,*]*velVecFac
+    loc_vel_dm = !NULL
+  
+    ; create color index mapping
+    veldispMM = [0.0,floor(max(loc_veldisp)/100.0)*100.0 > 100 < 400]
+    colorinds_dm = (loc_veldisp-veldispMM[0])*205.0 / (veldispMM[1]-veldispMM[0]) ;0-205
+    colorinds_dm = fix(colorinds_dm + 50.0) > 0 < 255 ;50-255
+    loc_veldisp = !NULL
+  
+    ; make a plot for each requested projection direction
+    foreach axisPair, axes do begin
+           
+      ; get box center (in terms of specified axes)
+      boxCenImg  = [sgcen[axisPair[0],gcID],sgcen[axisPair[1],gcID],sgcen[3-axisPair[0]-axisPair[1],gcID]]
+      haloMass = codeMassToLogMsun(gc.subgroupMass[gcID])
+      haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcID]] ;ckpc
+      
+      print,'['+string(gcID,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
+            str(axisPair[1])+'] with '+str(boxSize[0])+$
+            ' kpc box around subhalo center ['+str(boxCen[0])+' '+str(boxCen[1])+' '+str(boxCen[2])+']'
+
+      plotFilename = 'gasdm.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
+                     '.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
+
+      config = {boxSizeImg:boxSizeImg,plotFilename:plotFilename,haloVirRad:haloVirRad,haloMass:haloMass,$
+                axisPair:axisPair,sP:sP,barMM_left:tempMinMax,barMM_right:veldispMM,barType:'2tempvdisp'}
+      
+      ; plot
+      plotScatterComp,loc_pos,loc_pos2,loc_pos_dm,loc_pos2_dm,colorinds,colorinds_dm,config=config
+
+    endforeach ;axisPair
+
+  endforeach ;gcIDs
+
+end
+
+; scatterMapHalosDM: plot veldisp colored scatter plots with velocity vectors on boxes centered on halos
+;                    all DM on left and DM in some overdensity range on right
+
+pro scatterMapHalosDM, sP=sP, gcIDs=gcIDs
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
+
+  ; config
+  sizeFac = 10.0      ; times rvir
+  cutFac  = 1.0       ; times boxSize
+  nPixels = [800,800] ; px
+  
+  overdensMinMax  = [0.0,1.0] ; log(rho/mean rho)
+  velVecFac       = 0.01      ; times velocity (km/s) in plotted kpc
+  
+  axes = list([0,1],[0,2],[1,2]) ;xy,xz,yz
+  
+  ; target list
+  h     = loadSnapshotHeader(sP=sP)
+  gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
+  sgcen = subgroupPosByMostBoundID(sP=sP) 
+  
+  ; load dm positions and velocities
+  print,'loading dm...'
+  pos_dm  = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
+  vel_dm  = loadSnapshotSubset(sP=sP,partType='dm',field='vel')
+  
+  ; find the DM positions in the hsmldir for the veldisps (have to load all particle IDs)
+  dens_dm = loadHsmlDir(sP=sP,partType='dm',/readDens,/verbose)
+  
+  ; randomly shuffle the points (break the peano ordering to avoid "square" visualization artifacts)
+  print,'shuffling dm...'
+  iseed = 434343L
+  sort_inds = sort(randomu(iseed,n_elements(dens_dm)))
+  
+  dens_dm = dens_dm[sort_inds]
+  pos_dm  = pos_dm[*,sort_inds]
+  vel_dm  = vel_dm[*,sort_inds]
+  
+  sort_inds = !NULL
+  
+  ; convert densities to log(overdensities)
+  meanDensityBox = h.nPartTot[partTypeNum('dm')] * h.masstable[partTypeNum('dm')] / (sP.boxSize)^3.0
+  dens_dm = alog10( dens_dm / meanDensityBox )
+  
+  print,'rendering...'
+  ; loop over all requested halos and image
+  foreach gcID, gcIDs do begin
+  
+    ; get subhalo position and size of imaging box
+    boxCen     = sgcen[*,gcID]
+    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]] / 10.0) * 10.0
+    boxSizeImg = [boxSize,boxSize,boxSize] ; cube
+  
+    ; DM: make cutout
+    xDist = pos_dm[0,*] - boxCen[0]
+    yDist = pos_dm[1,*] - boxCen[1]
+    zDist = pos_dm[2,*] - boxCen[2]
+    
+    correctPeriodicDistVecs, xDist, sP=sP
+    correctPeriodicDistVecs, yDist, sP=sP
+    correctPeriodicDistVecs, zDist, sP=sP
+    
+    ; local (cube) cutout
+    wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
+                 abs(zDist) le 0.5*cutFac*boxSize,nCutoutDM)
+    
+    loc_dens_dm = dens_dm[wCut]
+    loc_pos_dm  = fltarr(3,nCutoutDM)
+    
+    loc_pos_dm[0,*] = xDist[wCut] ; delta
+    loc_pos_dm[1,*] = yDist[wCut]
+    loc_pos_dm[2,*] = zDist[wCut]
+    
+    xDist = !NULL
+    yDist = !NULL
+    zDist = !NULL
+    
+    loc_vel_dm = vel_dm[*,wCut]
+    
+    ; create endpoint for each position point for the velocity vector line
+    loc_pos2_dm = fltarr(3,nCutoutDM)
+    loc_pos2_dm[0,*] = loc_pos_dm[0,*] + loc_vel_dm[0,*]*velVecFac
+    loc_pos2_dm[1,*] = loc_pos_dm[1,*] + loc_vel_dm[1,*]*velVecFac
+    loc_pos2_dm[2,*] = loc_pos_dm[2,*] + loc_vel_dm[2,*]*velVecFac
+    loc_vel_dm = !NULL
+  
+    ; create color index mapping
+    overdensMM = [ceil(min(loc_dens_dm)) > (-2.0),floor(max(loc_dens_dm)) > 1.0 < 8.0]
+    colorinds_dm = (loc_dens_dm-overdensMM[0])*205.0 / (overdensMM[1]-overdensMM[0]) ;0-205
+    colorinds_dm = fix(colorinds_dm + 50.0) > 0 < 255 ;50-255
+
+    ; OVERDENSE DM: make cutout
+    wOD = where(loc_dens_dm ge overDensMinMax[0] and loc_dens_dm lt overDensMinMax[1],nOverDens)
+    ;loc_dens_dm = !NULL
+    print,nCutoutDM,nOverDens
+    
+    loc_pos_od   = loc_pos_dm[*,wOD]
+    loc_pos2_od  = loc_pos2_dm[*,wOD]
+    colorinds_od = colorinds_dm[wOD]
+  
+    ; make a plot for each requested projection direction
+    foreach axisPair, axes do begin
+           
+      ; get box center (in terms of specified axes)
+      boxCenImg  = [sgcen[axisPair[0],gcID],sgcen[axisPair[1],gcID],sgcen[3-axisPair[0]-axisPair[1],gcID]]
+      haloMass = codeMassToLogMsun(gc.subgroupMass[gcID])
+      haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcID]] ;ckpc
+      
+      print,'['+string(gcID,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
+            str(axisPair[1])+'] with '+str(boxSize[0])+$
+            ' kpc box around subhalo center ['+str(boxCen[0])+' '+str(boxCen[1])+' '+str(boxCen[2])+']'
+
+      plotFilename = 'gasdm.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
+                     '.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
+
+      config = {boxSizeImg:boxSizeImg,plotFilename:plotFilename,haloVirRad:haloVirRad,haloMass:haloMass,$
+                axisPair:axisPair,sP:sP,barMM:overdensMM,barType:'1overdens'}
+      
+      ; plot
+      plotScatterComp,loc_pos_dm,loc_pos2_dm,loc_pos_od,loc_pos2_od,colorinds_dm,colorinds_od,config=config
+stop
+    endforeach ;axisPair
+
+  endforeach ;gcIDs
+
+end
+
+; plotSphmapDensQuant(): plot side by side projection results from CalcSphMap
+
+pro plotSphmapDensQuant, map=sphmap, config=config
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  ; color map and rescale
+  w = where(sphmap.dens_out eq 0.0,count,comp=wc)
+  if count gt 0 then sphmap.dens_out[w] = min(sphmap.dens_out[wc])
+
+  sphmap.dens_out = alog10(sphmap.dens_out)
+  sphmap.dens_out = (sphmap.dens_out-min(sphmap.dens_out))*254.0 / $
+                    (max(sphmap.dens_out)-min(sphmap.dens_out)) ;0-254
+  sphmap.dens_out += 1.0 ;1-255
+  
+  w = where(sphmap.quant_out eq 0.0,count,comp=wc)
+  if count gt 0 then sphmap.quant_out[w] = min(sphmap.quant_out[wc])
+  
+  sphmap.quant_out = alog10(sphmap.quant_out)
+  sphmap.quant_out = (sphmap.quant_out-min(sphmap.quant_out))*254.0 / $
+                    (max(sphmap.quant_out)-min(sphmap.quant_out)) ;0-254
+  sphmap.quant_out += 1.0 ;1-255
+
+  xMinMax = [config.boxCen[0]-config.boxSizeImg[0]/2.0,config.boxCen[0]+config.boxSizeImg[0]/2.0]
+  yMinMax = [config.boxCen[1]-config.boxSizeImg[1]/2.0,config.boxCen[1]+config.boxSizeImg[1]/2.0]
+  
+  plotPath = '/n/home07/dnelson/data3/HaloComp/'
+  
+  start_PS, plotPath + strmid(config.saveFilename,0,strlen(config.saveFilename)-4)+'.eps', xs=8, ys=4
+  
+    !p.charsize = 0.8
+    loadColorTable,'helix'
+    
+    ; density
+    cgPlot, /nodata, xMinMax, yMinMax, pos=[0.0,0.0,0.5,1.0], xs=5, ys=5
+    tv, sphmap.dens_out,0.0,0.0,/normal,xsize=0.5
+    
+    ; circle at virial radius
+    ;tvcircle,config.haloVirRad,0,0,cgColor('dark gray'),thick=0.6,/data
+    
+    ; scale bar
+    len = 100.0 ;ckpc
+    cgText,mean([config.boxCen[0]-config.boxSizeImg[0]/2.2,$
+                 config.boxCen[0]-config.boxSizeImg[0]/2.2+len]),$
+           config.boxCen[1]+config.boxSizeImg[0]/2.3,$
+           string(len,format='(i3)')+' ckpc',alignment=0.5,color=cgColor('black')
+    cgPlot,[config.boxCen[0]-config.boxSizeImg[0]/2.2,config.boxCen[0]-config.boxSizeImg[0]/2.2+len],$
+           [config.boxCen[1]+config.boxSizeImg[1]/2.1,config.boxCen[1]+config.boxSizeImg[1]/2.1],$
+           color=cgColor('black'),/overplot
+           
+    ; mass weighted temperature
+    cgPlot, /nodata, xMinMax, yMinMax, pos=[0.0,0.0,0.5,1.0], xs=5, ys=5, /noerase
+    tv, sphmap.quant_out,0.5,0.0,/normal,xsize=0.5
+    
+    ; redshift and halo mass
+    cgText,0.99,0.96,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
+           color=cgColor('black'),/normal
+    cgText,0.99,0.92,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
+           color=cgColor('black'),/normal
+             
+  end_PS, pngResize=60, /deletePS
+
+end
+
+; sphMapHalos: run sph kernel density projection on gas particles/cells with boxes centered on halos
+
+pro sphMapHalos, sP=sP, gcIDs=gcIDs, coldOnly=coldOnly
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
+
+  ; config
+  sizeFac = 3.5       ; times rvir
   nPixels = [800,800] ; px
   
   axes = list([0,1],[0,2],[1,2]) ;xy,xz,yz
@@ -489,7 +727,7 @@ pro sphMapHalos, sP=sP, gcIDs=gcIDs, coldOnly=coldOnly
   ; load HSMLs or volumes (convert to sizes)
   if sP.trMCPerCell eq 0 then begin
     hsml = loadSnapshotSubset(sP=sP,partType='gas',field='hsml')
-    hsml = 1.25 * temporary(hsml); increase hsml to decrease visualization noise
+    hsml = 1.0 * temporary(hsml); increase hsml to decrease visualization noise
   endif else begin
     hsml = loadSnapshotSubset(sP=sP,partType='gas',field='vol')
     hsml = (temporary(hsml) * 3.0 / (4*!pi))^(1.0/3.0) ;cellrad [ckpc]
@@ -511,8 +749,11 @@ pro sphMapHalos, sP=sP, gcIDs=gcIDs, coldOnly=coldOnly
   foreach gcID, gcIDs do begin
   
     ; get subhalo position and size of imaging box
-    boxCen = sgcen[*,gcID]
-    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]] / 10.0) * 10.0
+    haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcID]] ;ckpc
+    haloMass   = codeMassToLogMsun(gc.subgroupMass[gcID])
+    
+    boxCen     = sgcen[*,gcID]
+    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]])
     boxSizeImg = [boxSize,boxSize,boxSize] ; cube
   
     foreach axisPair, axes do begin
@@ -535,63 +776,107 @@ pro sphMapHalos, sP=sP, gcIDs=gcIDs, coldOnly=coldOnly
                             nPixels=nPixels,axes=axisPair,ndims=3)
       
         ; save
-        config = {sizeFac:sizeFac,cutFac:cutFac,nPixels:nPixels,axes:axes,gcID:gcID,boxCen:boxCen,$
+        config = {saveFilename:saveFilename,sizeFac:sizeFac,nPixels:nPixels,axes:axes,boxCen:boxCen,$
+                  gcID:gcID,haloMass:haloMass,haloVirRad:haloVirRad,$
                   boxCenImg:boxCenImg,boxSize:boxSize,boxSizeImg:boxSizeImg,sP:sP}
-        save,sphmap,config,filename=sP.derivPath+'sphMaps/'+saveFilename
+        ;save,sphmap,config,filename=sP.derivPath+'sphMaps/'+saveFilename
         print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
       endif else begin
         restore,sP.derivPath +'sphMaps/'+ saveFilename
       endelse
     
-      ; color map and rescale
-      w = where(sphmap.dens_out eq 0.0,count,comp=wc)
-      if count gt 0 then sphmap.dens_out[w] = min(sphmap.dens_out[wc])
+      ; plot
+      plotSphmapDensQuant, map=sphmap, config=config
 
-      sphmap.dens_out = alog10(sphmap.dens_out)
-      sphmap.dens_out = (sphmap.dens_out-min(sphmap.dens_out))*254.0 / $
-                        (max(sphmap.dens_out)-min(sphmap.dens_out)) ;0-254
-      sphmap.dens_out += 1.0 ;1-255
-      
-      w = where(sphmap.quant_out eq 0.0,count,comp=wc)
-      if count gt 0 then sphmap.quant_out[w] = min(sphmap.quant_out[wc])
-      
-      sphmap.quant_out = alog10(sphmap.quant_out)
-      sphmap.quant_out = (sphmap.quant_out-min(sphmap.quant_out))*254.0 / $
-                        (max(sphmap.quant_out)-min(sphmap.quant_out)) ;0-254
-      sphmap.quant_out += 1.0 ;1-255
+    endforeach ;axisPair
+  
+  endforeach ;gcIDs
+  
+end
 
-      xMinMax = [config.boxCen[0]-config.boxSizeImg[0]/2.0,config.boxCen[0]+config.boxSizeImg[0]/2.0]
-      yMinMax = [config.boxCen[1]-config.boxSizeImg[1]/2.0,config.boxCen[1]+config.boxSizeImg[1]/2.0]
+; sphMapHalosDM: run sph kernel density projection on DM particles with boxes centered on halos
+
+pro sphMapHalosDM, sP=sP, gcIDs=gcIDs
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
+
+  ; config
+  sizeFac = 3.5      ; times rvir
+  nPixels = [800,800] ; px
+  
+  ;axes = list([0,1],[0,2],[1,2]) ;xy,xz,yz
+  axes = list([0,1])
+  
+  ; target list
+  gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
+  sgcen = subgroupPosByMostBoundID(sP=sP) 
+
+  ; load dm positions from snapshot and replicate masses from header
+  pos  = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
+  
+  h = loadSnapshotHeader(sP=sP)
+  dmPartMass = float(h.massTable[partTypeNum('dm')])
+  mass = replicate(dmPartMass,h.nPartTot[1])
+  
+  ; load HSMLs and veldisps (~temp), assume ID sorted with no gaps (though DM need not be at the end)
+  hsmldir = loadHsmlDir(sP=sP,/readHsml,/readVelDisp,/verbose)
+  ids     = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
+  hsml    = hsmldir.hsml[ids-1]
+  veldisp = hsmldir.veldisp[ids-1]
+  
+  hsmldir = !NULL
+  ids = !NULL
+  
+  ; loop over all non-background subhalos and image
+  foreach gcID, gcIDs do begin
+  
+    ; get subhalo position and size of imaging box
+    haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcID]] ;ckpc
+    haloMass   = codeMassToLogMsun(gc.subgroupMass[gcID])
+    
+    boxCen     = sgcen[*,gcID]
+    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]])
+    boxSizeImg = [boxSize,boxSize,boxSize] ; cube
+  
+    foreach axisPair, axes do begin
+  
+      saveFilename = 'dmMap.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
+                     '.axes'+str(axisPair[0])+str(axisPair[1])+'.sav'
+                    
+      if ~file_test(sP.derivPath+'sphMaps/'+saveFilename) then begin
       
-      start_PS, sP.plotPath + strmid(saveFilename,0,strlen(saveFilename)-4)+'.eps', xs=8, ys=4
-      
-        ;loadct, 4, bottom=1, /silent
-        loadColorTable,'helix'
-        ; density
-        cgPlot, /nodata, xMinMax, yMinMax, pos=[0.0,0.0,0.5,1.0], xs=5, ys=5
-        tv, sphmap.dens_out,0.0,0.0,/normal,xsize=0.5
+        ; get box center (in terms of specified axes)
+        boxCenImg  = [sgcen[axisPair[0],gcID],sgcen[axisPair[1],gcID],sgcen[3-axisPair[0]-axisPair[1],gcID]]
         
-        ; scale bar
-        len = 100.0 ;ckpc
-        cgText,mean([config.boxCen[0]-config.boxSizeImg[0]/2.2,$
-                     config.boxCen[0]-config.boxSizeImg[0]/2.2+len]),$
-               config.boxCen[1]+config.boxSizeImg[0]/2.4,$
-               string(len,format='(i3)')+' ckpc',alignment=0.5,charsize=!p.charsize-0.6,color=cgColor('black')
-        cgPlot,[config.boxCen[0]-config.boxSizeImg[0]/2.2,config.boxCen[0]-config.boxSizeImg[0]/2.2+len],$
-               [config.boxCen[1]+config.boxSizeImg[1]/2.2,config.boxCen[1]+config.boxSizeImg[1]/2.2],$
-               color=cgColor('black'),/overplot
-               
-        ; mass weighted temperature
-        cgPlot, /nodata, xMinMax, yMinMax, pos=[0.0,0.0,0.5,1.0], xs=5, ys=5, /noerase
-        tv, sphmap.quant_out,0.5,0.0,/normal,xsize=0.5
+        print,'['+string(gcID,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
+              str(axisPair[1])+'] with '+str(boxSize[0])+$
+              ' kpc box around subhalo center ['+str(boxCen[0])+' '+str(boxCen[1])+' '+str(boxCen[2])+']'
+
+        ; calculate projection using sph kernel
+        dmMap = calcSphMap(pos,hsml,mass,veldisp,$
+                           boxSizeImg=boxSizeImg,boxSizeSim=sP.boxSize,boxCen=boxCenImg,$
+                           nPixels=nPixels,axes=axisPair,ndims=3)
+                            
+        ; vertical+horizontal flip the C image arrays so they agree with the (x,y) order in scatterMapHalos
+        dmMap.dens_out  = reverse(dmMap.dens_out,2)
+        dmMap.dens_out  = reverse(dmMap.dens_out,1)
+        dmMap.quant_out = reverse(dmMap.quant_out,2)
+        dmMap.quant_out = reverse(dmMap.quant_out,1)
         
-        ; redshift and halo mass
-        !p.charsize = 1.0
-        haloMass = codeMassToLogMsun(gc.subgroupMass[gcID])
-        cgText,0.98,0.94,"z = "+string(sP.redshift,format='(f3.1)'),alignment=1.0,color=cgColor('black'),/normal
-        cgText,0.98,0.89,"M = "+string(haloMass,format='(f4.1)'),alignment=1.0,color=cgColor('black'),/normal
-                 
-      end_PS, pngResize=60, /deletePS
+        ; save
+        config = {saveFilename:saveFilename,sizeFac:sizeFac,nPixels:nPixels,axes:axes,boxCen:boxCen,$
+                  gcID:gcID,haloMass:haloMass,haloVirRad:haloVirRad,$
+                  boxCenImg:boxCenImg,boxSize:boxSize,boxSizeImg:boxSizeImg,sP:sP}
+        ;save,dmMap,config,filename=sP.derivPath+'sphMaps/'+saveFilename
+        print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
+      endif else begin
+        restore,sP.derivPath +'sphMaps/'+ saveFilename
+      endelse
+    
+      ; plot
+      plotSphmapDensQuant, map=dmMap, config=config
 
     endforeach ;axisPair
   
@@ -601,13 +886,14 @@ end
 
 ; makeHaloComparisonImages(): create a mosaic of halo comparison images between gadget and arepo
 
-pro makeHaloComparisonImages, select=select
+pro makeHaloComparisonImages, select=select, redshift=redshift
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  res      = 512
-  redshift = 0.0
-  
-  minLogMsun = 11.0
+  res = 512  
+  minLogMsun = 10.75
+  maxLogMsun = 13.60
   
   sPa = simParams(res=res,run='arepo',redshift=redshift)
   sPg = simParams(res=res,run='gadget',redshift=redshift)
@@ -617,17 +903,13 @@ pro makeHaloComparisonImages, select=select
     gcg = loadGroupCat(sP=sPg,/skipIDs)
     priGIDs = gcIDList(gc=gcg,select='pri')
     priGMasses = codeMassToLogMsun(gcg.subgroupMass[priGIDs])
-    w = where(priGMasses ge minLogMsun,countG)
+    w = where(priGMasses ge minLogMsun and priGMasses le maxLogMsun,countG)
     gcIDs_gadget = priGIDs[w]
-    
-    gcIDs_gadget = [10233,10264,10288,10311,10348,10384,10403,10439,10472,10487,10503,10526,$
-                    10544,10577,10615,10649,10666,10686,10706,10727,10757,10786,10800,10826,$
-                    10865,10881,10889,10936,10953,10980,10994,11020,11041,11061,11074,11088,$
-                    11109,11122,11155,11185]
     
     print,'Mapping ['+str(countG)+'] gadget halos above minLogMsun.'
     sphMapHalos,sP=sPg,gcIDs=gcIDs_gadget;,/coldOnly
     ;scatterMapHalos,sP=sPg,gcIDs=gcIDs_gadget
+    ;scatterMapHalosGasDM,sP=sPg,gcIDs=gcIDs_gadget
   endif
   
   ; arepo group catalog
@@ -635,16 +917,13 @@ pro makeHaloComparisonImages, select=select
     gca = loadGroupCat(sP=sPa,/skipIDs)
     priAIDs = gcIDList(gc=gca,select='pri')
     priAMasses = codeMassToLogMsun(gca.subgroupMass[priAIDs])
-    w = where(priAMasses ge minLogMsun,countA)
-    ;gcIDs_arepo = priAIDs[w]
-    
-    gcIDs_arepo = [9249,9270,9275,9291,9312,9327,9350,9386,9400,9417,9427,9442,9466,9480,9481,9490,$
-                   9504,9522,9523,9531,9543,9559,9588,9604,9620,9635,9662,9679,9694,9700,9716,9739,$
-                   9759,9772,9782,9787,9798,9820,9831,9846,9868,9889,9907,9919,9934,9946,9961]
+    w = where(priAMasses ge minLogMsun and priAMasses le maxLogMsun,countA)
+    gcIDs_arepo = priAIDs[w]
     
     print,'Mapping ['+str(countA)+'] arepo halos above minLogMsun.'
-    ;sphMapHalos,sP=sPa,gcIDs=gcIDs_arepo;,/coldOnly
-    scatterMapHalos,sP=sPa,gcIDs=gcIDs_arepo
+    sphMapHalos,sP=sPa,gcIDs=gcIDs_arepo;,/coldOnly
+    ;scatterMapHalos,sP=sPa,gcIDs=gcIDs_arepo
+    ;scatterMapHalosGasDM,sP=sPa,gcIDs=gcIDs_arepo
   endif
   
   print,'done.'
@@ -653,16 +932,18 @@ end
 
 pro makeHaloComparisonPage
   
+  compile_opt idl2, hidden, strictarr, strictarrsubs  
+  
   ; config
   res = 512
-  redshifts = [0.0,0.5,1.0,2.0]
+  redshifts = [0.0,1.0,2.0,3.0]
   
-  massBins = [10.5,11.0,11.5,12.0,14.0]
+  massBins = [10.75,11.00,11.25,11.50,11.75,12.00,13.60]
   
   axesPairs = ['01','02','12']
   axesNames = ['xy','xz','yz']
   
-  redshift = 2.0
+  redshift = 0.0
   
   haloCounter = 0UL
   
@@ -681,25 +962,25 @@ pro makeHaloComparisonPage
   priAIDs = gcIDList(gc=gca,select='pri')
   priAMasses = codeMassToLogMsun(gca.subgroupMass[priAIDs])
   
-  ; match only for webpage output (maybe redo with higher tols)
+  ; match only for webpage output
   match = findMatchedHalos(sP1=sPa,sP2=sPg)  
-  
+
   ; loop over mass bins
   for j=0,n_elements(massBins)-2 do begin
     print,massBins[j],massBins[j+1]
     
     ; open file and write header with links
-    outputName = "HaloComp_z"+string(redshift,format='(f3.1)')+"mb"+string(massBins[j],format='(f4.1)')+".htm"
+    outputName = "HaloComp_z"+string(redshift,format='(i1)')+"mb"+string(massBins[j],format='(f5.2)')+".htm"
     openw,lun,outputName,/get_lun
     
     printf,lun,"<div class='compHead'><table>"
-    printf,lun,"  <tr><th>Redshifts</th><th colspan='4'>Log(Msun) Bins</th></tr>"
+    printf,lun,"  <tr><th>Redshifts</th><th colspan='"+str(n_elements(massBins)-1)+"'>Log(Msun) Bins</th></tr>"
     foreach red,redshifts,k do begin
       printf,lun,"  <tr><td>"+string(red,format='(f3.1)')+"</td>"
       for mb=0,n_elements(massBins)-2 do begin
-        printf,lun,"    <td><a href='HaloComp_z"+string(red,format='(f3.1)')+"mb"+$
-                   string(massBins[mb],format='(f4.1)')+".htm'>"+string(massBins[mb],format='(f4.1)')+$
-                   " - "+string(massBins[mb+1],format='(f4.1)')+"</a></td>"
+        printf,lun,"    <td><a href='HaloComp_z"+string(red,format='(i1)')+"mb"+$
+                   string(massBins[mb],format='(f5.2)')+".htm'>"+string(massBins[mb],format='(f5.2)')+$
+                   " - "+string(massBins[mb+1],format='(f5.2)')+"</a></td>"
       endfor
       printf,lun,"  </tr>"
     endforeach
@@ -720,41 +1001,31 @@ pro makeHaloComparisonPage
     if countA gt 0 then gcIDs_arepo = priAIDs[wA]
     
     ; decide which arepo halos have matching gadget halos
-    matchedInds = match.matchedInds[wA]
-    wMatch = where(matchedInds ne -1,countMatch,comp=wNoMatch,ncomp=countNoMatchA)
-    
-    ; find subset of gadget halos that were not matched
-    match,match.matchedInds,wG,inds_match,inds_wG,count=countNoMatchG,/sort
-    if countNoMatchG gt 0 then wGNoMatch = wG[inds_wG]
-    
+    if countA gt 0 then begin
+      matchedInds = match.matchedInds[wA]
+      wMatch = where(matchedInds ne -1,countMatch,comp=wNoMatch,ncomp=countNoMatchA)
+      
+      ; find subset of gadget halos that were not matched
+      match,match.matchedInds,wG,inds_match,inds_wG,count=countNoMatchG,/sort
+      if countNoMatchG gt 0 then begin
+        wGMatched = wG[inds_wG]
+        wGNoMatch = removeIntersectionFromB(wGMatched,wG)
+        countNoMatchG = n_elements(wGNoMatch)
+      endif
+    endif else begin
+      ; if arepo has no halos in this massbin, there can be no matches
+      countMatch = 0
+      countNoMatchA = countA
+      countNoMatchG = countG
+      wGNoMatch = wG
+    endelse
+
     ; mass bin header
     printf,lun,""
     printf,lun,"<a name='z"+str(k)+"_massbin"+str(j)+"'></a>"
     printf,lun,"<h3>"+string(massBins[j],format='(f4.1)')+" < log(M) < "+$
                       string(massBins[j+1],format='(f4.1)')+"</h3>"
-    printf,lun,""
-    
-    ; TEMPORARY: skip lowest mass bin (not run)
-    if j eq 0 then begin
-      printf,lun,"(Not yet rendered)."
-      printf,lun,"</div>"
-      printf,lun,""
-      printf,lun,"</body>"
-      printf,lun,"</html>"
-       
-      ; close file
-      free_lun,lun
-      
-      ; if header.txt exists, cat the two together
-      if file_test("header.txt") then begin
-        print,' added header (skipped lowest massbin)'
-        spawn,'cat header.txt '+outputName+' > newpage.htm' ;make new
-        spawn,'mv newpage.htm '+outputName ;overwrite original
-      endif
-      
-      continue
-    endif
-    
+    printf,lun,""    
     printf,lun,"<table>"
     printf,lun," <tr><th>Info</th><th>Gadget</th><th>Arepo</th></tr>"
     
@@ -775,7 +1046,8 @@ pro makeHaloComparisonPage
       virTempA = alog10(codeMassToVirTemp(gca.subgroupMass[gcIndA],sP=sPa))
       virTempG = alog10(codeMassToVirTemp(gcg.subgroupMass[gcIndG],sP=sPg))
       
-      statsString = "<span class='haloid'>ID: "+str(haloCounter)+"</span><br><br> "+$
+      statsString = "<span class='haloid'>ID: z"+string(redshift,format='(i1)')+"."+$
+                    str(haloCounter)+"</span><br><br> "+$
                     "Gadget:<br> log(M) = "+string(haloMassG,format='(f5.2)')+" <br> "+$
                     " xyz = "+string(sgceng[0,gcIndG],format='(f7.1)')+" "+$
                               string(sgceng[1,gcIndG],format='(f7.1)')+" "+$
@@ -796,14 +1068,17 @@ pro makeHaloComparisonPage
         ; sphMap
         fpath = "sphMaps.gadget.z"+string(redshift,format='(f3.1)')+"/"
         fname = "map.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
-        
-        gadgetString += axesNames[m]+": <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a>"
+        gadgetString += axesNames[m]+": <a title='Gadget' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a>"
                         
         ; scatterMap
         fpath = "scatterMaps.gadget.z"+string(redshift,format='(f3.1)')+"/"
         fname = "scatter.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
+        gadgetString += " <a title='Gadget' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a>"
         
-        gadgetString += " <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a><br>"
+        ; gasdm
+        fpath = "gasdm.gadget.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "gasdm.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
+        gadgetString += " <a title='Gadget' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a><br>"
       endforeach
       
       gadgetString = strmid(gadgetString,0,strlen(gadgetString)-4)
@@ -815,14 +1090,17 @@ pro makeHaloComparisonPage
         ; sphMap
         fpath = "sphMaps.arepo.z"+string(redshift,format='(f3.1)')+"/"
         fname = "map.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
-        
-        arepoString += axesNames[m]+": <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a>"
+        arepoString += axesNames[m]+": <a title='Arepo' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a>"
                         
         ; scatterMap
         fpath = "scatterMaps.arepo.z"+string(redshift,format='(f3.1)')+"/"
         fname = "scatter.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
-        
-        arepoString += " <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a><br>"
+        arepoString += " <a title='Arepo' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a>"
+       
+        ; gasdm
+        fpath = "gasdm.arepo.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "gasdm.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
+        arepoString += " <a title='Arepo' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a><br>"
       endforeach
       
       arepoString = strmid(arepoString,0,strlen(arepoString)-4)
@@ -846,7 +1124,8 @@ pro makeHaloComparisonPage
       virRadA  = gca.group_r_crit200[gca.subgroupGrNr[gcIndA]]
       virTempA = alog10(codeMassToVirTemp(gca.subgroupMass[gcIndA],sP=sPa))
       
-      statsString = "<span class='haloid'>ID: "+str(haloCounter)+"</span><br><br> "+$
+      statsString = "<span class='haloid'>ID: z"+string(redshift,format='(i1)')+"."+$
+                    str(haloCounter)+"</span><br><br> "+$
                     "Gadget:<br> <i>Unmatched.</i> <br><br> "+$
                     "Arepo:<br> log(M) = "+string(haloMassA,format='(f5.2)')+" <br> "+$
                     " xyz = "+string(sgcena[0,gcIndA],format='(f7.1)')+" "+$
@@ -862,14 +1141,17 @@ pro makeHaloComparisonPage
         ; sphMap
         fpath = "sphMaps.arepo.z"+string(redshift,format='(f3.1)')+"/"
         fname = "map.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
-        
-        arepoString += axesNames[m]+": <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a>"
+        arepoString += axesNames[m]+": <a title='Arepo' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a>"
                         
         ; scatterMap
         fpath = "scatterMaps.arepo.z"+string(redshift,format='(f3.1)')+"/"
         fname = "scatter.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
+        arepoString += " <a title='Arepo' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a>"
         
-        arepoString += " <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a><br>"
+        ; gasdm
+        fpath = "gasdm.arepo.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "gasdm.A"+str(res)+"."+str(sPa.snap)+".h"+str(gcIndA)+".axes"+axisPair+".png"
+        arepoString += " <a title='Arepo' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a><br>"
       endforeach
       
       arepoString = strmid(arepoString,0,strlen(arepoString)-4)
@@ -884,15 +1166,20 @@ pro makeHaloComparisonPage
     ; gadget (unmatched)
     ; -----------------
     for i=0,countNoMatchG-1 do begin
-      haloCounter += 1
-      ; make stats string
-      gcIndG = priGIDs[wGNoMatch[i]]
+      ; check: was this gadget halo matched by an arepo halo in some other mass bin? if so just skip
+      ;gcIndG = priGIDs[wGNoMatch[i]]
+      ;w = where(match.matchedInds eq gcIndG,countOMM)
+      ;if countOMM gt 0 then continue
       
+      haloCounter += 1
+      
+      ; make stats string
       haloMassG = codeMassToLogMsun(gcg.subgroupMass[gcIndG])
       virRadG   = gcg.group_r_crit200[gcg.subgroupGrNr[gcIndG]]
       virTempG  = alog10(codeMassToVirTemp(gcg.subgroupMass[gcIndG],sP=sPg))
       
-      statsString = "<span class='haloid'>ID: "+str(haloCounter)+"</span><br><br> "+$
+      statsString = "<span class='haloid'>ID: z"+string(redshift,format='(i1)')+"."+$
+                    str(haloCounter)+"</span><br><br> "+$
                     "Gadget:<br> log(M) = "+string(haloMassG,format='(f5.2)')+" <br> "+$
                     " xyz = "+string(sgceng[0,gcIndG],format='(f7.1)')+" "+$
                               string(sgceng[1,gcIndG],format='(f7.1)')+" "+$
@@ -908,14 +1195,17 @@ pro makeHaloComparisonPage
         ; sphMap
         fpath = "sphMaps.gadget.z"+string(redshift,format='(f3.1)')+"/"
         fname = "map.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
-        
-        gadgetString += axesNames[m]+": <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a>"
+        gadgetString += axesNames[m]+": <a title='Gadget' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a>"
                         
         ; scatterMap
         fpath = "scatterMaps.gadget.z"+string(redshift,format='(f3.1)')+"/"
         fname = "scatter.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
+        gadgetString += " <a title='Gadget' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a>"
         
-        gadgetString += " <a href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+"'></a><br>"
+        ; gasdm
+        fpath = "gasdm.gadget.z"+string(redshift,format='(f3.1)')+"/"
+        fname = "gasdm.G"+str(res)+"."+str(sPg.snap)+".h"+str(gcIndG)+".axes"+axisPair+".png"
+        gadgetString += " <a title='Gadget' href='"+fpath+fname+"'><img src='"+fpath+"thumbnails/"+fname+".jpg'></a><br>"
       endforeach
       
       gadgetString = strmid(gadgetString,0,strlen(gadgetString)-4)
@@ -931,6 +1221,7 @@ pro makeHaloComparisonPage
     printf,lun,""
     printf,lun,"</div>"
     printf,lun,""
+    printf,lun,"<p id='footer'>The end.</p>"
     printf,lun,"</body>"
     printf,lun,"</html>"
      

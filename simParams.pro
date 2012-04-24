@@ -133,7 +133,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.trMCPerCell   = 1 ; no actual tracers, but flag as non-sph
     
     if keyword_set(f) then stop ; shouldn't be specified
-    if res ne 512 then stop
+    if res ne 128 and res ne 256 and res ne 512 then stop
     
     r.boxSize       = 20000.0
     r.snapRange     = [0,313]

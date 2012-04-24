@@ -241,10 +241,9 @@ pro contourGasSurfDens, filePath=filePath, snapNum=snapNum, zoomSize=zoomSize, g
     endif
   
     ; run sph kernel based density projection
-    print,'Running sphDensityProjection().'
-  
-    colMassMap = sphDensityProjection(pos, hsml, mass, imgSize=imgSize, boxSize=boxSize,$
-                                      boxCen=boxCen, axis0=axis0, axis1=axis1, mode=mode, periodic=0)
+    quant = fltarr(n_elements(mass))
+    colMassMap = CalcSphMap(pos, hsml, mass, quant, imgSize=imgSize, boxSize=boxSize,$
+                            boxCen=boxCen, axis0=axis0, axis1=axis1)
                
   endif
          
