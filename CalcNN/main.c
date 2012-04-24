@@ -75,7 +75,7 @@ int CalcNN_natural(int NumPart, int NumOrig, float* data_pos, float* src_pos, in
   }
 
   tree_treefree();
-  free(P);
+  //free(P);
 
   IF_VERBOSE(printf("]\ndone.\n"));
 	
