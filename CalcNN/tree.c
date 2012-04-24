@@ -1,6 +1,6 @@
 //
 // CalcHSML Routine for IDL
-// dnelson dec.2011
+// dnelson apr.2012
 // tree.c taken from CalcHsml (for Python) by Mark Vogelsberger
 //
 
@@ -386,15 +386,16 @@ int ngb_treefind_nearest_local(MyDouble searchcenter[3], int startnode, MyDouble
 	{
 	  p = node;
 	  node = Nextnode[node];
-
-	  if(P[p].Type > 0)
-	    {
-	      /* Not gas particle.  This can happen because there are
-	         several particles hanging off the smallest nodes, and we
-	         only know that one of them must be a gas particle from
-	         our flag test. */
-	      continue;
-	    }
+	
+	//  if(P[p].Type > 0)
+	//    {
+	//      /* Not gas particle.  This can happen because there are
+	//         several particles hanging off the smallest nodes, and we
+	//         only know that one of them must be a gas particle from
+	//         our flag test. */
+	//      continue;
+	//    }
+        // Note: We assume the tree has been constructed with only the particle type of interest.
 
 	  if(boxSize>0.0)
 	    dx = NGB_PERIODIC_LONG_X(P[p].Pos[0] - searchcenter[0]);

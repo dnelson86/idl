@@ -1,6 +1,6 @@
 //
 // CalcNN (nearest neighbor) Routine for IDL
-// dnelson jan.2012
+// dnelson apr.2012
 // based on CalcHsml (for Python) by Mark Vogelsberger
 //
 
@@ -20,8 +20,11 @@ int CalcNN_natural(int NumPart, int NumOrig, float* data_pos, float* src_pos, in
   MyDouble mindist;
   int guess = -1;
 
-  P = (struct particle_data *) malloc (NumPart * sizeof (struct particle_data));
-	
+  // direct cast
+  P = (struct particle_data *) data_pos;
+
+/*
+  //P = (struct particle_data *) malloc (NumPart * sizeof (struct particle_data));	
   // copy data into P
   for (i=0; i < NumPart; i++)
   {
@@ -31,9 +34,9 @@ int CalcNN_natural(int NumPart, int NumOrig, float* data_pos, float* src_pos, in
     P[i].Mass   = 1.0;
     P[i].Type   = 0; // search for type 0 (gas)
   }
-
+*/
   // allocate and build tree
-  tree_treeallocate(4.0 * NumPart, NumPart);
+  tree_treeallocate(2.0 * NumPart, NumPart);
   nNodes = tree_treebuild();
 	
 #ifdef VERBOSE
@@ -138,10 +141,10 @@ int CalcNN(int argc, void* argv[])
   DesNumNgbDev = 0;
 
 #ifdef VERBOSE
-  printf("Input data:\n");
-  printf("NumPart      = %d\n", NumPart);
-  printf("NumSrc       = %d\n", NumSrc);
-  printf("BoxSize      = %g\n", BoxSize);
+  //printf("Input data:\n");
+  //printf("NumPart      = %d\n", NumPart);
+  //printf("NumSrc       = %d\n", NumSrc);
+  //printf("BoxSize      = %g\n", BoxSize);
 #endif
 
   // calculate NNs
