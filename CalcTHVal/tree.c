@@ -12,6 +12,7 @@
 
 #define  MAX_REAL_NUMBER  1.0e35
 
+#include "main.h"
 #include "tree.h"
 
 static int last;		/* auxialiary variable used to set-up non-recursive walk */
@@ -326,7 +327,7 @@ float ngb_treefind (float xyz[3], float hguess, float *val_out)
   do
     {
       iter++;
-      if (iter>1000)
+      if (iter>10000)
        {
         printf("too many iterations...\n");
         exit(1);
@@ -336,9 +337,11 @@ float ngb_treefind (float xyz[3], float hguess, float *val_out)
       if (numngb < (DesNumNgb-DesNumNgbDev) || numngb >= (DesNumNgb+DesNumNgbDev))
       {
 
-      if (left > 0 && right > 0)
-       if (right-left < 0.001 * left)
-        break; // particle is OK
+       if (left > 0 && right > 0)
+         if (right-left < 0.0001 * left)
+          break; // particle is OK
+         // note: disable early exit from hsml bracketing in THval
+       
 
       if(numngb < (DesNumNgb - DesNumNgbDev))
        left = DMAX(hguess, left);
@@ -385,27 +388,25 @@ float ngb_treefind (float xyz[3], float hguess, float *val_out)
 
     // save value for this search position
     if (TophatMode == 1) {
-      /* mean */
+      /* mean = total / num */
       *val_out = fval / numngb_int;
     } else if (TophatMode == 2) {
-      /* total = mean*number */
+      /* total */
       *val_out = fval;
     } else if (TophatMode == 3) {
-      /* total/volume = mean*number/volume */
+      /* density = total/volume */
 #ifdef   ONEDIMS
       *val_out = fval * 0.5 / hguess;
 #else
 #ifndef  TWODIMS
-      //*val_out = fval * PI_INV * 0.75 / (hguess*hguess*hguess);
+      *val_out = fval * PI_INV * 0.75 / (hguess*hguess*hguess);
       // old method assuming we always got DesNumNgb within the returned hguess:
-      *val_out = (fval/numngb_int)*DesNumNgb * PI_INV * 0.75 / (hguess*hguess*hguess);
+      //*val_out = (fval/numngb_int)*DesNumNgb * PI_INV * 0.75 / (hguess*hguess*hguess);
 #else
       *val_out = fval * PI_INV / (hguess*hguess);
 #endif
 #endif /* ONEDIMS */
     }
-
-  //*val_out = fval / numngb_int; // old return always mean
 
   return hguess;
 }

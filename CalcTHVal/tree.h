@@ -1,8 +1,6 @@
 #ifndef TREE_H
 #define TREE_H
 
-#include "main.h"
-
 #ifdef   ONEDIMS
 #define  NUMDIMS 1
 #define  KERNEL_COEFF_1  (4.0/3)
@@ -37,38 +35,6 @@
 /*! Macro that maps a distance to the nearest periodic neighbour */
 #define NEAREST(x,boxsize) (((x)>boxhalf)?((x)-boxsize):(((x)<-boxhalf)?((x)+boxsize):(x)))
 #define DMAX(a,b) (dmax1=(a),dmax2=(b),(dmax1>dmax2)?dmax1:dmax2)
-
-struct NODE
-{
-  MyFloat len;
-  MyFloat center[3];
-  MyFloat maxsoft;
-  union
-  {
-    int suns[8];
-    struct
-    {
-      MyFloat s[3];
-      MyFloat mass;
-      unsigned int bitflags;
-      int sibling;
-      int nextnode;
-      int father;
-    }
-    d;
-  }
-  u;
-}
- *Nodes, *Nodes_base;
-
-int MaxNodes;
-int Numnodestree;
-int TotNumNonInternalTopLevelTreeNodes;
-
-int *Nextnode;
-int *Prevnode;
-int *Father;
-
 
 #endif
 

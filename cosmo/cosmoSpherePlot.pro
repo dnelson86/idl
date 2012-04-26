@@ -145,54 +145,155 @@ pro plotHaloShellSingleVal
   
   ; config
   redshift = 2
+  sP = simParams(res=512,run='gadget',redshift=float(redshift))  
   
-  hMassTarget = 12.5 ;12.5,12.0,11.5,11.0
-  radInd   = 6  ; pre-saved radFacs
-  ;minmax   = [-0.6,2.0] ; log (rho/mean rho)
-  minmax = [-1e-2,1e-2] ; km/s outflow/inflow
-  ctName   = 'brewer-redpurple'
-  rot_ang  = [0,0]      ; [60,-45] ;[lat,long] center in deg (left,up)
-  cutSubS  = 1          ; cut satellite substructures out from halo
+  ; select halo
+  ;subgroupIDs = [373]
+  ;subgroupIDs  = massTargetToHaloID([12.5],sP=sP)
   
-  ; value config
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  priGIDs = gcIDList(gc=gc,select='pri')
+  subgroupIDs = priGIDs[0:50]
+  
+  radInd      = 0     ; pre-saved radFacs
+  rot_ang     = [0,0] ; [60,-45] ;[lat,long] center in deg (left,up)
+  cutSubS     = 1     ; cut satellite substructures out from halo
+
   partType = 'gas'
-  valName  = 'radmassflux'
+  valName  = 'density'
   
-  bartitle    = "Radial Mass Flux ["+textoidl('M_{sun}')+" kpc"+textoidl('^{-2}')+" yr"+textoidl('^{-1}')+"]"
-  ratioToMean = 0
-  plotLog     = 0
+  ; deriv
+  if valName eq 'radialmassflux' then begin
+    bartitle    = "Radial Mass Flux [M_{sun} kpc^{-2} yr^{-1}]"
+    ratioToMean = 0
+    plotLog     = 0
+    
+    minmax   = [-1e-2,1e-2] ; km/s outflow/inflow
+    ctName   = 'brewer-redpurple'
+  endif
   
-  sP = simParams(res=512,run='gadget',redshift=float(redshift))
+  if valName eq 'density' then begin
+    bartitle = "log ( \rho / <\rho> )"
+    ratioToMean = 1
+    plotLog     = 1
+    
+    minmax   = [-0.6,2.0] ; log (rho/mean rho)
+    ctName   = 'helix' ;'brewer-redpurple'
+    binsize  = 0.1
+  endif
   
-  ; get IDs of mass target (just one)
-  subgroupIDs  = massTargetToHaloID([hMassTarget],sP=sP)
-
-  ; plot
   if cutSubS then csTag = '.cutSubS' else csTag = ''
-  start_PS, sP.plotPath+'shell_'+partType+'-'+valName+'_z'+str(redshift)+'_h'+str(subgroupIDs[0])+$
-            '_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=6
+  
+  foreach subgroupID,subgroupIDs do begin
+    print,subgroupID
+    ; interpolate onto the shell (load)
+    hsv = haloShellValue(sP=sP,partType=partType,valName=valName,subgroupIDs=[subgroupID],$
+                         cutSubS=cutSubS,radFacs=[1.0])
     
-    ; interpolate onto the shell
-    hsv = haloShellValue(sP=sP,partType=partType,valName=valName,subgroupID=subgroupIDs[0],$
-                         cutSubS=cutSubS,/save)
-
-    ; max clip
-    w = where(hsv.value[*,radInd] gt minmax[1],count)
-    if count gt 0 then hsv.value[w,radInd] = minmax[1]
-
-    ; convert values into ratios to the mean
-    if ratioToMean then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
-    else healpix_data = reform(hsv.value[*,radInd])
-    if plotLog then healpix_data = alog10(healpix_data)
+    ; plot allsky projection
+    start_PS, sP.plotPath+'shell_'+partType+'-'+valName+'_z'+str(redshift)+'_h'+str(subgroupID)+$
+              '_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=6
+      
+      ; max clip
+      w = where(hsv.value[*,radInd] gt minmax[1],count)
+      if count gt 0 then hsv.value[w,radInd] = minmax[1]
+  
+      ; convert values into ratios to the mean
+      if ratioToMean then healpix_data = reform(hsv.value[*,radInd] / median(hsv.value[*,radInd])) $
+      else healpix_data = reform(hsv.value[*,radInd])
+      if plotLog then healpix_data = alog10(healpix_data)
+      
+      title = sP.run+" "+str(sP.res)+textoidl("^3")+"  z = "+string(sP.redshift,format='(f3.1)')+" "+$
+              "hID = " + str(subgroupIDs[0])+" ("+$
+              textoidl("r / r_{vir} = ")+string(hsv.radFacs[radInd],format='(f4.2)')+")"
+  
+      plotMollweideProj,healpix_data,rot_ang=rot_ang,title=title,bartitle=bartitle,ctName=ctName,minmax=minmax
+  
+    end_PS, pngResize=60, /deletePS
     
-    title = sP.run+" "+str(sP.res)+textoidl("^3")+"  z = "+string(sP.redshift,format='(f3.1)')+" "+$
-            textoidl("M_{halo} = ")+string(hMassTarget,format='(f4.1)')+" ("+$
-            textoidl("r / r_{vir} = ")+string(hsv.radFacs[radInd],format='(f4.2)')+")"
+    ; plot pixel histogram
+    start_PS, sP.plotPath+'shellhist_'+partType+'-'+valName+'_z'+str(redshift)+'_h'+str(subgroupID)+$
+              '_r'+str(radInd)+csTag+'.eps'
+  
+      ; histogram value
+      if ratioToMean then healpix_data = reform(hsv.value[*,radInd] / median(hsv.value[*,radInd])) $
+      else healpix_data = reform(hsv.value[*,radInd])
+      if plotLog then healpix_data = alog10(healpix_data)
+  
+      hist = histogram(healpix_data,binsize=binsize,loc=loc)
+  
+      ; plot
+      xrange = minmax
+      yrange = [1,max(hist)*1.5]
+      
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
+        ytitle="Count",xtitle=textoidl(bartitle),title=title
+        
+      cgPlot,[0,0],yrange,line=0,color=cgColor('light gray'),/overplot
+      
+      cgPlot,loc+binsize*0.5,hist,line=0,color=getColor(0),/overplot    
+    end_PS
+  endforeach
+end
 
-    plotMollweideProj,healpix_data,rot_ang=rot_ang,title=title,bartitle=bartitle,ctName=ctName,minmax=minmax
+; calcShellFrac
 
-  end_PS, pngResize=60, /deletePS
-    stop
+pro calcShellFrac
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; config
+  redshift = 2
+  sP = simParams(res=512,run='gadget',redshift=float(redshift))  
+  
+  num = 100
+  
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  priIDs = gcIDList(gc=gc,select='pri')
+  priMasses = codeMassToLogMsun(gc.subgroupMass[priIDs])
+  subgroupIDs = priIDs[0:num]
+  priMasses = priMasses[0:num]
+  
+  radInd      = 0     ; pre-saved radFacs
+  cutSubS     = 1     ; cut satellite substructures out from halo
+
+  partType  = 'gas'
+  valName   = 'density'
+  threshVal = 10.0
+  
+  frac = fltarr(n_elements(subgroupIDs))
+
+  foreach subgroupID,subgroupIDs,k do begin
+
+    ; interpolate onto the shell (load)
+    hsv = haloShellValue(sP=sP,partType=partType,valName=valName,subgroupIDs=[subgroupID],$
+                         cutSubS=cutSubS,radFacs=[1.0])
+    
+    ; data
+    healpix_data = reform( hsv.value[*,radInd] / mean(hsv.value[*,radInd]) )
+    
+    ; calculate sky covering fraction with log(rho/mean rho) > threshold
+    w = where(healpix_data ge threshVal, countAbove, ncomp=countBelow)
+    frac[k] = float(countAbove) / countBelow
+    
+    ;print,string(subgroupID,format='(i5)')+"  "+string(frac[k],format='(f5.3)')
+    ;print,median(hsv.value[*,radInd]),mean(hsv.value[*,radInd])        
+  endforeach
+  
+  ; plot
+  start_PS, sP.plotPath+'fracvsmass_'+partType+'-'+valName+'_z'+str(redshift)+'.eps'
+    ; plot
+    xrange = minmax(priMasses)+[-0.2,0.2]
+    yrange = [0.0,max(frac)*1.1]
+    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      ytitle="Filamentarity",xtitle="log ( Halo Mass ) "+textoidl(" [M_{sun}]")
+      
+    ;cgPlot,[0,0],yrange,line=0,color=cgColor('light gray'),/overplot
+    
+    cgPlot,priMasses,frac,psym=4,color=getColor(0),/overplot    
+  end_PS
+  stop
 end
 
 ; plotHaloShellDensMovie(): 
@@ -217,8 +318,8 @@ pro plotHaloShellDensMovie, redshift=redshift, hMassTarget=hMassTarget
   
   ; interpolate onto shells at a set of fixed radii
   print,'interpolating onto shells...'
-  hsd_gas = haloShellDensity(sP=sP,partType='gas',subgroupID=subgroupID,cutSubS=cutSubS,/save)
-  hsd_dm  = haloShellDensity(sP=sP,partType='dm',subgroupID=subgroupID,cutSubS=cutSubS,/save)  
+  hsd_gas = haloShellDensity(sP=sP,partType='gas',subgroupID=subgroupID,cutSubS=cutSubS)
+  hsd_dm  = haloShellDensity(sP=sP,partType='dm',subgroupID=subgroupID,cutSubS=cutSubS)  
 
   ; stepping in radius
   radStep    = (radEnd - radStart) / (nFrames-1)

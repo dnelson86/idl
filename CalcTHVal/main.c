@@ -22,6 +22,7 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
   int i;
   int nNodes;
   float hsml = 1.0, val;
+  float *hsml_guesses;
   float pos[3];
 
   // instead of copying, just cast the input data as an array of particle_data structs
@@ -33,6 +34,55 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
   // allocate and build tree
   tree_treeallocate(2.0 * NumPart, NumPart);
   nNodes = tree_treebuild();
+
+  /* tree-node based hsml guess */
+  hsml_guesses = malloc(NumSearch * sizeof(float));
+  for(i = 0; i < NumSearch; i++)
+  {
+    // get current search position
+    pos[0] = search_pos[3*i+0];
+    pos[1] = search_pos[3*i+1];
+    pos[2] = search_pos[3*i+2];
+
+    int no = NumPart; // root node
+
+    // first guess for hsml based on node lengt
+    hsml_guesses[i] = 0.5 * Nodes[no].len;
+
+    // make good hsml guess based on tree node length
+    while(no >= 0)
+    {
+      if(no < NumPart)  //single particle 
+      {
+        no = Nextnode[no];
+      }
+      else
+      {
+        if(no >= NumPart + MaxNodes)  // pseudo particle
+        {
+          no = Nextnode[no - MaxNodes];
+          continue;
+        }
+
+        struct NODE *current = &Nodes[no];
+
+        no = current->u.d.sibling;        // in case the node can be discarded
+
+        double dist = 0.5 * current->len;
+
+        if(fabs(current->center[0] - pos[0]) > dist)
+          continue;
+        if(fabs(current->center[1] - pos[1]) > dist)
+          continue;
+        if(fabs(current->center[2] - pos[2]) > dist)
+          continue;
+
+        hsml_guesses[i] = 0.5 * current->len;
+        no = current->u.d.nextnode; // open the node
+      }
+    } //no
+  } //i
+
 	
 #ifdef VERBOSE
   // use tree for neighbor searches
@@ -59,13 +109,17 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
     pos[2] = search_pos[3*i+2];
 
     // calculate smoothing length and use this value as a guess for the next point
-    hsml = ngb_treefind(pos, hsml * 1.1, &val);
+    //hsml = ngb_treefind(pos, hsml * 1.1, &val);
+
+    // calculate value over neighbors using hsml_guesses from tree
+    hsml = ngb_treefind(pos,hsml_guesses[i],&val);
 
     // save value for this search position
     val_out[i] = val;
   }
 
   tree_treefree();
+  free(hsml_guesses);
 
   IF_VERBOSE(printf("]\n"));
 	
