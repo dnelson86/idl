@@ -366,7 +366,7 @@ pro plotMollweideProj, data, rot_ang=rot_ang, minmax=minmax, ctName=ctName, $
     
     cgText,cbar_xll,cbar_yll,strmin+'  ',ALIGN=1.0,/normal,charsize=charSize
     cgText,cbar_xur,cbar_yll,'  '+strmax,ALIGN=0.0,/normal,charsize=charSize
-    cgText,mean([cbar_xll,cbar_xur]),cbar_units_y,bartitle,alignment=0.5,/normal,charsize=charSize
+    cgText,mean([cbar_xll,cbar_xur]),cbar_units_y,textoidl(bartitle),alignment=0.5,/normal,charsize=charSize
   endif
   
 end
@@ -524,8 +524,8 @@ end
 ;
 ; cutSubS = cut substructures (satellite subgroups) out before estimating densities
 
-function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupID=subgroupID, $
-                         Nside=Nside, radFacs=radFacs, save=save, cutSubS=cutSubS
+function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=subgroupIDs, $
+                         Nside=Nside, radFacs=radFacs, cutSubS=cutSubS
                          
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
@@ -538,21 +538,22 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupID=s
   if ~keyword_set(Nside) then Nside = 64
   
   ; r/r_vir list of shells to compute
-  if ~keyword_set(radFac) then $
+  if ~keyword_set(radFacs) then $
     radFacs = [0.01,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.4,1.6,1.8,2.0]
     
   if ~keyword_set(valName) then message,'Error: Must specify valName'
     
-  ; check for existence of a save
-  csTag = ''
-  if keyword_set(cutSubS) then csTag = '.cutSubS'
+  ; if one subgroupID, check for existence of a save
+  if keyword_set(cutSubS) then csTag = '.cutSubS' else csTag = ''
   
-  saveFilename = sP.derivPath+'hShells/hShells.'+valName+'.'+sP.savPrefix+str(sP.res)+'.'+partType+csTag+$
-                 '.ns'+str(Nside)+'.'+str(sP.snap)+'.'+str(subgroupID)+'.'+str(n_elements(radFacs)) + '.sav'
-                 
-  if file_test(saveFilename) then begin
-    restore,saveFilename
-    return,r
+  saveFilename = sP.derivPath+'hShells/hShells.'+partType+'.'+valName+'.'+sP.savPrefix+str(sP.res)+csTag+$
+                 '.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+str(subgroupIDs[0])+'.'+str(n_elements(radFacs)) + '.sav'
+ 
+  if n_elements(subgroupIDs) eq 1 then begin
+    if file_test(saveFilename) then begin
+      restore,saveFilename
+      return,r
+    endif
   endif
   
   Npx      = nside2npix(Nside)
@@ -564,172 +565,195 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupID=s
   ; instead of estimating this value on each particle and then tophat smoothing, we use the
   ; estimates of each avaiable already on each point on the sphere
   if valName eq 'radmassflux' then begin
-    hsv_dens   = haloShellValue(sP=sP,partType=partType,valName='density',subgroupID=subgroupID,$
-                                Nside=Nside,radFacs=radFacs,cutSubS=cutSubS,save=save)
-    hsv_radvel = haloShellValue(sP=sP,partType=partType,valName='radvel',subgroupID=subgroupID,$
-                                Nside=Nside,radFacs=radFacs,cutSubS=cutSubS,save=save)
+    if n_elements(subgroupIDs) gt 1 then message,'This makes little sense right now.'
+    hsv_dens   = haloShellValue(sP=sP,partType=partType,valName='density',subgroupIDs=subgroupIDs,$
+                                Nside=Nside,radFacs=radFacs,cutSubS=cutSubS)
+    hsv_radvel = haloShellValue(sP=sP,partType=partType,valName='radvel',subgroupIDs=subgroupIDs,$
+                                Nside=Nside,radFacs=radFacs,cutSubS=cutSubS)
                                 
     hsv_dens.valName = 'radmassflux'
     hsv_dens.value = alog10(hsv_dens.value * units.UnitMass_in_Msun) * (hsv_radvel.value * units.kmS_in_kpcYr)
     return, hsv_dens ; Msun / kpc^2 * year
   endif
   
-  ; load group catalog and find halo position and virial radius
+  ; load group catalog and primary list
   h  = loadSnapshotHeader(sP=sP)
   if keyword_set(cutSubS) then gc = loadGroupCat(sP=sP,/verbose,/readIDs) $
   else gc = loadGroupCat(sP=sP,/verbose,/skipIDs)
   
-  sgpos  = subgroupPosByMostBoundID(sP=sP)
-  cenPos = sgpos[*,subgroupID]
-  rVir   = gc.group_r_crit200[gc.subgroupGrNr[subgroupID]]
-  
-  ; verify that the requested subgroupID is a primary subgroup
   priSGIDs = gcIDList(gc=gc,select='pri')
-  w = where(priSGIDs eq subgroupID,countMatch)
-  if ~countMatch then message,'Error: Only know how to do this for primary subgroups for now.'
+  sgpos  = subgroupPosByMostBoundID(sP=sP)
   
   ; load particle positions
   pos = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
   
-  ; take conservative subset of points using periodic distances
-  rad = periodicDists(cenPos,pos,sP=sP)
-  
-  wRadCut = where(rad le padFac*rVir,sCount)
-  if ~sCount then message,'Error: No positions found near specified radius.'
-  rad = !NULL
-  
-  pos = pos[*,wRadCut]
-  
-  ; load data value requested and make posval = [[pos],[val]]
+  ; load data value requested
   if valName eq 'temp' then begin
     u = loadSnapshotSubset(sP=sP,partType=partType,field='u')
-    u = u[wRadCut]
-    
     nelec = loadSnapshotSubset(sP=sP,partType=partType,field='nelec')
-    nelec = nelec[wRadCut]
     
-    value = reform(convertUtoTemp(u,nelec,/log),[1,n_elements(wRadCut)]) ; make 1xN vector
+    temp = convertUtoTemp(u,nelec,/log)
     
-    posval = [pos,value]
-    thMode = 1 ; mean
+    u = !NULL
+    nelec = !NULL
   endif
   
   if valName eq 'radvel' then begin
     vel = loadSnapshotSubset(sP=sP,partType=partType,field='vel')
-    vel = vel[*,wRadCut]
-    
-    ; make normalized position vector wrt halo center = vec(r) / ||r||
-    rnorm0 = reform(cenPos[0] - pos[0,*])
-    rnorm1 = reform(cenPos[1] - pos[1,*])
-    rnorm2 = reform(cenPos[2] - pos[2,*])
-    
-    correctPeriodicDistVecs, rnorm0, sP=sP
-    correctPeriodicDistVecs, rnorm1, sP=sP
-    correctPeriodicDistVecs, rnorm2, sP=sP
-    
-    ; denominator and do divide
-    rnorm = sqrt(rnorm0*rnorm0 + rnorm1*rnorm1 + rnorm2*rnorm2)
-
-    rnorm0 /= rnorm
-    rnorm1 /= rnorm
-    rnorm2 /= rnorm
-    rnorm = !NULL
-    
-    ; dot(vel,rnorm) gives the magnitude of the projection of vel onto vec(r)
-    value = vel[0,*]*rnorm0 + vel[1,*]*rnorm1 + vel[2,*]*rnorm2 ; 1xN
-    rnorm0 = !NULL
-    rnorm1 = !NULL
-    rnorm2 = !NULL
-    
-    posval = [pos,value]
-    thMode = 1 ; mean
   endif
   
   if valName eq 'density' then begin
     mass = loadSnapshotSubset(sP=sP,partType=partType,field='mass')
-    mass = reform(mass[wRadCut],[1,n_elements(wRadCut)]) ; 1xN
-    
-    posval = [pos,mass]
-    thMode = 3 ; total/volume
   endif
   
-  if n_elements(posval) eq 0 then message,'Error: Unrecognized value name.'
-  
-  ; if cutting substructure, load particle ids and make same radial cut
+  ; if cutting substructures, load ids and make secondary list
   if keyword_set(cutSubS) then begin
     ids = loadSnapshotSubset(sP=sP,partType=partType,field='ids')
-    ids = ids[wRadCut]
-    
-    ; make a list of satellites of this halo
-    nSubs    = gc.groupNSubs[gc.subgroupGrNr[subgroupID]]
-    firstSub = gc.groupFirstSub[gc.subgroupGrNr[subgroupID]]
-    
-    if firstSub ne subgroupID then message,'Warning: firstSub is not subgroupID'
-
-    satGCids = indgen(nSubs-1) + firstSub + 1
-
-    ; make a list of member particle ids of these satellites for the requested particle type
-    satPIDs = gcPIDList(gc=gc,select='secondary',valGCids=satGCids,partType=partType)
-    gc = !NULL
-    
-    ; remove the intersection of (satPIDs,ids) from pos
-    match,satPIDs,ids,sat_ind,ids_ind,count=count,/sort
-    sat_ind = !NULL
-    satPIDs = !NULL
-    
-    all = bytarr(n_elements(ids))
-    if count gt 0 then all[ids_ind] = 1B
-    wSubSComp = where(all eq 0B, ncomp)
-    
-    ids_ind = !NULL
-    ids     = !NULL
-    
-    print,'Substructures cut ['+str(count)+'] of ['+str(n_elements(ids))+'] have left: '+str(ncomp)
-    if ncomp gt 0 then posval = posval[*,wSubSComp]
+    satPIDs = gcPIDList(gc=gc,select='sec',partType=partType)
   endif
-
-  ; allocate save structure
-  r = { Nside      : Nside                 ,$
-        Npx        : Npx                   ,$
-        subgroupID : subgroupID            ,$
-        sP         : sP                    ,$
-        rVir       : rVir                  ,$
-        cenPos     : cenPos                ,$
-        partType   : partType              ,$
-        radFacs    : radFacs               ,$
-        padFac     : padFac                ,$
-        sCount     : sCount                ,$
-        nNGB       : nNGB                  ,$
-        nRadFacs   : nRadFacs              ,$
-        valName    : valName               ,$
-        value      : fltarr(Npx,nRadFacs)   }
-
-  sphereXYZ = fltarr(3,Npx*nRadFacs)
-
-  ; loop over all requested shells and generate all the sphere points
-  for i=0,nRadFacs-1 do begin
-    radius = radFacs[i] * rVir ;kpc
   
-    ; get sphere (x,y,z) positions
-    locSphereXYZ = sphereXYZCoords(Nside=Nside,radius=radius,center=cenPos)
-
-    ; periodic wrap any sphere points that landed outside the box (periodic ok in CalcHSMLds)
-    w = where(locSphereXYZ lt 0.0,count)
-    if count gt 0 then locSphereXYZ[w] += sP.boxSize
-    w = where(locSphereXYZ gt sP.boxSize,count)
-    if count gt 0 then locSphereXYZ[w] -= sP.boxSize
+  ; loop over each requested halo
+  foreach subgroupID,subgroupIDs do begin
+    ; find halo position and virial radius
+    cenPos = sgpos[*,subgroupID]
+    rVir   = gc.group_r_crit200[gc.subgroupGrNr[subgroupID]]
     
-    ; store
-    sphereXYZ[*,i*Npx:(i+1)*Npx-1] = locSphereXYZ
-  endfor
+    ; verify that the requested subgroupID is a primary subgroup
+    w = where(priSGIDs eq subgroupID,countMatch)
+    if ~countMatch then message,'Error: Only know how to do this for primary subgroups for now.'
+    
+    ; take conservative subset of points using periodic distances
+    rad = periodicDists(cenPos,pos,sP=sP)
+    
+    wRadCut = where(rad le padFac*rVir,sCount)
+    if ~sCount then message,'Error: No positions found near specified radius.'
+    rad = !NULL
+    
+    loc_pos = pos[*,wRadCut]
+    
+    ; create local data value and make posval = [[pos],[val]]
+    if valName eq 'temp' then begin     
+      value = reform(temp[wRadCut],[1,n_elements(wRadCut)]) ; make 1xN vector
+      
+      posval = [loc_pos,value]
+      thMode = 1 ; mean
+    endif
+    
+    if valName eq 'radvel' then begin
+      loc_vel = vel[*,wRadCut]
+      
+      ; make normalized position vector wrt halo center = vec(r) / ||r||
+      rnorm0 = reform(cenPos[0] - loc_pos[0,*])
+      rnorm1 = reform(cenPos[1] - loc_pos[1,*])
+      rnorm2 = reform(cenPos[2] - loc_pos[2,*])
+      
+      correctPeriodicDistVecs, rnorm0, sP=sP
+      correctPeriodicDistVecs, rnorm1, sP=sP
+      correctPeriodicDistVecs, rnorm2, sP=sP
+      
+      ; denominator and do divide
+      rnorm = sqrt(rnorm0*rnorm0 + rnorm1*rnorm1 + rnorm2*rnorm2)
+  
+      rnorm0 /= rnorm
+      rnorm1 /= rnorm
+      rnorm2 /= rnorm
+      rnorm = !NULL
+      
+      ; dot(vel,rnorm) gives the magnitude of the projection of vel onto vec(r)
+      value = loc_vel[0,*]*rnorm0 + loc_vel[1,*]*rnorm1 + loc_vel[2,*]*rnorm2 ; 1xN
+      rnorm0 = !NULL
+      rnorm1 = !NULL
+      rnorm2 = !NULL
+      
+      posval = [loc_pos,value]
+      thMode = 1 ; mean
+    endif
+    
+    if valName eq 'density' then begin
+      value = reform(mass[wRadCut],[1,n_elements(wRadCut)]) ; 1xN
+      
+      posval = [loc_pos,value]
+      thMode = 3 ; total/volume
+    endif
+    
+    if n_elements(posval) eq 0 then message,'Error: Unrecognized value name.'
+    
+    ; if cutting substructure, match secondary ids against local ids
+    if keyword_set(cutSubS) then begin
+      loc_ids = ids[wRadCut]
+      
+      ; make a list of satellites of this halo and their particle ids
+      ;nSubs    = gc.groupNSubs[gc.subgroupGrNr[subgroupID]]
+      ;firstSub = gc.groupFirstSub[gc.subgroupGrNr[subgroupID]]
+      ;satGCids = lindgen(nSubs-1) + firstSub + 1
+      ;satPIDs = gcPIDList(gc=gc,select='sec',valGCids=satGCids,partType=partType)
+      
+      ; remove the intersection of (satPIDs,loc_ids) from posval
+      match,satPIDs,loc_ids,sat_ind,ids_ind,count=count,/sort
+      sat_ind = !NULL
+      
+      all = bytarr(n_elements(loc_ids))
+      if count gt 0 then all[ids_ind] = 1B
+      wSubSComp = where(all eq 0B, ncomp)
+      
+      print,'Substructures cut ['+str(count)+'] of ['+str(n_elements(loc_ids))+'] have left: '+str(ncomp)
+      
+      ids_ind = !NULL
+      loc_ids = !NULL
 
-  ; calculate tophat density estimate of all points on all spheres (one tree build)
-  r.value = CalcTHVal(posval,sphereXYZ,ndims=3,nNGB=nNGB,thMode=thMode,boxSize=sP.boxSize)
-
-  if keyword_set(save) then begin
+      if ncomp gt 0 then posval = posval[*,wSubSComp]
+    endif
+  
+    ; allocate save structure
+    r = { Nside      : Nside                 ,$
+          Npx        : Npx                   ,$
+          subgroupID : subgroupID            ,$
+          sP         : sP                    ,$
+          rVir       : rVir                  ,$
+          cenPos     : cenPos                ,$
+          partType   : partType              ,$
+          radFacs    : radFacs               ,$
+          padFac     : padFac                ,$
+          sCount     : sCount                ,$
+          nNGB       : nNGB                  ,$
+          nRadFacs   : nRadFacs              ,$
+          valName    : valName               ,$
+          cutSubS    : cutSubS               ,$
+          value      : fltarr(Npx,nRadFacs)   }
+  
+    sphereXYZ = fltarr(3,Npx*nRadFacs)
+  
+    ; loop over all requested shells and generate all the sphere points
+    for i=0,nRadFacs-1 do begin
+      radius = radFacs[i] * rVir ;kpc
+    
+      ; get sphere (x,y,z) positions
+      locSphereXYZ = sphereXYZCoords(Nside=Nside,radius=radius,center=cenPos)
+  
+      ; periodic wrap any sphere points that landed outside the box (periodic ok in CalcHSMLds)
+      w = where(locSphereXYZ lt 0.0,count)
+      if count gt 0 then locSphereXYZ[w] += sP.boxSize
+      w = where(locSphereXYZ gt sP.boxSize,count)
+      if count gt 0 then locSphereXYZ[w] -= sP.boxSize
+      
+      ; store
+      sphereXYZ[*,i*Npx:(i+1)*Npx-1] = locSphereXYZ
+    endfor
+  
+    ; calculate tophat density estimate of all points on all spheres (one tree build)
+    r.value = CalcTHVal(posval,sphereXYZ,ndims=3,nNGB=nNGB,thMode=thMode,boxSize=sP.boxSize)
+  
+    saveFilename = sP.derivPath+'hShells/hShells.'+partType+'.'+valName+'.'+sP.savPrefix+str(sP.res)+csTag+$
+                   '.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+str(subgroupID)+'.'+str(n_elements(radFacs)) + '.sav'
+  
     save,r,filename=saveFilename
     print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
-  endif
+    
+    posval = !NULL
+    value  = !NULL
+    sphereXYZ = !NULL
   
-  return, r
+  endforeach
+  
+  if n_elements(subgroupIDs) eq 1 then return,r
 end

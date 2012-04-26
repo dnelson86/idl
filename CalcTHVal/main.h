@@ -48,5 +48,36 @@ struct particle_data
 }
  *P;
 
+/* tree */
+struct NODE
+{
+  MyFloat len;
+  MyFloat center[3];
+  MyFloat maxsoft;
+  union
+  {
+    int suns[8];
+    struct
+    {
+      MyFloat s[3];
+      MyFloat mass;
+      unsigned int bitflags;
+      int sibling;
+      int nextnode;
+      int father;
+    }
+    d;
+  }
+  u;
+}
+ *Nodes, *Nodes_base;
+
+int MaxNodes;
+int Numnodestree;
+int TotNumNonInternalTopLevelTreeNodes;
+
+int *Nextnode;
+int *Prevnode;
+int *Father;
 
 #endif

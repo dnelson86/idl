@@ -175,7 +175,7 @@ function gcIDList, sP=sP, gc=gc, select=select
         prevGrNr = gc.subgroupGrnr[i]
       endelse
     endfor
-    
+    return,valGCids
   endif
   
   if (select eq 'sec') then begin
@@ -195,7 +195,7 @@ function gcIDList, sP=sP, gc=gc, select=select
         
       endelse
     endfor
-    
+    return,valGCids
   endif
   
   if (select eq 'all') then begin
@@ -211,10 +211,10 @@ function gcIDList, sP=sP, gc=gc, select=select
       endelse ;minNumPart
       
     endfor
-  
+    return,valGCids
   endif
   
-  return, valGCids
+  message,'Error: Unrecognized select in gcIDList?'
 
 end
 
@@ -237,7 +237,7 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
       n_elements(PT) eq 0) then message,'Error: gcPIDList: Bad inputs.'
 
   ; get list of appropriate group ids
-  if ~keyword_set(valGCids) then valGCids = gcIDList(gc=gc,select=select)
+  if n_elements(valGCids) eq 0 then valGCids = gcIDList(gc=gc,select=select)
   
   ; make list of particle ids in these groups
   start = 0L

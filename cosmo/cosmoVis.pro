@@ -513,7 +513,7 @@ pro scatterMapHalosDM, sP=sP, gcIDs=gcIDs
   cutFac  = 1.0       ; times boxSize
   nPixels = [800,800] ; px
   
-  overdensMinMax  = [0.0,1.0] ; log(rho/mean rho)
+  overdensMinMax  = [1.0,2.0] ; log(rho/mean rho)
   velVecFac       = 0.01      ; times velocity (km/s) in plotted kpc
   
   axes = list([0,1],[0,2],[1,2]) ;xy,xz,yz
@@ -907,9 +907,11 @@ pro makeHaloComparisonImages, select=select, redshift=redshift
     gcIDs_gadget = priGIDs[w]
     
     print,'Mapping ['+str(countG)+'] gadget halos above minLogMsun.'
-    sphMapHalos,sP=sPg,gcIDs=gcIDs_gadget;,/coldOnly
+    ;sphMapHalos,sP=sPg,gcIDs=gcIDs_gadget;,/coldOnly
     ;scatterMapHalos,sP=sPg,gcIDs=gcIDs_gadget
     ;scatterMapHalosGasDM,sP=sPg,gcIDs=gcIDs_gadget
+    hsv = haloShellValue(sP=sPg,partType='gas',valName='density',subgroupIDs=gcIDs_gadget,$
+                         /cutSubS,radFacs=[1.0])
   endif
   
   ; arepo group catalog
@@ -921,9 +923,11 @@ pro makeHaloComparisonImages, select=select, redshift=redshift
     gcIDs_arepo = priAIDs[w]
     
     print,'Mapping ['+str(countA)+'] arepo halos above minLogMsun.'
-    sphMapHalos,sP=sPa,gcIDs=gcIDs_arepo;,/coldOnly
+    ;sphMapHalos,sP=sPa,gcIDs=gcIDs_arepo;,/coldOnly
     ;scatterMapHalos,sP=sPa,gcIDs=gcIDs_arepo
     ;scatterMapHalosGasDM,sP=sPa,gcIDs=gcIDs_arepo
+    hsv = haloShellValue(sP=sPa,partType='gas',valName='density',subgroupIDs=gcIDs_arepo,$
+                         /cutSubS,radFacs=[1.0])
   endif
   
   print,'done.'
