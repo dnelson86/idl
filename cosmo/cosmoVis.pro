@@ -193,6 +193,20 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
           cgText,0.635,0.036,string(config.barMM[1],format='(i3)'),alignment=0.5,color=cgColor('white'),/normal
         endif
         
+        if config.barType eq '2overdens' then begin
+          ; local overdensity two colorsbars (separate ranges)
+          colorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+          cgText,0.25,0.0375,textoidl("log \rho_{DM} / <\rho_{DM}>"),alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.115,0.036,string(config.barMM_left[0],format='(i3)'),alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.385,0.036,string(config.barMM_left[1],format='(i3)'),alignment=0.5,color=cgColor('white'),/normal
+
+          colorbar,position=[0.02,0.6,0.076,0.9],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+          cgText,0.75,0.0375,textoidl("log \rho_{DM} / <\rho_{DM}>"),alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.615,0.036,string(config.barMM_right[0],format='(i3)'),alignment=0.5,color=cgColor('white'),/normal
+          cgText,0.875,0.036,string(config.barMM_right[1],format='(i3)'),alignment=0.5,color=cgColor('white'),/normal
+
+        endif
+        
       end_PS, pngResize=60, im_options='-negate', /deletePS
 end
 
@@ -509,11 +523,11 @@ pro scatterMapHalosDM, sP=sP, gcIDs=gcIDs
   if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
 
   ; config
-  sizeFac = 10.0      ; times rvir
+  sizeFac = 3.5      ; times rvir
   cutFac  = 1.0       ; times boxSize
   nPixels = [800,800] ; px
   
-  overdensMinMax  = [1.0,2.0] ; log(rho/mean rho)
+  overdensMinMax  = [0.0,1.0] ; log(rho/mean rho)
   velVecFac       = 0.01      ; times velocity (km/s) in plotted kpc
   
   axes = list([0,1],[0,2],[1,2]) ;xy,xz,yz
@@ -595,12 +609,14 @@ pro scatterMapHalosDM, sP=sP, gcIDs=gcIDs
 
     ; OVERDENSE DM: make cutout
     wOD = where(loc_dens_dm ge overDensMinMax[0] and loc_dens_dm lt overDensMinMax[1],nOverDens)
-    ;loc_dens_dm = !NULL
     print,nCutoutDM,nOverDens
     
     loc_pos_od   = loc_pos_dm[*,wOD]
     loc_pos2_od  = loc_pos2_dm[*,wOD]
-    colorinds_od = colorinds_dm[wOD]
+    
+    ; create restricted color index mapping
+    colorinds_od = (loc_dens_dm[wOD]-overdensMinMax[0])*205.0 / (overdensMinMax[1]-overdensMinMax[0]) ;0-205
+    colorinds_od = fix(colorinds_dm + 50.0) > 0 < 255 ;50-255
   
     ; make a plot for each requested projection direction
     foreach axisPair, axes do begin
@@ -618,7 +634,7 @@ pro scatterMapHalosDM, sP=sP, gcIDs=gcIDs
                      '.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
 
       config = {boxSizeImg:boxSizeImg,plotFilename:plotFilename,haloVirRad:haloVirRad,haloMass:haloMass,$
-                axisPair:axisPair,sP:sP,barMM:overdensMM,barType:'1overdens'}
+                axisPair:axisPair,sP:sP,barMM_left:overdensMM,barMM_right:overDensMinMax,barType:'2overdens'}
       
       ; plot
       plotScatterComp,loc_pos_dm,loc_pos2_dm,loc_pos_od,loc_pos2_od,colorinds_dm,colorinds_od,config=config
@@ -910,8 +926,8 @@ pro makeHaloComparisonImages, select=select, redshift=redshift
     ;sphMapHalos,sP=sPg,gcIDs=gcIDs_gadget;,/coldOnly
     ;scatterMapHalos,sP=sPg,gcIDs=gcIDs_gadget
     ;scatterMapHalosGasDM,sP=sPg,gcIDs=gcIDs_gadget
-    hsv = haloShellValue(sP=sPg,partType='gas',valName='density',subgroupIDs=gcIDs_gadget,$
-                         /cutSubS,radFacs=[1.0])
+    ;hsv = haloShellValue(sP=sPg,partType='gas',valName='density',subgroupIDs=gcIDs_gadget,$
+    ;                     /cutSubS,radFacs=[1.0])
   endif
   
   ; arepo group catalog
@@ -926,8 +942,8 @@ pro makeHaloComparisonImages, select=select, redshift=redshift
     ;sphMapHalos,sP=sPa,gcIDs=gcIDs_arepo;,/coldOnly
     ;scatterMapHalos,sP=sPa,gcIDs=gcIDs_arepo
     ;scatterMapHalosGasDM,sP=sPa,gcIDs=gcIDs_arepo
-    hsv = haloShellValue(sP=sPa,partType='gas',valName='density',subgroupIDs=gcIDs_arepo,$
-                         /cutSubS,radFacs=[1.0])
+    ;hsv = haloShellValue(sP=sPa,partType='gas',valName='density',subgroupIDs=gcIDs_arepo,$
+    ;                     /cutSubS,radFacs=[1.0])
   endif
   
   print,'done.'
