@@ -631,12 +631,14 @@ function subgroupPosByMostBoundID, sP=sP
     ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
     match,gc.subgroupIdMostBound,ids,gc_ind,ids_ind,count=count1,/sort
     
-    ids_ind = ids_ind[sort(gc_ind)]
-    gc_ind  = gc_ind[sort(gc_ind)]
-    
-    pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
-    
-    groupCen[*,gc_ind] = pos[*,ids_ind]
+    if count1 gt 0 then begin
+      ids_ind = ids_ind[sort(gc_ind)]
+      gc_ind  = gc_ind[sort(gc_ind)]
+      
+      pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+      
+      groupCen[*,gc_ind] = pos[*,ids_ind]
+    endif
     
     ; load stars ids and pos, find matches
     ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
@@ -645,12 +647,14 @@ function subgroupPosByMostBoundID, sP=sP
     if (n_elements(ids) ne 1) then begin
       match,gc.subgroupIdMostBound,ids,gc_ind,ids_ind,count=count2,/sort
       
-      ids_ind = ids_ind[sort(gc_ind)]
-      gc_ind  = gc_ind[sort(gc_ind)]
-      
-      pos = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
-      
-      groupCen[*,gc_ind] = pos[*,ids_ind]
+      if count2 gt 0 then begin
+        ids_ind = ids_ind[sort(gc_ind)]
+        gc_ind  = gc_ind[sort(gc_ind)]
+        
+        pos = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
+        
+        groupCen[*,gc_ind] = pos[*,ids_ind]
+      endif
     endif else begin
       count2 = 0
     endelse
@@ -659,12 +663,14 @@ function subgroupPosByMostBoundID, sP=sP
     ids = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
     match,gc.subgroupIdMostBound,ids,gc_ind,ids_ind,count=count3,/sort
     
-    ids_ind = ids_ind[sort(gc_ind)]
-    gc_ind  = gc_ind[sort(gc_ind)]
-    
-    pos = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
-    
-    groupCen[*,gc_ind] = pos[*,ids_ind]
+    if count3 gt 0 then begin
+      ids_ind = ids_ind[sort(gc_ind)]
+      gc_ind  = gc_ind[sort(gc_ind)]
+      
+      pos = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
+      
+      groupCen[*,gc_ind] = pos[*,ids_ind]
+    endif
   
     if ((count1 + count2 + count3) ne gc.nSubgroupsTot) then begin
       print,'ERROR: Failed to find all most bound IDs.' & stop
