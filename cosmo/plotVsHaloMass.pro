@@ -171,7 +171,7 @@ end
 
 ; haloMassBinModeMasses(): bin total mass in hot/cold modes as a function of halo mass
 
-function haloMassBinModeMasses, sP=sP, sgSelect=sgSelect, accMode=accMode
+function haloMassBinModeMasses, sP=sP, sgSelect=sgSelect, accMode=accMode, KDE=KDE
   
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
@@ -203,7 +203,6 @@ function haloMassBinModeMasses, sP=sP, sgSelect=sgSelect, accMode=accMode
      n_elements(accTvir.gal) ne n_elements(maxTemp.gal) or $
      n_elements(accTvir.gal) ne n_elements(parMasses.gal) or $
      n_elements(accTvir.gal) ne n_elements(wAm.gal) then message,'Data error'
-  
   
   ; bin fractions into halo mass bins and make median lines
   logMassNbins  = floor((xrange[1]-xrange[0]) / logMassBinSize)
@@ -302,7 +301,24 @@ function haloMassBinModeMasses, sP=sP, sgSelect=sgSelect, accMode=accMode
   hotMass.tViracc_gmem[*]   = hotMass.tViracc_gmem[*] / logMassBinSize
   totalMass.tViracc_gmem[*] = totalMass.tViracc_gmem[*] / logMassBinSize
   
-  r = {coldMass:coldMass,hotMass:hotMass,totalMass:totalMass,logMassBinCen:logMassBinCen}
+  ; test: kernel density estimator
+  if keyword_set(KDE) then begin
+    xpts = findgen(50)/50.0*2.0 + 10.5
+    spacing = 2.0/100
+    ypts = parMasses.gal[where(maxTemp.gal lt accTvir.gal)]
+    tt_gal = akde(ypts,xpts)
+    tt_gal = tt_gal * spacing * n_elements(ypts) * logMassBinSize / 2.0
+    
+    ypts = parMasses.gmem[where(maxTemp.gmem lt accTvir.gmem)]
+    tt_gmem = akde(ypts,xpts)
+    tt_gmem = tt_gmem * spacing * n_elements(ypts) * logMassBinSize / 2.0
+    print,'Warning: This de-normalization is wrong.'
+  endif else begin
+    tt_gal = 0 & tt_gmem = 0
+  endelse
+  
+  r = {coldMass:coldMass,hotMass:hotMass,totalMass:totalMass,logMassBinCen:logMassBinCen,xrange:xrange,$
+       tt_gal:tt_gal,tt_gmem:tt_gmem}
   return,r
 end
 
@@ -396,8 +412,6 @@ pro plotDeltaAccTimeVsHaloMass
     cgText,0.95,0.02,"arepo",alignment=0.5,charsize=!p.charsize-0.2,color=getColor(3),/normal
     
   end_PS
-  
-  stop
 end
 
 ; plotModeMassesVsHaloMass(): plot the "cold mass" and "hot mass" (not fraction) vs halo mass
@@ -412,10 +426,10 @@ pro plotModeMassesVsHaloMass
   
   res = 256
   sPg = simParams(res=res,run='gadget',redshift=2.0)
-  ;sPa = simParams(res=res,run='tracer',redshift=2.0)
+  sPa = simParams(res=res,run='tracer',redshift=2.0)
   
   mmG = haloMassBinModeMasses(sP=sPg,sgSelect=sgSelect,accMode=accMode)
-  ;mmA = haloMassBinModeMasses(sP=sPa,sgSelect=sgSelect,accMode=accMode)
+  mmA = haloMassBinModeMasses(sP=sPa,sgSelect=sgSelect,accMode=accMode)
   
   ; plot - cold,hot,total masses
   xrange = [10.5,mmG.xrange[1]]
@@ -431,20 +445,20 @@ pro plotModeMassesVsHaloMass
                 [x0,y0,x1,y1]  ) ; lc
    
     ; gal
-    yrange = [0.0,max(mmG.totalMass.tviracc_gal,/nan)*1.02]
+    yrange = [0.0,max(mmA.totalMass.tviracc_gal,/nan)*1.02]
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
       ytitle="",xtitle="",xtickname=replicate(' ',10),pos=pos[0],xminor=2,yminor=2
     
-    ;tt = akde(parMasses.gal[where(maxTemp.gal lt accTvir.gal)],findgen(100)/100.0*12.5)
-    ;cgPlot,findgen(100)/100.0*12.5,tt,line=2,/overplot
+    ;xpts = findgen(50)/50.0*2.0 + 10.5
+    ;cgPlot,xpts,mmG.tt_gal,line=3,/overplot
     
     cgPlot,mmG.logMassBinCen[w],mmG.coldMass.tViracc_gal[w],color=getColor(1),line=1,/overplot
     cgPlot,mmG.logMassBinCen[w],mmG.hotMass.tViracc_gal[w],color=getColor(1),line=2,/overplot
     cgPlot,mmG.logMassBinCen[w],mmG.totalMass.tViracc_gal[w],color=getColor(1),line=0,/overplot
     
-    ;cgPlot,mmA.logMassBinCen[w],mmA.coldMass.tViracc_gal[w],color=getColor(3),line=1,/overplot
-    ;cgPlot,mmA.logMassBinCen[w],mmA.hotMass.tViracc_gal[w],color=getColor(3),line=2,/overplot
-    ;cgPlot,mmA.logMassBinCen[w],mmA.totalMass.tViracc_gal[w],color=getColor(3),line=0,/overplot
+    cgPlot,mmA.logMassBinCen[w],mmA.coldMass.tViracc_gal[w],color=getColor(3),line=1,/overplot
+    cgPlot,mmA.logMassBinCen[w],mmA.hotMass.tViracc_gal[w],color=getColor(3),line=2,/overplot
+    cgPlot,mmA.logMassBinCen[w],mmA.totalMass.tViracc_gal[w],color=getColor(3),line=0,/overplot
     
     ; legend
     legend,['cold','hot','total'],linestyle=[1,2,0],box=0,linesize=0.25,/top,/right
@@ -454,13 +468,16 @@ pro plotModeMassesVsHaloMass
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
       ytitle="",xtitle=textoidl("log( M_{halo} ) [_{ }M_{sun }]"),xminor=2,yminor=2,pos=pos[1],/noerase
     
+    ;xpts = findgen(50)/50.0*2.0 + 10.5
+    ;cgPlot,xpts,mmG.tt_gmem,line=3,/overplot
+    
     cgPlot,mmG.logMassBinCen[w],mmG.coldMass.tViracc_gmem[w],color=getColor(1),line=1,/overplot
     cgPlot,mmG.logMassBinCen[w],mmG.hotMass.tViracc_gmem[w],color=getColor(1),line=2,/overplot
-    cgPlot,mmG.logMassBinCen[w],mmG.totalMass.tViracc_gmem[w],color=getColor(1),line=10,/overplot
+    cgPlot,mmG.logMassBinCen[w],mmG.totalMass.tViracc_gmem[w],color=getColor(1),line=0,/overplot
     
-    ;cgPlot,mmA.logMassBinCen[w],mmA.coldMass.tViracc_gmem[w],color=getColor(3),line=1,/overplot
-    ;cgPlot,mmA.logMassBinCen[w],mmA.hotMass.tViracc_gmem[w],color=getColor(3),line=2,/overplot
-    ;cgPlot,mmA.logMassBinCen[w],mmA.totalMass.tViracc_gmem[w],color=getColor(3),line=10,/overplot
+    cgPlot,mmA.logMassBinCen[w],mmA.coldMass.tViracc_gmem[w],color=getColor(3),line=1,/overplot
+    cgPlot,mmA.logMassBinCen[w],mmA.hotMass.tViracc_gmem[w],color=getColor(3),line=2,/overplot
+    cgPlot,mmA.logMassBinCen[w],mmA.totalMass.tViracc_gmem[w],color=getColor(3),line=0,/overplot
     
     ; legend
     legend,['gadget','arepo'],textcolors=getColor([1,3],/name),box=0,/top,/right
@@ -468,8 +485,8 @@ pro plotModeMassesVsHaloMass
     ; labels
     cgText,0.05,0.5,"Accreted Gas Mass "+textoidl("[_{ }M_{sun } / log( M_{halo} )]"),$
       alignment=0.5,orientation=90.0,/normal
-    cgText,0.5,0.2,"Halo Atmosphere",alignment=0.5,color=cgColor('forest green'),/normal
-    cgText,0.5,0.8,"Central Galaxy",alignment=0.5,color=cgColor('forest green'),/normal
+    cgText,mean([x0,x1]),0.17,"Halo Atmosphere",alignment=0.5,color=cgColor('forest green'),/normal
+    cgText,mean([x0,x1]),0.91,"Central Galaxy",alignment=0.5,color=cgColor('forest green'),/normal
     
   end_PS
   

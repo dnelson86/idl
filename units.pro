@@ -188,19 +188,28 @@ end
 
 ; calcEntropy(): calculate entropy as P/rho^gamma (rho is converted from comoving to physical)
 
-function calcEntropy, u, dens, gamma=gamma, sP=sP
+function calcEntropy, u, dens, gamma=gamma, log=log, sP=sP
 
   forward_function snapNumToRedshift
   
   ; adiabatic index default (valid for ComparisonProject)
-  if not keyword_set(gamma)     then gamma = 5.0/3.0
+  if not keyword_set(gamma) then gamma = 5.0/3.0
   
   atime = snapNumToRedshift(sP=sP,/time)
   a3inv = 1.0 / (atime*atime*atime)
-  stop ; TODO check this (dens=dens*a3inv but in the tracers only the dens^gamma not in the pressure)
+  
+  ; TODO check this (dens=dens*a3inv but in the tracers only the dens^gamma not in the pressure)
+  print,'Warning'
   
   pressure = (gamma-1.0) * u * dens
   entropy  = pressure / (dens^gamma)
+  
+  ; convert to log(entropy) if requested
+  if keyword_set(log) then begin
+    w = where(entropy eq 0.0,count)
+    if (count ne 0) then entropy[w] = 1.0
+    entropy = alog10(entropy)
+  endif  
   
   return, entropy
 end

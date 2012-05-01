@@ -584,13 +584,13 @@ pro cosmoTrajMovieGasDM, split=split
   
   ; config
   sP = simParams(res=256,run='gadget',redshift=0.0)
-  plotPath = sP.plotPath + 'frames.256.h74/
+  plotPath = sP.plotPath + 'frames.256.h0/
   
   ; view configuration
   boxCen   = [0,0]
-  zoomSize = 500.0   ; kpc
+  zoomSize = 900.0   ; kpc
   axes     = [2,0,1] ; rotation about first axis
-  numRots  = 0.5     ; total number of rotations throughout duration of movie (0=disable)
+  numRots  = 0.0     ; total number of rotations throughout duration of movie (0=disable)
   
   ; movie configuration
   nFrames       = 1501 ; sets time spacing, etc.
@@ -611,8 +611,9 @@ pro cosmoTrajMovieGasDM, split=split
   ; load mergerTreeSubset to find masses of tracked halos and for time sequence
   mt = mergerTreeSubset(sP=sP)
 
-  hInd = 74 ; 0,2,15,74,200,430,640 (13.1 12.5 12.0 11.5 11.0 10.5 10.0 for 256z=0) or select e.g. by mass
-  
+  hInd = 0 ; 0,2,15,74,200,430,640 (13.1 12.5 12.0 11.5 11.0 10.5 10.0 for 256z=0) or select e.g. by mass
+           ; also 1,3 are ~12.5 massive examples
+
   ; load trajectories of chosen halo
   at = accretionTrajSingle(sP=sP,hInd=hInd)
   nPart = {gas : n_elements(at.relPos_gas[0,0,*]), dm : n_elements(at.relPos_dm[0,0,*])}
@@ -644,7 +645,7 @@ pro cosmoTrajMovieGasDM, split=split
   trailColors   = lonarr(trailLenFrame)
   trailColorMod = lonarr(trailLenFrame)
   
-  for i=0,trailLenFrame-1 do trailColors[i]   = rgb[i] + rgb[i]*(256L) + fix(rgb[i]/ggTintFac*1.7)*(256L)^2
+  for i=0,trailLenFrame-1 do trailColors[i]   = rgb[i] + rgb[i]*(256L) + fix(rgb[i]/ggTintFac*1.5)*(256L)^2
   for i=0,trailLenFrame-1 do trailColorMod[i] = fix(rgb[i]/ggTintFac) + rgb[i]*(256L) + rgb[i]*(256L)^2
   
   trailColors   = reverse(trailColors)
@@ -999,6 +1000,305 @@ pro cosmoTrajMovieGasDM, split=split
       ; dividing line
       cgPlot,[boxCen[0]-zoomSize/2.0,boxCen[0]-zoomSize/2.0],[boxCen[1]-zoomSize/2.4,boxCen[1]+zoomSize/2.0],$
         line=0,color=cgColor('light gray'),/overplot
+
+    end_PS, pngResize=60, im_options='-negate', /deletePS
+  endfor
+
+end
+
+; cosmoTrajectoryGasDM(): comparison between gas and DM trajectories for a single halo
+; note: uses hermite interpolation -without- velocities and uses accretionTrajSingle()
+; (plots a single image, or a rotation movie, of the full trajectory streamline)
+
+pro cosmoTrajectoryGasDM
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
+  ; config
+  sP = simParams(res=256,run='gadget',redshift=0.0)
+  plotPath = sP.plotPath + ''
+  
+  ; view configuration
+  boxCen   = [0,0]
+  zoomSize = 3.5     ; times r_vir
+  axes     = [2,0,1] ; rotation about first axis
+  nFrames  = 600     ; number of interpolation points along each trajectory
+  nFramesOrbit = 60  ; do one complete orbit at fixed time at the end (0=disable)
+  
+  virRadCut = 0.02   ; only plot particles ending within this sphere  
+  
+  redshiftStart = 4.0
+  redshiftEnd   = 0.0
+  pssize = [8,4] ; inches
+  
+  ; load mergerTreeSubset to find masses of tracked halos and for time sequence
+  mt = mergerTreeSubset(sP=sP)
+
+  hInd = 15 ; 0,2,15,74,200,430,640 (13.1 12.5 12.0 11.5 11.0 10.5 10.0 for 256z=0) or select e.g. by mass
+           ; also 1,3 are ~12.5 massive examples
+
+  ; load trajectories of chosen halo
+  at = accretionTrajSingle(sP=sP,hInd=hInd)
+
+  mt.times  = 1/mt.times-1 ; convert scale factor to redshift
+  
+  if redshiftStart lt min(mt.times) then message,'Error: Requested redshiftStart beyond snapshot range.'
+  if redshiftEnd gt max(mt.times) then message,'Error: Requested redshiftEnd beyond snapshot range.'
+  if redshiftEnd ne sP.redshift then message,'Are you sure?'
+  
+  ; stepping in redshift
+  redshiftStep   = (redshiftEnd - redshiftStart) / (nFrames-1)
+  frameRedshifts = redshiftStep * findgen(nFrames) + redshiftStart
+  
+  ; stepping in Gyr
+  timeStart  = redshiftToAgeFlat(redshiftStart) + 1e-4
+  timeEnd    = redshiftToAgeFlat(redshiftEnd) - 1e-4
+  timeStep   = (timeEnd - timeStart) / (nFrames-1)
+  
+  frameTimes    = timeStep * findgen(nFrames) + timeStart
+  frameTimesRev = reverse(frameTimes)
+  
+  mt.times = redshiftToAgeFlat(mt.times) ; convert mt.times to Gyr
+
+  ; make a spatial subselection at the ending time
+  print,'interp gas...'
+  gasRad = sqrt(at.relPos_gas[0,0,*]*at.relPos_gas[0,0,*] + $
+                at.relPos_gas[0,1,*]*at.relPos_gas[0,1,*] + $
+                at.relPos_gas[0,2,*]*at.relPos_gas[0,2,*])
+                
+  w = where(gasRad/mt.hVirRad[0,hInd] lt virRadCut,count_gas)
+  gasRad = !NULL
+
+  ; spline interpolation of all axes coordinates and current temperatures for this subset
+  gasPos  = fltarr(3,count_gas,nFrames)
+  gasTemp = fltarr(count_gas,nFrames)
+
+  ; interpolate without using known derivatives
+  for i=0,count_gas-1 do begin
+    gasPos[0,i,*] = hermite(mt.times,at.relPos_gas[*,0,w[i]],frameTimesRev)
+    gasPos[1,i,*] = hermite(mt.times,at.relPos_gas[*,1,w[i]],frameTimesRev)
+    gasPos[2,i,*] = hermite(mt.times,at.relPos_gas[*,2,w[i]],frameTimesRev)
+    gasTemp[i,*]  = hermite(mt.times,at.curTemp_gas[*,w[i]],frameTimesRev)
+  endfor
+  
+  ; do dm
+  print,'interp dm...'
+  dmRad  = sqrt(at.relPos_dm[0,0,*]*at.relPos_dm[0,0,*] + $
+                at.relPos_dm[0,1,*]*at.relPos_dm[0,1,*] + $
+                at.relPos_dm[0,2,*]*at.relPos_dm[0,2,*])
+  
+  w = where(dmRad/mt.hVirRad[0,hInd] lt virRadCut,count_dm)
+  dmRad = !NULL
+  
+  ; allocate dmPos and interpolate
+  dmPos   = fltarr(3,count_dm,nFrames)
+
+  for i=0,count_dm-1 do begin
+    dmPos[0,i,*] = hermite(mt.times,at.relPos_dm[*,0,w[i]],frameTimesRev)
+    dmPos[1,i,*] = hermite(mt.times,at.relPos_dm[*,1,w[i]],frameTimesRev)
+    dmPos[2,i,*] = hermite(mt.times,at.relPos_dm[*,2,w[i]],frameTimesRev)
+  endfor
+  
+  print,'inside cut: gas '+string(100*float(count_gas)/n_elements(at.relPos_gas[0,0,*]),format='(f4.1)')+$
+        '% dm '+string(100*float(count_dm)/n_elements(at.relPos_dm[0,0,*]),format='(f4.1)')+'%'
+  
+  w = !NULL
+  at = !NULL
+  
+  ; reverse positions/temperatures so they progress forward in time
+  gasPos  = reverse(gasPos,3,/overwrite)
+  dmPos   = reverse(dmPos,3,/overwrite)
+  gasTemp = reverse(gasTemp,2,/overwrite)
+
+  ; calculate viewbox
+  zoomSize = zoomSize * mt.hVirRad[0,hInd]
+
+  ; colormap
+  tempMinMax = [4.0,6.0]
+  gasCM = (gasTemp-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
+  gasCM = fix(gasCM + 50.0) > 0 < 255 ;50-255
+  
+  ; start plot
+  start_PS, plotPath + 'frame_0.eps', xs=pssize[0], ys=pssize[1]
+  
+    !p.thick = 0.6
+    
+    ; clip positions at box dimensions (left,right)
+    v1 = reform(gasPos[axes[1],*,*])
+    v2 = reform(gasPos[axes[0],*,*])
+    
+    w = where(v1 gt boxCen[0]+zoomSize/2.0,count)
+    if count gt 0 then v1[w] = !values.f_nan
+    w = !NULL
+    
+    ; color table
+    loadColorTable,'helix',/reverse
+    TVLCT, rr, gg, bb, /GET
+
+    gasCM = reform(gasCM,[n_elements(gasCM)])
+    gasCM = getColor24([[rr[gasCM]], [gg[gasCM]], [bb[gasCM]]])
+    gasCM = reform(gasCM,[count_gas,nFrames])
+    
+    ; fixed viewport
+    xrange = [boxCen[0]-zoomSize/2.0,boxCen[0]+zoomSize/2.0]
+    yrange = [boxCen[1]-zoomSize/2.0,boxCen[1]+zoomSize/2.0] ; top+bottom halves
+  
+    ; left: gas
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xstyle=5,ystyle=5,$
+           xtitle="",ytitle="",title="",position=[0,0,0.5,1],xtickname=replicate(' ',10),$
+           ytickname=replicate(' ',10)
+         
+    ; left: draw rvir and rvir/10
+    tvcircle,mt.hVirRad[0,hInd]/10,0,0,cgColor('black'),thick=0.8,/data
+    tvcircle,mt.hVirRad[0,hInd],0,0,cgColor('black'),thick=0.8,/data  
+  
+    ; draw gas trajectories
+    print,'rendering gas trajectories...'
+    
+    for i=0,count_gas-1 do plots,v1[i,*],v2[i,*],color=gasCM[i,*]
+  
+    ; scale bar
+    len = 100.0 ;ckpc
+    cgPlot,[boxCen[0]-zoomSize/2.2,boxCen[0]-zoomSize/2.2+len],[boxCen[1]+zoomSize/2.2,boxCen[1]+zoomSize/2.2],$
+      line=0,color=cgColor('dark gray'),/overplot
+    cgText,mean([boxCen[0]-zoomSize/2.2,boxCen[0]-zoomSize/2.2+len]),boxCen[1]+zoomSize/2.4,$
+      string(len,format='(i3)')+' ckpc',alignment=0.5,charsize=!p.charsize-0.6,color=cgColor('dark gray')
+      
+    ; clip positions at box dimensions (left,right)
+    v1 = reform(dmPos[axes[1],*,*])
+    v2 = reform(dmPos[axes[0],*,*])
+    
+    w = where(v1 lt boxCen[0]-zoomSize/2.0,count)
+    if count gt 0 then v1[w] = !values.f_nan
+    w = !NULL
+      
+    ; right: dm (tile x2 in the left-right direction)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xstyle=5,ystyle=5,$
+           xtitle="",ytitle="",title="",position=[0.5,0,1,1],xtickname=replicate(' ',10),$
+           ytickname=replicate(' ',10),/noerase
+      
+    tvcircle,mt.hVirRad[0,hInd]/10,0,0,cgColor('green'),thick=0.8,/data
+    tvcircle,mt.hVirRad[0,hInd],0,0,cgColor('green'),thick=0.8,/data  
+  
+    ; draw dm trajectories
+    print,'rendering dm trajectories...'
+    
+    for i=0,count_dm-1 do plots,v1[i,*],v2[i,*]
+  
+    ; halo mass
+    strHalo = "log(M) = "+string(codeMassToLogMsun(mt.hMass[0,hInd]),format='(f4.1)')
+    cgText,0.75,0.04,strHalo,alignment=0.5,color=cgColor('dark gray'),/normal,charsize=!p.charsize-0.4
+        
+    ; particle type names
+    ;cgText,0.04,0.04,"Gas",alignment=0.5,color=cgColor('dark gray'),/normal,charsize=!p.charsize-0.4
+    ;cgText,0.96,0.04,"DM",alignment=0.5,color=cgColor('dark gray'),/normal,charsize=!p.charsize-0.4
+    
+    ; dividing line
+    cgPlot,[boxCen[0]-zoomSize/2.0,boxCen[0]-zoomSize/2.0],[boxCen[1]-zoomSize/2.4,boxCen[1]+zoomSize/2.0],$
+      line=0,color=cgColor('light gray'),/overplot
+    
+    ; temperature colorbar
+    !p.thick = 1.0
+    !p.charsize = 0.8
+    !x.thick = 1.0
+    !y.thick = 1.0
+    colorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+    cgText,0.25,0.0375,textoidl("log T_{gas} [K]"),alignment=0.5,color=cgColor('white'),/normal
+    cgText,0.115,0.036,'4',alignment=0.5,color=cgColor('white'),/normal
+    cgText,0.385,0.036,'7',alignment=0.5,color=cgColor('white'),/normal
+    
+  end_PS, pngResize=60, im_options='-negate', /deletePS
+
+  ; make a movie of an orbit if requested
+  for fnOrbit=0,nFramesOrbit-1 do begin    
+    ; determine current rotation and create v1,v2 (screen plane projections)
+    curRot = (360.0/nFramesOrbit) * fnOrbit
+
+    print,' ['+string(fnOrbit+1,format='(i4)')+'] orbit frame ['+$
+      str(fnOrbit)+' of '+str(nFramesOrbit)+']'
+    
+    ; plot
+    start_PS, plotPath + 'frame_'+str(fnOrbit+1)+'.eps', xs=pssize[0], ys=pssize[1]
+    
+      !p.thick = 0.6
+      
+      ; clip positions at box dimensions (left,right)
+      v2 = reform(gasPos[axes[0],*,*]) ; keep axes[0] always constant
+      v1 = reform(gasPos[axes[1],*,*]) * cos(curRot*!dtor) + $
+           reform(gasPos[axes[2],*,*]) * sin(curRot*!dtor)
+          
+      w = where(v1 gt boxCen[0]+zoomSize/2.0,count)
+      if count gt 0 then v1[w] = !values.f_nan
+      w = !NULL
+      
+      ; color table
+      loadColorTable,'helix',/reverse
+      ; gasCM already made
+      
+      ; fixed viewport
+      xrange = [boxCen[0]-zoomSize/2.0,boxCen[0]+zoomSize/2.0]
+      yrange = [boxCen[1]-zoomSize/2.0,boxCen[1]+zoomSize/2.0] ; top+bottom halves
+    
+      ; left: gas
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xstyle=5,ystyle=5,$
+             xtitle="",ytitle="",title="",position=[0,0,0.5,1],xtickname=replicate(' ',10),$
+             ytickname=replicate(' ',10)
+           
+      ; left: draw rvir and rvir/10
+      tvcircle,mt.hVirRad[0,hInd]/10,0,0,cgColor('black'),thick=0.8,/data
+      tvcircle,mt.hVirRad[0,hInd],0,0,cgColor('black'),thick=0.8,/data  
+    
+      ; draw gas trajectories
+      for i=0,count_gas-1 do plots,v1[i,*],v2[i,*],color=gasCM[i,*]
+    
+      ; scale bar
+      len = 100.0 ;ckpc
+      cgPlot,[boxCen[0]-zoomSize/2.2,boxCen[0]-zoomSize/2.2+len],[boxCen[1]+zoomSize/2.2,boxCen[1]+zoomSize/2.2],$
+        line=0,color=cgColor('dark gray'),/overplot
+      cgText,mean([boxCen[0]-zoomSize/2.2,boxCen[0]-zoomSize/2.2+len]),boxCen[1]+zoomSize/2.4,$
+        string(len,format='(i3)')+' ckpc',alignment=0.5,charsize=!p.charsize-0.6,color=cgColor('dark gray')
+        
+      ; clip positions at box dimensions (left,right)
+      v2  = reform(dmPos[axes[0],*,*])
+      v1  = reform(dmPos[axes[1],*,*]) * cos(curRot*!dtor) + $
+            reform(dmPos[axes[2],*,*]) * sin(curRot*!dtor)
+  
+      w = where(v1 lt boxCen[0]-zoomSize/2.0,count)
+      if count gt 0 then v1[w] = !values.f_nan
+        
+      ; right: dm (tile x2 in the left-right direction)
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xstyle=5,ystyle=5,$
+             xtitle="",ytitle="",title="",position=[0.5,0,1,1],xtickname=replicate(' ',10),$
+             ytickname=replicate(' ',10),/noerase
+        
+      tvcircle,mt.hVirRad[0,hInd]/10,0,0,cgColor('green'),thick=0.8,/data
+      tvcircle,mt.hVirRad[0,hInd],0,0,cgColor('green'),thick=0.8,/data  
+    
+      ; draw dm trajectories
+      for i=0,count_dm-1 do plots,v1[i,*],v2[i,*]
+    
+      ; halo mass
+      strHalo = "log(M) = "+string(codeMassToLogMsun(mt.hMass[0,hInd]),format='(f4.1)')
+      cgText,0.75,0.04,strHalo,alignment=0.5,color=cgColor('dark gray'),/normal,charsize=!p.charsize-0.4
+          
+      ; particle type names
+      ;cgText,0.04,0.04,"Gas",alignment=0.5,color=cgColor('dark gray'),/normal,charsize=!p.charsize-0.4
+      ;cgText,0.96,0.04,"DM",alignment=0.5,color=cgColor('dark gray'),/normal,charsize=!p.charsize-0.4
+      
+      ; dividing line
+      cgPlot,[boxCen[0]-zoomSize/2.0,boxCen[0]-zoomSize/2.0],[boxCen[1]-zoomSize/2.4,boxCen[1]+zoomSize/2.0],$
+        line=0,color=cgColor('light gray'),/overplot
+      
+      ; temperature colorbar
+      !p.thick = 1.0
+      !p.charsize = 0.8
+      !x.thick = 1.0
+      !y.thick = 1.0
+      colorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+      cgText,0.25,0.0375,textoidl("log T_{gas} [K]"),alignment=0.5,color=cgColor('white'),/normal
+      cgText,0.115,0.036,'4',alignment=0.5,color=cgColor('white'),/normal
+      cgText,0.385,0.036,'7',alignment=0.5,color=cgColor('white'),/normal
 
     end_PS, pngResize=60, im_options='-negate', /deletePS
   endfor
