@@ -730,7 +730,9 @@ end
 
 @mergerTree
 @cosmoAnalysis
-@cosmoHist
+@accretionMode
+@accretionTimes
+@maxTemps
 @accretionTraj
 @accretionTrajVis
 @cosmoVis
