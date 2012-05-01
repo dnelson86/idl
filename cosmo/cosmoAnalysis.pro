@@ -342,49 +342,22 @@ function gcSubsetProp, sP=sP, select=select, $
   if keyword_set(accretionTimeSubset) then begin
     at = accretionTimes(sP=sP)
     
-    gal_w  = where(at.AccTime_gal ne -1,count_gal)
-    gmem_w = where(at.AccTime_gmem ne -1,count_gmem)
-    
-    if keyword_set(accMode) then begin
-      ; select on accretion mode by modifying gal_w and gmem_w
-      if accMode ne 'all' then begin
-        am = accretionMode(sP=sP)
-        
-        if accMode eq 'smooth' then begin
-          gal_w  = gal_w[where(am.accMode_gal eq 1,count_gal)]
-          gmem_w = gmem_w[where(am.accMode_gmem eq 1,count_gmem)]
-        endif
-        if accMode eq 'bclumpy' then begin
-          gal_w  = gal_w[where(am.accMode_gal eq 3,count_gal)]
-          gmem_w = gmem_w[where(am.accMode_gmem eq 3,count_gmem)]
-        endif
-        if accMode eq 'sclumpy' then begin
-          gal_w  = gal_w[where(am.accMode_gal eq 2,count_gal)]
-          gmem_w = gmem_w[where(am.accMode_gmem eq 2,count_gmem)]
-        endif
-        if accMode eq 'clumpy' then begin
-          gal_w  = gal_w[where(am.accMode_gal eq 2 or am.accMode_gal eq 3,count_gal)]
-          gmem_w = gmem_w[where(am.accMode_gmem eq 2 or am.accMode_gmem eq 3,count_gmem)]
-        endif
-      endif
-    
-      am = !NULL
-    endif
+    ; this is used to access accretionTimes
+    if n_elements(accMode) eq 0 then accMode = 'all'
+    accTimeInds = accModeInds(at=at,sP=sP,accMode=accMode)
 
     ; sph case: modify galcatInds such that the accretionTimes subset is taken
-    if ~allTR then galcatInds = { gal : galcatInds.gal[gal_w] ,gmem : galcatInds.gmem[gmem_w] }
+    if ~allTR then galcatInds = { gal  : galcatInds.gal[accTimeInds.gal] , $
+                                  gmem : galcatInds.gmem[accTimeInds.gmem] }
     ; tracer case: handle only after we have child counts (after expansion or in allTR for maxTemps)
-
-    ; this is used to access accretionTimes
-    accTimeInds = { gal : gal_w, gmem: gmem_w }
   endif
   
   ; ----- values -----
   
   if keyword_set(accTime) then begin
     ;convert scale factors -> redshift
-    r = { gal  : 1/at.AccTime_gal[accTimeInds.gal]-1    ,$
-          gmem : 1/at.AccTime_gmem[accTimeInds.gmem]-1   } 
+    r = { gal  : 1/at.AccTime_gal[0,accTimeInds.gal]-1    ,$
+          gmem : 1/at.AccTime_gmem[0,accTimeInds.gmem]-1   } 
     return,r
   endif
   
@@ -511,7 +484,7 @@ function gcSubsetProp, sP=sP, select=select, $
       
       ; take accretionTime subset of mtS of all tracers and return
       if keyword_set(accretionTimeSubset) then begin
-        r = { gal:r.gal[gal_w], gmem:r.gmem[gmem_w] }
+        r = { gal:r.gal[accTimeInds.gal], gmem:r.gmem[accTimeInds.gmem] }
       endif
       return,r
     endif
@@ -604,7 +577,7 @@ function gcSubsetProp, sP=sP, select=select, $
     
     ; take accretionTime subset and return tracer expanded array
     if keyword_set(accretionTimeSubset) then begin
-      rr = { gal:rr.gal[gal_w], gmem:rr.gmem[gmem_w] }
+      rr = { gal:rr.gal[accTimeInds.gal], gmem:rr.gmem[accTimeInds.gmem] }
     endif
     return,rr
   endif ; allTR

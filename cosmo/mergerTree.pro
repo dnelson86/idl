@@ -359,6 +359,68 @@ function mergerTreeSubset, sP=sP, verbose=verbose
   return,r
 end
 
+; mergerTreeRepParentIDs(): wrapper which returns mt.gcIndOrig for SPH simulations and the similarly
+;                           replicated galcat parent ID list for tracer simulations
+
+function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, $
+                                 trids_gal=galcat_gal_trids, trids_gmem=galcat_gmem_trids
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  forward_function cosmoTracerChildren, galaxyCat
+
+  if n_elements(sP) eq 0 then message,'Error: sP required.'
+  if n_elements(mt) eq 0 then mt = mergerTreeSubset(sP=sP)
+  if n_elements(galcat) eq 0 then galcat = galaxyCat(sP=sP)
+
+  if sP.trMCPerCell eq 0 then return,mt.gcIndOrig
+
+  if sP.trMCPerCell gt 0 then begin
+    ; load gas ids
+    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+
+    ; match galcat IDs to gas_ids
+    match,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+    ids_gal = gas_ids[ids_gal_ind[sort(galcat_ind)]]
+    
+    match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+    ids_gmem = gas_ids[ids_gmem_ind[sort(galcat_ind)]]
+    
+    gas_ids = !NULL
+    
+    ; locate tracer children (indices) of gas id subsets
+    galcat_gal_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
+    galcat_gmem_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
+    
+    ids_gal  = !NULL
+    ids_gmem = !NULL
+    
+    ; convert tracer children indices to tracer IDs at this zMin if we are returning them
+    if keyword_set(galcat_gal_trids) then begin
+      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
+      galcat_gal_trids  = tr_ids[galcat_gal_trids]
+      galcat_gmem_trids = tr_ids[galcat_gmem_trids]
+      tr_ids   = !NULL
+    endif
+    
+    ; create a gcIndOrig for the tracers
+    gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,$
+                                     child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc}) 
+                  
+    ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
+    placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
+    gcIndOrigTr.gal = placeMap[gcIndOrigTr.gal-minid]
+    gcIndOrigTr.gmem = placeMap[gcIndOrigTr.gmem-minid]
+    placeMap = !NULL
+    
+    return,gcIndOrigTr
+  endif
+  
+  if sP.trMCPerCell eq -1 then begin
+    message,'todo'
+  endif
+
+end
+
 ; mergerTreeINDList(): return a list of indices into the mergerTreeSubset/accretionTimes/Traj catalog 
 ;                      for a subset of the members defined by the subgroup ID list gcIDList
 

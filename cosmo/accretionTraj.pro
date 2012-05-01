@@ -23,16 +23,15 @@ function accretionTraj, sP=sP, getVel=getVel
   if sP.trMCPerCell gt 0  then saveTag = '.trMC'
   if sP.trMCPerCell eq 0  then saveTag = '.SPH'
   
-  saveFilenameVel = sP.derivPath + 'accTrajVel'+saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
-                    str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'   
-  
-  if keyword_set(getVel) then begin            
-    if file_test(saveFilenameVel) then begin
-      restore, saveFilenameVel
-      return, rvel
-    endif
-    message,'Error: Velocity save not found.'
-  endif  
+  ;saveFilenameVel = sP.derivPath + 'accTrajVel'+saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
+  ;                  str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'   
+  ;if keyword_set(getVel) then begin            
+  ;  if file_test(saveFilenameVel) then begin
+  ;    restore, saveFilenameVel
+  ;    return, rvel
+  ;  endif
+  ;  message,'Error: Velocity save not found.'
+  ;endif  
   
   saveFilename = sP.derivPath + 'accTraj'+saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
                  str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'          
@@ -60,8 +59,8 @@ function accretionTraj, sP=sP, getVel=getVel
          curTemp_gmem  : fltarr(nSnapsTot,n_elements(mt.galcatSub.gmem))      }
          
     ; save the velocities for hermite (known derivative) interpolation, separately for smaller files
-    rvel = {vel_gal    : fltarr(nSnapsTot,3,n_elements(mt.galcatSub.gal))    ,$
-            vel_gmem   : fltarr(nSnapsTot,3,n_elements(mt.galcatSub.gmem))   }
+    ;rvel = {vel_gal    : fltarr(nSnapsTot,3,n_elements(mt.galcatSub.gal))    ,$
+    ;        vel_gmem   : fltarr(nSnapsTot,3,n_elements(mt.galcatSub.gmem))   }
     
     for m=mt.maxSnap,mt.minSnap,-1 do begin
       sP.snap = m
@@ -81,12 +80,10 @@ function accretionTraj, sP=sP, getVel=getVel
       galcat_ind = !NULL
       
       ; load velocities and store
-      vel   = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
-      
-      rvel.vel_gal[mt.maxSnap-m,*,*]  = vel[*,ids_gal_ind]
-      rvel.vel_gmem[mt.maxSnap-m,*,*] = vel[*,ids_gmem_ind]
-      
-      vel = !NULL
+      ;vel   = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
+      ;rvel.vel_gal[mt.maxSnap-m,*,*]  = vel[*,ids_gal_ind]
+      ;rvel.vel_gmem[mt.maxSnap-m,*,*] = vel[*,ids_gmem_ind]
+      ;vel = !NULL
       
       ; load pos to calculate positions relative to halo centers
       pos   = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
@@ -160,8 +157,8 @@ function accretionTraj, sP=sP, getVel=getVel
     save,r,filename=saveFilename
     print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
     
-    save,rvel,filename=saveFilenameVel
-    print,'Saved: '+strmid(saveFilenameVel,strlen(sp.derivPath))
+    ;save,rvel,filename=saveFilenameVel
+    ;print,'Saved: '+strmid(saveFilenameVel,strlen(sp.derivPath))
 
   endif
   
@@ -223,8 +220,8 @@ function accretionTraj, sP=sP, getVel=getVel
          curTemp_gmem  : fltarr(nSnapsTot,n_elements(galcat_gmem_trids))      }
 
     ; save the velocities for hermite (known derivative) interpolation, separately for smaller files
-    rvel = {vel_gal    : fltarr(nSnapsTot,3,n_elements(galcat_gal_trids))    ,$
-            vel_gmem   : fltarr(nSnapsTot,3,n_elements(galcat_gmem_trids))   }
+    ;rvel = {vel_gal    : fltarr(nSnapsTot,3,n_elements(galcat_gal_trids))    ,$
+    ;        vel_gmem   : fltarr(nSnapsTot,3,n_elements(galcat_gmem_trids))   }
 
     for m=mt.maxSnap,mt.minSnap,-1 do begin
       sP.snap = m
@@ -245,12 +242,10 @@ function accretionTraj, sP=sP, getVel=getVel
       galcat_ind = !NULL
       
       ; load velocities and store
-      vel = loadSnapshotSubset(sP=sP,partType='tracerVel',field='vel')
-      
-      rvel.vel_gal[mt.maxSnap-m,*,*]  = vel[*,trids_gal_ind]
-      rvel.vel_gmem[mt.maxSnap-m,*,*] = vel[*,trids_gmem_ind]
-      
-      vel = !NULL
+      ;vel = loadSnapshotSubset(sP=sP,partType='tracerVel',field='vel')
+      ;rvel.vel_gal[mt.maxSnap-m,*,*]  = vel[*,trids_gal_ind]
+      ;rvel.vel_gmem[mt.maxSnap-m,*,*] = vel[*,trids_gmem_ind]
+      ;vel = !NULL
 
       ; load tracer maxtemps for this timestep (best proxy for current temp without doing NN parent finds)
       tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxtemp')
@@ -299,8 +294,8 @@ function accretionTraj, sP=sP, getVel=getVel
     save,r,filename=saveFilename
     print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
     
-    save,rvel,filename=saveFilenameVel
-    print,'Saved: '+strmid(saveFilenameVel,strlen(sp.derivPath))  
+    ;save,rvel,filename=saveFilenameVel
+    ;print,'Saved: '+strmid(saveFilenameVel,strlen(sp.derivPath))  
     
   endif
 
@@ -319,7 +314,7 @@ function smoothHaloPos, mt=mt, hInd=hInd, sP=sP
   ; uniform errors for cubic fit weighted towards the ends
   merrs = findgen(n_elements(mt.times))+0.1
   ;merrs[0:4] = [0.09,0.0925,0.095,0.0975,0.1]
-  ;merrs[n_elements(merrs)-5:n_elements(merrs)-1] = [0.1,0.0975,0.095,0.0925,0.09]
+  ;merrs[-5:-1] = [0.1,0.0975,0.095,0.0925,0.09]
   
   ; debug: plot fit
   start_PS,'test_smoothHaloPos.eps',xs=10,ys=8
