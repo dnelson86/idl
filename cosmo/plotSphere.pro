@@ -1,6 +1,6 @@
-; cosmoSpherePlot.pro
+; plotSphere.pro
 ; gas accretion project - visualization/plotting of quantities onto healpix spheres
-; dnelson apr.2012
+; dnelson may.2012
 
 ; plotHaloShellDensComp(): compare shell density for four different mass halos at one redshift
 
