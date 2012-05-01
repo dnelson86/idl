@@ -1,6 +1,6 @@
-; cosmoPlotGalCat.pro
+; plotGalCat.pro
 ; gas accretion project - plots related to galaxy catalog
-; dnelson mar.2012
+; dnelson may.2012
 
 ; plotGalCatRedshift(): plot the total component masses in the catalog as a function of redshift
 

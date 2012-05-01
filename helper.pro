@@ -1,6 +1,6 @@
 ; helper.pro
 ; helper functions
-; dnelson apr.2012
+; dnelson may.2012
 ;
 ; NOTE: all my IDL routines loaded at bottom of this file
 
@@ -735,10 +735,12 @@ end
 @accretionTrajVis
 @cosmoVis
 @cosmoSphere
-@cosmoSpherePlot
-@cosmoPlotGalCat
-@cosmoPlot
 @cosmoOverDens
+
+@plotGalcat
+@plotMaxTemps
+@plotSphere
+@plotVsHaloMass
 
 @tracersVel_Cosmo
 @tracersVel_Halos
