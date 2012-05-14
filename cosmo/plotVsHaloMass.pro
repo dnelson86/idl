@@ -13,12 +13,12 @@ pro plotAngMomRadVsHaloMass
   sgSelect = 'pri'
   accMode = 'all'
   
-  res = 256
+  res = 128
   sPg = simParams(res=res,run='gadget',redshift=2.0)
-  ;sPa = simParams(res=res,run='tracer',redshift=2.0)
+  sPa = simParams(res=res,run='tracer',redshift=2.0)
   
   binnedGadget = haloMassBinAngMom(sP=sPg,sgSelect=sgSelect,accMode=accMode)
-  ;binnedArepo  = haloMassBinAngMom(sP=sPa,sgSelect=sgSelect,accMode=accMode)
+  binnedArepo  = haloMassBinAngMom(sP=sPa,sgSelect=sgSelect,accMode=accMode)
 
   ; plot (1) - lines for all rVirFacs vs halo mass
   start_PS, sPg.plotPath + 'angmom.vshalo.comp.'+accMode+'.'+str(sPg.res)+'_'+str(sPg.snap)+'.eps', /big
@@ -54,8 +54,8 @@ pro plotAngMomRadVsHaloMass
       cgPlot,binnedGadget.logMassBinCen[w],binnedGadget.coldMode.median_both[j,w],color=getColor(1),line=2,/overplot
 
       ; arepo hot both
-      ;cgPlot,binnedArepo.logMassBinCen[w],binnedArepo.hotMode.median_both[j,w],color=getColor(3),line=1,/overplot
-      ;cgPlot,binnedArepo.logMassBinCen[w],binnedArepo.coldMode.median_both[j,w],color=getColor(3),line=2,/overplot
+      cgPlot,binnedArepo.logMassBinCen[w],binnedArepo.hotMode.median_both[j,w],color=getColor(3),line=1,/overplot
+      cgPlot,binnedArepo.logMassBinCen[w],binnedArepo.coldMode.median_both[j,w],color=getColor(3),line=2,/overplot
       
       ; legend
       massBinStr = textoidl('r/r_{vir}')+' = ' + string(binnedGadget.rVirFacs[j],format='(f4.2)')
