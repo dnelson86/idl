@@ -103,7 +103,7 @@ end
 ; cosmoTracerChildren(): return indices (or optionally IDs) of child tracer particles of 
 ;                        specified gas cells (by indices gasInds or ids gasIDs)
 
-function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
+function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=verbose, $
                               gasInds=gasInds, gasIDs=gasIDs, $ ; input: gas cells to search
                               child_counts=child_counts ; optional output
                               
@@ -160,7 +160,7 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   ;endforeach
   ;if not array_equal(tr_inds,tr_inds2) then stop
   
-  print,'found ['+str(n_elements(tr_inds))+'] matching tracer children.'
+  if keyword_set(verbose) then print,'found ['+str(n_elements(tr_inds))+'] matching tracer children.'
 
   ; if tracer IDs requested, load tracer IDs and do crossmatch
   if keyword_set(getIDs) then begin

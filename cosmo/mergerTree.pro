@@ -268,7 +268,7 @@ function mergerTreeSubset, sP=sP, verbose=verbose
     h = loadSnapshotHeader(sP=sP)
     gc = loadGroupCat(sP=sP,/skipIDs)
     subgroupCen = subgroupPosByMostBoundID(sP=sP)
-    
+
     ; on first snapshot select primary halos and allocate arrays
     if i eq 0 then begin
       gcIDs = gcIDList(gc=gc,select='pri')
@@ -277,6 +277,7 @@ function mergerTreeSubset, sP=sP, verbose=verbose
       
       times     = fltarr(numBack+floor(smoothKer/2.0))
       hPos      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDPlace))
+      hVel      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDPlace))
       hMass     = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
       hVirRad   = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
       hVirTemp  = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
@@ -298,6 +299,7 @@ function mergerTreeSubset, sP=sP, verbose=verbose
     ; store
     times[i] = h.time
     hPos[i,*,gcIDPlace]   = subgroupCen[*,gcIDs]
+    hVel[i,*,gcIDPlace]   = gc.subgroupVel[*,gcIDs]
     hMass[i,gcIDPlace]    = gc.subgroupMass[gcIDs]
     hVirRad[i,gcIDPlace]  = gc.group_r_crit200[gc.subgroupGrNr[gcIDs]]
     hVirTemp[i,gcIDPlace] = alog10(codeMassToVirTemp(gc.subgroupMass[gcIDs],sP=sP))
@@ -319,8 +321,9 @@ function mergerTreeSubset, sP=sP, verbose=verbose
   noParMask = !NULL
   subgroupCen = !NULL
   
-  ; created smoothed estimates of pos(t), mass(t),  r_vir(t) and T_vir(t) for only those kept halos
-  hPos     = hPos[*,*,galcatIDList] ; need a smooth_periodic, but positions not really in need
+  ; created smoothed estimates of pos(t), vel(t), mass(t),  r_vir(t) and T_vir(t) for only those kept halos
+  hPos     = hPos[*,*,galcatIDList] ; don't smooth positions or velocities here
+  hVel     = hVel[*,*,galcatIDList]
   hMass    = smooth(hMass[*,galcatIDList],[1,smoothKer])
   hVirRad  = smooth(hVirRad[*,galcatIDList],[1,smoothKer])
   hVirTemp = smooth(hVirTemp[*,galcatIDList],[1,smoothKer])
@@ -349,7 +352,7 @@ function mergerTreeSubset, sP=sP, verbose=verbose
   galcatSub = galcatINDList(galcat=galcat,gcIDList=galcatIDList)
   
   r = {galcatIDList:galcatIDList,gcIndOrig:gcIndOrig,galcatSub:galcatSub,$
-       hPos:hPos,hVirRad:hVirRad,hVirTemp:hVirTemp,hMass:hMass,$
+       hPos:hPos,hVel:hVel,hVirRad:hVirRad,hVirTemp:hVirTemp,hMass:hMass,$
        times:times,minSnap:minSnap,maxSnap:maxSnap,smoothKer:smoothKer}
        
   ; save
@@ -362,7 +365,7 @@ end
 ; mergerTreeRepParentIDs(): wrapper which returns mt.gcIndOrig for SPH simulations and the similarly
 ;                           replicated galcat parent ID list for tracer simulations
 
-function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, $
+function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compactMtS, $
                                  trids_gal=galcat_gal_trids, trids_gmem=galcat_gmem_trids
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
@@ -372,7 +375,19 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, $
   if n_elements(mt) eq 0 then mt = mergerTreeSubset(sP=sP)
   if n_elements(galcat) eq 0 then galcat = galaxyCat(sP=sP)
 
-  if sP.trMCPerCell eq 0 then return,mt.gcIndOrig
+  if sP.trMCPerCell eq 0 then begin
+    gcIndOrig = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList)
+  
+    ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
+    if keyword_set(compactMtS) then begin
+      placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
+      gcIndOrig.gal = placeMap[gcIndOrig.gal-minid]
+      gcIndOrig.gmem = placeMap[gcIndOrig.gmem-minid]
+      placeMap = !NULL
+    endif
+    
+    return,gcIndOrig
+  endif
 
   if sP.trMCPerCell gt 0 then begin
     ; load gas ids
@@ -407,10 +422,12 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, $
                                      child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc}) 
                   
     ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
-    placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
-    gcIndOrigTr.gal = placeMap[gcIndOrigTr.gal-minid]
-    gcIndOrigTr.gmem = placeMap[gcIndOrigTr.gmem-minid]
-    placeMap = !NULL
+    if keyword_set(compactMtS) then begin
+      placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
+      gcIndOrigTr.gal = placeMap[gcIndOrigTr.gal-minid]
+      gcIndOrigTr.gmem = placeMap[gcIndOrigTr.gmem-minid]
+      placeMap = !NULL
+    endif
     
     return,gcIndOrigTr
   endif

@@ -1,6 +1,5 @@
 ; ICs_gasSphere.pro
 ; initial condition generation - gas cloud in static hernquist/NFW potential
-; from Mark Vogelsberger's python version
 ; dnelson jan.2012
 
 @helper
@@ -138,6 +137,7 @@ pro setupFilamentTest
   cyl_length = 100.0  ;kpc
   cyl_radius = 2.0   ;kpc
   cyl_rstart = 1.0*r200 ;kpc (r200 nfw)
+  cyl_init_vel = 100.0 ;km/s towards halo
   
   cyl_densratio = 1000 ; specify density as ratio to critical baryon density at z=3
   cyl_dens = critBaryonRatioToCode(cyl_densratio,redshift=3.0)
@@ -195,7 +195,7 @@ pro setupFilamentTest
   
   ; other cylinder properties
   cyl_vel = fltarr(3,cyl_npart)
-  cyl_vel[2,*] = -100.0 ;km/s towards halo
+  cyl_vel[2,*] = -cyl_init_vel
   cyl_id  = lindgen(cyl_npart) + max(gas_id) + 1L
   cyl_u   = fltarr(cyl_npart) + 200.0 ;~10000K similar to the outskirts of the halo
   cyl_mass = fltarr(cyl_npart) + cyl_masspart
@@ -220,7 +220,8 @@ pro setupFilamentTest
 
 end
 
-; generate hot gas sphere in hydrostatic equilibrium with a Hernquist halo profile (based on Mark's)
+; generate hot gas sphere in hydrostatic equilibrium with a Hernquist halo profile
+; based on Mark Vogelsberger's python version
 
 pro gen_ICs_gasSphere
   forward_function GasRho,HaloRho,Rho,GasMass,HaloMass,Mass,Sigma_Integrand,Sigma

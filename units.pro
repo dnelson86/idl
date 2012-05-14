@@ -91,7 +91,7 @@ function codeMassToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt
   if not keyword_set(meanmolwt) then meanmolwt = 0.6
 
   ; mass to msun
-  mass_msun = mass * (units.UnitMass_in_g / units.Msun_in_g)
+  mass_msun = mass * float(units.UnitMass_in_g / units.Msun_in_g)
   
   ; cosmo
   omega_m   = 0.27
@@ -118,7 +118,7 @@ function codeMassToLogMsun, mass
 
   units = getUnits()
   
-  mass_msun = mass * (units.UnitMass_in_g / units.Msun_in_g)
+  mass_msun = mass * float(units.UnitMass_in_g / units.Msun_in_g)
   
   ; log of nonzero
   w = where(mass_msun eq 0.0,count)
@@ -134,7 +134,7 @@ function codeTempToLogK, temp
 
   units = getUnits()
   
-  temp_k = temp * units.UnitTemp_in_cgs
+  temp_k = temp * float(units.UnitTemp_in_cgs)
 
   ; log of nonzero
   w = where(temp_k eq 0.0,count)

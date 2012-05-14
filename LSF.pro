@@ -8,19 +8,21 @@ pro makeArepoFoFBsub
 
   ; config
   res = 512
-  run = 'gadget'
+  run = 'arepo'
   ;f = '10'
   
   sP = simParams(res=res,run=run)
 
-  snapRange = [314,314,1]
+  snapZ = redshiftToSnapNum([6.0,5.0,4.0,3.0,2.0,1.0,0.0],sP=sP)
+  print,snapZ
+  snapRange = [239,239,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 64 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
+  nProcs    = 16 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
                  ;               256^3=4 (n32tile4 PartAllocFactor=2.5 MaxMemSize=7900)
                  ;               512^3=16 (n64tile4 PartAllocFactor=1.5 though n32tile4 ok until z=2)
-  ptile     = 2 ; span[ptile=X]
+  ptile     = 1 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
   excludeHosts = ['hero2402'] ;leave empty otherwise
@@ -33,10 +35,7 @@ pro makeArepoFoFBsub
     jobFileName = sP.plotPath + 'job_fof.bsub'
     
     ; check before overriding
-    if file_test(jobFileName) then begin
-      print,'Error: job_fof.bsub already exists'
-      return
-    endif
+    if file_test(jobFileName) then message,'Error: job_fof.bsub already exists'
     
     print,'['+str(snap)+'] Writing: '+jobFilename
     
@@ -52,7 +51,7 @@ pro makeArepoFoFBsub
     
     ; write header
     printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q keck'
+    printf,lun,'#BSUB -q nancy'
     printf,lun,'#BSUB -J fof_' + str(snap) + ''
     printf,lun,'#BSUB -n ' + str(nProcs)
     printf,lun,'#BSUB -R "' + selectStr + 'span[ptile=' + str(ptile) + ']"' ;rusage[mem=31000]
@@ -149,10 +148,7 @@ pro makeArepoProjBsub
     jobFileName = sP.arepoPath+'job_proj.bsub'
     
     ; check before overriding
-    if file_test(jobFileName) then begin
-      print,'Error: job_proj.bsub already exists'
-      return
-    endif
+    if file_test(jobFileName) then message,'Error: job_proj.bsub already exists'
     
     print,'['+str(snap)+'] Writing: '+jobFilename
       

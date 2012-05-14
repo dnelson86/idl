@@ -320,34 +320,6 @@ pro cosmoTrajMovieHalo
     haloIDs    = [mt.galcatIDList[mtHaloInd]]
     haloMasses = haloMasses[mtHaloInd]
   endelse
-
-  ; smooth halo positions with time and apply difference to relative particle positions
-  if smoothKer gt 0 then begin
-    print,'smoothing halos...'
-    galcat = galaxyCat(sP=sP)
-    
-    ; loop over each halo
-    for i=0,n_elements(haloIDs)-1 do begin
-
-      hPos = smoothHaloPos(mt=mt,hInd=mtHaloInd[i],sP=sP)
-
-      ; calculate indices for members of this halo and offset their positions to account for smoothing
-      mtSubHalo = mergerTreeINDList(sP=sP,galcat=galcat,mt=mt,gcIDList=[haloIDs[i]])
-
-      ; extract single coordinate separately
-      for j=0,2 do begin
-        hPosDiff = mt.hPos[*,j,mtHaloInd[i]] - hPos[*,j]
-
-        if mtSubHalo.gal[0]  ne -1 then foreach k,mtSubHalo.gal do at.relPos_gal[*,j,k] -= hPosDiff               
-        if mtSubHalo.gmem[0] ne -1 then foreach k,mtSubHalo.gmem do at.relPos_gmem[*,j,k] -= hPosDiff
-
-      endfor ; j
-      
-      mtSubHalo = !NULL
-      galcat    = !NULL
-      
-    endfor ; i
-  endif ; smoothKer
   
   ; get indices for the subset of the mergerTreeSubset corresponding to the selected halo(s)
   mergerTreeSub = mergerTreeINDList(sP=sP,gcIDList=haloIDs)
