@@ -307,7 +307,7 @@ end
 
 ; haloMassBinDeltaAccTime(): bin mean time for accreting gas as a function of parent halo mass
 
-function haloMassBinAngMom, sP=sP, sgSelect=sgSelect, accMode=accMode
+function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
@@ -514,13 +514,67 @@ function haloMassBinAngMom, sP=sP, sgSelect=sgSelect, accMode=accMode
   endfor ;i
 
   ; debug plot
-  start_PS,sP.plotPath + 'accdt.histos.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  start_PS,sP.plotPath + 'accdt.histos.all.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     binsize = 0.01 & strings = []
     cgPlot,[0],[0],/nodata,xrange=[0.0,0.25],yrange=[0.0001,1.1],/ylog,/ys,/xs,$
       xtitle=textoidl("\Delta t_{acc} / \tau_{circ}"),ytitle="Fraction"
       
     for k=1,n_elements(at.rVirFacs)-1 do begin
       w = where(at.accTime_gal[0,*] ne -1 and at.accTime_gal[k,*] ne -1 and wAm.galMask eq 1B,count)
+      if count gt 1 then begin
+        hist = histogram(at.accTime_gal[k,w],binsize=binsize,loc=loc)
+        cgplot,loc+binsize*0.5,hist/float(total(hist)),line=0,color=getColor(k),/overplot
+        cgplot,[mean(at.accTime_gal[k,w]),mean(at.accTime_gal[k,w])],[0.8,1.0],line=0,color=getColor(k),/overplot
+        cgplot,[median(at.accTime_gal[k,w]),median(at.accTime_gal[k,w])],[0.5,0.7],line=0,color=getColor(k),/overplot
+      endif
+      w = where(at.accTime_gmem[0,*] ne -1 and at.accTime_gmem[k,*] ne -1 and wAm.gmemMask eq 1B,count)
+      if count gt 1 then begin
+        hist = histogram(at.accTime_gmem[k,w],binsize=binsize,loc=loc)
+        cgplot,loc+binsize*0.5,hist/float(total(hist)),line=1,color=getColor(k),/overplot
+        cgplot,[mean(at.accTime_gmem[k,w]),mean(at.accTime_gmem[k,w])],[0.8,1.0],line=1,color=getColor(k),/overplot
+        cgplot,[median(at.accTime_gmem[k,w]),median(at.accTime_gmem[k,w])],[0.5,0.7],line=1,color=getColor(k),/overplot
+      endif
+      strings = [strings,string(at.rVirFacs[k],format='(f4.2)')]
+    endfor
+    
+    legend,strings,textcolors=getColor([1,2,3,4,5,6],/name),box=0,/top,/right
+  end_PS
+  
+  start_PS,sP.plotPath + 'accdt.histos.cold.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+    binsize = 0.01 & strings = []
+    cgPlot,[0],[0],/nodata,xrange=[0.0,0.25],yrange=[0.0001,1.1],/ylog,/ys,/xs,$
+      xtitle=textoidl("\Delta t_{acc} / \tau_{circ}"),ytitle="Fraction"
+      
+    for k=1,n_elements(at.rVirFacs)-1 do begin
+      w = where(at.accTime_gal[0,*] ne -1 and at.accTime_gal[k,*] ne -1 and wAm.galMask eq 1B and $
+                maxTemp.gal le accTvir.gal,count)
+      if count gt 1 then begin
+        hist = histogram(at.accTime_gal[k,w],binsize=binsize,loc=loc)
+        cgplot,loc+binsize*0.5,hist/float(total(hist)),line=0,color=getColor(k),/overplot
+        cgplot,[mean(at.accTime_gal[k,w]),mean(at.accTime_gal[k,w])],[0.8,1.0],line=0,color=getColor(k),/overplot
+        cgplot,[median(at.accTime_gal[k,w]),median(at.accTime_gal[k,w])],[0.5,0.7],line=0,color=getColor(k),/overplot
+      endif
+      w = where(at.accTime_gmem[0,*] ne -1 and at.accTime_gmem[k,*] ne -1 and wAm.gmemMask eq 1B,count)
+      if count gt 1 then begin
+        hist = histogram(at.accTime_gmem[k,w],binsize=binsize,loc=loc)
+        cgplot,loc+binsize*0.5,hist/float(total(hist)),line=1,color=getColor(k),/overplot
+        cgplot,[mean(at.accTime_gmem[k,w]),mean(at.accTime_gmem[k,w])],[0.8,1.0],line=1,color=getColor(k),/overplot
+        cgplot,[median(at.accTime_gmem[k,w]),median(at.accTime_gmem[k,w])],[0.5,0.7],line=1,color=getColor(k),/overplot
+      endif
+      strings = [strings,string(at.rVirFacs[k],format='(f4.2)')]
+    endfor
+    
+    legend,strings,textcolors=getColor([1,2,3,4,5,6],/name),box=0,/top,/right
+  end_PS
+  
+  start_PS,sP.plotPath + 'accdt.histos.hot.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+    binsize = 0.01 & strings = []
+    cgPlot,[0],[0],/nodata,xrange=[0.0,0.25],yrange=[0.0001,1.1],/ylog,/ys,/xs,$
+      xtitle=textoidl("\Delta t_{acc} / \tau_{circ}"),ytitle="Fraction"
+      
+    for k=1,n_elements(at.rVirFacs)-1 do begin
+      w = where(at.accTime_gal[0,*] ne -1 and at.accTime_gal[k,*] ne -1 and wAm.galMask eq 1B and $
+                maxTemp.gal gt accTvir.gal,count)
       if count gt 1 then begin
         hist = histogram(at.accTime_gal[k,w],binsize=binsize,loc=loc)
         cgplot,loc+binsize*0.5,hist/float(total(hist)),line=0,color=getColor(k),/overplot
