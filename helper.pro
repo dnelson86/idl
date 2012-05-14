@@ -151,11 +151,14 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
     RGB = fix(round(RGB)) ; rounded INT
     
     ; reverse (light=low to dark=high) if requested
-    if keyword_set(reverse) then RGB = reverse(RGB)
-
+    if keyword_set(reverse) then begin
+      RGB = reverse(RGB)
+      RGB[0,*] = [0,0,0]
+    endif
+    
     ; fill rgb_table if requested, or if not, load RGB into display
     if arg_present(rgb_table) then rgb_table = RGB
-    
+
     if not arg_present(rgb_table) then begin
       ; start above zero on the CT?
       cbot = 0
@@ -316,9 +319,14 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big
   ;!p.charthick = 1.4
   !p.thick    = 5.0
   
+  ; make axis lines thicker
   !x.thick += 1.0
   !y.thick += 1.0
   !z.thick += 1.0
+  
+  ; reduce number of minor ticks to clean up plots
+  !x.minor = 2
+  !y.minor = 2
   
   ; make default custom psym (8) a filled circle
   plotsym,0,/fill
@@ -739,9 +747,10 @@ end
 @cosmoSphere
 @cosmoOverDens
 
-@plotGalcat
+@plotGalCat
 @plotMaxTemps
 @plotSphere
+@binVsHaloMass
 @plotVsHaloMass
 
 @tracersVel_Cosmo
@@ -760,4 +769,3 @@ end
 @arepoSphSym
 
 @filamentTest
-

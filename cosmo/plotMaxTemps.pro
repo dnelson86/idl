@@ -2,6 +2,72 @@
 ; gas accretion project - plots related to maximum past temperature of the gas
 ; dnelson may.2012
 
+; plotTempVsRad
+
+pro plotTempVsRad
+
+  sP = simParams(res=128,run='gadget',redshift=2.0)
+
+  ; get gas/tracer positions with time
+  at  = accretionTraj(sP=sP)
+  mt  = mergerTreeSubset(sP=sP)
+
+  hInd = 50
+  haloIDs = [mt.galcatIDList[hInd]]
+
+  ; get indices for the subset of the mergerTreeSubset corresponding to the selected halo(s)
+  mergerTreeSub = mergerTreeINDList(sP=sP,gcIDList=haloIDs)
+
+  ; count
+  nPart = { gal  : n_elements(at.relPos_gal[0,0,mergerTreeSub.gal])   ,$
+            gmem : n_elements(at.relPos_gmem[0,0,mergerTreeSub.gmem])  }
+
+  rad = sqrt(at.relPos_gal[*,0,mergerTreeSub.gal] * at.relPos_gal[*,0,mergerTreeSub.gal] + $
+             at.relPos_gal[*,1,mergerTreeSub.gal] * at.relPos_gal[*,1,mergerTreeSub.gal] + $
+             at.relPos_gal[*,2,mergerTreeSub.gal] * at.relPos_gal[*,2,mergerTreeSub.gal])
+  rad = reform(rad)
+  
+  temp = reform(at.curTemp_gal[*,mergerTreeSub.gal])
+  
+  ; normalize by rvir(t)
+  for i=0,n_elements(mt.times)-1 do begin
+    rad[i,*] /= (mt.hVirRad[i,hInd])[0]
+  endfor
+
+  ; plot (0)
+  start_PS, sP.plotPath + 'tempvsrad.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+    !p.thick -= 2
+    xrange = [0,2]
+    yrange = [3,7]
+    
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,ytitle="temp",xtitle="rad / rvir"      
+      
+      cgplot,reverse(mt.hvirrad[*,hInd]),reverse(mt.hvirtemp[*,hInd]),line=1,/overplot
+      for j=0,50 do begin
+        w = where(temp[*,j] ne 0.0,count,comp=wc,ncomp=ncomp)
+        if count gt 0 then cgPlot,rad[w,j],temp[w,j],line=0,color=getColor(j),/overplot
+        ;if ncomp gt 0 then cgPlot,rad[wc,j],temp[wc,j],line=1,color=getColor(j),/overplot
+      endfor
+    
+  end_PS
+  
+  ; plot (0)
+  start_PS, sP.plotPath + 'radvstime.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+
+    xrange = [0,80]
+    yrange = [0,2]
+    
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,ytitle="rad / rvir",xtitle="snaps back"      
+      
+      ;cgplot,reverse(mt.hvirrad[*,hInd]),line=1,/overplot
+      for j=0,50 do $
+        cgPlot,rad[*,j],line=0,color=getColor(j),/overplot
+    
+  end_PS
+  
+  stop
+end
+
 ; plotTmaxVsTvirAccComp(); plot the previous max temp vs. the virial temperature of the parent halos at the
 ;                          time of accretion for arepo vs. gadget
 
@@ -19,26 +85,26 @@ pro plotTmaxVsTvirAccComp
   binSizeLog = 0.15 / (res/128)
   
   sgSelect = 'pri'
-  ;massBins = [0.0,100.0] ; no massbins
+  accMode  = 'smooth'
   massBins = [9.0,9.5,10.0,10.5,11.0,11.5,12.0,12.5] ; log(M)   
   
   ; load sP1 (gadget)
-  accTvir_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset)
-  curTvir_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset)
-  maxTemp_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset)  
+  accTvir_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  curTvir_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  maxTemp_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
  
   ; load parent halo masses so we can make halo massbins
-  parentMass_ga = gcSubsetProp(sP=sP1,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset)
+  parentMass_ga = gcSubsetProp(sP=sP1,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
 
   ; load sP2 (tracer)
-  accTvir_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset)
-  curTvir_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset)
-  maxTemp_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset)
+  accTvir_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  curTvir_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  maxTemp_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
 
-  parentMass_tr = gcSubsetProp(sP=sP2,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset)
+  parentMass_tr = gcSubsetProp(sP=sP2,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
     
   ; plot (0) - 3x2 mass bins separated out and each panel with gadget+arepo, gal vs. gmem
-  start_PS, sP1.plotPath + 'tmax_tviracc_3x2.'+str(sP1.res)+'_'+str(sP1.snap)+'.eps', /big
+  start_PS, sP1.plotPath + 'tmax_tviracc_3x2.'+accMode+'.'+str(sP1.res)+'_'+str(sP1.snap)+'.eps', /big
     !p.thick += 1
     xrange = [-2.2,1.2]
     yrange = [6e-4,1.0]
@@ -60,7 +126,7 @@ pro plotTmaxVsTvirAccComp
       if j ge 4 then xtickname = '' else xtickname = replicate(' ',10)
       if j gt 1 then noerase = 1 else noerase = 0
       
-      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,pos=pos[j-1],$
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,pos=pos[j-1],$
         ytitle="",xtitle="",xticks=3,xtickv=xtickv,xtickname=xtickname,ytickname=ytickname,noerase=noerase       
       
       cgPlot,[0,0],[8e-4,0.3],line=0,color=fsc_color('light gray'),thick=!p.thick-2.0,/overplot
@@ -128,43 +194,43 @@ stop
       ;title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sP1.redshift,format='(f3.1)')+")"
     cgPlot,[0,0],yrange,line=0,color=fsc_color('light gray'),/overplot
     
-  strings = []
-  colors = []
-  
-  for j=0,n_elements(massBins)-2 do begin
+    strings = []
+    colors = []
     
-    ; select members of this parent mass bins and r>0<inf
-    wGadget_gal  = where(parentMass_ga.gal gt massBins[j] and parentMass_ga.gal le massBins[j+1],count1)
-    wGadget_gmem = where(parentMass_ga.gmem gt massBins[j] and parentMass_ga.gmem le massBins[j+1],count2)
-    wTracer_gal  = where(parentMass_tr.gal gt massBins[j] and parentMass_tr.gal le massBins[j+1],count3)
-    wTracer_gmem = where(parentMass_tr.gmem gt massBins[j] and parentMass_tr.gmem le massBins[j+1],count4)
+    for j=0,n_elements(massBins)-2 do begin
+      
+      ; select members of this parent mass bins and r>0<inf
+      wGadget_gal  = where(parentMass_ga.gal gt massBins[j] and parentMass_ga.gal le massBins[j+1],count1)
+      wGadget_gmem = where(parentMass_ga.gmem gt massBins[j] and parentMass_ga.gmem le massBins[j+1],count2)
+      wTracer_gal  = where(parentMass_tr.gal gt massBins[j] and parentMass_tr.gal le massBins[j+1],count3)
+      wTracer_gmem = where(parentMass_tr.gmem gt massBins[j] and parentMass_tr.gmem le massBins[j+1],count4)
+      
+      print,j,count1,count2,count3,count4
+      
+      if ~count1 or ~count2 or ~count3 or ~count4 then continue ; no halos in this mass bin  
     
-    print,j,count1,count2,count3,count4
+      massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
+      strings = [strings,massBinStr]
+      colors = [colors,getColor(j,/name)]
+      
+      ; histogram gadget (gal+gmem) differences
+      vals = [10.0^maxTemp_gadget.gal[wGadget_gal]/10.0^accTvir_gadget.gal[wGadget_gal],$
+              10.0^maxTemp_gadget.gmem[wGadget_gmem]/10.0^accTvir_gadget.gmem[wGadget_gmem]]
+      hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
+  
+      ; histogram tracer (gal+gmem) differences
+      vals = [10.0^maxTemp_tracer.gal[wTracer_gal]/10.0^accTvir_tracer.gal[wTracer_gal],$
+              10.0^maxTemp_tracer.gmem[wTracer_gmem]/10.0^accTvir_tracer.gmem[wTracer_gmem]]
+      hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
     
-    if ~count1 or ~count2 or ~count3 or ~count4 then continue ; no halos in this mass bin  
-  
-    massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
-    strings = [strings,massBinStr]
-    colors = [colors,getColor(j,/name)]
+    endfor
     
-    ; histogram gadget (gal+gmem) differences
-    vals = [10.0^maxTemp_gadget.gal[wGadget_gal]/10.0^accTvir_gadget.gal[wGadget_gal],$
-            10.0^maxTemp_gadget.gmem[wGadget_gmem]/10.0^accTvir_gadget.gmem[wGadget_gmem]]
-    hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
-
-    ; histogram tracer (gal+gmem) differences
-    vals = [10.0^maxTemp_tracer.gal[wTracer_gal]/10.0^accTvir_tracer.gal[wTracer_gal],$
-            10.0^maxTemp_tracer.gmem[wTracer_gmem]/10.0^accTvir_tracer.gmem[wTracer_gmem]]
-    hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
-  
-  endfor
-  
-  ; legend
-  legend,['gadget','arepo'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
-  if n_elements(massBins) gt 2 then $
-    legend,strings,textcolors=colors,box=0,/left,/top
+    ; legend
+    legend,['gadget','arepo'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
+    if n_elements(massBins) gt 2 then $
+      legend,strings,textcolors=colors,box=0,/left,/top
   
   end_PS
   
@@ -179,39 +245,39 @@ stop
       ;title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sP1.redshift,format='(f3.1)')+")"
     cgPlot,[0,0],yrange,line=0,color=fsc_color('light gray'),/overplot
     
-  strings = []
-  colors = []
-  
-  for j=0,n_elements(massBins)-2 do begin
+    strings = []
+    colors = []
     
-    ; select members of this parent mass bins and r>0<inf
-    wGadget_gal  = where(parentMass_ga.gal gt massBins[j] and parentMass_ga.gal le massBins[j+1],count1)
-    wTracer_gal  = where(parentMass_tr.gal gt massBins[j] and parentMass_tr.gal le massBins[j+1],count3)
+    for j=0,n_elements(massBins)-2 do begin
+      
+      ; select members of this parent mass bins and r>0<inf
+      wGadget_gal  = where(parentMass_ga.gal gt massBins[j] and parentMass_ga.gal le massBins[j+1],count1)
+      wTracer_gal  = where(parentMass_tr.gal gt massBins[j] and parentMass_tr.gal le massBins[j+1],count3)
+      
+      print,j,count1,count3
+      
+      if ~count1 or ~count3 then continue ; no halos in this mass bin  
     
-    print,j,count1,count3
+      massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
+      strings = [strings,massBinStr]
+      colors = [colors,getColor(j,/name)]
+      
+      ; histogram gadget (gal) differences
+      vals = [10.0^maxTemp_gadget.gal[wGadget_gal]/10.0^accTvir_gadget.gal[wGadget_gal]]
+      hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
+  
+      ; histogram tracer (gal+gmem) differences
+      vals = [10.0^maxTemp_tracer.gal[wTracer_gal]/10.0^accTvir_tracer.gal[wTracer_gal]]
+      hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
     
-    if ~count1 or ~count3 then continue ; no halos in this mass bin  
-  
-    massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
-    strings = [strings,massBinStr]
-    colors = [colors,getColor(j,/name)]
+    endfor
     
-    ; histogram gadget (gal) differences
-    vals = [10.0^maxTemp_gadget.gal[wGadget_gal]/10.0^accTvir_gadget.gal[wGadget_gal]]
-    hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
-
-    ; histogram tracer (gal+gmem) differences
-    vals = [10.0^maxTemp_tracer.gal[wTracer_gal]/10.0^accTvir_tracer.gal[wTracer_gal]]
-    hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
-  
-  endfor
-  
-  ; legend
-  legend,['gadget','arepo'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
-  if n_elements(massBins) gt 2 then $
-    legend,strings,textcolors=colors,box=0,/left,/top
+    ; legend
+    legend,['gadget','arepo'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
+    if n_elements(massBins) gt 2 then $
+      legend,strings,textcolors=colors,box=0,/left,/top
   
   end_PS
   
@@ -226,39 +292,39 @@ stop
       ;title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sP1.redshift,format='(f3.1)')+")"
     cgPlot,[0,0],yrange,line=0,color=fsc_color('light gray'),/overplot
     
-  strings = []
-  colors = []
-  
-  for j=0,n_elements(massBins)-2 do begin
+    strings = []
+    colors = []
     
-    ; select members of this parent mass bins and r>0<inf
-    wGadget_gmem = where(parentMass_ga.gmem gt massBins[j] and parentMass_ga.gmem le massBins[j+1],count2)
-    wTracer_gmem = where(parentMass_tr.gmem gt massBins[j] and parentMass_tr.gmem le massBins[j+1],count4)
+    for j=0,n_elements(massBins)-2 do begin
+      
+      ; select members of this parent mass bins and r>0<inf
+      wGadget_gmem = where(parentMass_ga.gmem gt massBins[j] and parentMass_ga.gmem le massBins[j+1],count2)
+      wTracer_gmem = where(parentMass_tr.gmem gt massBins[j] and parentMass_tr.gmem le massBins[j+1],count4)
+      
+      print,j,count2,count4
+      
+      if ~count2 or ~count4 then continue ; no halos in this mass bin  
     
-    print,j,count2,count4
+      massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
+      strings = [strings,massBinStr]
+      colors = [colors,getColor(j,/name)]
+      
+      ; histogram gadget (gal+gmem) differences
+      vals = [10.0^maxTemp_gadget.gmem[wGadget_gmem]/10.0^accTvir_gadget.gmem[wGadget_gmem]]
+      hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
+  
+      ; histogram tracer (gal+gmem) differences
+      vals = [10.0^maxTemp_tracer.gmem[wTracer_gmem]/10.0^accTvir_tracer.gmem[wTracer_gmem]]
+      hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
     
-    if ~count2 or ~count4 then continue ; no halos in this mass bin  
-  
-    massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
-    strings = [strings,massBinStr]
-    colors = [colors,getColor(j,/name)]
+    endfor
     
-    ; histogram gadget (gal+gmem) differences
-    vals = [10.0^maxTemp_gadget.gmem[wGadget_gmem]/10.0^accTvir_gadget.gmem[wGadget_gmem]]
-    hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
-
-    ; histogram tracer (gal+gmem) differences
-    vals = [10.0^maxTemp_tracer.gmem[wTracer_gmem]/10.0^accTvir_tracer.gmem[wTracer_gmem]]
-    hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
-  
-  endfor
-  
-  ; legend
-  legend,['gadget','arepo'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
-  if n_elements(massBins) gt 2 then $
-    legend,strings,textcolors=colors,box=0,/left,/top
+    ; legend
+    legend,['gadget','arepo'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
+    if n_elements(massBins) gt 2 then $
+      legend,strings,textcolors=colors,box=0,/left,/top
   
   end_PS
   
@@ -273,43 +339,43 @@ stop
       title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sP1.redshift,format='(f3.1)')+")"
     cgPlot,[1,1],yrange,line=0,color=fsc_color('light gray'),/overplot
     
-  strings = []
-  colors = []
-  
-  for j=0,n_elements(massBins)-2 do begin
+    strings = []
+    colors = []
     
-    ; select members of this parent mass bins and r>0<inf
-    wGadget_gal  = where(parentMass_ga.gal gt massBins[j] and parentMass_ga.gal le massBins[j+1],count1)
-    wGadget_gmem = where(parentMass_ga.gmem gt massBins[j] and parentMass_ga.gmem le massBins[j+1],count2)
-    wTracer_gal  = where(parentMass_tr.gal gt massBins[j] and parentMass_tr.gal le massBins[j+1],count3)
-    wTracer_gmem = where(parentMass_tr.gmem gt massBins[j] and parentMass_tr.gmem le massBins[j+1],count4)
+    for j=0,n_elements(massBins)-2 do begin
+      
+      ; select members of this parent mass bins and r>0<inf
+      wGadget_gal  = where(parentMass_ga.gal gt massBins[j] and parentMass_ga.gal le massBins[j+1],count1)
+      wGadget_gmem = where(parentMass_ga.gmem gt massBins[j] and parentMass_ga.gmem le massBins[j+1],count2)
+      wTracer_gal  = where(parentMass_tr.gal gt massBins[j] and parentMass_tr.gal le massBins[j+1],count3)
+      wTracer_gmem = where(parentMass_tr.gmem gt massBins[j] and parentMass_tr.gmem le massBins[j+1],count4)
+      
+      print,j,count1,count2,count3,count4
+      
+      if ~count1 or ~count2 or ~count3 or ~count4 then continue ; no halos in this mass bin  
     
-    print,j,count1,count2,count3,count4
+      massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
+      strings = [strings,massBinStr]
+      colors = [colors,getColor(j,/name)]
+      
+      ; histogram gadget (gal+gmem) differences
+      vals = [10.0^maxTemp_gadget.gal[wGadget_gal]/10.0^curTvir_gadget.gal[wGadget_gal],$
+              10.0^maxTemp_gadget.gmem[wGadget_gmem]/10.0^curTvir_gadget.gmem[wGadget_gmem]]
+      hist = histogram(alog10(vals),binsize=binSizeLog,loc=loc)
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
+  
+      ; histogram tracer (gal+gmem) differences
+      vals = [10.0^maxTemp_tracer.gal[wTracer_gal]/10.0^curTvir_tracer.gal[wTracer_gal],$
+              10.0^maxTemp_tracer.gmem[wTracer_gmem]/10.0^curTvir_tracer.gmem[wTracer_gmem]]
+      hist = histogram(alog10(vals),binsize=binSizeLog,loc=loc)
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
     
-    if ~count1 or ~count2 or ~count3 or ~count4 then continue ; no halos in this mass bin  
-  
-    massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
-    strings = [strings,massBinStr]
-    colors = [colors,getColor(j,/name)]
+    endfor
     
-    ; histogram gadget (gal+gmem) differences
-    vals = [10.0^maxTemp_gadget.gal[wGadget_gal]/10.0^curTvir_gadget.gal[wGadget_gal],$
-            10.0^maxTemp_gadget.gmem[wGadget_gmem]/10.0^curTvir_gadget.gmem[wGadget_gmem]]
-    hist = histogram(alog10(vals),binsize=binSizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
-
-    ; histogram tracer (gal+gmem) differences
-    vals = [10.0^maxTemp_tracer.gal[wTracer_gal]/10.0^curTvir_tracer.gal[wTracer_gal],$
-            10.0^maxTemp_tracer.gmem[wTracer_gmem]/10.0^curTvir_tracer.gmem[wTracer_gmem]]
-    hist = histogram(alog10(vals),binsize=binSizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
-  
-  endfor
-  
-  ; legend
-  legend,['gadget','arepoMC'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
-  if n_elements(massBins) gt 2 then $
-    legend,strings,textcolors=colors,box=0,/left,/top
+    ; legend
+    legend,['gadget','arepoMC'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
+    if n_elements(massBins) gt 2 then $
+      legend,strings,textcolors=colors,box=0,/left,/top
   
   end_PS
   
@@ -324,41 +390,41 @@ stop
       title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sP1.redshift,format='(f3.1)')+")"
     cgPlot,[1,1],yrange,line=0,color=fsc_color('light gray'),/overplot
     
-  strings = []
-  colors = []
-  
-  for j=0,n_elements(massBins)-2 do begin
+    strings = []
+    colors = []
     
-    ; select members of this parent mass bins and r>0<inf
-    wGadget_gal  = where(parentMass_ga.gal gt massBins[j] and parentMass_ga.gal le massBins[j+1],count1)
-    wGadget_gmem = where(parentMass_ga.gmem gt massBins[j] and parentMass_ga.gmem le massBins[j+1],count2)
-    wTracer_gal  = where(parentMass_tr.gal gt massBins[j] and parentMass_tr.gal le massBins[j+1],count3)
-    wTracer_gmem = where(parentMass_tr.gmem gt massBins[j] and parentMass_tr.gmem le massBins[j+1],count4)
+    for j=0,n_elements(massBins)-2 do begin
+      
+      ; select members of this parent mass bins and r>0<inf
+      wGadget_gal  = where(parentMass_ga.gal gt massBins[j] and parentMass_ga.gal le massBins[j+1],count1)
+      wGadget_gmem = where(parentMass_ga.gmem gt massBins[j] and parentMass_ga.gmem le massBins[j+1],count2)
+      wTracer_gal  = where(parentMass_tr.gal gt massBins[j] and parentMass_tr.gal le massBins[j+1],count3)
+      wTracer_gmem = where(parentMass_tr.gmem gt massBins[j] and parentMass_tr.gmem le massBins[j+1],count4)
+      
+      print,j,count1,count2,count3,count4
+      
+      if ~count1 or ~count2 or ~count3 or ~count4 then continue ; no halos in this mass bin  
     
-    print,j,count1,count2,count3,count4
+      massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
+      strings = [strings,massBinStr]
+      colors = [colors,getColor(j,/name)]
+      
+      ; histogram gadget (gal+gmem) differences
+      vals = [maxTemp_gadget.gal[wGadget_gal],maxTemp_gadget.gmem[wGadget_gmem]]
+      hist = histogram(vals,binsize=binSizeLog,loc=loc)
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
+  
+      ; histogram tracer (gal+gmem) differences
+      vals = [maxTemp_tracer.gal[wTracer_gal],maxTemp_tracer.gmem[wTracer_gmem]]
+      hist = histogram(vals,binsize=binSizeLog,loc=loc)
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
     
-    if ~count1 or ~count2 or ~count3 or ~count4 then continue ; no halos in this mass bin  
-  
-    massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
-    strings = [strings,massBinStr]
-    colors = [colors,getColor(j,/name)]
+    endfor
     
-    ; histogram gadget (gal+gmem) differences
-    vals = [maxTemp_gadget.gal[wGadget_gal],maxTemp_gadget.gmem[wGadget_gmem]]
-    hist = histogram(vals,binsize=binSizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
-
-    ; histogram tracer (gal+gmem) differences
-    vals = [maxTemp_tracer.gal[wTracer_gal],maxTemp_tracer.gmem[wTracer_gmem]]
-    hist = histogram(vals,binsize=binSizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
-  
-  endfor
-  
-  ; legend
-  legend,['gadget','arepoMC'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
-  if n_elements(massBins) gt 2 then $
-    legend,strings,textcolors=colors,box=0,/left,/top
+    ; legend
+    legend,['gadget','arepoMC'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
+    if n_elements(massBins) gt 2 then $
+      legend,strings,textcolors=colors,box=0,/left,/top
   
   end_PS
   
@@ -638,25 +704,25 @@ pro plot2DRadHistos,plotBase,sP,h2rt_gal,h2rt_gmem,xrange,yrange,ytitle,$
 
   start_PS, sP.plotPath + plotBase + '_rad_both.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     
-    loadct, 33, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
+    ;loadct, 33, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
     ;cgLoadCT,13,/brewer,bottom=1
-    ;loadColorTable, 'helix'
+    loadColorTable, 'helix', /reverse
     
     tvim,h2rt_both^exp,pcharsize=!p.charsize,scale=0,clip=-1,$;,/c_map,range=[5e10,1e8,5e9];,/rct
          xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle=ytitle,$
-         title=str(sP.res)+textoidl("^3")+" "+titleName+" (z="+string(redshift,format='(f3.1)')+") gal+gmem",$
          barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=xrange,yrange=yrange,$
-         /xlog,xticks=6,xtickv=[0.01,0.05,0.1,0.2,0.5,1.0,3.0],$
-         xtickname=['0.01','0.05','0.1','0.2','0.5','1','3'],xmargin=2.0
+         /xlog,xticks=5,xtickv=[0.01,0.05,0.1,0.2,0.5,1.0],$
+         xtickname=['0.01','0.05','0.1','0.2','0.5','1'],xmargin=2.0
+         ;title=str(sP.res)+textoidl("^3")+" "+titleName+" (z="+string(redshift,format='(f3.1)')+") gal+gmem",$
 
      barvals = findgen(ndivs+1)/ndivs*(max(h2rt_both^exp)-min(h2rt_both^exp)) + min(h2rt_both^exp)
      ticknames = textoidl('10^{'+str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)'))+'}')
      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
      colorbar,bottom=1,range=minmax(h2rt_both),position=[0.83,0.155,0.87,0.925],$
-       /vertical,/right,title=textoidl("M_{sun,tot}"),divisions=ndivs,ticknames=ticknames,ncolors=255
+       /vertical,/right,title=textoidl("log ( M_{tot} )  [_{ }M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
             
       if keyword_set(virTempRange) then begin
-        fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('white')
+        fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('black')
         fsc_text,xrange[0]*1.6,virTempRange[1]*1.02,"T"+textoidl("_{vir}"),alignment=0.5,color=fsc_color('yellow')
         fsc_plot,xrange,[virTempRange[0],virTempRange[0]],line=0,color=fsc_color('yellow'),/overplot
         fsc_plot,xrange,[virTempRange[1],virTempRange[1]],line=0,color=fsc_color('yellow'),/overplot
@@ -666,25 +732,25 @@ pro plot2DRadHistos,plotBase,sP,h2rt_gal,h2rt_gmem,xrange,yrange,ytitle,$
   
   start_PS, sP.plotPath + plotBase + '_rad_gal.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     
-    loadct, 33, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
+    ;loadct, 33, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
     ;cgLoadCT,13,/brewer,bottom=1
-    ;loadColorTable, 'helix'
+    loadColorTable, 'helix', /reverse
     
     tvim,h2rt_gal^exp,pcharsize=!p.charsize,scale=0,clip=-1,$;,/c_map
          xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle=ytitle,$
-         title=str(sP.res)+textoidl("^3")+" "+titleName+" (z="+string(redshift,format='(f3.1)')+") gal",$
          barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=xrange,yrange=yrange,$
-         /xlog,xticks=6,xtickv=[0.01,0.05,0.1,0.2,0.5,1.0,3.0],$
-         xtickname=['0.01','0.05','0.1','0.2','0.5','1','3'],xmargin=2.0
+         /xlog,xticks=5,xtickv=[0.01,0.05,0.1,0.2,0.5,1.0],$
+         xtickname=['0.01','0.05','0.1','0.2','0.5','1'],xmargin=2.0
+         ;title=str(sP.res)+textoidl("^3")+" "+titleName+" (z="+string(redshift,format='(f3.1)')+") gal",$
 
      barvals = findgen(ndivs+1)/ndivs*(max(h2rt_gal^exp)-min(h2rt_gal^exp)) + min(h2rt_gal^exp)
      ticknames = textoidl('10^{'+str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)'))+'}')
      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
      colorbar,bottom=1,range=minmax(h2rt_gal),position=[0.83,0.155,0.87,0.925],$
-       /vertical,/right,title=textoidl("M_{sun,tot}"),divisions=ndivs,ticknames=ticknames,ncolors=255
+       /vertical,/right,title=textoidl("log ( M_{tot} )  [_{ }M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
          
       if keyword_set(virTempRange) then begin
-        fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('white')
+        fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('black')
         fsc_text,xrange[0]*1.6,virTempRange[1]*1.02,"T"+textoidl("_{vir}"),alignment=0.5,color=fsc_color('yellow')
         fsc_plot,xrange,[virTempRange[0],virTempRange[0]],line=0,color=fsc_color('orange'),/overplot
         fsc_plot,xrange,[virTempRange[1],virTempRange[1]],line=0,color=fsc_color('orange'),/overplot
@@ -694,25 +760,25 @@ pro plot2DRadHistos,plotBase,sP,h2rt_gal,h2rt_gmem,xrange,yrange,ytitle,$
   
   start_PS, sP.plotPath + plotBase + '_rad_gmem.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     
-    loadct, 33, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
+    ;loadct, 33, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
     ;cgLoadCT,13,/brewer,bottom=1
-    ;loadColorTable, 'helix'
+    loadColorTable, 'helix', /reverse
     
     tvim,h2rt_gmem^exp,pcharsize=!p.charsize,scale=0,clip=-1,$;,/c_map
          xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle=ytitle,$
-         title=str(sP.res)+textoidl("^3")+" "+titleName+" (z="+string(redshift,format='(f3.1)')+") gmem",$
          barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=xrange,yrange=yrange,$
-         /xlog,xticks=6,xtickv=[0.01,0.05,0.1,0.2,0.5,1.0,3.0],$
-         xtickname=['0.01','0.05','0.1','0.2','0.5','1','3'],xmargin=2.0
+         /xlog,xticks=5,xtickv=[0.01,0.05,0.1,0.2,0.5,1.0],$
+         xtickname=['0.01','0.05','0.1','0.2','0.5','1'],xmargin=2.0
+         ;title=str(sP.res)+textoidl("^3")+" "+titleName+" (z="+string(redshift,format='(f3.1)')+") gmem",$
 
      barvals = findgen(ndivs+1)/ndivs*(max(h2rt_gmem^exp)-min(h2rt_gmem^exp)) + min(h2rt_gmem^exp)
      ticknames = textoidl('10^{'+str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)'))+'}')
      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
      colorbar,bottom=1,range=minmax(h2rt_gmem),position=[0.83,0.155,0.87,0.925],$
-       /vertical,/right,title=textoidl("M_{sun,tot}"),divisions=ndivs,ticknames=ticknames,ncolors=255
+       /vertical,/right,title=textoidl("log ( M_{tot} )  [_{ }M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
          
       if keyword_set(virTempRange) then begin
-        fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('white')
+        fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('black')
         fsc_text,xrange[0]*1.6,virTempRange[1]*1.02,"T"+textoidl("_{vir}"),alignment=0.5,color=fsc_color('yellow')
         fsc_plot,xrange,[virTempRange[0],virTempRange[0]],line=0,color=fsc_color('orange'),/overplot
         fsc_plot,xrange,[virTempRange[1],virTempRange[1]],line=0,color=fsc_color('orange'),/overplot
@@ -817,10 +883,10 @@ pro plotTempRad2DHisto, sP=sP
   for j=0,n_elements(massBins)-2 do begin
   
     ; plot config
-    xrange = alog10([0.01,3.0])
+    xrange = alog10([0.01,1.0])
     yrange = [4.0,7.0]
   
-    binSizeRad  = 0.04 / (sP.res/128) ;0.04
+    binSizeRad  = 0.014 / (sP.res/128) ;0.04
     binSizeTemp = 0.05 / (sP.res/128) ;0.04
     
     ; preserve number of bins in log(rad) histogram and if changing yrange
@@ -829,7 +895,7 @@ pro plotTempRad2DHisto, sP=sP
     binSizeRad_log  = (xrange[1]-xrange[0])/(nBinsRad_linear-1)
     
     if tVirNorm or tVirAccNorm then begin
-      yrange = [-2.5,1.0]
+      yrange = [-2.0,1.0]
       binSizeTemp = (yrange[1]-yrange[0])/(nBinsTemp-1)
     endif
     

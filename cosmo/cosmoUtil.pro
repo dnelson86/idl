@@ -445,38 +445,37 @@ function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir, p
   endelse
    
   ; arrays
-  gal  = fltarr(n_elements(galcat.galaxyIDs))
-  gmem = fltarr(n_elements(galcat.groupmemIDs))
+  r = { gal  : fltarr(n_elements(galcat.galaxyIDs))    ,$
+        gmem : fltarr(n_elements(galcat.groupmemIDs))   }
   
   ; masses (log msun)
   if keyword_set(mass) then begin
-    gal  = gc.subgroupMass[gcInd.gal]
-    gmem = gc.subgroupMass[gcInd.gmem]
+    r.gal  = gc.subgroupMass[gcInd.gal]
+    r.gmem = gc.subgroupMass[gcInd.gmem]
     
-    gal  = codeMassToLogMsun(gal)
-    gmem = codeMassToLogMsun(gmem)
+    r.gal  = codeMassToLogMsun(r.gal)
+    r.gmem = codeMassToLogMsun(r.gmem)
   endif
 
   ; calculate virial temperatures (K)
   if keyword_set(virTemp) then begin
-    gal  = gc.subgroupMass[gcInd.gal]
-    gmem = gc.subgroupMass[gcInd.gmem]
+    r.gal  = gc.subgroupMass[gcInd.gal]
+    r.gmem = gc.subgroupMass[gcInd.gmem]
     
     redshift = snapNumToRedshift(sP=sP)
   
-    gal  = alog10(codeMassToVirTemp(gal,sP=sP))
-    gmem = alog10(codeMassToVirTemp(gmem,sP=sP))
+    r.gal  = alog10(codeMassToVirTemp(r.gal,sP=sP))
+    r.gmem = alog10(codeMassToVirTemp(r.gmem,sP=sP))
   endif
   
   if keyword_set(rVir) then begin
-    gal  = gc.subgroupGrnr[gcInd.gal]
-    gmem = gc.subgroupGrnr[gcInd.gmem]
+    r.gal  = gc.subgroupGrnr[gcInd.gal]
+    r.gmem = gc.subgroupGrnr[gcInd.gmem]
     
-    gal  = gc.group_r_crit200[gal]
-    gmem = gc.group_r_crit200[gmem]
+    r.gal  = gc.group_r_crit200[r.gal]
+    r.gmem = gc.group_r_crit200[r.gmem]
   endif
 
-  r = {gal:gal,gmem:gmem}
   return,r
 end
 

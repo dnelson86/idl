@@ -337,7 +337,7 @@ function gcSubsetProp, sP=sP, select=select, $
   
   ; select galaxycat indices corresponding to the list of subgroup ids
   galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList) ;identical to mt.galcatSub if mtS
-  
+
   ; subset galcat member indlist by those with recorded accretion times (and associated properties)
   if keyword_set(accretionTimeSubset) then begin
     at = accretionTimes(sP=sP)
@@ -349,6 +349,7 @@ function gcSubsetProp, sP=sP, select=select, $
     ; sph case: modify galcatInds such that the accretionTimes subset is taken
     if ~allTR then galcatInds = { gal  : galcatInds.gal[accTimeInds.gal] , $
                                   gmem : galcatInds.gmem[accTimeInds.gmem] }
+
     ; tracer case: handle only after we have child counts (after expansion or in allTR for maxTemps)
   endif
   

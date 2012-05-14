@@ -345,6 +345,8 @@ function accretionMode, sP=sP
     origParIDs = { gal  : gcIndOrigTr.gal[gal_w_at]   ,$
                    gmem : gcIndOrigTr.gmem[gmem_w_at]  }
                    
+    if min(origParIDs.gal) lt 0 or min(origParIDs.gmem) lt 0 then message,'Error: Bad starting parents.'
+                   
     gcIndOrigTr = !NULL
     galcat = !NULL
     
@@ -640,6 +642,14 @@ function accretionMode, sP=sP
       w_gmem = !NULL
     endfor ;m
     
+    ; verify we found an accretion mode for every gas particle
+    if min(rMask.gal)  lt 1 then message,'Error: Not all gal found.'
+    if min(rMask.gmem) lt 1 then message,'Error: Not all gmem found.'
+    
+    ; save
+    save,r,filename=saveFilename
+    print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
+    
   endif
   
   ; VELOCITY TRACERS case - will be similar to above since there could be multiple
@@ -661,7 +671,7 @@ function accModeInds, at=at, sP=sP, accMode=accMode, mask=mask
   
   ; select on accretion mode by modifying gal_w and gmem_w
   if accMode ne 'all' then begin
-    if sP.trMCPerCell ne 0 then message,'Error: accMode for tracers not yet.'
+    if sP.trMCPerCell lt 0 then message,'Error: accMode for tracerVel not yet.'
     am = accretionMode(sP=sP)
     
     if accMode eq 'smooth' then begin
