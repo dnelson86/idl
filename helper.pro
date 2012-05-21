@@ -230,17 +230,10 @@ function loadBinary, fileName, ptStruct
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   openR, lun, fileName, /GET_LUN
-  
-    ; header
     nPts = 0UL
-    readU, lun, nPts
-
-    ; replicate
-    pts  = replicate(ptStruct,nPts)
-    
-    ; fill
-    readU, lun, pts
-  
+    readU, lun, nPts ; header
+    pts  = replicate(ptStruct,nPts) ; replicate
+    readU, lun, pts ; fill
   close, lun
   free_lun, lun
 
@@ -298,7 +291,7 @@ end
 ; postscript output
 ; -----------------
 
-pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big
+pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -310,7 +303,11 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big
   if n_elements(big) eq 1 then begin
     xs *= 1.2 ;9.0
     ys *= 1.2 ;6.0
-  endif 
+  endif
+  if n_elements(extrabig) eq 1 then begin
+    xs *= 1.4 ;10.5
+    ys *= 1.4 ;7
+  endif
 
   PS_Start, FILENAME=filename, /nomatch, /quiet, bits_per_pixel=8, color=1, $
             encapsulated=eps, decomposed=0, xs=xs, ys=ys, /inches, font=0;, tt_font='Helvetica' ;3/2  
@@ -579,7 +576,8 @@ end
 ;              function specified for each particle/cell over a given number of neighbors with positions 
 ;              Pos around each position in SearchPos, where the two are generally different (as in CalcHSMLds)
 
-function calcTHVal, PosVal, SearchPos, thMode=thMode, ndims=ndims, nNGB=nNGB, boxSize=boxSize
+function calcTHVal, PosVal, SearchPos, thMode=thMode, ndims=ndims, nNGB=nNGB, boxSize=boxSize, $
+                    weighted=weighted
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -588,9 +586,12 @@ function calcTHVal, PosVal, SearchPos, thMode=thMode, ndims=ndims, nNGB=nNGB, bo
 
   if ndims ne 1 and ndims ne 2 and ndims ne 3 then message,'Error: Need ndims=1,2,3.'
   if thMode ne 1 and thMode ne 2 and thMode ne 3 then message,'Error: Need thMode=1,2,3.'
-  if npos[0] ne 2 or npos[1] ne 4 then message,'Error: Point position array shape.'
+  if npos[0] ne 2 then message,'Error: Point position array shape.'
   if nsrc[0] ne 2 or nsrc[1] ne 3 then message,'Error: Search position array shape.'
   if npos[2] lt nNGB then message,'Error: Point count too low for nNGB.'
+  
+  if ~keyword_set(weighted) and npos[1] ne 4 then message,'Error: Posval should be 4xN.'
+  if keyword_set(weighted) and npos[1] ne 5 then message,'Error: Posval(wt) should be 5xN.'
 
   ; prepare inputs
   NumPart   = long(npos[2])
@@ -606,11 +607,19 @@ function calcTHVal, PosVal, SearchPos, thMode=thMode, ndims=ndims, nNGB=nNGB, bo
   PosVal    = float(PosVal)
   SearchPos = float(SearchPos)
   
-  ; call CalcTHVal
-  libName = '/n/home07/dnelson/idl/CalcTHVal/CalcTHVal_'+str(ndims)+'D.so'
-  ret = Call_External(libName, 'CalcTHVal', $
-                      NumPart,PosVal,NumSearch,SearchPos,DesNumNgb,thMode,boxSize,val_out, $
-                      /CDECL)
+  if ~keyword_set(weighted) then begin
+    ; call CalcTHVal
+    libName = '/n/home07/dnelson/idl/CalcTHVal/CalcTHVal_'+str(ndims)+'D.so'
+    ret = Call_External(libName, 'CalcTHVal', $
+                        NumPart,PosVal,NumSearch,SearchPos,DesNumNgb,thMode,boxSize,val_out, $
+                        /CDECL)
+  endif else begin
+    ; call CalcTHValWt where posval=posvalwt
+    libName = '/n/home07/dnelson/idl/CalcTHValWt/CalcTHValWt_'+str(ndims)+'D.so'
+    ret = Call_External(libName, 'CalcTHValWt', $
+                        NumPart,PosVal,NumSearch,SearchPos,DesNumNgb,thMode,boxSize,val_out, $
+                        /CDECL)
+  endelse
                       
   return, val_out              
 end

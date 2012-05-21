@@ -1,10 +1,7 @@
 /*
- * CalcTHVal Routine for IDL
- * dnelson apr.2012
- * similar to CalcHSMLds in that it uses a tophat filter of constant neighbor number on a "different set"
- * of points in R^3 than the particles themselves. instead of returning the hsml of the tophat this routine
- * estimates the (mean) value of some quantity specified for each particle, e.g. temperature
- * 1D,2D,3D versions, for periodic set BoxSize>0 (LONG_XYZ not supported though)
+ * CalcTHValWt Routine for IDL
+ * dnelson may.2012
+ * same as CalcTHVal but accepts weights for each value (cell masses for Arepo)
  */
 
 #include <stdio.h>
@@ -16,8 +13,8 @@
 #include "main.h"
 
 // main routine in C
-int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* search_pos, 
-                      int DesNumNgb, int DesNumngbDev, float BoxSize, float* val_out)
+int CalcTHValWt_natural(int NumPart, float* data_pos_val_wt, int NumSearch, float* search_pos, 
+                        int DesNumNgb, int DesNumngbDev, float BoxSize, float* val_out)
 {
   int i;
   int nNodes;
@@ -25,7 +22,7 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
   float pos[3];
 
   // instead of copying, just cast the input data as an array of particle_data structs
-  P = (struct particle_data *) data_pos_val;
+  P = (struct particle_data *) data_pos_val_wt;
 
   // allocate and build tree
   tree_treeallocate(2.0 * NumPart, NumPart);
@@ -77,7 +74,7 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
     
     ; prepare inputs
     NumPart   = long(npts)
-    PosVal    = fltarr(4,npts) ; [x,y,z,function value]
+    PosVal    = fltarr(5,npts) ; [x,y,z,function value,element weight (mass)]
     NumSrc    = long(nsearchpts)
     SearchPos = fltarr(3,nsearchpts)
     DesNumNgb    = long(nNGB)
@@ -87,14 +84,14 @@ int CalcTHVal_natural(int NumPart, float* data_pos_val, int NumSearch, float* se
     val_out = fltarr(NumSrc)
     
     ; call CalcTHVal
-    ret = Call_External('/n/home07/dnelson/idl/CalcTHVal/CalcTHVal_3D.so', 'CalcTHVal', $
+    ret = Call_External('/n/home07/dnelson/idl/CalcTHValWt/CalcTHValWt_3D.so', 'CalcTHVal', $
                         NumPart,PosVal,NumSrc,SearchPos,DesNumNgb,TophatMode,BoxSize,val_out,/CDECL)
 */
 
-int CalcTHVal(int argc, void* argv[])
+int CalcTHValWt(int argc, void* argv[])
 {
   int NumSearch;
-  float *PosVal,*SrcPos,*val_out;
+  float *PosValWt,*SrcPos,*val_out;
 	
   char buf[128];
 
@@ -106,12 +103,12 @@ int CalcTHVal(int argc, void* argv[])
     return 0;
   } else {
 #ifdef   ONEDIMS
-IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (ONEDIMS!).");
+IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHValWt Loaded (ONEDIMS!).");
 #else
 #ifndef  TWODIMS
-IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (NDIMS=3!).");
+IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHValWt Loaded (NDIMS=3!).");
 #else
-IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (TWODIMS!).");
+IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHValWt Loaded (TWODIMS!).");
 #endif
 #endif /* ONEDIMS */
 
@@ -120,7 +117,7 @@ IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (TWODIMS!).");
   // should check: pos has 2 dims, first dim is 3	
   // inputs and return by reference
   NumPart   = *(int *)argv[0];
-  PosVal    = (float *)argv[1];
+  PosValWt  = (float *)argv[1];
   NumSearch = *(int *)argv[2];
   SrcPos    = (float *)argv[3];
 	
@@ -145,7 +142,7 @@ IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (TWODIMS!).");
 #endif
 
   // calculate tophat values
-  int status = CalcTHVal_natural(NumPart,PosVal,NumSearch,SrcPos,DesNumNgb,DesNumNgbDev,BoxSize,val_out);
+  int status = CalcTHValWt_natural(NumPart,PosValWt,NumSearch,SrcPos,DesNumNgb,DesNumNgbDev,BoxSize,val_out);
 
   // free Ngblist and return
   //free(Ngblist);
