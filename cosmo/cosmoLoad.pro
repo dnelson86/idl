@@ -1,6 +1,6 @@
 ; cosmoLoad.pro
 ; cosmological simulations - loading procedures (snapshots, fof/subhalo group cataloges)
-; dnelson jan.2012
+; dnelson may.2012
 
 ; getTypeSortedIDList(): within the group catalog ID list rearrange the IDs for each FOF group to be 
 ;                        ordered first by type (not by SubNr since Subfind was run) such that the
@@ -1250,6 +1250,8 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     rType = 'float'
     if (partType ne 3 and partType ne 2) then message,'Error: Fluid quantities are tracerMC/Vel only!'
   endif
+  
+  if field eq 'tracer_maxentropy' then print,'WARNING: a3inv factor!' ; temp warning
   
   if (fieldName eq '') then begin
     print,'ERROR: Requested field -- ' + strlowcase(field) + ' -- not recognized!'

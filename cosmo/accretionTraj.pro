@@ -381,7 +381,7 @@ function accretionTraj, sP=sP, getVel=getVel
       sfr_gmem  = !NULL
       
       ; load pos to calculate tracer positions relative to halo centers
-      pos = loadSnapshotSubset(sP=sP,partType='tracerVel',field='pos')
+      pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
       
       tr_pos_gal  = pos[*,tr_parids_gal]
       tr_pos_gmem = pos[*,tr_parids_gmem]

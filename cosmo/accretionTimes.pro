@@ -372,7 +372,7 @@ function accretionTimes, sP=sP
   ; VELOCITY TRACERS case - will be similar to above since there could be multiple
   ; ---------------------
   if sP.trMCPerCell eq -1 then begin
-  
+    message,'todo'
   endif
   
 end
