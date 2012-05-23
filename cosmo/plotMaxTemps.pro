@@ -2,6 +2,147 @@
 ; gas accretion project - plots related to maximum past temperature of the gas
 ; dnelson may.2012
 
+; checkBlobsHotCold
+
+pro checkBlobsHotCold
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  sP = simParams(res=256,run='gadget',redshift=2.0)
+
+  ; config
+  sizeFac = 2.0 ;3.5  ; times rvir
+  cutFac  = 1.0       ; times boxSize
+  exclude_flag = 1
+  
+  gcMassRange = [11.5,11.75]
+  
+  ; target list
+  gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
+  sgcen = subgroupPosByMostBoundID(sP=sP)
+  
+  gcIDsPri = gcIDList(gc=gc,select='pri')
+  gcMassesPri = codeMassToLogMsun(gc.subgroupMass[gcIDsPri])
+  
+  w = where(gcMassesPri gt gcMassRange[0] and gcMassesPri le gcMassRange[1])
+  gcIDs = gcIDsPri[w]
+  print,gcIDs
+
+  ; load gas positions and densities
+  pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+  dens = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
+
+  gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+
+  ; exclude all secondary subgroups?
+  if exclude_flag eq 1 then begin
+    print,'excluding secondaries...'
+    gc2 = loadGroupCat(sP=sP,/readIDs)
+    secPIDList = gcPIDList(gc=gc2,select='sec',partType='all')
+    
+    ; TEMP load galaxycat and mtS, goal: get gas ID list in cold and hot modes
+    galcat = galaxyCat(sP=sP)
+    mt = mergerTreeSubset(sP=sP)
+    mtSIDs = { gal : galcat.galaxyIDs[mt.galcatSub.gal], gmem : galcat.groupmemIDs[mt.galcatSub.gmem] }
+    
+    ;accTvir = gcSubsetProp(sP=sP,select='all',/accTvir,/mergerTreeSubset,/accretionTimeSubset)
+    maxTemp = gcSubsetProp(sP=sP,select='all',/maxPastTemp)
+
+    hotIDs = [galcat.galaxyIDs[where(maxTemp.gal gt 5.9,count1)], $
+              galcat.groupmemIDs[where(maxTemp.gmem gt 5.9,count2)]]
+    coldIDs = [galcat.galaxyIDs[where(maxTemp.gal le 5.9,count3)], $
+              galcat.groupmemIDs[where(maxTemp.gmem le 5.9,count4)]]
+    
+    print,count1+count2,count3+count4,n_elements(gas_ids)
+    
+    ; make sure no collision
+    match,hotIDs,coldIDs,ind1,ind2,count=countMatch
+    if countMatch gt 0 then message,'Error: Collision.'
+    
+    ; make complement mask
+    match,gas_ids,secPIDList,ind1,ind2,count=countMatch
+    mask = bytarr(n_elements(gas_ids))
+    mask[ind1] = 1B
+    wInd = where(mask eq 0B,count)
+    
+    if count eq 0 then message,'Error'
+    print,'Removing ['+str(countMatch)+'] of ['+str(n_elements(gas_ids))+'] have left: '+$
+      string(float(count)*100/n_elements(gas_ids),format='(f4.1)')+'%'
+    
+    ; restrict
+    dens = dens[wInd]
+    pos = pos[*,wInd]
+    gas_ids = gas_ids[wInd]
+  endif 
+  
+  ; counters
+  tot_hot = 0L
+  tot_cold = 0L
+  tot_count = 0L
+  
+  print,'calculating...'
+  ; loop over all requested halos and image
+  foreach gcID, gcIDs do begin
+  
+    ; get subhalo position and size of imaging box
+    boxCen     = sgcen[*,gcID]
+    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]] / 10.0) * 10.0
+    boxSizeImg = [boxSize,boxSize,boxSize] ; cube
+  
+    ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
+    xDist = pos[0,*] - boxCen[0]
+    yDist = pos[1,*] - boxCen[1]
+    zDist = pos[2,*] - boxCen[2]
+    
+    correctPeriodicDistVecs, xDist, sP=sP
+    correctPeriodicDistVecs, yDist, sP=sP
+    correctPeriodicDistVecs, zDist, sP=sP
+    
+    rvir = gc.group_r_crit200[gc.subgroupGrNr[gcID]]
+    rad = reform(sqrt(xDist*xDist + yDist*yDist + zDist*zDist)) / rvir[0]
+  
+    ; local (cube) cutout
+    ;wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
+    ;             abs(zDist) le 0.5*cutFac*boxSize,nCutout)
+                 
+    ; local (cube) cutout - only blobs
+    wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
+                 abs(zDist) le 0.5*cutFac*boxSize and alog10(dens*1e10) gt 5.0 and rad gt 0.125,nCutout)
+
+    ; local (cube) cutout - only non-blobs
+    ;wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
+    ;             abs(zDist) le 0.5*cutFac*boxSize and (alog10(dens*1e10) le 5.0 or rad le 0.125),nCutout)
+    
+    ; check hot or cold? get IDs inside selection and match to hot/cold IDs
+    loc_ids = gas_ids[wCut]
+    
+    match,loc_ids,hotIDs,ind1,ind2,count=count_hot
+    match,loc_ids,coldIDs,ind1,ind2,count=count_cold
+    
+    print,'['+string(gcID,format='(i5)')+'] hot: '+str(count_hot)+'  cold: '+str(count_cold)+'  tot: '+str(n_elements(loc_ids))
+    
+    tot_cold  += count_cold
+    tot_hot   += count_hot
+    tot_count += n_elements(loc_ids) 
+    
+    ; TEMP
+    ;loc_dens = alog10(dens[wCut]*1e10)
+    ;start_PS,'test_rhor_'+str(gcID)+'.eps'
+    ;  cgplot,rad,loc_dens,psym=3,$
+    ;    xtitle="radius [kpc]",ytitle="log (dens) [msun/kpc3]"
+    ;  w = where(loc_dens gt 5.0 and rad gt 0.1)
+    ;  cgplot,rad[w],loc_dens[w],psym=3,color=cgColor('red'),/overplot
+    ;end_PS
+    ; END TEMP
+  
+  endforeach ;gcIDs
+  
+  hot_frac  = float(tot_hot) / tot_count
+  cold_frac = float(tot_cold) / tot_count
+  print,'hot frac: '+str(hot_frac)+'  cold frac: '+str(cold_frac)
+
+end
+
 ; plotTempVsRad
 
 pro plotTempVsRad
@@ -12,26 +153,16 @@ pro plotTempVsRad
   at  = accretionTraj(sP=sP)
   mt  = mergerTreeSubset(sP=sP)
 
-  hInd = 50
-  haloIDs = [mt.galcatIDList[hInd]]
-
-  ; get indices for the subset of the mergerTreeSubset corresponding to the selected halo(s)
-  mergerTreeSub = mergerTreeINDList(sP=sP,gcIDList=haloIDs)
-
-  ; count
-  nPart = { gal  : n_elements(at.relPos_gal[0,0,mergerTreeSub.gal])   ,$
-            gmem : n_elements(at.relPos_gmem[0,0,mergerTreeSub.gmem])  }
-
-  rad = sqrt(at.relPos_gal[*,0,mergerTreeSub.gal] * at.relPos_gal[*,0,mergerTreeSub.gal] + $
-             at.relPos_gal[*,1,mergerTreeSub.gal] * at.relPos_gal[*,1,mergerTreeSub.gal] + $
-             at.relPos_gal[*,2,mergerTreeSub.gal] * at.relPos_gal[*,2,mergerTreeSub.gal])
+  ; some radius/temp selection
+  rad = sqrt(at.relPos_gal[*,0,*] * at.relPos_gal[*,0,*] + $
+             at.relPos_gal[*,1,*] * at.relPos_gal[*,1,*] + $
+             at.relPos_gal[*,2,*] * at.relPos_gal[*,2,*])
   rad = reform(rad)
-  
-  temp = reform(at.curTemp_gal[*,mergerTreeSub.gal])
+  temp = at.curTemp_gal
   
   ; normalize by rvir(t)
   for i=0,n_elements(mt.times)-1 do begin
-    rad[i,*] /= (mt.hVirRad[i,hInd])[0]
+    rad[i,*] /= mt.hVirRad[i,mt.gcIndOrig.gal]
   endfor
 
   ; plot (0)
@@ -42,12 +173,8 @@ pro plotTempVsRad
     
       cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,ytitle="temp",xtitle="rad / rvir"      
       
-      cgplot,reverse(mt.hvirrad[*,hInd]),reverse(mt.hvirtemp[*,hInd]),line=1,/overplot
-      for j=0,50 do begin
-        w = where(temp[*,j] ne 0.0,count,comp=wc,ncomp=ncomp)
-        if count gt 0 then cgPlot,rad[w,j],temp[w,j],line=0,color=getColor(j),/overplot
-        ;if ncomp gt 0 then cgPlot,rad[wc,j],temp[wc,j],line=1,color=getColor(j),/overplot
-      endfor
+      w = where(temp ne 0.0,count,comp=wc,ncomp=ncomp)
+      if count gt 0 then cgPlot,rad[w],temp[w],psym=3,/overplot
     
   end_PS
   
@@ -719,7 +846,7 @@ pro plot2DRadHistos,plotBase,sP,h2rt_gal,h2rt_gmem,xrange,yrange,ytitle,$
      ticknames = textoidl('10^{'+str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)'))+'}')
      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
      colorbar,bottom=1,range=minmax(h2rt_both),position=[0.83,0.155,0.87,0.925],$
-       /vertical,/right,title=textoidl("log ( M_{tot} )  [_{ }M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
+       /vertical,/right,title=textoidl("M_{gas} [_{ }log M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
             
       if keyword_set(virTempRange) then begin
         fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('black')
@@ -747,7 +874,7 @@ pro plot2DRadHistos,plotBase,sP,h2rt_gal,h2rt_gmem,xrange,yrange,ytitle,$
      ticknames = textoidl('10^{'+str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)'))+'}')
      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
      colorbar,bottom=1,range=minmax(h2rt_gal),position=[0.83,0.155,0.87,0.925],$
-       /vertical,/right,title=textoidl("log ( M_{tot} )  [_{ }M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
+       /vertical,/right,title=textoidl("M_{gas} [_{ }log M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
          
       if keyword_set(virTempRange) then begin
         fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('black')
@@ -775,7 +902,7 @@ pro plot2DRadHistos,plotBase,sP,h2rt_gal,h2rt_gmem,xrange,yrange,ytitle,$
      ticknames = textoidl('10^{'+str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)'))+'}')
      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
      colorbar,bottom=1,range=minmax(h2rt_gmem),position=[0.83,0.155,0.87,0.925],$
-       /vertical,/right,title=textoidl("log ( M_{tot} )  [_{ }M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
+       /vertical,/right,title=textoidl("M_{gas} [_{ }log M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
          
       if keyword_set(virTempRange) then begin
         fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('black')
@@ -886,8 +1013,8 @@ pro plotTempRad2DHisto, sP=sP
     xrange = alog10([0.01,1.0])
     yrange = [4.0,7.0]
   
-    binSizeRad  = 0.014 / (sP.res/128) ;0.04
-    binSizeTemp = 0.05 / (sP.res/128) ;0.04
+    binSizeRad  = 0.0035 ;0.014 / (sP.res/128) ;0.04
+    binSizeTemp = 0.0125 ;0.05 / (sP.res/128) ;0.04
     
     ; preserve number of bins in log(rad) histogram and if changing yrange
     nBinsRad_linear = ceil((10.0^xrange[1]-10.0^xrange[0])/binSizeRad)+1
@@ -895,7 +1022,7 @@ pro plotTempRad2DHisto, sP=sP
     binSizeRad_log  = (xrange[1]-xrange[0])/(nBinsRad_linear-1)
     
     if tVirNorm or tVirAccNorm then begin
-      yrange = [-2.0,1.0]
+      yrange = [-1.5,1.0]
       binSizeTemp = (yrange[1]-yrange[0])/(nBinsTemp-1)
     endif
     

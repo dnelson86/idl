@@ -287,7 +287,7 @@ pro plotGasPropsVsDMOverdens
     ; entropy
     u = loadSnapshotSubset(sP=sPg,partType='gas',field='u')
     if hID_ga ne 0 then u = u[wGas_ga]
-    gasProp_ga = calcEntropy(u,dens,/log,sP=sPg)
+    gasProp_ga = calcEntropyCGS(u,dens,/log,sP=sPg)
     dens = !NULL
     
     for i=0,dmNbins-1 do begin
@@ -368,7 +368,7 @@ pro plotGasPropsVsDMOverdens
     ; entropy
     u = loadSnapshotSubset(sP=sPa,partType='gas',field='u')
     if hID_ar ne 0 then u = u[wGas_ar]
-    gasProp_ar = calcEntropy(u,dens,/log,sP=sPa)
+    gasProp_ar = calcEntropyCGS(u,dens,/log,sP=sPa)
     dens = !NULL
       
     for i=0,dmNbins-1 do begin
@@ -495,7 +495,7 @@ pro plotGasPropsVsDMOverdens
     ; entropy
     yrange = [4.0,9.5]
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,pos=pos[2],/noerase,$
-      ytitle=textoidl("log ( Entropy ) [Code]"),xtitle="",$
+      ytitle=textoidl("log ( Entropy ) [K cm^2]"),xtitle="",$
       title="",xticks=6,xtickv=[-1,0,1,2,3,4]
       
     ; mark dm overdensity range
@@ -616,18 +616,18 @@ pro plotGasSinglePropODRangeComp, redshift=redshift
     ; load u,dens
     u     = loadSnapshotSubset(sP=sPa,partType='gas',field='u')
     dens  = loadSnapshotSubset(sP=sPa,partType='gas',field='dens')
-    gasProp_ar = calcEntropy(u[wGas_ar],dens[wGas_ar],/log,sP=sPa)
+    gasProp_ar = calcEntropyCGS(u[wGas_ar],dens[wGas_ar],/log,sP=sPa)
     u     = !NULL
     dens  = !NULL
     
     u     = loadSnapshotSubset(sP=sPg,partType='gas',field='u')
     dens  = loadSnapshotSubset(sP=sPg,partType='gas',field='dens')
-    gasProp_ga = calcEntropy(u[wGas_ga],dens[wGas_ga],/log,sP=sPg)
+    gasProp_ga = calcEntropyCGS(u[wGas_ga],dens[wGas_ga],/log,sP=sPg)
     u     = !NULL
     dens  = !NULL
     
     fieldBinSize = 0.1 ; for histogram
-    fieldAxis    = "log ( entropy ) [code]"
+    fieldAxis    = "log ( entropy ) [K cm^2]"
   endif
   
   if fieldName eq 'temperature' then begin

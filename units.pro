@@ -25,6 +25,7 @@ function getUnits
             
             ; non-cgs units
             UnitMass_in_Msun    : 0.0D                        ,$
+            UnitTime_in_yr      : 0.0D                        ,$
             
             ; constants
             boltzmann   : double(1.380650e-16)                ,$ ;cgs
@@ -39,6 +40,7 @@ function getUnits
             colors : strarr(18)                               ,$
             
             ; unit conversions
+            s_in_yr   : 3.155693e7                            ,$
             s_in_Myr  : 3.155693e13                           ,$
             s_in_Gyr  : 3.155693e16                           ,$
             Msun_in_g : 1.98892*double(10.0)^33               ,$
@@ -59,6 +61,7 @@ function getUnits
   
   ; non-cgs units
   units.UnitMass_in_Msun    = units.UnitMass_in_g / units.Msun_in_g
+  units.UnitTime_in_yr      = units.UnitTime_in_s / units.s_in_yr
   
   ; derived constants (in code units)
   units.H0 = Hubble * 100 * 1e5 / (units.Mpc_in_cm) / $
@@ -186,11 +189,12 @@ function convertCoolingRatetoCGS, coolrate, h=h
   return, coolrate_cgs
 end
 
-; calcEntropy(): calculate entropy as P/rho^gamma (rho is converted from comoving to physical)
+; calcEntropyCGS(): calculate entropy as P/rho^gamma (rho is converted from comoving to physical)
 
-function calcEntropy, u, dens, gamma=gamma, log=log, sP=sP
+function calcEntropyCGS, u, dens, gamma=gamma, log=log, sP=sP
 
   forward_function snapNumToRedshift
+  units = getUnits()
   
   ; adiabatic index default (valid for ComparisonProject)
   if not keyword_set(gamma) then gamma = 5.0/3.0
@@ -198,11 +202,11 @@ function calcEntropy, u, dens, gamma=gamma, log=log, sP=sP
   atime = snapNumToRedshift(sP=sP,/time)
   a3inv = 1.0 / (atime*atime*atime)
   
-  ; TODO check this (dens=dens*a3inv but in the tracers only the dens^gamma not in the pressure)
-  print,'Warning'
+  ; NOTE: dens=dens*a3inv but in the tracers only converted in dens^gamma not in the pressure
+  ; should make this adjustment in loading tracers, we do not match this definition here
   
-  pressure = (gamma-1.0) * u * dens
-  entropy  = pressure / (dens^gamma)
+  pressure = (gamma-1.0) * u * dens * a3inv * float(units.UnitPressure_in_cgs / units.boltzmann) ; [K/cm^3]
+  entropy  = pressure / ( (dens * float(units.UnitDensity_in_cgs/units.mass_proton)*a3inv)^gamma ) ; [K cm^2]
   
   ; convert to log(entropy) if requested
   if keyword_set(log) then begin
@@ -212,6 +216,36 @@ function calcEntropy, u, dens, gamma=gamma, log=log, sP=sP
   endif  
   
   return, entropy
+end
+
+; calcPressureCGS(): calculate pressure as (gamma-1)*u*rho
+
+function calcPressureCGS, u, dens, gamma=gamma, log=log, sP=sP
+
+  forward_function snapNumToRedshift
+  units = getUnits()
+  
+  ; adiabatic index default (valid for ComparisonProject)
+  if not keyword_set(gamma) then gamma = 5.0/3.0
+  
+  atime = snapNumToRedshift(sP=sP,/time)
+  a3inv = 1.0 / (atime*atime*atime)
+  
+  pressure = (gamma-1.0) * u * (dens*a3inv)
+  
+  ; convert to CGS = 1 barye (ba) = 1 dyn/cm^2 = 0.1 Pa = 0.1 N/m^2 = 0.1 kg/m/s^2
+  ; and divide by boltzmann's constant -> [K/cm^3]
+  pressure *= float(units.UnitPressure_in_cgs / units.boltzmann)
+  
+  ; convert to log(pressure) if requested
+  if keyword_set(log) then begin
+    w = where(pressure eq 0.0,count)
+    if (count ne 0) then pressure[w] = 1.0
+    pressure = alog10(pressure)
+  endif 
+  
+  return, pressure
+
 end
 
 ; rhoRatioToCrit(): normalize density by the critical -baryon- density at some redshift
