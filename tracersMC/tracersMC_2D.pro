@@ -23,15 +23,15 @@ end
 pro plotConvFlowMeshDens, cs=cs, fn=fn, mesh=mesh
 
   ; config
-  ;cs = '0.02'
+  ;cs = '5.0'
   ;fn = '100'
   ;mesh = 'fixed'
 
   ; paths
   workingPath = '/n/home07/dnelson/dev.tracerMC/'
   snapPath    = workingPath + 'convFlow.cs'+cs+'.1e2.f'+fn+'.'+mesh+'/output/'
-  plotBase    = 'convFlow.cs'+cs+'.1e2.f'+fn+'.'+mesh+'/frames/convFlow.cs'+cs+'.1e2.f'+fn+'.'+mesh
-  ;plotBase = 'convFlow.cs'+cs+'.1e2.f'+fn+'.'+mesh
+  ;plotBase    = 'convFlow.cs'+cs+'.1e2.f'+fn+'.'+mesh+'/frames/convFlow.cs'+cs+'.1e2.f'+fn+'.'+mesh
+  plotBase = 'convFlow.cs'+cs+'.1e2.f'+fn+'.'+mesh
   
   snaps = indgen(n_elements(file_search(snapPath+'snap_*.hdf5')))
   ;snaps = [400,500,600,700,800,900,1000,1024] ;indgen(1001) ;[10,100,500]  
@@ -62,15 +62,18 @@ pro plotConvFlowMeshDens, cs=cs, fn=fn, mesh=mesh
   xrange = [0.0,20.0]
   
   ; equivalent tracer mass
-  h = loadSnapshotHeader(snapPath,snapNum=0)
+  print,snapPath
+  sP = { simPath:snapPath, snap:0 }
+  h = loadSnapshotHeader(sP=sP)
   
-  mass_gas    = loadSnapshotSubset(snapPath,snapNum=0,partType='gas',field='mass')
+  mass_gas    = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
   trMassConst = total(mass_gas) / TracerMCPerCell
   trMassConst /= (20.0*2.0) ;divide by vol -> dens
   
   foreach snap,snaps do begin
 
     print,'Running: snap ['+str(snap)+']'
+    sP.snap = snap
     
     plotName = workingPath + plotBase + '_gastr_'+string(snap,format='(I04)')
     if (file_test(plotName+'.png')) then begin
@@ -79,15 +82,15 @@ pro plotConvFlowMeshDens, cs=cs, fn=fn, mesh=mesh
     endif
     
     ; load
-    h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
+    h = loadSnapshotHeader(sP=sP,/verbose)
     
-    pos_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='x')
-    y_gas      = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='y')
+    pos_gas    = loadSnapshotSubset(sP=sP,partType='gas',field='x')
+    y_gas      = loadSnapshotSubset(sP=sP,partType='gas',field='y')
     
-    dens_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='rho')
-    u_gas      = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='u')
-    pres_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='pressure')
-    numtr_gas  = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='numtr')
+    dens_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='rho')
+    u_gas      = loadSnapshotSubset(sP=sP,partType='gas',field='u')
+    pres_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='pressure')
+    numtr_gas  = loadSnapshotSubset(sP=sP,partType='gas',field='numtr')
 
     entr_gas   = pres_gas / dens_gas^gamma
     
@@ -105,7 +108,7 @@ pro plotConvFlowMeshDens, cs=cs, fn=fn, mesh=mesh
     entr_gas = entr_gas[sort_ind_gas]
   
     ; load horizontal velocity field
-    vx_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='velx')
+    vx_gas    = loadSnapshotSubset(sP=sP,partType='gas',field='velx')
     vx_gas    = vx_gas[sort_ind_gas]  
 
     ; total gas energy
@@ -140,6 +143,7 @@ pro plotConvFlowMeshDens, cs=cs, fn=fn, mesh=mesh
     start_PS,plotName+'.eps',xs=10.0,ys=5.0
     
       !p.multi = [0,1,4]
+      !p.charsize += 0.4
     
       psym    = 0
       symsize = 0.4
@@ -148,8 +152,7 @@ pro plotConvFlowMeshDens, cs=cs, fn=fn, mesh=mesh
       !y.margin = [-6.0,2.0]
       fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange1,/xs,/ys,$
                 xtitle="",ytitle="Density / Energy",$
-                title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+"",$
-                xtickname=replicate(' ',10)
+                title="",xtickname=replicate(' ',10),yticklen=0.005
       
       fsc_plot, pos_gas,u_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(4) 
       fsc_plot, pos_gas,entr_gas,psym=psym,line=1,symsize=symsize,/overplot,color=getColor(5)      
@@ -159,34 +162,34 @@ pro plotConvFlowMeshDens, cs=cs, fn=fn, mesh=mesh
       fsc_plot, pos_gas_new,dens_tr_new,psym=8,symsize=symsize,/overplot,color=getColor(1)
   
       ; legend
-      strings = ['gas '+textoidl('\rho'),'tracer indi '+textoidl('\rho_'),'tracer mean '+textoidl('\rho_'),$
+      strings = ['gas '+textoidl('\rho'),'tracer indiv '+textoidl('\rho_'),'tracer mean '+textoidl('\rho_'),$
                  'gas u','gas '+textoidl('P/\rho^\gamma')]
       legend,strings,textcolors=getColor([0,3,1,4,5],/name),$
-        box=0,margin=0.25,/right,charsize=!p.charsize-0.4
+        box=0,margin=0.25,/right,charsize=!p.charsize-0.6
   
       ; vx/vy comparison
       !y.margin = [-8.0,6.0]
       fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange2,/xs,/ys,$
-                xtitle="",ytitle="Velocity",xtickname=replicate(' ',10)
+                xtitle="",ytitle="Velocity",xtickname=replicate(' ',10),yticklen=0.005
                 
       fsc_plot, pos_gas,vx_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(0) 
   
       ; legend
       strings = ['gas '+textoidl('v_x')];,'gas vy','tracer vy']
-      legend,strings,textcolors=getColor([0],/name),box=0,margin=0.25,/right,charsize=!p.charsize-0.4
+      legend,strings,textcolors=getColor([0],/name),box=0,margin=0.25,/right,charsize=!p.charsize-0.6
     
       ; plot mesh with tracers over
       yrange = [0.0,2.0]
       !y.margin = [-2.0,8.0]
       fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-                xtitle="",ytitle="y",xtickname=replicate(' ',10)
+                xtitle="",ytitle="y",xtickname=replicate(' ',10),ytickv=[0.5,1.0,1.5],yticks=2,yticklen=0.005
      
       plotVoronoi2D, snapPath+'voronoi_mesh_', snap, /overPlot
        
       ; dot of size proportional to number of tracers
       for i=0,n_elements(pos_gas)-1 do begin
         if (numtr_gas[i] gt 0) then begin
-          symsize = ssF(numtr_gas[i],TracerMCPerCell)
+          symsize = numtr_gas[i]/TracerMCPerCell * 0.2 ;ssF(numtr_gas[i],TracerMCPerCell)
           fsc_plot,[pos_gas[i]],[y_gas[i]],psym=8,symsize=symsize,/overplot,color=getColor(3)
         endif
       endfor
@@ -194,11 +197,11 @@ pro plotConvFlowMeshDens, cs=cs, fn=fn, mesh=mesh
       ; projected density
       !y.margin = [4.0,2.0]
       fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-               xtitle="Position",ytitle="y"
+               xtitle="Position",ytitle="y",ytickv=[0.5,1.0,1.5],yticks=2,yticklen=0.005
                
       plotDensityField, snapPath,snap,/psOut,/overPlot,minMax=yrange1
     
-    end_PS, pngResize=50, /deletePS
+    end_PS, pngResize=50
     
   endforeach
  
@@ -219,14 +222,17 @@ pro plotTotNumTracersWithTime
   numTracers = []
   times = []
   
+  sP = { simPath: snapPath, snap: 0 }
+  
   foreach snap,snaps do begin
 
     print,'Running: snap ['+str(snap)+']'
+    sP.snap = snap
     
     ; load
-    h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
+    h = loadSnapshotHeader(sP=sP,/verbose)
     
-    ntr = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='numtr')
+    ntr = loadSnapshotSubset(sP=sP,partType='gas',field='numtr')
     
     ; store
     numTracers = [numTracers,total(ntr)]
@@ -262,6 +268,8 @@ pro plotTotErrorWithTime
   plotBase    = 'convFlow.error'
   
   strings = []
+  
+  sP = { simPath: '', snap: 0 }
 
   ; start plot
   start_PS, workingPath + plotBase + '_cs'+cs+'_'+mesh+'.eps', xs=10.0, ys=6.0
@@ -276,6 +284,7 @@ pro plotTotErrorWithTime
     
       snapPath = workingPath + 'convFlow.cs'+cs+'.1e2.f'+fn+'.'+mesh+'/output/'
       print,'Running: f'+fn+' cs'+cs+' '+mesh
+      sP.simPath = snapPath
       
       ; determine number of snapshots
       snaps = indgen(n_elements(file_search(snapPath+'snap_*.hdf5')))
@@ -291,13 +300,14 @@ pro plotTotErrorWithTime
         if (snap mod 100 eq 0) then print,' snap ['+str(snap)+']'
         
         ; load
-        h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
+        sP.snap = snap
+        h = loadSnapshotHeader(sP=sP,/verbose)
         dP = h.flagDoublePrecision
         
-        ntr_gas  = loadSnapshotSubset(snapPath,snapNum=snap,doublePrec=dP,partType='gas',field='numtr')  
-        pos_gas  = loadSnapshotSubset(snapPath,snapNum=snap,doublePrec=dP,partType='gas',field='x')
-        dens_gas = loadSnapshotSubset(snapPath,snapNum=snap,doublePrec=dP,partType='gas',field='rho')
-        y_gas    = loadSnapshotSubset(snapPath,snapNum=snap,doublePrec=dP,partType='gas',field='y')
+        ntr_gas  = loadSnapshotSubset(sP=sP,doublePrec=dP,partType='gas',field='numtr')  
+        pos_gas  = loadSnapshotSubset(sP=sP,doublePrec=dP,partType='gas',field='x')
+        dens_gas = loadSnapshotSubset(sP=sP,doublePrec=dP,partType='gas',field='rho')
+        y_gas    = loadSnapshotSubset(sP=sP,doublePrec=dP,partType='gas',field='y')
 
         ; sort on x-position
         sort_ind_gas = sort(pos_gas)

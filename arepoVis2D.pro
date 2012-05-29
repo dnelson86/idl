@@ -74,8 +74,9 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
   foreach m,snaps do begin
 
     ; load
-    df = loadDensityField(filePath,m,axes=axes[0])
-  
+    if n_elements(axes) gt 0 then df = loadDensityField(filePath,m,axes=axes[0])
+    if n_elements(axes) eq 0 then df = loadDensityField(filePath,m)
+    
     ; log scaling of density
     if keyword_set(log) then begin
       w = where(df.dens gt 1e-8,comp=wc)
@@ -167,7 +168,7 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
     endif
     
     ;output filename
-    axesOut = axes
+    if keyword_set(axes) then axesOut = axes
     if not keyword_set(axes) then axesOut = 0
     if n_elements(axes) eq 2 then axesOut = str(axes[0])+'-'+str(axes[1])
     outputFilename = filePath + 'density_' + string(m,format='(i3.3)') + '.' + str(axesOut)
@@ -303,7 +304,7 @@ pro scatterPlotPos
       xyrange = [boxCen-zoomSize/2.0,boxCen+zoomSize/2.0]
     
       fsc_plot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,xstyle=1,ystyle=1,$
-           xtitle="x [kpc]",ytitle="y [kpc]",aspect=1.0,charsize=!p.charsize-0.5,$
+           xtitle="x [kpc]",ytitle="y [kpc]",aspect=1.0,$
            title="particle scatterplot - part ["+str(partType)+"] snap ["+str(snap)+"]"
     
       fsc_plot,x,y,psym=3,/overplot

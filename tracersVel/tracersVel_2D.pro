@@ -196,8 +196,8 @@ pro plotShocktubeMeshDens
 
   ; config
   workingPath = '/n/home07/dnelson/dev.tracer/'
-  snapPath    = workingPath + 'convFlow.cs5.L5.1e2.f4/output/'
-  plotBase    = 'convFlow.cs5.L5.1e2.f4'
+  snapPath    = workingPath + 'convFlow.cs5.L5.1e2.f1/output/'
+  plotBase    = 'convFlow.cs5.L5.1e2.f1'
   
   yrange1 = [0.0,8.5] ;cs0.5=[0.5,2.5] cs1.5/2=[0.0,4.5] cs0.02=[0.9,1.1] cs5=[0.0,8.5]
   yrange2 = [-3.4,3.4]  ;cs0.5=[-3.4,-3.4] cs1.5/2=[-3.4,-3.4] cs0.02=[-0.025,0.025]
@@ -207,36 +207,39 @@ pro plotShocktubeMeshDens
   nNGB_2D  = 128 ; number of neighbors to use with external CalcHSML routine
                  ; which finds smoothing lengths for tophat density estimate
   nNGB_1D  = 32
+  trPartType = 3
   
   xrange = [0.0,20.0]
 
   snaps = indgen(1001)
   
   ; equivalent tracer mass
-  h = loadSnapshotHeader(snapPath,snapNum=0)
+  sP = { simPath:snapPath, snap:0 }
+  h = loadSnapshotHeader(sP=sP)
   
-  mass_gas    = loadSnapshotSubset(snapPath,snapNum=0,partType='gas',field='mass')
+  mass_gas    = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
   trMassConst = total(mass_gas) / h.nPartTot[3]
   
   foreach snap,snaps do begin
 
     print,'Running: snap ['+str(snap)+']'
+    sP.snap = snap
     
     ; load
-    h = loadSnapshotHeader(snapPath,snapNum=snap,/verbose)
+    h = loadSnapshotHeader(sP=sP,/verbose)
     
-    pos_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='x')
-    dens_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='rho')
-    u_gas      = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='u')
-    pres_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='pressure')
-    ;mass_gas   = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='mass')
+    pos_gas    = loadSnapshotSubset(sP=sP,partType='gas',field='x')
+    dens_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='rho')
+    u_gas      = loadSnapshotSubset(sP=sP,partType='gas',field='u')
+    pres_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='pressure')
+    ;mass_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
 
     entr_gas   = pres_gas / dens_gas^gamma
     
-    pos_tracer  = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='x')
+    pos_tracer  = loadSnapshotSubset(sP=sP,partType=trPartType,field='x')
     
-    y_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='y')
-    y_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='y')
+    y_gas    = loadSnapshotSubset(sP=sP,partType='gas',field='y')
+    y_tracer = loadSnapshotSubset(sP=sP,partType=trPartType,field='y')
     
     ; sort on x-position
     sort_ind_gas    = sort(pos_gas)
@@ -255,15 +258,15 @@ pro plotShocktubeMeshDens
     y_tracer = y_tracer[sort_ind_tracer]
     
     ; load horizontal velocity field
-    vx_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='velx')
-    vx_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='velx')
+    vx_gas    = loadSnapshotSubset(sP=sP,partType='gas',field='velx')
+    vx_tracer = loadSnapshotSubset(sP=sP,partType=trPartType,field='velx')
     
     vx_gas    = vx_gas[sort_ind_gas]
     vx_tracer = vx_tracer[sort_ind_tracer]    
     
     ; load vertical velocity field
-    vy_gas    = loadSnapshotSubset(snapPath,snapNum=snap,partType='gas',field='vely')
-    vy_tracer = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='vely')
+    vy_gas    = loadSnapshotSubset(sP=sP,partType='gas',field='vely')
+    vy_tracer = loadSnapshotSubset(sP=sP,partType=trPartType,field='vely')
     
     vy_gas    = vy_gas[sort_ind_gas]
     vy_tracer = vy_tracer[sort_ind_tracer]    
@@ -272,7 +275,7 @@ pro plotShocktubeMeshDens
     ;tot_e = total(0.5 * (vx_gas^2.0 + vy_gas^2.0) * double(mass_gas) + mass_gas * u_gas)
     
     ; evaluate tracer density
-    pos_tracer3d  = loadSnapshotSubset(snapPath,snapNum=snap,partType='tracer',field='pos')
+    pos_tracer3d  = loadSnapshotSubset(sP=sP,partType=trPartType,field='pos')
     
     eval_dens = estimateDensityTophat(pos_tracer3d,mass=trMassConst,ndims=ndims,nNGB=nNGB_2D,boxSize=0)
     eval_dens = eval_dens[sort_ind_tracer]
@@ -289,6 +292,7 @@ pro plotShocktubeMeshDens
     start_PS, workingPath + plotBase + '_gastr_'+string(snap,format='(I04)')+'.eps',xs=10.0,ys=5.0
     
       !p.multi = [0,1,4]
+      !p.charsize += 0.4
     
       psym    = 0
       symsize = 0.4
@@ -297,8 +301,7 @@ pro plotShocktubeMeshDens
       !y.margin = [-6.0,2.0]
       fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange1,/xs,/ys,$
                 xtitle="",ytitle="Density / Energy",$
-                title="snap="+str(snap)+" time="+string(h.time,format='(f5.2)')+"",$
-                xtickname=replicate(' ',10)
+                title="",xtickname=replicate(' ',10),yticklen=0.005
       
       fsc_plot, pos_gas,dens_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(0)
       fsc_plot, pos_tracer3d[0,wTrDens],eval_dens[wTrDens],psym=8,symsize=symsize,/overplot,color=getColor(3)
@@ -311,12 +314,12 @@ pro plotShocktubeMeshDens
       strings = ['gas '+textoidl('\rho'),'tracer '+textoidl('\rho_{2D}'),'tracer '+textoidl('\rho_{1D}'),$
                  'gas u','gas '+textoidl('P/\rho^\gamma')]
       legend,strings,textcolors=getColor([0,3,7,4,5],/name),$
-        box=0,margin=0.25,/right,charsize=!p.charsize-0.4
+        box=0,position=[17.5,8.2],charsize=!p.charsize-0.6
   
       ; vx/vy comparison
       !y.margin = [-8.0,6.0]
       fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange2,/xs,/ys,$
-                xtitle="",ytitle="Velocity",xtickname=replicate(' ',10)
+                xtitle="",ytitle="Velocity",xtickname=replicate(' ',10),yticklen=0.005
                 
       fsc_plot, pos_gas,vx_gas,psym=psym,line=0,symsize=symsize,/overplot,color=getColor(0) 
       fsc_plot, pos_tracer,vx_tracer,psym=8,symsize=symsize,/overplot,color=getColor(1)
@@ -327,13 +330,13 @@ pro plotShocktubeMeshDens
       ; legend
       strings = ['gas '+textoidl('v_x'),'tracer '+textoidl('v_x')];,'gas vy','tracer vy']
       legend,strings,textcolors=getColor([0,1],/name),$
-        box=0,margin=0.25,/right,charsize=!p.charsize-0.4
+        box=0,position=[17.5,3.1],charsize=!p.charsize-0.6
     
       ; plot mesh with tracers over
       yrange = [0.0,2.0]
       !y.margin = [-2.0,8.0]
       fsc_plot, [0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-                xtitle="",ytitle="y",xtickname=replicate(' ',10)
+                xtitle="",ytitle="y",xtickname=replicate(' ',10),ytickv=[0.5,1.0,1.5],yticks=2,yticklen=0.005
      
       plotVoronoi2D, snapPath+'voronoi_mesh_', snap, /overPlot
        
@@ -345,11 +348,11 @@ pro plotShocktubeMeshDens
       ; projected density
       !y.margin = [4.0,2.0]
       fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-               xtitle="Position",ytitle="y"
+               xtitle="Position",ytitle="y",ytickv=[0.5,1.0,1.5],yticks=2,yticklen=0.005
                
       plotDensityField, snapPath,snap,/psOut,/overPlot,minMax=yrange1
     
-    end_PS, pngResize=50, /deletePS
+    end_PS, pngResize=50
     
   endforeach
  

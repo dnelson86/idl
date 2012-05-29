@@ -100,7 +100,7 @@ function loadDensityField, fileBase, m, axes=axes
 
   dens = transpose(dens)
   temp = transpose(temp)
- 
+  
   r = {nPixelsXY:[nPixelsX,nPixelsY],dens:dens,temp:temp}
   return,r
 
