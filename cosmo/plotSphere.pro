@@ -2,6 +2,368 @@
 ; gas accretion project - visualization/plotting of quantities onto healpix spheres
 ; dnelson may.2012
 
+; plotFilamentProfile():
+
+pro plotFilamentProfile
+
+  sP = simParams(res=512,run='arepo',redshift=2.0)
+  subgroupID = 2132 ;z2.304 g2342 a2132
+  
+  fp = makeFilamentProfile(sP=sP,subgroupID=subgroupID)
+
+  ; make filament number mask
+  filMask = intarr(n_elements(fp.fil_dist))
+  offset = 0UL
+  for i=0,fp.hfs.nFilaments-1 do begin
+    filMask[offset:offset+fp.fil_num[i]-1] = i
+    offset += fp.fil_num[i]
+  endfor
+
+  ; plot (0) - scatter
+  start_PS, sP.plotPath + 'fil.scat.'+sP.run+'.eps'
+
+    xrange = [0.0,2.0]
+    yrange = [0,100]
+      
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      xtitle="Radius",ytitle="Filament Distance"  
+    
+    cgPlot,fp.fil_rad,fp.fil_dist,psym=3,/overplot
+  end_PS  
+
+  ; plot (1) - cross sectional profiles near rvir
+  radRange = [0.5,1.5]
+  w = where(fp.fil_rad ge radRange[0] and fp.fil_rad lt radRange[1] and filMask eq 0,count)
+  
+  xrange = [0,100]
+  xvals = fp.fil_dist[w]
+  
+  start_PS, sP.plotPath + 'fil.csec.dens.'+sP.run+'.eps'
+
+    yrange = [1.0,5]
+    
+    yvals = alog10(fp.fil_dens[w]*1e10)
+      
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      xtitle="Filament Distance [ckpc]",ytitle="Gas Density"  
+    
+    cgPlot,xvals,yvals,psym=3,/overplot
+  end_PS  
+  
+  start_PS, sP.plotPath + 'fil.csec.temp.'+sP.run+'.eps'
+
+    yrange = [4.0,8.0]
+    
+    yvals = fp.fil_temp[w]
+      
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      xtitle="Filament Distance [ckpc]",ytitle="Gas Temperature"  
+    
+    cgPlot,xvals,yvals,psym=3,/overplot
+  end_PS
+  
+  stop
+  
+end
+
+; stackFilamentCrossSec():
+
+function stackFilamentCrossSec
+
+  start_PS, 'fil.stack.dens.eps'
+ 
+    xrange = [0,150]
+    ;yrange = [1.0,10.0]
+    yrange = [2,6]
+    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      xtitle="Filament Distance [ckpc]",ytitle="Gas Density"  
+    
+    ; arepo
+    restore,'filstack.ar.sav',/verbose
+    cgPlot,r.rBinCen,alog10(r.binnedVals.dens*1e10),line=0,/overplot,color=cgColor('red')
+    ;cgPlot,r.rBinCen,r.binnedRel.dens,line=0,/overplot,color=cgColor('red')
+    
+    ; gadget
+    restore,'filstack.ga.sav',/verbose
+    cgPlot,r.rBinCen,alog10(r.binnedVals.dens*1e10),line=0,/overplot,color=cgColor('blue')
+    ;cgPlot,r.rBinCen,r.binnedRel.dens,line=0,/overplot,color=cgColor('blue')
+  end_PS
+  
+  start_PS, 'fil.stack.temp.eps'
+ 
+    xrange = [0,150]
+    ;yrange = [0.0,1.5]
+    yrange = [4,7]
+    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      xtitle="Filament Distance [ckpc]",ytitle="Gas Temp"  
+    
+    ; arepo
+    restore,'filstack.ar.sav',/verbose
+    cgPlot,r.rBinCen,r.binnedVals.temp,line=0,/overplot,color=cgColor('red')
+    ;cgPlot,r.rBinCen,r.binnedRel.temp,line=0,/overplot,color=cgColor('red')
+    
+    ; gadget
+    restore,'filstack.ga.sav',/verbose
+    cgPlot,r.rBinCen,r.binnedVals.temp,line=0,/overplot,color=cgColor('blue')
+    ;cgPlot,r.rBinCen,r.binnedRel.temp,line=0,/overplot,color=cgColor('red')
+  end_PS
+
+
+stop
+  sP = simParams(res=512,run='arepo',redshift=2.0)
+  radIndOffset = 0
+  
+  ; find shells that have been made and get subgroupIDs
+  fileList = file_search(sP.derivPath+'hShells/hShells.gas.density.*.13.sav')
+  
+  subgroupIDs = lonarr(n_elements(fileList))
+  foreach fileName,fileList,k do begin
+    strArr = strsplit(fileList[k],".",count=count,/extract)
+    if count ne 12 then message,'error'
+    subgroupIDs[k] = long(strmid(strArr[-3],1))
+  endforeach
+  
+  ; arrays for each property
+  rad  = []
+  dens = []
+  temp = []
+  
+  dens_rel = []
+  temp_rel = [] 
+  
+  ; loop over each halo
+  foreach subgroupID,subgroupIDs,k do begin
+    print,string(k,format='(i3)'),' ',string(n_elements(subgroupIDs),format='(i3)')
+    ; load
+    fcs = haloFilamentCrossSec(sP=sP, subgroupID=subgroupID, radIndOffset=radIndOffset)
+    if n_elements(fcs) eq 0 then continue ; no filaments
+    
+    hsv_dens = haloShellValue(sP=sP,partType='gas',valName='density',subgroupID=subgroupID,/cutSubS)
+    hsv_temp = haloShellValue(sP=sP,partType='gas',valName='temp',subgroupID=subgroupID,/cutSubS)
+    
+    ; save
+    rad = [rad,fcs.ckpcDists]
+    dens = [dens,hsv_dens.value[fcs.filPxInds,fcs.radInd]]
+    temp = [temp,hsv_temp.value[fcs.filPxInds,fcs.radInd]]
+    
+    ; save relative
+    densMed = median(hsv_dens.value[*,fcs.radInd])
+    tempMed = median(10.0^hsv_temp.value[*,fcs.radInd])
+    dens_rel = [dens_rel, hsv_dens.value[fcs.filPxInds,fcs.radInd]/densMed]
+    temp_rel = [temp_rel, 10.0^hsv_temp.value[fcs.filPxInds,fcs.radInd]/tempMed]
+  endforeach
+  
+  ; manual radial bins
+  rBins = [0.0,5.0,10.0,15.0,20.0,30.0,40.0,50.0,60.0,70.0,80.0,90.0,100.0,120.0,140.0,160.0]
+  rNBins = n_elements(rBins)-1
+  rBinCen = 0.5 * (rBins + shift(rBins,-1))
+  rBinCen = rBinCen[0:-2] 
+  
+  binnedVals = { dens : fltarr(rNBins)    ,$
+                 temp : fltarr(rNBins)     }
+  binnedRel = { dens : fltarr(rNBins)    ,$
+                 temp : fltarr(rNBins)     }  
+  
+  for i=0,rNBins-1 do begin
+    w = where(rad ge rBins[i] and rad lt rBins[i+1],count)
+    if count gt 0 then begin
+      binnedVals.dens[i] = median(dens[w])
+      binnedVals.temp[i] = median(temp[w])
+      binnedRel.dens[i]  = median(dens_rel[w])
+      binnedRel.temp[i]  = median(temp_rel[w])
+    endif
+  endfor
+
+  r = { rad:rad, dens:dens, temp:temp, rNBins:rNBins, rBinCen:rBinCen, $
+        binnedVals:binnedVals, binnedRel:binnedRel }
+  ;save,r,filename='filstack.ar.sav'
+  return, r
+
+end
+
+; binFilamentCrossSec():
+
+function binFilamentCrossSec, sP=sP, fcs=fcs, subgroupID=subgroupID
+
+  hsv_dens = haloShellValue(sP=sP,partType='gas',valName='density',subgroupID=subgroupID,/cutSubS)
+  hsv_temp = haloShellValue(sP=sP,partType='gas',valName='temp',subgroupID=subgroupID,/cutSubS)
+
+  ; make filament number mask
+  filMask = intarr(n_elements(fcs.ckpcDists))
+  offset = 0UL
+  for i=0,fcs.nFilaments-1 do begin
+    filMask[offset:offset+fcs.pxNums[i]-1] = i
+    offset += fcs.pxNums[i]
+  endfor
+
+  ; manual radial bins
+  rBins = [0.0,5.0,10.0,15.0,20.0,30.0,40.0,50.0,60.0,70.0,80.0,90.0,100.0,120.0,140.0,160.0]
+  rNBins = n_elements(rBins)-1
+  rBinCen = 0.5 * (rBins + shift(rBins,-1))
+  rBinCen = rBinCen[0:-2]
+  
+  ; arrays
+  binnedVals = { dens : fltarr(rNBins)    ,$
+                 temp : fltarr(rNBins)     }
+  binnedRel = { dens : fltarr(rNBins)    ,$
+                 temp : fltarr(rNBins)     }     
+
+  for i=0,rNBins-1 do begin
+    w = where(fcs.ckpcDists ge rBins[i] and fcs.ckpcDists lt rBins[i+1],count)
+    if count gt 0 then begin
+      binnedVals.dens[i] = median(hsv_dens.value[fcs.filPxInds[w],fcs.radInd])
+      binnedVals.temp[i] = median(hsv_temp.value[fcs.filPxInds[w],fcs.radInd])
+      binnedRel.dens[i]  = median(hsv_dens.value[fcs.filPxInds[w],fcs.radInd] / $
+                                  median(hsv_dens.value[*,fcs.radInd]))
+      binnedRel.temp[i]  = median(10.0^hsv_temp.value[fcs.filPxInds[w],fcs.radInd] / $
+                                  median(10.0^hsv_temp.value[*,fcs.radInd]))
+    endif
+  endfor
+  
+  r = { hsv_dens:hsv_dens, hsv_temp:hsv_temp, filMask:filMask, rNBins:rNBins, rBinCen:rBinCen, $
+        binnedVals:binnedVals, binnedRel:binnedRel }
+  return, r
+
+end
+
+; plotFilamentCrossSec():
+
+pro plotFilamentCrossSec
+
+  sPa = simParams(res=512,run='arepo',redshift=2.0)
+  sPg = simParams(res=512,run='gadget',redshift=2.0)
+  subgroupIDs = [2132,2342] ;z2.304 g2342 a2132
+  
+  filIDs = list([0,1],[1,0],[2,3],[3,4]) ;[a,g] pairsfor z2.304
+  filInd = 2
+  
+  radIndOffset = +1 ; 0=rvir, -1=0.9, -2=0.75
+  
+  ; load
+  fcsA = haloFilamentCrossSec(sP=sPa, subgroupID=subgroupIDs[0], radIndOffset=radIndOffset)
+  fcsG = haloFilamentCrossSec(sP=sPg, subgroupID=subgroupIDs[1], radIndOffset=radIndOffset)
+
+  bvA = binFilamentCrossSec(sP=sPa, fcs=fcsA, subgroupID=subgroupIDs[0])
+  bvG = binFilamentCrossSec(sP=sPg, fcs=fcsG, subgroupID=subgroupIDs[1])
+
+  ; plot (0) - histogram
+  start_PS, sPg.plotPath + 'fil2.hist.comp.eps'
+
+    xrange = [0.0,150.0]
+    yrange = [1,800]
+      
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,xtitle="Radius",ytitle="N"  
+    
+    binsize = 2.0
+    hist = histogram(fcsA.ckpcDists,binsize=binsize,loc=loc)
+    cgPlot,loc+binsize*0.5,hist,line=0,/overplot,color=cgColor('red')
+    
+    hist = histogram(fcsG.ckpcDists,binsize=binsize,loc=loc)
+    cgPlot,loc+binsize*0.5,hist,line=0,/overplot,color=cgColor('blue')
+    
+  end_PS  
+
+  ; plot (1) - cross sectional profiles near rvir
+  xrange = [0,150]
+  
+  start_PS, sPg.plotPath + 'fil2.dens.comp.fil_'+str(filInd)+'.eps'
+
+    yrange = [1.0,4.0]
+    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      xtitle="Filament Distance [ckpc]",ytitle="Gas Density"  
+    
+    ; arepo
+    w = where(bvA.filMask eq filIDs[filInd,0],count)
+    xvals = fcsA.ckpcDists[w]
+    yvals = alog10(bvA.hsv_dens.value[fcsA.filPxInds[w],fcsA.radInd]*1e10)
+    cgPlot,xvals,yvals,psym=3,/overplot,color=cgColor('red')
+    cgPlot,bvA.rBinCen,alog10(bvA.binnedVals.dens*1e10),line=0,/overplot,color=cgColor('red')
+    
+    ; gadget
+    w = where(bvG.filMask eq filIDs[filInd,1],count)
+    xvals = fcsG.ckpcDists[w]
+    yvals = alog10(bvG.hsv_dens.value[fcsG.filPxInds[w],fcsG.radInd]*1e10)
+    cgPlot,xvals,yvals,psym=3,/overplot,color=cgColor('blue')
+    cgPlot,bvG.rBinCen,alog10(bvG.binnedVals.dens*1e10),line=0,/overplot,color=cgColor('blue')
+  end_PS
+  
+  start_PS, sPg.plotPath + 'fil2.densrel.comp.fil_'+str(filInd)+'.eps'
+
+    yrange = [0.1,10.0]
+    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      xtitle="Filament Distance [ckpc]",ytitle="Gas Density / Median"  
+    
+    ; arepo
+    w = where(bvA.filMask eq filIDs[filInd,0],count)
+    meanVal = median(bvA.hsv_dens.value[*,fcsA.radInd])
+    xvals = fcsA.ckpcDists[w]
+    yvals = bvA.hsv_dens.value[fcsA.filPxInds[w],fcsA.radInd] / meanVal
+    cgPlot,xvals,yvals,psym=3,/overplot,color=cgColor('red')
+    cgPlot,bvA.rBinCen,bvA.binnedRel.dens,line=0,/overplot,color=cgColor('red')
+    
+    ; gadget
+    w = where(bvG.filMask eq filIDs[filInd,1],count)
+    meanVal = median(bvG.hsv_dens.value[*,fcsG.radInd])
+    xvals = fcsG.ckpcDists[w]
+    yvals = bvG.hsv_dens.value[fcsG.filPxInds[w],fcsG.radInd] / meanVal
+    cgPlot,xvals,yvals,psym=3,/overplot,color=cgColor('blue')
+    cgPlot,bvG.rBinCen,bvG.binnedRel.dens,line=0,/overplot,color=cgColor('blue')
+  end_PS  
+
+  start_PS, sPg.plotPath + 'fil2.temp.comp.fil_'+str(filInd)+'.eps'
+
+    yrange = [3,8]
+      
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      xtitle="Filament Distance [ckpc]",ytitle="Gas Temperature"  
+    
+    ; arepo
+    w = where(bvA.filMask eq filIDs[filInd,0],count)
+    xvals = fcsA.ckpcDists[w]
+    yvals = bvA.hsv_temp.value[fcsA.filPxInds[w],fcsA.radInd]
+    cgPlot,xvals,yvals,psym=3,/overplot,color=cgColor('red')
+    cgPlot,bvA.rBinCen,bvA.binnedVals.temp,line=0,/overplot,color=cgColor('red')
+    
+    ; gadget
+    w = where(bvG.filMask eq filIDs[filInd,1],count)
+    xvals = fcsG.ckpcDists[w]
+    yvals = bvG.hsv_temp.value[fcsG.filPxInds[w],fcsG.radInd]
+    cgPlot,xvals,yvals,psym=3,/overplot,color=cgColor('blue')
+    cgPlot,bvG.rBinCen,bvG.binnedVals.temp,line=0,/overplot,color=cgColor('blue')
+  end_PS  
+  
+  start_PS, sPg.plotPath + 'fil2.temprel.comp.fil_'+str(filInd)+'.eps'
+
+    yrange = [0.05,2]
+    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      xtitle="Filament Distance [ckpc]",ytitle="Gas Temp / Median"  
+    
+    ; arepo
+    w = where(bvA.filMask eq filIDs[filInd,0],count)
+    meanVal = median(10.0^bvA.hsv_temp.value[*,fcsA.radInd])
+    xvals = fcsA.ckpcDists[w]
+    yvals = 10.0^bvA.hsv_temp.value[fcsA.filPxInds[w],fcsA.radInd] / meanVal
+    cgPlot,xvals,yvals,psym=3,/overplot,color=cgColor('red')
+    cgPlot,bvA.rBinCen,bvA.binnedRel.temp,line=0,/overplot,color=cgColor('red')
+    
+    ; gadget
+    w = where(bvG.filMask eq filIDs[filInd,1],count)
+    meanVal = median(10.0^bvG.hsv_temp.value[*,fcsG.radInd])
+    xvals = fcsG.ckpcDists[w]
+    yvals = 10.0^bvG.hsv_temp.value[fcsG.filPxInds[w],fcsG.radInd] / meanVal
+    cgPlot,xvals,yvals,psym=3,/overplot,color=cgColor('blue')
+    cgPlot,bvG.rBinCen,bvG.binnedRel.temp,line=0,/overplot,color=cgColor('blue')
+  end_PS 
+  
+  stop
+  
+end
+
 ; plotHaloShellDensComp(): compare shell density for four different mass halos at one redshift
 
 pro plotHaloShellDensComp
@@ -37,7 +399,7 @@ pro plotHaloShellDensComp
         
       for i=0,3 do begin
         ; interpolate onto the shell
-        hsd = haloShellDensity(sP=sP,partType=partType,subgroupID=subgroupIDs[i],cutSubS=cutSubS,/save)
+        hsd = haloShellValue(sP=sP,partType=partType,valName='density',subgroupID=subgroupIDs[i],cutSubS=cutSubS)
   
         ; convert densities into ratios to the mean
         healpix_data = alog10(10.0^hsd.val_dens[*,radInd] / mean(10.0^hsd.val_dens[*,radInd]))
@@ -71,169 +433,152 @@ pro plotHaloShellValueComp
   ; config
   redshift = 2
   
-  hMassTargets = [12.5] ;[12.5,12.0,11.5,11.0]
-  radInds  = [6,11,15]  ; pre-saved radFacs
-  ;minmax   = [-0.6,2.0] ; log (rho/mean rho)
-  rot_ang  = [0,0]      ; [60,-45] ;[lat,long] center in deg (left,up)
-  cutSubS  = 0          ; cut satellite substructures out from halo
-  
-  ; value config
-  partTypes = ['gas','gas','gas','gas']
-  valNames  = ['temp','density','radvel','radmassflux']
-  ctNames   = ['helix','helix','brewer-redpurple','brewer-redblue']
-  
-  bartitles = [textoidl("log ( T_{gas} ) [K]"),$
-               "log ( "+textoidl("\rho / <\rho>")+" )",$
-               textoidl("v_{rad}")+" [km/s]",$
-               "Radial Mass Flux ["+textoidl('M_{sun}')+" kpc"+textoidl('^{-2}')+" yr"+textoidl('^{-1}')+"]"]
-  ratioToMean = [0,1,0,0]
-  plotLog     = [0,1,0,0]
-  
   sP = simParams(res=512,run='gadget',redshift=float(redshift))
   
-  foreach hMassTarget,hMassTargets do begin
-    ; get IDs of mass target (just one)
-    subgroupIDs  = massTargetToHaloID(hMassTarget,sP=sP)
+  subgroupIDs = [981] ;z2.304 g2342 a2132
+                      ;z2.301 g2289 a2034
+                      ;z2.314 g981 a927
   
-    ; plot
-    foreach radInd,radInds do begin
-      print,radInd
-      
-      if cutSubS then csTag = '.cutSubS' else csTag = ''
-      start_PS, sP.plotPath+'shell_valcomp_z'+str(redshift)+'_h'+str(subgroupIDs[0])+'_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=6
+  radInds  = [3]        ; pre-saved radFacs (3=0.25, 4=0.5, 7=rvir)
+  rot_ang  = [0,45]      ; [lat,long] center in deg (left,up)
+  cutSubS  = 1          ; cut satellite substructures out from halo
+  
+  ; value config
+  partTypes = ['gas','gas','gas','gas',$
+               'gas','gas','gas','gas'] ;'dm','dm'
+  valNames  = ['temp','density','pressure','radmassflux',$
+               'radvel','entropy','metallicity','angmom'] ;dm 'density','veldisp'
+  ctNames   = ['helix','helix','helix','brewer-redblue',$
+               'brewer-redpurple','helix','helix','helix']
+  
+  bartitles = ["T_{gas} [_{ }log K_{ }]",$
+               "log ( \rho / <\rho> )",$
+               "log ( P / k_B ) [_{ }K cm^{-3 }]",$
+               "Radial Mass Flux [_{ }M_{sun} kpc^{-2} Myr^{-1 }]",$
+               "v_{rad} [_{ }km s^{-1 }]",$
+               "log ( Entropy ) [_{ }K cm^{2 }]",$
+               ;"log ( \rho_{DM} / <\rho_{DM}> )",$
+               ;"\sigma_{vel,DM} [_{ } km/s_{ }]"]
+               "Metallicity / 0.0127",$
+               "log ( Angular Momentum ) [kpc km/s]"]
+               
+  ; rvir
+  ;ranges = list([4.3,6.0],[-1.0,1.5],[1.0,3.0],[-1.0,1.0],$
+  ;              [-400,400],[6.0,9.0],[0.0,1.0],[3.8,5.0]) ;dm[-0.5,1.0],[0.0,200.0]
         
-        pos = ['ul','ur','ll','lr']
-        ;xtpos = [0.06,0.56,0.06,0.56]
-        ;ytpos = [0.55,0.55,0.13,0.13]
+  ; 0.5/0.25 rvir
+  ranges = list([4.3,7.0],[-1.0,1.5],[3.0,4.5],[-1.5,1.5],$
+                [-400,400],[6.0,9.0],[0.0,2.0],[3.5,4.5]) ;dm[-0.5,1.0],[100.0,300.0]
+               
+  ratioToMean = [0,1,0,0,0,0,0,0] ; plot value/mean(value) ratio
+  plotLog     = [0,1,1,0,0,1,0,1] ; plot log(value)
+  symMinMax   = [0,0,0,1,1,0,0,0] ; symmetric range about zero
+  mmRound     = [0.1,0.1,0.1,0.1,10,0.1,0,0.1] ; round range to a more equal number (slightly clip)
+  
+  pos = ['ul_nt','ur_nt','ll_nt','lr_nt']
+  
+  ; plot
+  foreach radInd,radInds do begin
+    print,radInd
+    
+    if cutSubS then csTag = '.cutSubS' else csTag = ''
+    start_PS, sP.plotPath+'shell_valcomp_'+sP.savPrefix+str(sP.res)+'_z'+$
+      str(redshift)+'_h'+str(subgroupIDs[0])+'_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=6
+
+      for i=0,3 do begin
+        ; interpolate onto the shell
+        hsv = haloShellValue(sP=sP,partType=partTypes[i],valName=valNames[i],$
+                             subgroupID=subgroupIDs[0],cutSubS=cutSubS)
+
+        ; convert values into ratios to the mean
+        if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
+        else healpix_data = reform(hsv.value[*,radInd])
+        if plotLog[i] then healpix_data = alog10(healpix_data)
         
+        ; calculate appropriate minmax and clip
+        ;if symMinMax[i] then begin
+        ;  minVal = -1.0 * max(abs(minmax(healpix_data)))
+        ;  maxVal = max(abs(minmax(healpix_data)))
+        ;endif else begin
+        ;  minVal = min(healpix_data)
+        ;  maxVal = max(healpix_data)
+        ;endelse
+       ; 
+       ; if mmRound[i] ne 0 then begin
+       ;   minVal = round(minVal/mmRound[i])*mmRound[i]
+       ;   maxVal = round(maxVal/mmRound[i])*mmRound[i]
+       ; endif
+  
+        minMaxVal = ranges[i]
 
-        for i=0,3 do begin
-          ; interpolate onto the shell
-          hsv = haloShellValue(sP=sP,partType=partTypes[i],valName=valNames[i],$
-                               subgroupID=subgroupIDs[0],cutSubS=cutSubS,/save)
-
-          ; convert values into ratios to the mean
-          if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
-          else healpix_data = reform(hsv.value[*,radInd])
-          if plotLog[i] then healpix_data = alog10(healpix_data)
-          
-          title = sP.run+" "+str(sP.res)+textoidl("^3")+"  z = "+string(sP.redshift,format='(f3.1)')+" "+$
-                  textoidl("M_{halo} = ")+string(hMassTargets[0],format='(f4.1)')+" ("+$
-                  textoidl("r / r_{vir} = ")+string(hsv.radFacs[radInd],format='(f4.2)')+")"
-    
-          if i eq 0 then $
-            plotMollweideProj,healpix_data,rot_ang=rot_ang,title=title,bartitle=bartitles[i],pos=pos[i],$
-              ctName=ctNames[i]
-          if i gt 0 then $
-            plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle=bartitles[i],pos=pos[i],$
-              /noerase,ctName=ctNames[i]
-    
-          ;cgText,xtpos[i],ytpos[i],"M = "+string(hMassTargets[i],format='(f4.1)'),$
-          ;  /normal,alignment=0.5,color=cgColor('dark gray'),charsize=1.0
-        endfor
-      end_PS, pngResize=60, /deletePS
-    
-    endforeach ;radInds
-  endforeach ;masstargets
-end
-
-; plotHaloShellSingleVal():
-
-pro plotHaloShellSingleVal
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-  
-  ; config
-  redshift = 2
-  sP = simParams(res=512,run='gadget',redshift=float(redshift))  
-  
-  ; select halo
-  ;subgroupIDs = [373]
-  ;subgroupIDs  = massTargetToHaloID([12.5],sP=sP)
-  
-  gc = loadGroupCat(sP=sP,/skipIDs)
-  priGIDs = gcIDList(gc=gc,select='pri')
-  subgroupIDs = priGIDs[0:50]
-  
-  radInd      = 0     ; pre-saved radFacs
-  rot_ang     = [0,0] ; [60,-45] ;[lat,long] center in deg (left,up)
-  cutSubS     = 1     ; cut satellite substructures out from halo
-
-  partType = 'gas'
-  valName  = 'density'
-  
-  ; deriv
-  if valName eq 'radialmassflux' then begin
-    bartitle    = "Radial Mass Flux [M_{sun} kpc^{-2} yr^{-1}]"
-    ratioToMean = 0
-    plotLog     = 0
-    
-    minmax   = [-1e-2,1e-2] ; km/s outflow/inflow
-    ctName   = 'brewer-redpurple'
-  endif
-  
-  if valName eq 'density' then begin
-    bartitle = "log ( \rho / <\rho> )"
-    ratioToMean = 1
-    plotLog     = 1
-    
-    minmax   = [-0.6,2.0] ; log (rho/mean rho)
-    ctName   = 'helix' ;'brewer-redpurple'
-    binsize  = 0.1
-  endif
-  
-  if cutSubS then csTag = '.cutSubS' else csTag = ''
-  
-  foreach subgroupID,subgroupIDs do begin
-    print,subgroupID
-    ; interpolate onto the shell (load)
-    hsv = haloShellValue(sP=sP,partType=partType,valName=valName,subgroupIDs=[subgroupID],$
-                         cutSubS=cutSubS,radFacs=[1.0])
-    
-    ; plot allsky projection
-    start_PS, sP.plotPath+'shell_'+partType+'-'+valName+'_z'+str(redshift)+'_h'+str(subgroupID)+$
-              '_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=6
-      
-      ; max clip
-      w = where(hsv.value[*,radInd] gt minmax[1],count)
-      if count gt 0 then hsv.value[w,radInd] = minmax[1]
-  
-      ; convert values into ratios to the mean
-      if ratioToMean then healpix_data = reform(hsv.value[*,radInd] / median(hsv.value[*,radInd])) $
-      else healpix_data = reform(hsv.value[*,radInd])
-      if plotLog then healpix_data = alog10(healpix_data)
-      
-      title = sP.run+" "+str(sP.res)+textoidl("^3")+"  z = "+string(sP.redshift,format='(f3.1)')+" "+$
-              "hID = " + str(subgroupIDs[0])+" ("+$
-              textoidl("r / r_{vir} = ")+string(hsv.radFacs[radInd],format='(f4.2)')+")"
-  
-      plotMollweideProj,healpix_data,rot_ang=rot_ang,title=title,bartitle=bartitle,ctName=ctName,minmax=minmax
-  
-    end_PS, pngResize=60, /deletePS
-    
-    ; plot pixel histogram
-    start_PS, sP.plotPath+'shellhist_'+partType+'-'+valName+'_z'+str(redshift)+'_h'+str(subgroupID)+$
-              '_r'+str(radInd)+csTag+'.eps'
-  
-      ; histogram value
-      if ratioToMean then healpix_data = reform(hsv.value[*,radInd] / median(hsv.value[*,radInd])) $
-      else healpix_data = reform(hsv.value[*,radInd])
-      if plotLog then healpix_data = alog10(healpix_data)
-  
-      hist = histogram(healpix_data,binsize=binsize,loc=loc)
-  
-      ; plot
-      xrange = minmax
-      yrange = [1,max(hist)*1.5]
-      
-      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
-        ytitle="Count",xtitle=textoidl(bartitle),title=title
+        w = where(healpix_data gt minMaxVal[1]*0.99,count)
+        if count gt 0 then healpix_data[w] = minMaxVal[1] * 0.99
+        w = where(healpix_data lt minMaxVal[0]*0.99,count)
+        if count gt 0 then healpix_data[w] = minMaxVal[0] * 0.99
         
-      cgPlot,[0,0],yrange,line=0,color=cgColor('light gray'),/overplot
+        print,minMaxVal
+  
+        if i eq 0 then $
+          plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle=bartitles[i],pos=pos[i],$
+            ctName=ctNames[i],minmax=ranges[i]
+        if i gt 0 then $
+          plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle=bartitles[i],pos=pos[i],$
+            /noerase,ctName=ctNames[i],minmax=ranges[i]
+      endfor
+    end_PS, pngResize=60;, /deletePS
+  
+    if cutSubS then csTag = '.cutSubS' else csTag = ''
+    start_PS, sP.plotPath+'shell_valcomp2_'+sP.savPrefix+str(sP.res)+'_z'+$
+      str(redshift)+'_h'+str(subgroupIDs[0])+'_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=6
       
-      cgPlot,loc+binsize*0.5,hist,line=0,color=getColor(0),/overplot    
-    end_PS
-  endforeach
+      for i=4,7 do begin
+        ; interpolate onto the shell
+        hsv = haloShellValue(sP=sP,partType=partTypes[i],valName=valNames[i],$
+                             subgroupID=subgroupIDs[0],cutSubS=cutSubS)
+
+        ; convert values into ratios to the mean
+        if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
+        else healpix_data = reform(hsv.value[*,radInd])
+        if plotLog[i] then healpix_data = alog10(healpix_data)
+
+        if valNames[i] eq 'metallicity' then healpix_data /= 0.0127 ; display rescaling
+
+        ; calculate appropriate minmax and clip
+        ;if symMinMax[i] then begin
+        ;  minVal = -1.0 * max(abs(minmax(healpix_data)))
+        ;  maxVal = max(abs(minmax(healpix_data)))
+        ;endif else begin
+        ;  minVal = min(healpix_data)
+        ;  maxVal = max(healpix_data)
+        ;endelse
+        ;
+        ;if mmRound[i] ne 0 then begin
+        ;  minVal = round(minVal/mmRound[i])*mmRound[i]
+        ;  maxVal = round(maxVal/mmRound[i])*mmRound[i]
+        ;endif
+
+        minMaxVal = ranges[i]
+
+        w = where(healpix_data gt minMaxVal[1]*0.99,count)
+        if count gt 0 then healpix_data[w] = minMaxVal[1] * 0.99
+        w = where(healpix_data lt minMaxVal[0]*0.99,count)
+        if count gt 0 then healpix_data[w] = minMaxVal[0] * 0.99
+        
+        print,minMaxVal
+        
+        if i eq 0 then $
+          plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle=bartitles[i],pos=pos[i-4],$
+            ctName=ctNames[i],minmax=ranges[i]
+        if i gt 0 then $
+          plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle=bartitles[i],pos=pos[i-4],$
+            /noerase,ctName=ctNames[i],minmax=ranges[i]
+  
+      endfor
+    end_PS, pngResize=60;, /deletePS
+  
+  endforeach ;radInds
+
+  stop
 end
 
 ; calcShellFrac
