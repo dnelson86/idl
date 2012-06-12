@@ -266,3 +266,249 @@ pro plotHaloShell
   stop
 end
 
+; haloShellDensity(): for a given snapshot and subgroupID, evaluate the underlying density distribution 
+;                     of a specified particle type on a series of radial shells
+;
+; cutSubS = cut substructures (satellite subgroups) out before estimating densities
+
+function haloShellDensity, sP=sP, partType=partType, subgroupID=subgroupID, $
+                           Nside=Nside, radFacs=radFacs, save=save, cutSubS=cutSubS
+  
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; config
+  nNGB   = 32  ; neighbor search in CalcHSMLds
+  padFac = 4.0 ; times r_vir maximum search radius
+  
+  ; healpix resolution parameter, 8=768, 16~3k, 32~12k, 64~50k, 128~200k, 256~750k, 512~3M
+  if ~keyword_set(Nside) then Nside = 64
+  
+  ; r/r_vir list of shells to compute
+  if ~keyword_set(radFac) then $
+    radFacs = [0.01,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.4,1.6,1.8,2.0]
+    
+  ; by construction this assumes constant mass particles, bad idea for arepo
+  if sP.trMCPerCell ne 0 then message,'Error: Use haloShellValue for arepo density estimates.'
+    
+  ; check for existence of a save
+  csTag = ''
+  if keyword_set(cutSubS) then csTag = '.cutSubS'
+  saveFilename = sP.derivPath+'hShells/hShells.'+sP.savPrefix+str(sP.res)+'.'+partType+csTag+'.ns'+$
+                 str(Nside)+'.'+str(sP.snap)+'.'+str(subgroupID)+'.'+str(n_elements(radFacs)) + '.sav'
+                 
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,r
+  endif
+  
+  Npx      = nside2npix(Nside)
+  nRadFacs = n_elements(radFacs)
+  
+  if padFac lt 1.9*max(radFacs) then message,'Error: Suggest increasing padFac.'
+  
+  ; load group catalog and find halo position and virial radius
+  h  = loadSnapshotHeader(sP=sP)
+  gc = loadGroupCat(sP=sP,/verbose,/readIDs)
+  
+  sgpos  = subgroupPosByMostBoundID(sP=sP)
+  cenPos = sgpos[*,subgroupID]
+  rVir   = gc.group_r_crit200[gc.subgroupGrNr[subgroupID]]
+  
+  ; verify that the requested subgroupID is a primary subgroup
+  priSGIDs = gcIDList(gc=gc,select='pri')
+  w = where(priSGIDs eq subgroupID,countMatch)
+  if ~countMatch then message,'Error: Only know how to do this for primary subgroups for now.'
+  
+  ; load particle positions and decide constant mass
+  pos = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
+
+  if partType eq 'gas'   then massPart = sP.targetGasMass
+  if partType eq 'dm'    then massPart = h.massTable[partTypeNum(partType)]
+  if partType eq 'trmc'  then massPart = sP.trMassConst
+  if partType eq 'trvel' then massPart = sP.targetGasMass
+
+  ; take conservative subset of points using periodic distances
+  rad = periodicDists(cenPos,pos,sP=sP)
+  
+  w = where(rad le padFac*rVir,sCount)
+  if ~sCount then message,'Error: No positions found near specified radius.'
+
+  pos = pos[*,w]
+  
+  ; if cutting substructure, load particle ids and make same radial cut
+  if keyword_set(cutSubS) then begin
+    ids = loadSnapshotSubset(sP=sP,partType=partType,field='ids')
+    ids = ids[w]
+    
+    ; make a list of satellites of this halo
+    nSubs    = gc.groupNSubs[gc.subgroupGrNr[subgroupID]]
+    firstSub = gc.groupFirstSub[gc.subgroupGrNr[subgroupID]]
+    
+    if firstSub ne subgroupID then message,'Warning: firstSub is not subgroupID'
+
+    satGCids = indgen(nSubs-1) + firstSub + 1
+
+    ; make a list of member particle ids of these satellites for the requested particle type
+    satPIDs = gcPIDList(gc=gc,select='secondary',valGCids=satGCids,partType=partType)
+    gc = !NULL
+    
+    ; remove the intersection of (satPIDs,ids) from pos
+    match,satPIDs,ids,sat_ind,ids_ind,count=count,/sort
+    sat_ind = !NULL
+    satPIDs = !NULL
+    
+    all = bytarr(n_elements(ids))
+    if count gt 0 then all[ids_ind] = 1B
+    w = where(all eq 0B, ncomp)
+    
+    ids_ind = !NULL
+    ids     = !NULL
+    
+    print,'Substructures cut ['+str(count)+'] of ['+str(n_elements(ids))+'] have left: '+str(ncomp)
+    if ncomp gt 0 then pos = pos[*,w]
+  endif
+
+  ; allocate save structure
+  r = { Nside      : Nside                 ,$
+        Npx        : Npx                   ,$
+        subgroupID : subgroupID            ,$
+        sP         : sP                    ,$
+        rVir       : rVir                  ,$
+        cenPos     : cenPos                ,$
+        partType   : partType              ,$
+        radFacs    : radFacs               ,$
+        padFac     : padFac                ,$
+        sCount     : sCount                ,$
+        nNGB       : nNGB                  ,$
+        nRadFacs   : nRadFacs              ,$
+        val_dens   : fltarr(Npx,nRadFacs)   }
+
+  sphereXYZ = fltarr(3,Npx*nRadFacs)
+
+  ; loop over all requested shells and generate all the sphere points
+  for i=0,nRadFacs-1 do begin
+    radius = radFacs[i] * rVir ;kpc
+  
+    ; get sphere (x,y,z) positions
+    locSphereXYZ = sphereXYZCoords(Nside=Nside,radius=radius,center=cenPos)
+
+    ; periodic wrap any sphere points that landed outside the box (periodic ok in CalcHSMLds)
+    w = where(locSphereXYZ lt 0.0,count)
+    if count gt 0 then locSphereXYZ[w] += sP.boxSize
+    w = where(locSphereXYZ gt sP.boxSize,count)
+    if count gt 0 then locSphereXYZ[w] -= sP.boxSize
+    
+    ; store
+    sphereXYZ[*,i*Npx:(i+1)*Npx-1] = locSphereXYZ
+  endfor
+
+  ; calculate tophat density estimate of all points on all spheres (one tree build)
+  r.val_dens = alog10(estimateDensityTophat(pos,pos_search=sphereXYZ,mass=massPart,$
+                                            ndims=3,nNGB=nNGB,boxSize=sP.boxSize))
+  
+  if keyword_set(save) then begin
+    save,r,filename=saveFilename
+    print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
+  endif
+  
+  return, r
+end
+
+; plotHaloShellSingleVal():
+
+pro plotHaloShellSingleVal
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; config
+  redshift = 2
+  sP = simParams(res=512,run='gadget',redshift=float(redshift))  
+  
+  ; select halo
+  ;subgroupIDs = [373]
+  ;subgroupIDs  = massTargetToHaloID([12.5],sP=sP)
+  
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  priGIDs = gcIDList(gc=gc,select='pri')
+  subgroupIDs = priGIDs[0:50]
+  
+  radInd      = 0     ; pre-saved radFacs
+  rot_ang     = [0,0] ; [60,-45] ;[lat,long] center in deg (left,up)
+  cutSubS     = 1     ; cut satellite substructures out from halo
+
+  partType = 'gas'
+  valName  = 'density'
+  
+  ; deriv
+  if valName eq 'radialmassflux' then begin
+    bartitle    = "Radial Mass Flux [M_{sun} kpc^{-2} yr^{-1}]"
+    ratioToMean = 0
+    plotLog     = 0
+    
+    minmax   = [-1e-2,1e-2] ; km/s outflow/inflow
+    ctName   = 'brewer-redpurple'
+  endif
+  
+  if valName eq 'density' then begin
+    bartitle = "log ( \rho / <\rho> )"
+    ratioToMean = 1
+    plotLog     = 1
+    
+    minmax   = [-0.6,2.0] ; log (rho/mean rho)
+    ctName   = 'helix' ;'brewer-redpurple'
+    binsize  = 0.1
+  endif
+  
+  if cutSubS then csTag = '.cutSubS' else csTag = ''
+  
+  foreach subgroupID,subgroupIDs do begin
+    print,subgroupID
+    ; interpolate onto the shell (load)
+    hsv = haloShellValue(sP=sP,partType=partType,valName=valName,subgroupIDs=[subgroupID],$
+                         cutSubS=cutSubS,radFacs=[1.0])
+    
+    ; plot allsky projection
+    start_PS, sP.plotPath+'shell_'+partType+'-'+valName+'_z'+str(redshift)+'_h'+str(subgroupID)+$
+              '_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=6
+      
+      ; max clip
+      w = where(hsv.value[*,radInd] gt minmax[1],count)
+      if count gt 0 then hsv.value[w,radInd] = minmax[1]
+  
+      ; convert values into ratios to the mean
+      if ratioToMean then healpix_data = reform(hsv.value[*,radInd] / median(hsv.value[*,radInd])) $
+      else healpix_data = reform(hsv.value[*,radInd])
+      if plotLog then healpix_data = alog10(healpix_data)
+      
+      title = sP.run+" "+str(sP.res)+textoidl("^3")+"  z = "+string(sP.redshift,format='(f3.1)')+" "+$
+              "hID = " + str(subgroupIDs[0])+" ("+$
+              textoidl("r / r_{vir} = ")+string(hsv.radFacs[radInd],format='(f4.2)')+")"
+  
+      plotMollweideProj,healpix_data,rot_ang=rot_ang,title=title,bartitle=bartitle,ctName=ctName,minmax=minmax
+  
+    end_PS, pngResize=60, /deletePS
+    
+    ; plot pixel histogram
+    start_PS, sP.plotPath+'shellhist_'+partType+'-'+valName+'_z'+str(redshift)+'_h'+str(subgroupID)+$
+              '_r'+str(radInd)+csTag+'.eps'
+  
+      ; histogram value
+      if ratioToMean then healpix_data = reform(hsv.value[*,radInd] / median(hsv.value[*,radInd])) $
+      else healpix_data = reform(hsv.value[*,radInd])
+      if plotLog then healpix_data = alog10(healpix_data)
+  
+      hist = histogram(healpix_data,binsize=binsize,loc=loc)
+  
+      ; plot
+      xrange = minmax
+      yrange = [1,max(hist)*1.5]
+      
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
+        ytitle="Count",xtitle=textoidl(bartitle),title=title
+        
+      cgPlot,[0,0],yrange,line=0,color=cgColor('light gray'),/overplot
+      
+      cgPlot,loc+binsize*0.5,hist,line=0,color=getColor(0),/overplot    
+    end_PS
+  endforeach
+end

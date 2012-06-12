@@ -65,6 +65,11 @@ function nuniq, arr
   return, n_elements(uniq(arr,sort(arr)))
 end
 
+function uniqvals, arr
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  return, arr[uniq(arr,sort(arr))]
+end
+
 function shuffle, array, seed=seed
   compile_opt idl2, hidden, strictarr, strictarrsubs
   if n_elements(seed) ne 0 then iseed=seed
@@ -84,6 +89,41 @@ function pSplit, arr, split=split ; split=[numProcs,curProc] with curProc zero i
   if split[0]-1 eq split[1] then arrSplit = arr[split[1]*splitSize:*]
   
   return,arrSplit
+end
+
+; fitODRPts3D(): Orthogonal Distance Regression method to fit a line/plane through points in 3D
+
+function fitODRPts3D, x, y, z
+
+  if n_elements(x) ne n_elements(y) or n_elements(x) ne n_elements(z) then message,'Error'
+  
+  data = transpose([[x],[y],[z]])
+  centroid = total(data,2) / n_elements(x)
+  
+  data[0,*] -= centroid[0]
+  data[1,*] -= centroid[1]
+  data[2,*] -= centroid[2]
+  
+  SVDC, data, W, U, V
+  
+  smallest_singVal = min(W,ind)
+  plane_normal = reform(V[ind,*])
+  
+  largest_singVal = max(W,ind)
+  line_unitVec = reform(V[ind,*])
+  
+  r = { centroid:centroid, line_unitvec:line_unitvec, plane_normal:plane_normal }
+  return,r
+end
+
+; gcDist(): "great circle" (i.e. arc) distance between two lat,long points on the surface of a sphere
+
+function gcDist, latlong1, latlong2 ; in radians
+  d = acos( sin(latlong1[0]) * sin(latlong2[0]) + $
+            cos(latlong1[0]) * cos(latlong2[0]) * cos(latlong1[1]-latlong2[1]) )
+  ; A mathematically equivalent formula, which is less subject to rounding error for short distances is:
+  ; d=2*asin(sqrt((sin((lat1-lat2)/2))^2 + cos(lat1)*cos(lat2)*(sin((lon1-lon2)/2))^2))
+  return,d
 end
 
 ; partTypeNum(): convert a string description of a particle type to its numeric value
