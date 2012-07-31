@@ -134,7 +134,7 @@ function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   
   ; add all children tracer indices to keeper array
   if total(child_counts,/int) gt 2e9 then stop ; change tr_inds to lon64arr
-  tr_inds = ulonarr(total(child_counts,/int))
+  tr_inds = lon64arr(total(child_counts,/int))
   start = 0L
   
   foreach gasInd,gasInds[w],i do begin
@@ -889,12 +889,11 @@ pro cosmoTracerVel_GasDensComp
   ; config
   res = 128
   redshift = 1.0
-  run = 'dev.tracer.nocomov'
+  run = 'tracernew'
   
   nNGB = 32
   
-  sP    = simParams(res=res,run=run) ;,redshift=redshift
-  sP.snap = 10
+  sP    = simParams(res=res,run=run,redshift=redshift)
   units = getUnits() ;colors
 
   ; load
@@ -911,7 +910,7 @@ pro cosmoTracerVel_GasDensComp
   gas_dens = gas_dens[tr_par_ind]
 
   ; plot
-  if 0 then begin
+  ;if 0 then begin
   start_PS, sP.plotPath+sP.savPrefix+str(res)+'.densComp1.nNGB='+str(nNGB)+'.snap='+str(sP.snap)+'.eps'
   
     xrange = [1e-12,1e-8]
@@ -965,7 +964,7 @@ pro cosmoTracerVel_GasDensComp
          
   end_PS, pngResize=50, /deletePS
   
-  endif ;0
+  ;endif ;0
   
   start_PS, sP.plotPath+sP.savPrefix+str(res)+'.densComp4.nNGB='+str(nNGB)+'.snap='+str(sP.snap)+'.eps'
   

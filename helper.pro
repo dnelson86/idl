@@ -166,7 +166,7 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
     start = 2.0  ; color, 1=r,2=g,3=b,0.5=purple
     rots  = 1.5  ; color rotations, typically -1.5 to 1.5
     hue   = 1.0  ; hue intensity scaling, typically 0 (BW) to 1
-    gamma = 1.0  ; gamma intensity expontent (1=normal/linear,<1 emphasize low vals,>1 emphasize high vals)
+    gamma = 0.75 ; gamma intensity expontent (1=normal/linear,<1 emphasize low vals,>1 emphasize high vals)
     
     ; calculate R,G,B based on helix parameters
     nlev = 256
@@ -506,29 +506,144 @@ function removeIntersectionFromB, A, B, union=union
     endelse
 end
 
+; getIDIndexMapSparse(): return an array which maps ID->indices within dense, disjoint subsets which are 
+;                        allowed to be sparse in the entire ID range. within each subset i of size binsize
+;                        array[ID-minids[i]+offset[i]] is the index of the original array ids where ID 
+;                        is found (assumes no duplicate IDs)
+
+function getIDIndexMapSparse, ids, map=map
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  minid = min(ids)
+  maxid = max(ids)
+
+  if n_elements(ids) gt 2e9 then message,'Error: Going to overrun arr.'
+
+  ; if map passed in, use it to return the indices of the ids instead of making a new map
+  if keyword_set(map) then begin
+    inds = lonarr(n_elements(ids))
+    totCount = 0ULL
+    
+    for i=0,map.nBlocks-1 do begin
+      ; process ids in this block
+      w = where(ids ge map.blockStarts[i] and ids le map.blockEnds[i],count)
+      
+      if count gt 0 then inds[w] = map.map[ids[w]-map.blockStarts[i]+map.blockOffsets[i]]
+      totCount += count
+    endfor
+    
+    if totCount ne n_elements(ids) then message,'Error: Failed to map all IDs to indices.'
+    return,inds
+  endif
+
+  ; make broad histogram of ids to identify sparsity
+  binsize = round(sqrt(max(ids))/10000.0) * 10000 > 10 < 1000000 ; adjust to range
+  print,binsize
+  hist = histogram(ids,binsize=binsize,min=0,loc=loc)
+  occBlocks = where(hist ne 0,count)
+  
+  if count eq 0 then message,'Error.'
+  
+  nBlocks = 0
+  blockStarts = []
+  blockLens   = []
+  blockEnds   = []
+  prevBlock = ulong64(0)
+  count = 0
+  
+  ; search for contiguous id blocks
+  for i=0,n_elements(occBlocks)-1 do begin
+    count += 1
+    
+    ; jump detected (zero block length ge binsize)
+    if occBlocks[i] ne (prevBlock+1) then begin
+      nBlocks += 1
+      blockStarts = [blockStarts,loc[occBlocks[i]]]
+      blockLens   = [blockLens,count]
+      blockEnds   = [blockEnds,loc[prevBlock]+count*binsize-1]
+      if i ne n_elements(occBlocks)-1 then count = 0
+    endif
+    
+    prevBlock = occBlocks[i]
+  endfor
+  
+  ; remove first (zero) block length and add final
+  if nBlocks gt 1 then begin
+    count += 1
+    blockLens = [blockLens[1:*],count]
+    blockEnds = [blockEnds[1:*],loc[prevBlock]+count*binsize-1]
+  endif
+  
+  if nBlocks le 0 then message,'Error: No dense blocks found.'
+  
+  ; make offset array into mapping
+  blockOffsets = ulonarr(nBlocks)
+  for i=0,nBlocks-2 do begin
+    blockOffsets[i+1] = blockOffsets[i] + blockLens[i]*binsize
+  endfor
+  
+  ; create mapping array inside return structure
+  r = { map          : ulonarr(total(blockLens)*binsize) ,$
+        blockStarts  : blockStarts                       ,$
+        blockLens    : blockLens                         ,$
+        blockEnds    : blockEnds                         ,$
+        blockOffsets : blockOffsets                      ,$
+        nBlocks      : nBlocks                            }
+  
+  ; fill mapping for each subset
+  totCount = 0ULL
+  
+  for i=0,nBlocks-1 do begin
+    ; what ids in this block?
+    w = where(ids ge blockStarts[i] and ids le blockEnds[i],count)
+    if count eq 0 then message,'Error'
+    
+    for j=0ULL,n_elements(w)-1 do r.map[ids[w[j]]-blockStarts[i]+blockOffsets[i]] = w[j] ;j + blockOffsets[i]
+    totCount += count
+  endfor
+  
+  if totCount ne n_elements(ids) then message,'Error: Did not map all IDs.'
+  if nuniq(r.map) ne n_elements(ids) then message,'Error: Non-unique mapping.' ; DEBUG ONLY (slow)
+  
+  ; DEBUG: for a subset, verify mapping
+  nVerify = 100 < n_elements(ids)
+  indVerify = floor(randomu(seed,nVerify)*n_elements(ids))
+  indTest = getIDIndexMap(ids[indVerify],map=r)
+  
+  for i=0,nVerify-1 do begin
+    w = where(ids eq ids[indVerify[i]],count)
+    ;print,i,w[0],indTest[i]
+    if count ne 1 or w[0] ne indTest[i] then message,'Error. Bad mapping.'
+  endfor
+  
+  return,r
+  
+end
+  
 ; getIDIndexMap(): return an array of size max(ids)-min(ids) such that array[ID-min(ids)] is the 
-;                  index of the original array ids where ID is found (assumes a one to one mapping, 
-;                  not repeated indices as in the case of parentIDs for tracers)
+;                     index of the original array ids where ID is found (assumes a one to one mapping, 
+;                     not repeated indices as in the case of parentIDs for tracers)
 
 function getIDIndexMap, ids, minid=minid
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  minid = long(min(ids))
-  maxid = long(max(ids))
-  
-  if (maxid-minid) gt 2e9 then stop ; should change arr to lon64arr
+  minid = min(ids)
+  maxid = max(ids)
 
+  if n_elements(ids) gt 2e9 then message,'Error: Going to overrun arr.'
+  
+  ; C-style loop approach (good for sparse IDs)
+  arr = ulonarr(maxid-minid+1)
+  for i=0ULL,n_elements(ids)-1L do arr[ids[i]-minid] = i
+  
   ; looped where approach (never a good idea)
   ;arr = l64indgen(maxid-minid+1)
   ;for i=minid,maxid do begin
   ;  w = where(ids eq i,count)
   ;  if (count gt 0) then arr[i] = w[0]
   ;endfor
-
-  ; C-style loop approach (good for sparse IDs)
-  arr = ulonarr(maxid-minid+1)
-  for i=0UL,n_elements(ids)-1L do arr[ids[i]-minid] = i
 
   ; reverse histogram approach (good for dense ID sampling, maybe better by factor of ~2)
   ;arr = l64indgen(maxid-minid+1)
@@ -730,7 +845,7 @@ function calcSphMap, pos, hsml, mass, quant, axes=axes, boxSizeImg=boxSizeImg, b
   if (axes[0] ne 0 and axes[0] ne 1 and axes[0] ne 2) then stop
   if (axes[1] ne 0 and axes[1] ne 1 and axes[1] ne 2) then stop
   
-  ; we direct case so ensure everything is the right size
+  ; we direct cast so ensure everything is the right size
   pos   = float(pos)
   hsml  = float(hsml)
   mass  = float(hsml)

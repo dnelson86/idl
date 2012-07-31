@@ -245,7 +245,7 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
   partType = strlowcase(string(PT)) ; so we don't change the input
   
   if strcmp(partType,'all') then begin
-    subgroupPIDs = lonarr(total(gc.subGroupLen[valGCids],/int))
+    subgroupPIDs = lon64arr(total(gc.subGroupLen[valGCids],/int))
     
     foreach gcID, valGCids do begin
       ; select particle IDs in subgroup
@@ -254,6 +254,7 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
       start += gc.subGroupLen[gcID]
     endforeach
     
+    if start ne n_elements(subgroupPIDs) then message,'Error: Failed to locate all partTypes.'
     if min(subgroupPIDs) lt 0 then stop ; check 32 bit long overflow
     return, subgroupPIDs
   endif
@@ -264,8 +265,7 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
   ; check if this particle type is present in the subgroup selection
   if total(gc.subgroupLenType[partType,valGCids] gt 0) then begin
 
-    if max(gc.IDs) gt 2e9 then stop ; change to lon64arr
-    subgroupPIDs = lonarr(total(gc.subGroupLenType[partType,valGCids],/int))
+    subgroupPIDs = lon64arr(total(gc.subGroupLenType[partType,valGCids],/int))
 
     ; store particle IDs of this type from each subgroup
     foreach gcID, valGCids do begin
@@ -274,10 +274,20 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
         subgroupPIDs[start:start+gc.subGroupLenType[partType,gcID]-1] = $
           gc.IDs[gc.subGroupOffsetType[partType,gcID] : gc.subGroupOffsetType[partType,gcID] + $
           gc.subGroupLenType[partType,gcID] - 1]
+          
+        ;added = gc.IDs[gc.subGroupOffsetType[partType,gcID] : gc.subGroupOffsetType[partType,gcID] + $
+        ;  gc.subGroupLenType[partType,gcID] - 1]
+        ;w = where(added eq 36345,count)
+        ;if count gt 0 then stop
+        
         start += gc.subGroupLenType[partType,gcID]
       endif
     endforeach
     
+    ;w = where(subgroupPIDs eq 36345,count)
+    ;stop
+
+    if start ne n_elements(subgroupPIDs) then message,'Error: Failed to locate all of this partType.'
     if min(subgroupPIDs) lt 0 then stop ; check 32 bit long overflow
     return, subgroupPIDs    
   endif
@@ -556,7 +566,7 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, child_counts=ch
       tot_children_gal  = total(child_counts.gal[galcat.galaxyOff[gcID]:$
                                                  galcat.galaxyOff[gcID]+galcat.galaxyLen[gcID]-1],/int)
       ; add indices only for specified galaxy IDs
-      if gcIDMask[gcID] then begin
+      if gcIDMask[gcID] eq 1B and tot_children_gal gt 0 then begin
         ; calculate place and store indices
         galInds = ulindgen(tot_children_gal) + offsetGal_all
         rcc.gal[offsetGal:offsetGal+tot_children_gal-1] = galInds
@@ -575,7 +585,7 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, child_counts=ch
                                                   galcat.groupmemOff[gcID]+galcat.groupmemLen[gcID]-1],/int)
             
       ; add indices only for specified group member IDs
-      if gcIDMask[gcID] then begin
+      if gcIDMask[gcID] eq 1B and tot_children_gmem gt 0 then begin
         ; calculate place and store indices
         gmemInds     = ulindgen(tot_children_gmem) + offsetGmem_all
         rcc.gmem[offsetGmem:offsetGmem+tot_children_gmem-1] = gmemInds
@@ -586,10 +596,9 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, child_counts=ch
       offsetGmem_all += tot_children_gmem
     endif
     
-    ;if gcID lt 100 then $
-    ;print,gcID,gcIDMask[gcID],offsetGal,offsetGal_all,offsetGmem,offsetGmem_all
-    
   endfor
+  
+  if offsetGal ne n_elements(rcc.gal) or offsetGmem ne n_elements(rcc.gmem) then message,'Error.'
 
     ; this code isn't useful here but is the variable-count replicate (better verify though):
     ;galInds = ulonarr(tot_children)
@@ -992,6 +1001,94 @@ function findMatchedHalos, sP1=sP1, sP2=sP2
   return,r
 end
 
+; cosmoVerifySubfindIntegrity(): verify ordering etc within a subfind catalog
+
+pro cosmoVerifySubfindIntegrity
+
+  sP = simParams(res=512,run='tracer',redshift=2.0)
+  
+m=189
+  ;for m=50,80 do begin
+    ; load
+    sP.snap = m
+    print,sP.snap
+    gc = loadGroupCat(sP=sP,/readIDs)
+    
+    gas_ids  = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    dm_ids   = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
+    star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+    
+    ; general
+    if gc.nGroupsTot ne n_elements(gc.groupLen) then message,'Fail nG'
+    if gc.nSubgroupsTot ne n_elements(gc.subgroupLen) then message,'Fail nSG'
+    if gc.nIDsTot ne n_elements(gc.IDs) then message,'Fail IDs'
+    
+    if total(gc.groupNSubs,/int) ne gc.nSubgroupsTot then message,'Fail NS'
+    if max(gc.groupFirstSub) gt gc.nSubgroupsTot then message,'Fail gFS'
+    if max(gc.subgroupGrNr) gt gc.nGroupsTot then message,'Fail gGN'
+    if max(gc.subgroupParent) gt gc.nSubgroupsTot then message,'Fail sP'
+ 
+    if max(gc.groupOffset) gt gc.nIDsTot then message,'Fail O1'
+    if max(gc.groupOffsetType) gt gc.nIDsTot then message,'Fail O2'
+    if max(gc.subgroupOffset) gt gc.nIDsTot then message,'Fail 03'
+    if max(gc.subgroupOffsetType) gt gc.nIDsTot then message,'Fail 04'
+
+    if total(gc.groupLen,/int) ne gc.nIDsTot then message,'Fail tot1'
+    if total(gc.groupLenType,/int) ne gc.nIDsTot then message,'Fail tot2'
+    if total(gc.subgroupLen,/int) ne total(gc.subgroupLenType,/int) then message,'Fail tot3'   
+
+    ; verify LenType (OffsetType)
+    testIDs = gcPIDList(gc=gc,select='all',partType='gas')
+    match,testIDs,gas_ids,ind1,ind2,count=count1
+    if count1 ne n_elements(testIDs) then message,'Fail 1'
+    
+    testIDs = gcPIDList(gc=gc,select='all',partType='dm')
+    match,testIDs,dm_ids,ind1,ind2,count=count2
+    if count2 ne n_elements(testIDs) then message,'Fail 21'
+    
+    testIDs = gcPIDList(gc=gc,select='all',partType='stars')
+    match,testIDs,star_ids,ind1,ind2,count=count3
+    if count3 ne n_elements(testIDs) then message,'Fail 3'
+    
+    testIDs = gcPIDList(gc=gc,select='all',partType='all')
+    if n_elements(testIDs) ne (count1+count2+count3) then message,'Fail 4'
+    
+    ; verify FirstSub, NSubs
+    for i=0L,gc.nGroupsTot-1 do begin
+      if gc.groupNSubs[i] gt 0 then begin
+        FirstSub = gc.groupFirstSub[i]
+        LastSub  = gc.groupFirstSub[i] + gc.groupNSubs[i] - 1
+        ParIDs = gc.subgroupGrNr[FirstSub:LastSub]
+        if nuniq(ParIDs) gt 1 or ParIDs[0] ne i then message,'Fail 5'
+      endif
+      
+      ; check LenType totals
+      if total(gc.groupLenType[*,i],/int) ne gc.groupLen[i] then message,'Fail gLT'
+    endfor
+    
+    ; verify GrNr ordering and SubLen ordering
+    prevGrNr = 0L
+    prevSGLen = 1000000000LL
+    
+    for i=0L,gc.nSubgroupsTot-1 do begin
+      if prevGrNr ne gc.subgroupGrNr[i] then prevSGLen = 1000000000LL
+      
+      if gc.subgroupGrNr[i] lt prevGrNr then message,'Fail GrNrOrder'
+      if gc.subgroupLen[i] gt prevSGLen then message,'Fail SubLenorder'
+      
+      prevSGLen = gc.subgroupLen[i]
+      prevGrNr = gc.subgroupGrNr[i]
+      
+      ; check LenType totals
+      if total(gc.subgroupLenType[*,i],/int) ne gc.subgroupLen[i] then message,'Fail sgLT'
+    endfor
+  
+  ;endfor ;m
+  
+  print,'Pass.'
+  
+end
+
 ; cosmoCompareHaloCenters(): compare relative differences between different calcuations of the centers
 ;                            of halos, and verify group catalog consistency (group-subgroup mappings)
 
@@ -1078,7 +1175,7 @@ function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap
   saveFileName = sP.derivPath + sP.savPrefix + '_snapnum.redshift.sav'
 
   if not file_test(saveFileName) then stop
-  if not keyword_set(snap) then snap = sP.snap
+  if n_elements(snap) eq 0 then snap = sP.snap
   if snap eq -1 then stop
   
   ; restore

@@ -1,6 +1,39 @@
 ; tracersMC_Halos.pro
 ; dev for MC tracer particles (group catalogs in cosmological boxes, radial profiles, etc)
-; dnelson mar.2012
+; dnelson jun.2012
+
+pro testdebug
+
+  sP = simParams(res=128,run='tracernew',redshift=2.0)
+  h  = loadSnapshotHeader(sP=sP)
+  
+  print,h.nPartTot
+  
+  ; load tracer counts
+  gas_numtr  = loadSnapshotSubset(sP=sP,partType='gas',field='numtr')
+  star_numtr = loadSnapshotSubset(sP=sP,partType='star',field='numtr')  
+  
+  ; DEBUG
+  gas_mass   = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
+  star_mass  = loadSnapshotSubset(sP=sP,partType='star',field='mass')
+  tot_mass   = total(gas_mass)+total(star_mass)
+  
+  gas_trmass = gas_numtr * sP.trMassConst
+  star_trmass = star_numtr * sP.trMassConst
+  
+  gas_ratio   = total(gas_trmass) / total(gas_mass)
+  star_ratio  = total(star_trmass) / total(star_mass)
+  total_ratio = (total(gas_trmass)+total(star_trmass)) / tot_mass
+  
+  desired_trmass = (total(gas_mass)+total(star_mass)) / (total(gas_numtr)+total(star_numtr))
+  tot_numtr      = total(gas_numtr,/int)+total(star_numtr,/int)
+  
+  print,gas_ratio,star_ratio,total_ratio
+  print,desired_trmass,tot_numtr,655360*64
+  print,tot_mass/(sP.res^3.0),sP.targetGasMass
+
+  stop
+end
 
 ; cosmoCompMassFunctions(): compare gas, tracer, and DM FoF mass functions
 
@@ -37,7 +70,7 @@ function cosmoCompMassFunctions, sP=sP, noPlot=noPlot
   star_ids = loadSnapshotSubset(sP=sP,partType='star',field='ids')
   star_indmap = getIDIndexMap(star_ids,minid=star_minid)
   star_ids = !NULL
-    
+  
   ; load tracer counts
   gas_numtr  = loadSnapshotSubset(sP=sP,partType='gas',field='numtr')
   star_numtr = loadSnapshotSubset(sP=sP,partType='star',field='numtr')
@@ -413,7 +446,7 @@ function cosmoStackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs, stars=sta
   endelse
  
   ; save/restore
-  saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.stackRad.' + saveTag + '.sav'
+  saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.stackRadMC.' + saveTag + '.sav'
                  
   if file_test(saveFilename) then begin
     restore,saveFilename
@@ -624,7 +657,7 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
   ; config
   resSet = [128] ;[256,128]
   ;f      = '1'
-  run    = 'dev.tracerMC.SPT' ;coolSF.GFM
+  run    = 'tracernew' ;coolSF.GFM
   stars  = 1
   
   ; A. run match
@@ -636,14 +669,14 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
   ;sP2 = simParams(res=resSet[0],run=run,redshift=redshift,snap=snap) ;f=f
   
   ; A. start plot book
-  start_PS,sP2.plotPath+sP2.savPrefix+'.book.snap='+str(sP2.snap)+'.radProfiles.ps',eps=0,xs=7,ys=9
+  ;start_PS,sP2.plotPath+sP2.savPrefix+'.book.snap='+str(sP2.snap)+'.radProfiles.ps',eps=0,xs=7,ys=9
   
   ; B. start single (stacked) plot
-  ;massBinsTag = 'massbin='+string(massBinLog[0],format='(f4.1)')+"-"+string(massBinLog[1],format='(f4.1)')
-  ;start_PS,sP2.plotPath+sP2.savPrefix+'.'+massBinsTag+'.snap='+str(sP2.snap)+'.radProfiles.eps',xs=7,ys=9
+  massBinsTag = 'massbin='+string(massBinLog[0],format='(f4.1)')+"-"+string(massBinLog[1],format='(f4.1)')
+  start_PS,sP2.plotPath+sP2.savPrefix+'.trMC.'+massBinsTag+'.snap='+str(sP2.snap)+'.radProfiles.eps',xs=7,ys=9
   
   ;for i=0,288,2 do begin ;288 matched at z=1
-  for i=0,n_elements(haloIDs)-1 do begin ;non-matched, just lots of single halos
+  ;for i=0,n_elements(haloIDs)-1 do begin ;non-matched, just lots of single halos
   ;  hIDs = [ match.matchedInds[match.wMatch[i]], match.wMatch[i] ] ;sP1,sP2 (res[1],res[0]) (128,256)
   
     !p.multi = [0,1,2]
@@ -658,10 +691,10 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
       gc = loadGroupCat(sP=sP,/skipIDs)
     
       ; A. load radially stacked results
-      ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
+      rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
       
       ; B. use individual halos
-      rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs[i],stars=stars)
+      ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs[i],stars=stars)
       
       ; C. use matched halos between resolutions
       ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=hIDs[k],stars=stars)
@@ -674,12 +707,12 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
         ;plotStr = "nonRad"
         plotStr = str(res)+textoidl('^3')
         
-        ;plotTitle = plotStr+" z="+string(sP.redshift,format='(f3.1)')+" ("+$
-        ;            string(massBinLog[0],format='(f4.1)')+" < log(M) < "+$
-        ;            string(massBinLog[1],format='(f4.1)')+") " + str(n_elements(rs.haloIDs)) + " halos"
+        plotTitle = plotStr+" z="+string(sP.redshift,format='(f3.1)')+" ("+$
+                    string(massBinLog[0],format='(f4.1)')+" < log(M) < "+$
+                    string(massBinLog[1],format='(f4.1)')+") " + str(n_elements(rs.haloIDs)) + " halos"
   
-        plotTitle = plotStr+" z="+string(sP.redshift,format='(f3.1)')+" halo ID="+str(haloIDs[i])+$
-                    " log(M)="+string(alog10(gc.groupmass[haloIDs[i]]*1e10),format='(f5.2)')
+        ;plotTitle = plotStr+" z="+string(sP.redshift,format='(f3.1)')+" halo ID="+str(haloIDs[i])+$
+        ;            " log(M)="+string(alog10(gc.groupmass[haloIDs[i]]*1e10),format='(f5.2)')
               
         ;plotTitle = plotStr+" z="+string(sP.redshift,format='(f3.1)')+" matched"+$
         ;            " log(M)="+string(alog10(gc.groupMass[match.wMatch[i]]*1e10),format='(f5.2)')+" dist="+$
@@ -770,10 +803,10 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
       sP = simParams(res=res,run=run,redshift=redshift,snap=snap) ;,f=f
     
       ; A. load radially stacked results
-      ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
+      rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
       
       ; B. use individual halos
-      rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs[i],stars=stars)
+      ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs[i],stars=stars)
       
       ; C. load radially stacked results (matched)
       ;rs = cosmoStackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=hIDs[k],stars=stars)
@@ -876,7 +909,7 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
     
     endforeach ;resSet
     
-  endfor ;match or individuals
+  ;endfor ;match or individuals
   
   end_PS
 

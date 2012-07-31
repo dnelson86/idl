@@ -122,7 +122,11 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=ver
   tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
   
   ; reverse histogram
-  child_counts = histogram(tr_parids,min=0,rev=child_inds)
+  prevMax = max(tr_parids)
+  child_counts = histogram(tr_parids,min=0,rev=child_inds,/L64)
+  
+  if min(child_inds) lt 0 then message,'Error: Corrupt RI.'
+  if max(tr_parids) ne prevMax then message,'Error: Corrupted histo input.'
   
   ; find gas cells with at least one child tracer
   child_counts = child_counts[gasIDs]
@@ -136,8 +140,8 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=ver
   if (count eq 0) then return, []
   
   ; add all children tracer indices to keeper array
-  if total(child_counts,/pres) gt 2e9 then stop ; change tr_inds to lon64arr
-  tr_inds = ulonarr(total(child_counts,/pres))
+  ;if total(child_counts,/int) gt 2e9 then stop ; change tr_inds to lon64arr
+  tr_inds = lon64arr(total(child_counts,/int))
   start = 0LL
   
   foreach gasID,gasIDs[w],i do begin

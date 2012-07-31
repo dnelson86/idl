@@ -1,4 +1,4 @@
-pro match, a, b, suba, subb, COUNT = count, SORT = sort, epsilon=epsilon
+pro match, a, b, suba, subb, COUNT = count, SORT = sort;, epsilon=epsilon
 ;+
 ; NAME:
 ;       MATCH
@@ -75,26 +75,27 @@ pro match, a, b, suba, subb, COUNT = count, SORT = sort, epsilon=epsilon
  On_error,2
  compile_opt idl2
 
- if N_elements(epsilon) EQ 0 then epsilon = 0
+ ;if N_elements(epsilon) EQ 0 then epsilon = 0
 
- if N_params() LT 3 then begin
-     print,'Syntax - match, a, b, suba, subb, [ COUNT =, EPSILON=, /SORT]'
-     print,'    a,b -- input vectors for which to match elements'
-     print,'    suba,subb -- output subscript vectors of matched elements'
-     return
- endif
+ ;if N_params() LT 3 then begin
+ ;    print,'Syntax - match, a, b, suba, subb, [ COUNT =, EPSILON=, /SORT]'
+ ;    print,'    a,b -- input vectors for which to match elements'
+ ;    print,'    suba,subb -- output subscript vectors of matched elements'
+ ;    return
+ ;endif
 
- da = size(a,/type) & db =size(b,/type)
- if keyword_set(sort) then hist = 0b else $
- hist = (( da LE 3 ) or (da GE 12)) and  ((db LE 3) or (db GE 12 ))
+ ;da = size(a,/type) & db =size(b,/type)
 
- if not hist then begin           ;Non-integer calculation
+ ; DNELSON - changed to /sort by default
+ ;if keyword_set(sort) then hist = 0b else $
+ ;hist = (( da LE 3 ) or (da GE 12)) and  ((db LE 3) or (db GE 12 ))
+
+ ;if not hist then begin           ;Non-integer calculation
 
  na = N_elements(a)              ;number of elements in a
  nb = N_elements(b)             ;number of elements in b
 
 ; Check for a single element array
-
  if (na EQ 1) or (nb EQ 1) then begin
         if (nb GT 1) then begin
                 subb = where(b EQ a[0], nw)
@@ -111,21 +112,23 @@ pro match, a, b, suba, subb, COUNT = count, SORT = sort, epsilon=epsilon
  ind = [ lindgen(na), lindgen(nb) ]       ;combined list of indices
  vec = [ bytarr(na), replicate(1b,nb) ]  ;flag of which vector in  combined
                                          ;list   0 - a   1 - b
-
 ; sort combined list
 
  sub = sort(c)
  c = c[sub]
  ind = ind[sub]
  vec = vec[sub]
+ sub = !NULL
 
 ; find duplicates in sorted combined list
 
  n = na + nb                            ;total elements in c
- if epsilon eq 0. then $
-    firstdup = where( (c EQ shift(c,-1)) and (vec NE shift(vec,-1)), Count ) $
- else $
-    firstdup = where( (abs(c - shift(c,-1)) lt epsilon) and (vec NE shift(vec,-1)), Count )
+ ;if epsilon eq 0. then $
+    firstdup = where( (c EQ shift(c,-1)) and (vec NE shift(vec,-1)), Count ) ;$
+ ;else $
+ ;   firstdup = where( (abs(c - shift(c,-1)) lt epsilon) and (vec NE shift(vec,-1)), Count )
+
+ c = !NULL
 
  if Count EQ 0 then begin               ;any found?
         suba = lonarr(1)-1
@@ -142,28 +145,28 @@ pro match, a, b, suba, subb, COUNT = count, SORT = sort, epsilon=epsilon
  subb = ind[ where( vec, complement = vzero) ]             ;b subscripts
  suba = ind[ vzero]
 
- endif else begin             ;Integer calculation using histogram.
+ ;endif else begin             ;Integer calculation using histogram.
 
- minab = min(a, MAX=maxa) > min(b, MAX=maxb) ;Only need intersection of ranges
- maxab = maxa < maxb
+ ;minab = min(a, MAX=maxa) > min(b, MAX=maxb) ;Only need intersection of ranges
+ ;maxab = maxa < maxb
 
 ;If either set is empty, or their ranges don't intersect:
 ;  result = NULL (which is denoted by integer = -1)
-  !ERR = -1
-  suba = -1
-  subb = -1
-  COUNT = 0L
- if (maxab lt minab) or (maxab lt 0) then return
+ ; !ERR = -1
+ ; suba = -1
+ ; subb = -1
+ ; COUNT = 0L
+ ;if (maxab lt minab) or (maxab lt 0) then return
 
- ha = histogram([a], MIN=minab, MAX=maxab, reverse_indices=reva)
- hb = histogram([b], MIN=minab, MAX=maxab, reverse_indices=revb)
+ ;ha = histogram([a], MIN=minab, MAX=maxab, reverse_indices=reva)
+ ;hb = histogram([b], MIN=minab, MAX=maxab, reverse_indices=revb)
 
- r = where((ha ne 0) and (hb ne 0), count)
- if count gt 0 then begin
-  suba = reva[reva[r]]
-  subb = revb[revb[r]]
- endif
- endelse
+ ;r = where((ha ne 0) and (hb ne 0), count)
+ ;if count gt 0 then begin
+ ; suba = reva[reva[r]]
+ ; subb = revb[revb[r]]
+ ;endif
+ ;endelse
 
  return
 

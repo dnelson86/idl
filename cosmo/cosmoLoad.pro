@@ -64,11 +64,11 @@ function getTypeSortedIDList, sP=sP, gc=gc
   
   if (count_gas + count_dm + count_trvel + count_star ne total(gc.groupLen)) then stop
   
-  start_gas   = 0L
-  start_dm    = 0L
-  start_trvel = 0L
-  start_star  = 0L
-  offset      = 0L
+  start_gas   = 0ULL
+  start_dm    = 0ULL
+  start_trvel = 0ULL
+  start_star  = 0ULL
+  offset      = 0ULL
   
   ; DEBUG:
   ;mask_gas   = intarr(max(gc.IDs[gc_ind_gas])+1)
@@ -76,7 +76,7 @@ function getTypeSortedIDList, sP=sP, gc=gc
   ;mask_trvel = intarr(max(gc.IDs[gc_ind_trvel])+1)
   ;mask_star  = intarr(max(gc.IDs[gc_ind_star])+1)
   
-  sortedIDList = lonarr(gc.nIDsTot)
+  sortedIDList = ulon64arr(gc.nIDsTot)
   
   ; loop over each fof group
   for i=0L,gc.nGroupsTot-1 do begin
@@ -209,6 +209,7 @@ function getGroupCatFilename, fileBase, snapNum=m
     endelse
   endif ;flag
   
+  if n_elements(f) gt 10 then print,'WARNING SORT GT 10 GROUPCAT OUT OF ORDER!'
   return, file_search(f)
 
 end
@@ -323,8 +324,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
         SubgroupVmax        : fltarr(h.nSubgroupsTot)     ,$
         SubgroupVmaxRad     : fltarr(h.nSubgroupsTot)     ,$
         SubgroupHalfMassRad : fltarr(h.nSubgroupsTot)     ,$
-        SubgroupIDMostBound : ulonarr(h.nSubgroupsTot)    ,$
-        ;SubgroupIDMostBound : ulon64arr(h.nSubgroupsTot)  ,$ ; LONGIDS maybe? >4B
+        SubgroupIDMostBound : lon64arr(h.nSubgroupsTot)    ,$
         SubgroupGrNr        : lonarr(h.nSubgroupsTot)     ,$
         SubgroupParent      : ulonarr(h.nSubgroupsTot)     $
       }
@@ -337,7 +337,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
           print,'Warning: readIDs requested but no IDs in group catalog!' & stop
         endif
         
-        sfids = { IDs:lonarr(h.nIDsTot) }
+        sfids = { IDs:lon64arr(h.nIDsTot) }
         sf = create_struct(sf,sfids) ;concat
       endif
       
@@ -411,7 +411,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
   ; NOTE: given SubNr sorted before Type, GroupOffsetType can ONLY be used on IDsSorted (NOT IDs!)
   for GrNr=0L, h.nGroupsTot-1 do begin
     ; create group offset type table
-    typeCumSum = [0,total(sf.groupLenType[0:4,GrNr],/cum,/pres)]
+    typeCumSum = [0L,total(sf.groupLenType[0:4,GrNr],/cum,/int)]
     sf.GroupOffsetType[*,GrNr] = sf.GroupOffset[GrNr] + typeCumSum
     
     ; create subgroup offset tables (for groups with at least one subgroup)
@@ -424,13 +424,13 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
         
         ; subsequent subgroups
         if (sf.groupNSubs[GrNr] gt 1) then begin
-          SubOffsets = total(sf.subgroupLen[SubNr:SubNr+sf.groupNSubs[GrNr]-2],/cum,/pres)
+          SubOffsets = total(sf.subgroupLen[SubNr:SubNr+sf.groupNSubs[GrNr]-2],/cum,/int)
           sf.subgroupOffset[SubNr+1:SubNr+sf.groupNSubs[GrNr]-1] = SubOffsets + sf.groupOffset[GrNr]
         endif
         
         ; construct subgroup type offset table in a loop
         for SubNr=sf.groupFirstSub[GrNr],sf.groupFirstSub[GrNr]+sf.groupNSubs[GrNr]-1 do begin
-          subTypeCumSum = [0,total(sf.subgroupLenType[0:4,SubNr],/cum,/pres)]
+          subTypeCumSum = [0L,total(sf.subgroupLenType[0:4,SubNr],/cum,/int)]
           sf.subgroupOffsetType[*,SubNr] = sf.subgroupOffset[SubNr] + subTypeCumSum
         endfor
         
@@ -453,8 +453,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
   endif
   
   ; check for 32 bit long overflow
-  if keyword_set(readIDs) then if min(sf.IDs) lt 0 then stop
-  if (SubfindExistsFlag eq 1) then if min(sf.subgroupIDMostBound) lt 0 then stop
+  if keyword_set(readIDs) then if min(sf.IDs) lt 0 then message,'Error: ID overflow.'
+  if (SubfindExistsFlag eq 1) then if min(sf.subgroupIDMostBound) lt 0 then message,'Error: ID overflow2.'
 
   ; if ID read was not requested but IDs exist, stop for now (possibly under the group ordered assumption)
   if (nIDsTot gt 0 and n_elements(readIDs) eq 0 and n_elements(skipIDsFlag) eq 0) then begin
@@ -1214,7 +1214,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     if (partType ne 0 and partType ne 4) then message,'Error: Z is gas/stars only!'
   endif
   if (field eq 'numtr' or field eq 'numtracers') then begin
-    rType = 'long'
+    rType = 'int'
     fieldName = 'NumTracers'
     if (partType ne 0 and partType ne 4) then message,'Error: NumTracers is gas/stars only!'
   endif
@@ -1272,18 +1272,39 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   endif
 
   ; use rType to make return array
-  if rType eq 'float' then r = fltarr(rDims,nPartTot[partType])
-  if rType eq 'long'  then r = lonarr(rDims,nPartTot[partType])
+  
+  if rType eq 'float' then begin
+    ; double precision requested?
+    ; if (size(r,/tname) eq 'FLOAT' and keyword_set(doublePrec)) then r = double(r)
+    if keyword_set(doublePrec) then $
+      r = dblarr(rDims,nPartTot[partType]) $
+    else $
+      r = fltarr(rDims,nPartTot[partType])
+  endif
+  
+  if rType eq 'int'   then r = intarr(rDims,nPartTot[partType])
+  
+  if rType eq 'long'  then begin
+    if fieldName eq 'ParticleIDs' or fieldName eq 'ParentID' or fieldName eq 'TracerID' then begin
+      ; IDs are 64bit?
+      longIDsBits = h5_parse(fileList[0]) ; just parse full structure
+      longIDsBits = longIDsBits.partType0.particleIDs._precision
+      if longIDsBits eq 32 then r = lonarr(rDims,nPartTot[partType])
+      if longIDsBits eq 64 then r = lon64arr(rDims,nPartTot[partType]) ;lon64arr
+      ;if longIDsBits eq 64 then print,'WARNIING: Loading 64bit IDs as ulong!'
+      if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
+    endif else begin
+      ; non-ID long field
+      r = lonarr(rDims,nPartTot[partType])
+    endelse
+  endif
+  
   r = reform(r)
   
   if (verbose) then $
     print,'Loading "' + str(fieldName) + '" for partType=' + str(partType) + ' from snapshot (' + $
-          str(m) + ') in [' + str(nFiles) + '] files. (nGas=' + $
+          str(sP.snap) + ') in [' + str(nFiles) + '] files. (nGas=' + $
           str(nPartTot[0]) + ' nDM=' + str(nPartTot[1]) + ' nStars=' + str(nPartTot[4]) + ')' 
-   
-  ; double precision requested?
-  if (size(r,/tname) eq 'FLOAT' and keyword_set(doublePrec)) then $
-    r = double(r)
    
   ; load requested field from particle type across all file parts
   for i=0,nFiles-1 do begin
