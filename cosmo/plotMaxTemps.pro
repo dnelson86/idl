@@ -1,199 +1,6 @@
 ; plotMaxTemps.pro
 ; gas accretion project - plots related to maximum past temperature of the gas
-; dnelson may.2012
-
-; checkBlobsHotCold
-
-pro checkBlobsHotCold
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  sP = simParams(res=256,run='gadget',redshift=2.0)
-
-  ; config
-  sizeFac = 2.0 ;3.5  ; times rvir
-  cutFac  = 1.0       ; times boxSize
-  exclude_flag = 1
-  
-  gcMassRange = [11.5,11.75]
-  
-  ; target list
-  gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
-  sgcen = subgroupPosByMostBoundID(sP=sP)
-  
-  gcIDsPri = gcIDList(gc=gc,select='pri')
-  gcMassesPri = codeMassToLogMsun(gc.subgroupMass[gcIDsPri])
-  
-  w = where(gcMassesPri gt gcMassRange[0] and gcMassesPri le gcMassRange[1])
-  gcIDs = gcIDsPri[w]
-  print,gcIDs
-
-  ; load gas positions and densities
-  pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
-  dens = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
-
-  gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-
-  ; exclude all secondary subgroups?
-  if exclude_flag eq 1 then begin
-    print,'excluding secondaries...'
-    gc2 = loadGroupCat(sP=sP,/readIDs)
-    secPIDList = gcPIDList(gc=gc2,select='sec',partType='all')
-    
-    ; TEMP load galaxycat and mtS, goal: get gas ID list in cold and hot modes
-    galcat = galaxyCat(sP=sP)
-    mt = mergerTreeSubset(sP=sP)
-    mtSIDs = { gal : galcat.galaxyIDs[mt.galcatSub.gal], gmem : galcat.groupmemIDs[mt.galcatSub.gmem] }
-    
-    ;accTvir = gcSubsetProp(sP=sP,select='all',/accTvir,/mergerTreeSubset,/accretionTimeSubset)
-    maxTemp = gcSubsetProp(sP=sP,select='all',/maxPastTemp)
-
-    hotIDs = [galcat.galaxyIDs[where(maxTemp.gal gt 5.9,count1)], $
-              galcat.groupmemIDs[where(maxTemp.gmem gt 5.9,count2)]]
-    coldIDs = [galcat.galaxyIDs[where(maxTemp.gal le 5.9,count3)], $
-              galcat.groupmemIDs[where(maxTemp.gmem le 5.9,count4)]]
-    
-    print,count1+count2,count3+count4,n_elements(gas_ids)
-    
-    ; make sure no collision
-    match,hotIDs,coldIDs,ind1,ind2,count=countMatch
-    if countMatch gt 0 then message,'Error: Collision.'
-    
-    ; make complement mask
-    match,gas_ids,secPIDList,ind1,ind2,count=countMatch
-    mask = bytarr(n_elements(gas_ids))
-    mask[ind1] = 1B
-    wInd = where(mask eq 0B,count)
-    
-    if count eq 0 then message,'Error'
-    print,'Removing ['+str(countMatch)+'] of ['+str(n_elements(gas_ids))+'] have left: '+$
-      string(float(count)*100/n_elements(gas_ids),format='(f4.1)')+'%'
-    
-    ; restrict
-    dens = dens[wInd]
-    pos = pos[*,wInd]
-    gas_ids = gas_ids[wInd]
-  endif 
-  
-  ; counters
-  tot_hot = 0L
-  tot_cold = 0L
-  tot_count = 0L
-  
-  print,'calculating...'
-  ; loop over all requested halos and image
-  foreach gcID, gcIDs do begin
-  
-    ; get subhalo position and size of imaging box
-    boxCen     = sgcen[*,gcID]
-    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]] / 10.0) * 10.0
-    boxSizeImg = [boxSize,boxSize,boxSize] ; cube
-  
-    ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
-    xDist = pos[0,*] - boxCen[0]
-    yDist = pos[1,*] - boxCen[1]
-    zDist = pos[2,*] - boxCen[2]
-    
-    correctPeriodicDistVecs, xDist, sP=sP
-    correctPeriodicDistVecs, yDist, sP=sP
-    correctPeriodicDistVecs, zDist, sP=sP
-    
-    rvir = gc.group_r_crit200[gc.subgroupGrNr[gcID]]
-    rad = reform(sqrt(xDist*xDist + yDist*yDist + zDist*zDist)) / rvir[0]
-  
-    ; local (cube) cutout
-    ;wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
-    ;             abs(zDist) le 0.5*cutFac*boxSize,nCutout)
-                 
-    ; local (cube) cutout - only blobs
-    wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
-                 abs(zDist) le 0.5*cutFac*boxSize and alog10(dens*1e10) gt 5.0 and rad gt 0.125,nCutout)
-
-    ; local (cube) cutout - only non-blobs
-    ;wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
-    ;             abs(zDist) le 0.5*cutFac*boxSize and (alog10(dens*1e10) le 5.0 or rad le 0.125),nCutout)
-    
-    ; check hot or cold? get IDs inside selection and match to hot/cold IDs
-    loc_ids = gas_ids[wCut]
-    
-    match,loc_ids,hotIDs,ind1,ind2,count=count_hot
-    match,loc_ids,coldIDs,ind1,ind2,count=count_cold
-    
-    print,'['+string(gcID,format='(i5)')+'] hot: '+str(count_hot)+'  cold: '+str(count_cold)+'  tot: '+str(n_elements(loc_ids))
-    
-    tot_cold  += count_cold
-    tot_hot   += count_hot
-    tot_count += n_elements(loc_ids) 
-    
-    ; TEMP
-    ;loc_dens = alog10(dens[wCut]*1e10)
-    ;start_PS,'test_rhor_'+str(gcID)+'.eps'
-    ;  cgplot,rad,loc_dens,psym=3,$
-    ;    xtitle="radius [kpc]",ytitle="log (dens) [msun/kpc3]"
-    ;  w = where(loc_dens gt 5.0 and rad gt 0.1)
-    ;  cgplot,rad[w],loc_dens[w],psym=3,color=cgColor('red'),/overplot
-    ;end_PS
-    ; END TEMP
-  
-  endforeach ;gcIDs
-  
-  hot_frac  = float(tot_hot) / tot_count
-  cold_frac = float(tot_cold) / tot_count
-  print,'hot frac: '+str(hot_frac)+'  cold frac: '+str(cold_frac)
-
-end
-
-; plotTempVsRad
-
-pro plotTempVsRad
-
-  sP = simParams(res=128,run='gadget',redshift=2.0)
-
-  ; get gas/tracer positions with time
-  at  = accretionTraj(sP=sP)
-  mt  = mergerTreeSubset(sP=sP)
-
-  ; some radius/temp selection
-  rad = sqrt(at.relPos_gal[*,0,*] * at.relPos_gal[*,0,*] + $
-             at.relPos_gal[*,1,*] * at.relPos_gal[*,1,*] + $
-             at.relPos_gal[*,2,*] * at.relPos_gal[*,2,*])
-  rad = reform(rad)
-  temp = at.curTemp_gal
-  
-  ; normalize by rvir(t)
-  for i=0,n_elements(mt.times)-1 do begin
-    rad[i,*] /= mt.hVirRad[i,mt.gcIndOrig.gal]
-  endfor
-
-  ; plot (0)
-  start_PS, sP.plotPath + 'tempvsrad.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
-    !p.thick -= 2
-    xrange = [0,2]
-    yrange = [3,7]
-    
-      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,ytitle="temp",xtitle="rad / rvir"      
-      
-      w = where(temp ne 0.0,count,comp=wc,ncomp=ncomp)
-      if count gt 0 then cgPlot,rad[w],temp[w],psym=3,/overplot
-    
-  end_PS
-  
-  ; plot (0)
-  start_PS, sP.plotPath + 'radvstime.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
-
-    xrange = [0,80]
-    yrange = [0,2]
-    
-      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,ytitle="rad / rvir",xtitle="snaps back"      
-      
-      ;cgplot,reverse(mt.hvirrad[*,hInd]),line=1,/overplot
-      for j=0,50 do $
-        cgPlot,rad[*,j],line=0,color=getColor(j),/overplot
-    
-  end_PS
-  
-  stop
-end
+; dnelson jul.2012
 
 ; plotTmaxVsTvirAccComp(); plot the previous max temp vs. the virial temperature of the parent halos at the
 ;                          time of accretion for arepo vs. gadget
@@ -203,18 +10,29 @@ pro plotTmaxVsTvirAccComp
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  res = 256
-  redshift = 2.0
-
-  sP1 = simParams(res=res,run='gadget',redshift=redshift)
-  sP2 = simParams(res=res,run='tracer',redshift=redshift)
-  
-  binSizeLog = 0.15 / (res/128)
+  sP1 = simParams(res=256,run='gadget',redshift=3.0)
+  sP2 = simParams(res=256,run='tracer',redshift=3.0) ; f=-1 use velocity tracers
+  print,'redshift 3'
+  binSizeLog = 0.15 / (sP1.res/128)
   
   sgSelect = 'pri'
-  accMode  = 'smooth'
-  massBins = [9.0,9.5,10.0,10.5,11.0,11.5,12.0,12.5] ; log(M)   
+  accMode  = 'all'
+  massBins = [9.0,9.5,10.0,10.5,11.0,11.5,12.0] ; log(M)    
   
+  lines   = [1,0,2] ; tvircur,tviracc,const5.5
+  thicks  = [4,6,8] ; 128,256,512
+  
+  cInd = 1
+  
+  ; red+blue as in Vogelsberger+
+  ;colorsA = [getColor24([255,200,200]),getColor24([255,100,100]),getColor24([255,0,0])] ; 128,256,512 AR
+  ;colorsG = [getColor24([200,200,255]),getColor24([100,100,255]),getColor24([0,0,255])] ; 128,256,512 GA
+
+  ; green+purple/brown alternative
+  colorsA = [getColor24(['bd'x,'e1'x,'98'x]),getColor24(['45'x,'89'x,'00'x]),getColor24(['21'x,'61'x,'00'x])]
+  ;colorsG = [getColor24(['d6'x,'92'x,'d8'x]),getColor24(['60'x,'00'x,'63'x]),getColor24(['2d'x,'00'x,'2f'x])]
+  colorsG = [getColor24(['d5'x,'a9'x,'8b'x]),getColor24(['98'x,'3d'x,'00'x]),getColor24(['48'x,'1d'x,'00'x])]
+
   ; load sP1 (gadget)
   accTvir_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
   curTvir_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
@@ -231,7 +49,8 @@ pro plotTmaxVsTvirAccComp
   parentMass_tr = gcSubsetProp(sP=sP2,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
     
   ; plot (0) - 3x2 mass bins separated out and each panel with gadget+arepo, gal vs. gmem
-  start_PS, sP1.plotPath + 'tmax_tviracc_3x2.'+accMode+'.'+str(sP1.res)+'_'+str(sP1.snap)+'.eps', /big
+  start_PS, sP1.plotPath + 'tmax_tviracc_3x2.'+accMode+'.'+sP1.plotPrefix+'.'+sP2.plotPrefix+'.'+$
+            str(sP1.res)+'_'+str(sP1.snap)+'.eps', /big
     !p.thick += 1
     xrange = [-2.2,1.2]
     yrange = [6e-4,1.0]
@@ -247,16 +66,16 @@ pro plotTmaxVsTvirAccComp
                 [x1,y0,x2,y1] ,$ ; lc
                 [x2,y0,x3,y1] )  ; lr
     
-    for j=1,n_elements(massBins)-2 do begin
+    for j=0,n_elements(massBins)-2 do begin
       
-      if j eq 1 or j eq 4 then ytickname = '' else ytickname = replicate(' ',10)
-      if j ge 4 then xtickname = '' else xtickname = replicate(' ',10)
-      if j gt 1 then noerase = 1 else noerase = 0
+      if j eq 0 or j eq 3 then ytickname = '' else ytickname = replicate(' ',10)
+      if j ge 3 then xtickname = '' else xtickname = replicate(' ',10)
+      if j gt 0 then noerase = 1 else noerase = 0
       
-      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,pos=pos[j-1],$
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,pos=pos[j],$
         ytitle="",xtitle="",xticks=3,xtickv=xtickv,xtickname=xtickname,ytickname=ytickname,noerase=noerase       
       
-      cgPlot,[0,0],[8e-4,0.3],line=0,color=fsc_color('light gray'),thick=!p.thick-2.0,/overplot
+      cgPlot,[0,0],[8e-4,0.25],line=2,color=fsc_color('black'),thick=!p.thick-0.0,/overplot
       
       ; select members of this parent mass bins and r>0<inf
       wGadget_gal  = where(parentMass_ga.gal gt massBins[j] and parentMass_ga.gal le massBins[j+1],count1)
@@ -271,46 +90,47 @@ pro plotTmaxVsTvirAccComp
       ; histogram gadget (gal) differences
       vals = [10.0^maxTemp_gadget.gal[wGadget_gal]/10.0^accTvir_gadget.gal[wGadget_gal]]
       hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(1),/overplot
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[1],color=colorsG[cInd],/overplot
   
       ; histogram tracer (gal) differences
       vals = [10.0^maxTemp_tracer.gal[wTracer_gal]/10.0^accTvir_tracer.gal[wTracer_gal]]
       hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(3),/overplot
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[1],color=colorsA[cInd],/overplot
     
       ; histogram gadget (gmem) differences
       vals = [10.0^maxTemp_gadget.gmem[wGadget_gmem]/10.0^accTvir_gadget.gmem[wGadget_gmem]]
       hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=1,color=getColor(1),/overplot
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[0],color=colorsG[cInd],/overplot
   
       ; histogram tracer (gmem) differences
       vals = [10.0^maxTemp_tracer.gmem[wTracer_gmem]/10.0^accTvir_tracer.gmem[wTracer_gmem]]
       hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=1,color=getColor(3),/overplot
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[0],color=colorsA[cInd],/overplot
     
-      ; legend
+      ; legends
       massBinStr = string(massBins[j],format='(f4.1)') + ' < log(M) < ' + $
                    string(massBins[j+1],format='(f4.1)')
 
-      cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.2,alignment=0.5
+      cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.0,alignment=0.5
+          
+      if j eq 0 then $
+        legend,['gadget','arepo'],textcolors=[colorsG[cInd],colorsA[cInd]],box=0,$
+          position=[-2.0,0.1],charsize=!p.charsize-0.1,spacing=!p.charsize+0.5
     
     endfor
+    
+    legend,['central galaxy','halo atmosphere'],linestyle=[0,1],$
+      color=cgColor('dark gray'),textcolors=['dark gray','dark gray'],$
+      linesize=0.25,box=0,position=[0.08,0.09],/normal,charsize=!p.charsize-0.2
     
     ; axis labels
     cgText,0.05,0.5,"Gas Mass Fraction",alignment=0.5,orientation=90.0,/normal
     cgText,0.5,0.05,textoidl("log ( T_{max} / T_{vir,acc} )"),alignment=0.5,/normal
     
-    ; annotations
-    cgText,0.95,0.06,"gadget",alignment=0.5,charsize=!p.charsize-0.2,color=getColor(1),/normal
-    cgText,0.95,0.02,"arepo",alignment=0.5,charsize=!p.charsize-0.2,color=getColor(3),/normal
-    
-    legend,['central galaxy','halo atmosphere'],linestyle=[0,1],$
-      color=cgColor('forest green'),textcolors=['forest green','forest green'],$
-      linesize=0.25,box=0,position=[0.0,0.09],/normal,charsize=!p.charsize-0.2
-      
   end_PS
-stop
+
   ; plot (1) - compare tmax to tvir at time of accretion (both gal+gmem)
+  if 0 then begin
   start_PS, sP1.plotPath + 'tmax_tviracc_comp_both.'+str(sP1.res)+'_'+str(sP1.snap)+'.eps'
     !p.thick += 1
     xrange = [-2.5,1.2]
@@ -505,56 +325,317 @@ stop
       legend,strings,textcolors=colors,box=0,/left,/top
   
   end_PS
+  endif ;0
   
-  ; plot (5) - unscaled tmax
-  start_PS, sP1.plotPath + 'tmax_nonorm.'+str(sP1.res)+'_'+str(sP1.snap)+'.eps'
+end
+
+; plotTmaxHistos(); plot the global tmax histos (no halo mass binning)
+
+pro plotTmaxHistos
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; config
+  sP1 = simParams(res=256,run='gadget',redshift=2.0)
+  sP2 = simParams(res=256,run='tracer',redshift=2.0) ; f=-1 use velocity tracers
+  
+  binSizeLog = 0.2 / (sP1.res/128)
+  
+  sgSelect = 'pri'
+  accMode  = 'all'   
+  lines   = [1,0,2] ; tvircur,tviracc,const5.5
+  thicks  = [4,6,8] ; 128,256,512
+  
+  cInd = 1
+  
+  ; red+blue as in Vogelsberger+
+  ;colorsA = [getColor24([255,200,200]),getColor24([255,100,100]),getColor24([255,0,0])] ; 128,256,512 AR
+  ;colorsG = [getColor24([200,200,255]),getColor24([100,100,255]),getColor24([0,0,255])] ; 128,256,512 GA
+
+  ; green+purple/brown alternative
+  colorsA = [getColor24(['bd'x,'e1'x,'98'x]),getColor24(['45'x,'89'x,'00'x]),getColor24(['21'x,'61'x,'00'x])]
+  ;colorsG = [getColor24(['d6'x,'92'x,'d8'x]),getColor24(['60'x,'00'x,'63'x]),getColor24(['2d'x,'00'x,'2f'x])]
+  colorsG = [getColor24(['d5'x,'a9'x,'8b'x]),getColor24(['98'x,'3d'x,'00'x]),getColor24(['48'x,'1d'x,'00'x])]
+
+  ; load sP1 (gadget)
+  accTvir_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  maxTemp_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
+ 
+  ; load sP2 (tracer)
+  accTvir_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  maxTemp_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+
+  ; plot (1) - histos of tmax/tviracc
+  start_PS, sP1.plotPath + 'tmax_histos1.'+accMode+'.'+sP1.plotPrefix+'.'+sP2.plotPrefix+'.'+$
+            str(sP1.res)+'_'+str(sP1.snap)+'.eps', /big
     !p.thick += 1
-    xrange = [4.0,7.0]
-    yrange = [1e-3,1.0]
     
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
-      ytitle="Mass Fraction",xtitle=textoidl("log (T_{max})")+"",$
-      title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sP1.redshift,format='(f3.1)')+")"
-    cgPlot,[1,1],yrange,line=0,color=fsc_color('light gray'),/overplot
+    xrange = [-2.0,1.5]
+    yrange = [1e-3,1e3]
     
-    strings = []
-    colors = []
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+      ytitle=textoidl("M_{tot}"),xtitle=textoidl("log ( T_{max} / T_{vir,acc} )")
     
-    for j=0,n_elements(massBins)-2 do begin
-      
-      ; select members of this parent mass bins and r>0<inf
-      wGadget_gal  = where(parentMass_ga.gal gt massBins[j] and parentMass_ga.gal le massBins[j+1],count1)
-      wGadget_gmem = where(parentMass_ga.gmem gt massBins[j] and parentMass_ga.gmem le massBins[j+1],count2)
-      wTracer_gal  = where(parentMass_tr.gal gt massBins[j] and parentMass_tr.gal le massBins[j+1],count3)
-      wTracer_gmem = where(parentMass_tr.gmem gt massBins[j] and parentMass_tr.gmem le massBins[j+1],count4)
-      
-      print,j,count1,count2,count3,count4
-      
-      if ~count1 or ~count2 or ~count3 or ~count4 then continue ; no halos in this mass bin  
-    
-      massBinStr = string(massBins[j],format='(f4.1)') + '-' + string(massBins[j+1],format='(f4.1)')
-      strings = [strings,massBinStr]
-      colors = [colors,getColor(j,/name)]
-      
-      ; histogram gadget (gal+gmem) differences
-      vals = [maxTemp_gadget.gal[wGadget_gal],maxTemp_gadget.gmem[wGadget_gmem]]
-      hist = histogram(vals,binsize=binSizeLog,loc=loc)
-      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=0,color=getColor(j),/overplot
+    ; histogram gadget (gal) differences
+    vals = [10.0^maxTemp_gadget.gal/10.0^accTvir_gadget.gal]
+    hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sP1.targetGasMass,line=lines[1],color=colorsG[cInd],/overplot
+
+    ; histogram tracer (gal) differences
+    vals = [10.0^maxTemp_tracer.gal/10.0^accTvir_tracer.gal]
+    hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sP2.trMassConst,line=lines[1],color=colorsA[cInd],/overplot
   
-      ; histogram tracer (gal+gmem) differences
-      vals = [maxTemp_tracer.gal[wTracer_gal],maxTemp_tracer.gmem[wTracer_gmem]]
-      hist = histogram(vals,binsize=binSizeLog,loc=loc)
-      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=2,color=getColor(j),/overplot
-    
-    endfor
-    
-    ; legend
-    legend,['gadget','arepoMC'],linestyle=[0,2],linesize=0.25,box=0,/right,/top
-    if n_elements(massBins) gt 2 then $
-      legend,strings,textcolors=colors,box=0,/left,/top
+    ; histogram gadget (gmem) differences
+    vals = [10.0^maxTemp_gadget.gmem/10.0^accTvir_gadget.gmem]
+    hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sP1.targetGasMass,line=lines[0],color=colorsG[cInd],/overplot
+
+    ; histogram tracer (gmem) differences
+    vals = [10.0^maxTemp_tracer.gmem/10.0^accTvir_tracer.gmem]
+    hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sP2.trMassConst,line=lines[0],color=colorsA[cInd],/overplot
   
+    legend,['gadget','arepo'],textcolors=[colorsG[cInd],colorsA[cInd]],box=0,$
+      /top,/right,spacing=!p.charsize+0.5
+    
+    legend,['central galaxy','halo atmosphere'],linestyle=[0,1],$
+      color=cgColor('dark gray'),textcolors=['dark gray','dark gray'],$
+      linesize=0.25,box=0,/top,/left
+    
   end_PS
   
+  ; plot (2) - histos of unnormalized tmax
+  start_PS, sP1.plotPath + 'tmax_histos2.'+accMode+'.'+sP1.plotPrefix+'.'+sP2.plotPrefix+'.'+$
+            str(sP1.res)+'_'+str(sP1.snap)+'.eps', /big
+    !p.thick += 1
+    
+    xrange = [3.5,8.0]
+    yrange = [1e-3,1e3]
+    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+      ytitle=textoidl("M_{tot}"),xtitle=textoidl("log ( T_{max} )")
+    
+    ; histogram gadget (gal) differences
+    hist = histogram(maxTemp_gadget.gal,binsize=binsizeLog,loc=loc)
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sP1.targetGasMass,line=lines[1],color=colorsG[cInd],/overplot
+
+    ; histogram tracer (gal) differences
+    hist = histogram(maxTemp_tracer.gal,binsize=binsizeLog,loc=loc)
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sP2.trMassConst,line=lines[1],color=colorsA[cInd],/overplot
+  
+    ; histogram gadget (gmem) differences
+    hist = histogram(maxTemp_gadget.gmem,binsize=binsizeLog,loc=loc)
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sP1.targetGasMass,line=lines[0],color=colorsG[cInd],/overplot
+
+    ; histogram tracer (gmem) differences
+    hist = histogram(maxTemp_tracer.gmem,binsize=binsizeLog,loc=loc)
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sP2.trMassConst,line=lines[0],color=colorsA[cInd],/overplot
+  
+    legend,['gadget','arepo'],textcolors=[colorsG[cInd],colorsA[cInd]],box=0,$
+      /top,/right,spacing=!p.charsize+0.5
+    
+    legend,['central galaxy','halo atmosphere'],linestyle=[0,1],$
+      color=cgColor('dark gray'),textcolors=['dark gray','dark gray'],$
+      linesize=0.25,box=0,/top,/left
+    
+  end_PS
+  
+end
+
+; ---------------------------------------------------------------------------------------------
+
+; checkBlobsHotCold
+
+pro checkBlobsHotCold
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  sP = simParams(res=256,run='gadget',redshift=2.0)
+
+  ; config
+  sizeFac = 2.0 ;3.5  ; times rvir
+  cutFac  = 1.0       ; times boxSize
+  exclude_flag = 1
+  
+  gcMassRange = [11.5,11.75]
+  
+  ; target list
+  gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
+  sgcen = subgroupPosByMostBoundID(sP=sP)
+  
+  gcIDsPri = gcIDList(gc=gc,select='pri')
+  gcMassesPri = codeMassToLogMsun(gc.subgroupMass[gcIDsPri])
+  
+  w = where(gcMassesPri gt gcMassRange[0] and gcMassesPri le gcMassRange[1])
+  gcIDs = gcIDsPri[w]
+  print,gcIDs
+
+  ; load gas positions and densities
+  pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+  dens = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
+
+  gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+
+  ; exclude all secondary subgroups?
+  if exclude_flag eq 1 then begin
+    print,'excluding secondaries...'
+    gc2 = loadGroupCat(sP=sP,/readIDs)
+    secPIDList = gcPIDList(gc=gc2,select='sec',partType='all')
+    
+    ; TEMP load galaxycat and mtS, goal: get gas ID list in cold and hot modes
+    galcat = galaxyCat(sP=sP)
+    mt = mergerTreeSubset(sP=sP)
+    mtSIDs = { gal : galcat.galaxyIDs[mt.galcatSub.gal], gmem : galcat.groupmemIDs[mt.galcatSub.gmem] }
+    
+    ;accTvir = gcSubsetProp(sP=sP,select='all',/accTvir,/mergerTreeSubset,/accretionTimeSubset)
+    maxTemp = gcSubsetProp(sP=sP,select='all',/maxPastTemp)
+
+    hotIDs = [galcat.galaxyIDs[where(maxTemp.gal gt 5.9,count1)], $
+              galcat.groupmemIDs[where(maxTemp.gmem gt 5.9,count2)]]
+    coldIDs = [galcat.galaxyIDs[where(maxTemp.gal le 5.9,count3)], $
+              galcat.groupmemIDs[where(maxTemp.gmem le 5.9,count4)]]
+    
+    print,count1+count2,count3+count4,n_elements(gas_ids)
+    
+    ; make sure no collision
+    match,hotIDs,coldIDs,ind1,ind2,count=countMatch
+    if countMatch gt 0 then message,'Error: Collision.'
+    
+    ; make complement mask
+    match,gas_ids,secPIDList,ind1,ind2,count=countMatch
+    mask = bytarr(n_elements(gas_ids))
+    mask[ind1] = 1B
+    wInd = where(mask eq 0B,count)
+    
+    if count eq 0 then message,'Error'
+    print,'Removing ['+str(countMatch)+'] of ['+str(n_elements(gas_ids))+'] have left: '+$
+      string(float(count)*100/n_elements(gas_ids),format='(f4.1)')+'%'
+    
+    ; restrict
+    dens = dens[wInd]
+    pos = pos[*,wInd]
+    gas_ids = gas_ids[wInd]
+  endif 
+  
+  ; counters
+  tot_hot = 0L
+  tot_cold = 0L
+  tot_count = 0L
+  
+  print,'calculating...'
+  ; loop over all requested halos and image
+  foreach gcID, gcIDs do begin
+  
+    ; get subhalo position and size of imaging box
+    boxCen     = sgcen[*,gcID]
+    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]] / 10.0) * 10.0
+    boxSizeImg = [boxSize,boxSize,boxSize] ; cube
+  
+    ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
+    xDist = pos[0,*] - boxCen[0]
+    yDist = pos[1,*] - boxCen[1]
+    zDist = pos[2,*] - boxCen[2]
+    
+    correctPeriodicDistVecs, xDist, sP=sP
+    correctPeriodicDistVecs, yDist, sP=sP
+    correctPeriodicDistVecs, zDist, sP=sP
+    
+    rvir = gc.group_r_crit200[gc.subgroupGrNr[gcID]]
+    rad = reform(sqrt(xDist*xDist + yDist*yDist + zDist*zDist)) / rvir[0]
+  
+    ; local (cube) cutout
+    ;wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
+    ;             abs(zDist) le 0.5*cutFac*boxSize,nCutout)
+                 
+    ; local (cube) cutout - only blobs
+    wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
+                 abs(zDist) le 0.5*cutFac*boxSize and alog10(dens*1e10) gt 5.0 and rad gt 0.125,nCutout)
+
+    ; local (cube) cutout - only non-blobs
+    ;wCut = where(abs(xDist) le 0.5*cutFac*boxSize and abs(yDist) le 0.5*cutFac*boxSize and $
+    ;             abs(zDist) le 0.5*cutFac*boxSize and (alog10(dens*1e10) le 5.0 or rad le 0.125),nCutout)
+    
+    ; check hot or cold? get IDs inside selection and match to hot/cold IDs
+    loc_ids = gas_ids[wCut]
+    
+    match,loc_ids,hotIDs,ind1,ind2,count=count_hot
+    match,loc_ids,coldIDs,ind1,ind2,count=count_cold
+    
+    print,'['+string(gcID,format='(i5)')+'] hot: '+str(count_hot)+'  cold: '+str(count_cold)+'  tot: '+str(n_elements(loc_ids))
+    
+    tot_cold  += count_cold
+    tot_hot   += count_hot
+    tot_count += n_elements(loc_ids) 
+    
+    ; TEMP
+    ;loc_dens = alog10(dens[wCut]*1e10)
+    ;start_PS,'test_rhor_'+str(gcID)+'.eps'
+    ;  cgplot,rad,loc_dens,psym=3,$
+    ;    xtitle="radius [kpc]",ytitle="log (dens) [msun/kpc3]"
+    ;  w = where(loc_dens gt 5.0 and rad gt 0.1)
+    ;  cgplot,rad[w],loc_dens[w],psym=3,color=cgColor('red'),/overplot
+    ;end_PS
+    ; END TEMP
+  
+  endforeach ;gcIDs
+  
+  hot_frac  = float(tot_hot) / tot_count
+  cold_frac = float(tot_cold) / tot_count
+  print,'hot frac: '+str(hot_frac)+'  cold frac: '+str(cold_frac)
+
+end
+
+; plotTempVsRad
+
+pro plotTempVsRad
+
+  sP = simParams(res=128,run='gadget',redshift=2.0)
+
+  ; get gas/tracer positions with time
+  at  = accretionTraj(sP=sP)
+  mt  = mergerTreeSubset(sP=sP)
+
+  ; some radius/temp selection
+  rad = sqrt(at.relPos_gal[*,0,*] * at.relPos_gal[*,0,*] + $
+             at.relPos_gal[*,1,*] * at.relPos_gal[*,1,*] + $
+             at.relPos_gal[*,2,*] * at.relPos_gal[*,2,*])
+  rad = reform(rad)
+  temp = at.curTemp_gal
+  
+  ; normalize by rvir(t)
+  for i=0,n_elements(mt.times)-1 do begin
+    rad[i,*] /= mt.hVirRad[i,mt.gcIndOrig.gal]
+  endfor
+
+  ; plot (0)
+  start_PS, sP.plotPath + 'tempvsrad.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+    !p.thick -= 2
+    xrange = [0,2]
+    yrange = [3,7]
+    
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,ytitle="temp",xtitle="rad / rvir"      
+      
+      w = where(temp ne 0.0,count,comp=wc,ncomp=ncomp)
+      if count gt 0 then cgPlot,rad[w],temp[w],psym=3,/overplot
+    
+  end_PS
+  
+  ; plot (0)
+  start_PS, sP.plotPath + 'radvstime.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+
+    xrange = [0,80]
+    yrange = [0,2]
+    
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,ytitle="rad / rvir",xtitle="snaps back"      
+      
+      ;cgplot,reverse(mt.hvirrad[*,hInd]),line=1,/overplot
+      for j=0,50 do $
+        cgPlot,rad[*,j],line=0,color=getColor(j),/overplot
+    
+  end_PS
+  
+  stop
 end
 
 ; plotTmaxVsTvirAccCur(): evaluate how the ratio of Tmax/Tvir changes when using either the current

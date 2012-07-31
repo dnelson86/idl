@@ -82,6 +82,7 @@ function getUnits
 end
 
 ; codeMassToVirTemp(): convert halo mass (in code units) to virial temperature at specified redshift
+; Barkana & Loeb (2001) eqn.26
 
 function codeMassToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt
 
@@ -100,7 +101,7 @@ function codeMassToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt
   omega_m   = 0.27
   omega_L   = 0.73
   omega_k   = 0.0
-  little_h  = 0.7
+  little_h  = 1.0 ; do not multiply by h since mass_msun is already over h
   
   omega_m_z = omega_m * (1+redshift)^3.0 / $
               ( omega_m*(1+redshift)^3.0 + omega_L + omega_k*(1+redshift)^2.0 )
@@ -113,6 +114,41 @@ function codeMassToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt
 
   return, Tvir
   
+end
+
+; logMsunToVirTemp(): convert halo mass (in log msun) to virial temperature at specified redshift
+
+function logMsunToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt
+
+  units = getUnits()
+  print,'Warning: Using this you should have no little h in the log msun.'
+  
+  if not keyword_set(redshift) then redshift = sP.redshift
+  if redshift eq -1 then stop
+
+  ; mean molecular weight default (valid for ComparisonProject at ionized T>10^4 K)
+  if not keyword_set(meanmolwt) then meanmolwt = 0.6
+
+  ; mass to msun
+  mass_msun = 10.0^mass
+  
+  ; cosmo
+  omega_m   = 0.27
+  omega_L   = 0.73
+  omega_k   = 0.0
+  little_h  = 0.7
+  
+  omega_m_z = omega_m * (1+redshift)^3.0 / $
+              ( omega_m*(1+redshift)^3.0 + omega_L + omega_k*(1+redshift)^2.0 )
+  
+  Delta_c = 18*!pi^2 + 82*(omega_m_z-1.0) - 39*(omega_m_z-1.0)^2.0
+
+  Tvir = 1.98e4 * (meanmolwt/0.6) * (mass_msun/1e8*little_h)^(2.0/3.0) * $
+         (omega_m/omega_m_z * Delta_c / 18.0 / !pi^2.0)^(1.0/3.0) * $
+         (1.0 + redshift)/10.0 ;K
+         
+  return, Tvir
+
 end
 
 ; codeMassToLogMsun(): convert mass in code units to log(msun)

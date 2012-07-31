@@ -10,13 +10,14 @@ function cosmoTracerVel_CompMassFunctions, sP=sP, noPlot=noPlot
   ;res      = 256
   ;run      = 'dev.tracer.nonrad'
   ;redshift = 3.0
+  trPT = partTypeNum('tracerVEL')
   
   ; load group catalog
   ;sP    = simParams(res=res,run=run,redshift=redshift)
   units = getUnits()
 
   h  = loadSnapshotHeader(sP=sP)
-  gc = loadGroupCat(sP=sP,/verbose)
+  gc = loadGroupCat(sP=sP,/skipIDs)
   
   ; load gas masses, calculate dm and tr masses
   gas_mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
@@ -26,7 +27,7 @@ function cosmoTracerVel_CompMassFunctions, sP=sP, noPlot=noPlot
   hm_gas  = reform(gc.groupMassType[0,*]) * units.UnitMass_in_Msun
   hm_dm   = reform(gc.groupMassType[1,*]) * units.UnitMass_in_Msun
   hm_star = reform(gc.groupMassType[4,*]) * units.UnitMass_in_Msun
-  hm_tr   = reform(gc.groupLenType[3,*]) * sP.trMassConst * units.UnitMass_in_Msun
+  hm_tr   = reform(gc.groupLenType[trPT,*]) * sP.targetGasMass * units.UnitMass_in_Msun
   
   hm_bar  = hm_gas + hm_star
   
@@ -160,7 +161,7 @@ function cosmoTracerVel_StackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs,
 
   ; load snapshot info and group catalog
   h  = loadSnapshotHeader(sP=sP)
-  gc = loadGroupCat(sP=sP)
+  gc = loadGroupCat(sP=sP,/skipIDs)
 
   ;nbins = 20
   nbins = 10 ;CUSTOM
@@ -201,7 +202,7 @@ function cosmoTracerVel_StackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs,
   endelse
   
   ; save/restore
-  saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.stackRad.' + saveTag + '.sav'
+  saveFilename = sP.derivPath + sP.savPrefix + str(sP.res) + '.stackRadVel.' + saveTag + '.sav'
                  
   if file_test(saveFilename) then begin
     restore,saveFilename
@@ -228,7 +229,7 @@ function cosmoTracerVel_StackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs,
 
     ; load positions
     pos_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
-    pos_tr    = loadSnapshotSubset(sP=sP,partType='tracer',field='pos')
+    pos_tr    = loadSnapshotSubset(sP=sP,partType='tracerVel',field='pos')
     pos_dm    = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
     if keyword_set(stars) then $
       pos_stars = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
@@ -334,7 +335,7 @@ function cosmoTracerVel_StackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs,
           if keyword_set(trMass) then begin
             rho_tr[i] += total(tr_mass_sub[w4])
           endif else begin
-            rho_tr[i] += sP.trMassConst * count4
+            rho_tr[i] += sP.targetGasMass * count4
           endelse
           num_tr[i] += count4
         endif
@@ -378,17 +379,17 @@ function cosmoTracerVel_StackGroupsRad, sP=sP, massBinLog=massBinLog, hIDs=hIDs,
 
 end
 
-; cosmoCompRadProfiles(): compare gas, tracer, and DM radial profiles of halos
+; cosmoCompRadProfilesVel(): compare gas, tracer, and DM radial profiles of halos
 
-pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redshift
+pro cosmoCompRadProfilesVel, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redshift
 
   if (n_elements(massBinLog) eq 0 and n_elements(haloIDs) eq 0) then stop
   if not keyword_set(redshift) then stop
 
   ; config
   resSet = [128] ;[256,128]
-  run    = 'dev.tracer.constTS2'
-  stars  = 0
+  run    = 'tracernew'
+  stars  = 1
   
   ; run match
   ;sP1 = simParams(res=resSet[1],run=run,redshift=redshift)
@@ -399,9 +400,7 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
   ;start_PS,sP1.plotPath+sP1.savPrefix+'.book.snap='+str(sP1.snap)+'.radProfiles.ps',eps=0,xs=7,ys=9
   massBinsTag = 'massbin='+string(massBinLog[0],format='(f4.1)')+"-"+string(massBinLog[1],format='(f4.1)')
   
-  if (trMass eq 1) then $
-    massBinsTag += ".sdM"
-  start_PS,sP2.plotPath+sP2.savPrefix+'.'+massBinsTag+'.snap='+str(sP2.snap)+'.radProfiles.eps',xs=7,ys=9
+  start_PS,sP2.plotPath+sP2.savPrefix+'.trVel.'+massBinsTag+'.snap='+str(sP2.snap)+'.radProfiles.eps',xs=7,ys=9
   
   ;for i=0,288,2 do begin ;288 matched at z=1
   ;for i=0,n_elements(haloIDs)-1 do begin ;non-matched, just lots of single halos
@@ -419,7 +418,7 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
       ; load group catalog
       sP = simParams(res=res,run=run,redshift=redshift)
       ;sP = sP1
-      gc = loadGroupCat(sP.simPath,sP.snap)
+      gc = loadGroupCat(sP=sP,/skipIDs)
     
       ; load radially stacked results
       rs = cosmoTracerVel_StackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)
@@ -489,7 +488,7 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
       
       if (stars eq 1) then begin
         fsc_plot,rs.midBins,rs.rho_stars,line=line,/overplot,color=getColor(7)
-        fsc_plot,rs.midBins,rs.rho_gas+rho_stars,line=line,/overplot,color=getColor(8)
+        fsc_plot,rs.midBins,rs.rho_gas+rs.rho_stars,line=line,/overplot,color=getColor(8)
       endif
       
       ; softening lines
@@ -653,7 +652,7 @@ pro cosmoTracerVel_DiffRadProfiles
   
         ; load group catalog
         sP = simParams(res=res,run=run,redshift=redshift)
-        gc = loadGroupCat(sP=sP)
+        gc = loadGroupCat(sP=sP,/skipIDs)
       
         ; load radially stacked results
         rs = cosmoTracerVel_StackGroupsRad(sP=sP,massBinLog=massBinLog,hIDs=haloIDs,stars=stars)

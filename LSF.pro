@@ -1,28 +1,29 @@
 ; LSF.pro
 ; automation and queue job related
-; dnelson apr.2012
+; dnelson jul.2012
 
 ; makeArepoFoFBsub(): write bsub file to invoke FoF/Subfind group finder post-processing
 
 pro makeArepoFoFBsub
 
   ; config
-  res = 512
-  run = 'arepo'
+  res = 256
+  run = 'tracer'
   ;f = '10'
   
   sP = simParams(res=res,run=run)
 
   snapZ = redshiftToSnapNum([6.0,5.0,4.0,3.0,2.0,1.0,0.0],sP=sP)
   print,snapZ
-  snapRange = [239,239,1]
+
+  snapRange = [313,314,1]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 16 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
+  nProcs    = 64 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
                  ;               256^3=4 (n32tile4 PartAllocFactor=2.5 MaxMemSize=7900)
                  ;               512^3=16 (n64tile4 PartAllocFactor=1.5 though n32tile4 ok until z=2)
-  ptile     = 1 ; span[ptile=X]
+  ptile     = 4 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
   excludeHosts = ['hero2402'] ;leave empty otherwise
@@ -51,7 +52,7 @@ pro makeArepoFoFBsub
     
     ; write header
     printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q nancy'
+    printf,lun,'#BSUB -q keck'
     printf,lun,'#BSUB -J fof_' + str(snap) + ''
     printf,lun,'#BSUB -n ' + str(nProcs)
     printf,lun,'#BSUB -R "' + selectStr + 'span[ptile=' + str(ptile) + ']"' ;rusage[mem=31000]

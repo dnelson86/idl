@@ -1398,8 +1398,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   units = getUnits()
   
   ; config
-  nNGB   = 32  ; neighbor search in CalcTHVal
-  padFac = 4.0 ; times r_vir maximum search radius
+  nNGB = 32  ; neighbor search in CalcTHVal
   
   ; healpix resolution parameter, 8=768, 16~3k, 32~12k, 64~50k, 128~200k, 256~750k, 512~3M
   if ~keyword_set(Nside) then Nside = 64
@@ -1407,6 +1406,8 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   ; r/r_vir list of shells to compute
   if ~keyword_set(radFacs) then $
     radFacs = [0.01,0.05,0.1,0.25,0.5,0.75,0.9,1.0,1.1,1.25,1.5,1.75,2.0]
+    
+  padFac = 2.0*max(radFacs) ; times r_vir maximum search radius  
     
   if ~keyword_set(valName) then message,'Error: Must specify valName'
     
@@ -1426,18 +1427,16 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   Npx      = nside2npix(Nside)
   nRadFacs = n_elements(radFacs)
   
-  if padFac lt 1.9*max(radFacs) then message,'Error: Suggest increasing padFac.'
-  
   ; "radial mass flux" as density * radial velocity (area normalization / r^2 sphere factor omitted)
   ; instead of estimating this value on each particle and then tophat smoothing, we use the
   ; estimates of each avaiable already on each point on the sphere
   if valName eq 'radmassflux' then begin
-    if n_elements(subgroupIDs) gt 1 then message,'This makes little sense right now.'
     hsv_dens   = haloShellValue(sP=sP,partType=partType,valName='density',subgroupIDs=subgroupIDs,$
                                 Nside=Nside,radFacs=radFacs,cutSubS=cutSubS)
     hsv_radvel = haloShellValue(sP=sP,partType=partType,valName='radvel',subgroupIDs=subgroupIDs,$
                                 Nside=Nside,radFacs=radFacs,cutSubS=cutSubS)
                                 
+    if n_elements(subgroupIDs) gt 1 then message,'Computed and saved, to return radmassflux request only one halo.'                       
     hsv_dens.valName = 'radmassflux'
     hsv_dens.value = alog10(hsv_dens.value * units.UnitMass_in_Msun) * (hsv_radvel.value * units.kmS_in_kpcYr)
     hsv_dens.value *= 1e6 ; Msun / kpc^2 / year  -->  Msun / kpc^2 / Myr
@@ -1527,6 +1526,15 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   
   ; loop over each requested halo
   foreach subgroupID,subgroupIDs do begin
+    ; skip if this halo exists
+    saveFilename = sP.derivPath+'hShells/hShells.'+partType+'.'+valName+'.'+sP.savPrefix+str(sP.res)+csTag+$
+                   '.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+str(subgroupID)+'.'+str(n_elements(radFacs)) + '.sav'
+
+    if file_test(saveFilename) then begin
+      print,'Skipping: ',subgroupID
+      continue
+    endif
+
     ; find halo position and virial radius
     cenPos = sgpos[*,subgroupID]
     rVir   = gc.group_r_crit200[gc.subgroupGrNr[subgroupID]]
@@ -1709,10 +1717,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       posvalwt = [posval,weights]
       r.value = CalcTHVal(posvalwt,sphereXYZ,ndims=3,nNGB=nNGB,thMode=thMode,boxSize=sP.boxSize,/weighted)
     endelse
-    
-    saveFilename = sP.derivPath+'hShells/hShells.'+partType+'.'+valName+'.'+sP.savPrefix+str(sP.res)+csTag+$
-                   '.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+str(subgroupID)+'.'+str(n_elements(radFacs)) + '.sav'
-  
+      
     save,r,filename=saveFilename
     print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
     

@@ -459,7 +459,7 @@ function accretionTraj, sP=sP, getVel=getVel
     ; create a gcIndOrig for the tracers
     gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,$
                                      child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc}) 
-                                     
+         
     galcat = !NULL ; not used past this point
     
     ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)

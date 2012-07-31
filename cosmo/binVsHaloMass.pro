@@ -1,6 +1,6 @@
 ; plotVsHaloMass.pro
 ; gas accretion project - bin quantities as a function of halo mass
-; dnelson may.2012
+; dnelson jul.2012
 
 ; haloMassBinAngMom(): bin angular momentum for accreting gas as a function of parent halo mass
 
@@ -229,7 +229,8 @@ function haloMassBinAngMom, sP=sP, sgSelect=sgSelect, accMode=accMode
   endfor ;i
 
   ; debug plot
-  start_PS,sP.plotPath + 'angmom.histos.all.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  if 0 then begin
+  start_PS,sP.plotPath + 'angmom.histos.all.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     binsize = 0.1 & strings = []
     cgPlot,[0],[0],/nodata,xrange=[1,6],yrange=[0.001,1.0],/ylog,/ys,/xs,$
       xtitle=textoidl("log ( j ) [kpc km/s]"),ytitle="Fraction"
@@ -260,7 +261,7 @@ function haloMassBinAngMom, sP=sP, sgSelect=sgSelect, accMode=accMode
     legend,strings,textcolors=getColor([0,1,2,3,4,5,6],/name),box=0,/top,/left
   end_PS
   
-  start_PS,sP.plotPath + 'angmom.histos.cold.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  start_PS,sP.plotPath + 'angmom.histos.cold.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     binsize = 0.1 & strings = []
     cgPlot,[0],[0],/nodata,xrange=[1,6],yrange=[0.001,1.0],/ylog,/ys,/xs,$
       xtitle=textoidl("log ( j ) [kpc km/s]"),ytitle="Fraction"
@@ -291,7 +292,7 @@ function haloMassBinAngMom, sP=sP, sgSelect=sgSelect, accMode=accMode
     legend,strings,textcolors=getColor([0,1,2,3,4,5,6],/name),box=0,/top,/left
   end_PS
   
-  start_PS,sP.plotPath + 'angmom.histos.hot.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  start_PS,sP.plotPath + 'angmom.histos.hot.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     binsize = 0.1 & strings = []
     cgPlot,[0],[0],/nodata,xrange=[1,6],yrange=[0.001,1.0],/ylog,/ys,/xs,$
       xtitle=textoidl("log ( j ) [kpc km/s]"),ytitle="Fraction"
@@ -321,6 +322,7 @@ function haloMassBinAngMom, sP=sP, sgSelect=sgSelect, accMode=accMode
     
     legend,strings,textcolors=getColor([0,1,2,3,4,5,6],/name),box=0,/top,/left
   end_PS
+  endif ;0
   
   return,binnedVals
 end
@@ -541,7 +543,8 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
   endfor ;i
 
   ; debug plot
-  start_PS,sP.plotPath + 'accdt.histos.all.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  if 0 then begin
+  start_PS,sP.plotPath + 'accdt.histos.all.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     binsize = 0.01 & strings = []
     cgPlot,[0],[0],/nodata,xrange=[0.0,0.25],yrange=[0.0001,1.1],/ylog,/ys,/xs,$
       xtitle=textoidl("\Delta t_{acc} / \tau_{circ}"),ytitle="Fraction"
@@ -567,7 +570,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
     legend,strings,textcolors=getColor([1,2,3,4,5,6],/name),box=0,/top,/right
   end_PS
   
-  start_PS,sP.plotPath + 'accdt.histos.cold.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  start_PS,sP.plotPath + 'accdt.histos.cold.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     binsize = 0.01 & strings = []
     cgPlot,[0],[0],/nodata,xrange=[0.0,0.25],yrange=[0.0001,1.1],/ylog,/ys,/xs,$
       xtitle=textoidl("\Delta t_{acc} / \tau_{circ}"),ytitle="Fraction"
@@ -594,7 +597,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
     legend,strings,textcolors=getColor([1,2,3,4,5,6],/name),box=0,/top,/right
   end_PS
   
-  start_PS,sP.plotPath + 'accdt.histos.hot.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  start_PS,sP.plotPath + 'accdt.histos.hot.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     binsize = 0.01 & strings = []
     cgPlot,[0],[0],/nodata,xrange=[0.0,0.25],yrange=[0.0001,1.1],/ylog,/ys,/xs,$
       xtitle=textoidl("\Delta t_{acc} / \tau_{circ}"),ytitle="Fraction"
@@ -620,6 +623,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
     
     legend,strings,textcolors=getColor([1,2,3,4,5,6],/name),box=0,/top,/right
   end_PS
+  endif ;0
 
   return,binnedVals
   
@@ -632,7 +636,7 @@ function haloMassBinModeMasses, sP=sP, sgSelect=sgSelect, accMode=accMode, KDE=K
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
 
-  TcutVals = [5.3,5.4,5.5,5.6,5.7] ; for constant threshold
+  TcutVals = [5.3,5.5,5.7] ;[5.3,5.4,5.5,5.6,5.7] ; for constant threshold
   xrange   = [10.0,12.5] ; mass bin range
   
   logMassBinSize = 0.2 ;/ (sP.res/128)
@@ -801,11 +805,27 @@ function haloMassBinAccRate, sP=sP, sgSelect=sgSelect, accMode=accMode, radInd=r
   print,timeWindow/1e6,' Myr'
 
   ; config
-  TcutVals = [5.3,5.4,5.5,5.6,5.7] ; for constant threshold
-  TvirVals = [1.1,1.0,0.9,0.75,0.5] ; for Tviracc threshold
+  TcutVals = [5.3,5.5,5.7] ;[5.3,5.4,5.5,5.6,5.7] ; for constant threshold
+  TvirVals = [1.1,1.0,0.8,0.4] ;[1.1,1.0,0.9,0.75,0.5,0.3] ; for Tviracc threshold
   
   nCuts = n_elements(TcutVals)
   nVirs = n_elements(TvirVals)
+  
+  ; check if save exists
+  saveTag = ''
+  if sP.trMCPerCell eq -1 then saveTag = '.trVel'
+  if sP.trMCPerCell gt 0 then  saveTag = '.trMC'
+  if sP.trMCPerCell eq 0 then  saveTag = '.SPH'
+  
+  saveFilename = sP.derivPath + 'binAR' + saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.cut' + str(nCuts) + '.vir' + str(nVirs) + '.' + sgSelect + '.' + accMode + $
+    '.r' + str(radInd) + '.sav'
+  
+  ; results exist, return
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,r
+  endif   
   
   xrange = [9.5,12.6]
   
@@ -864,7 +884,7 @@ function haloMassBinAccRate, sP=sP, sgSelect=sgSelect, accMode=accMode, radInd=r
                  gmem_num     : lonarr(n_elements(mt.galcatIDList))          }
                
   ; loop over all tracked subgroups (galaxy)
-  for i=0,n_elements(hist_gal)-1 do begin
+  for i=0L,n_elements(hist_gal)-1 do begin
     if hist_gal[i] gt 0 then begin
       ; list of indices of galaxy gas particles in this subgroup
       loc_inds_gal = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
@@ -908,7 +928,7 @@ function haloMassBinAccRate, sP=sP, sgSelect=sgSelect, accMode=accMode, radInd=r
   endfor
   
   ; loop over all tracked subgroups (groupmem)
-  for i=0,n_elements(hist_gmem)-1 do begin
+  for i=0L,n_elements(hist_gmem)-1 do begin
     if hist_gmem[i] gt 0 then begin
       ; list of indices of galaxy gas particles in this subgroup
       loc_inds_gmem = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
@@ -988,8 +1008,10 @@ function haloMassBinAccRate, sP=sP, sgSelect=sgSelect, accMode=accMode, radInd=r
   ;logMassBinCen = logMassBinCen[0:-2] ; remove last
   
   ; manual
-  logMassBins=[9.5,10.0,10.15,10.3,10.45,10.6,10.75,10.9,11.0,$
-               11.1,11.25,11.5,11.75,12.0,12.25,13.0]
+  ;logMassBins=[9.5,10.0,10.15,10.3,10.45,10.6,10.75,10.9,11.0,$
+  ;             11.1,11.25,11.5,11.75,12.0,12.25,13.0]
+  logMassBins=[9.5,10.0,10.1,10.2,10.3,10.4,10.5,10.6,10.7,10.8,10.9,11.0,$
+               11.1,11.25,11.5,11.75,11.9,13.1]
   logMassNBins = n_elements(logMassBins)-1
   logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
   logMassBinCen = logMassBinCen[0:-2]
@@ -1073,7 +1095,8 @@ function haloMassBinAccRate, sP=sP, sgSelect=sgSelect, accMode=accMode, radInd=r
 
   hMasses = codeMassToLogMsun(mt.hMass[0,*])  
   
-  start_PS, sP.plotPath + 'accRateRaw.const.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+$
+  if 0 then begin
+  start_PS, sP.plotPath + 'accRateRaw.const.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+$
     '_tw'+string(timeWindow/1e6,format='(i4)')+'.eps'
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
       ytitle="Const Accretion Rate [Msun/yr]",xtitle=textoidl("log ( M_{halo} ) [_{ }M_{sun }]")
@@ -1090,7 +1113,7 @@ function haloMassBinAccRate, sP=sP, sgSelect=sgSelect, accMode=accMode, radInd=r
     legend,['cold gal','hot gal','cold gmem','hot gmem'],textcolor=getColor([1,3,4,5],/name),box=0,/top,/left
   end_PS
   
-  start_PS, sP.plotPath + 'accRateRaw.tvircur.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+$
+  start_PS, sP.plotPath + 'accRateRaw.tvircur.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+$
     '_tw'+string(timeWindow/1e6,format='(i4)')+'.eps'
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
       ytitle="Tvircur Accretion Rate [Msun/yr]",xtitle=textoidl("log ( M_{halo} ) [_{ }M_{sun }]")
@@ -1107,7 +1130,7 @@ function haloMassBinAccRate, sP=sP, sgSelect=sgSelect, accMode=accMode, radInd=r
     legend,['cold gal','hot gal','cold gmem','hot gmem'],textcolor=getColor([1,3,4,5],/name),box=0,/top,/left
   end_PS
   
-  start_PS, sP.plotPath + 'accRateRaw.tviracc.'+accMode+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+$
+  start_PS, sP.plotPath + 'accRateRaw.tviracc.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+$
     '_tw'+string(timeWindow/1e6,format='(i4)')+'.eps'
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
       ytitle="Tviracc Accretion Rate [Msun/yr]",xtitle=textoidl("log ( M_{halo} ) [_{ }M_{sun }]")
@@ -1123,10 +1146,16 @@ function haloMassBinAccRate, sP=sP, sgSelect=sgSelect, accMode=accMode, radInd=r
     cgPlot,logMassBinCen,hotMedian.gmem_tviracc[tVirInd,*],color=getColor(5),line=0,/overplot
     legend,['cold gal','hot gal','cold gmem','hot gmem'],textcolor=getColor([1,3,4,5],/name),box=0,/top,/left
   end_PS
+  endif ;0
   
   r = {coldMedian:coldMedian,hotMedian:hotMedian,totalMedian:totalMedian,$
        xrange:xrange,radInd:radInd,logMassBins:logMassBins,logMassBinCen:logMassBinCen,$
        TcutVals:TcutVals,TvirVals:TvirVals}
+       
+  ; save
+  save,r,filename=saveFilename
+  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
+  
   return,r
 end
 
@@ -1137,11 +1166,26 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  TcutVals = [5.3,5.4,5.5,5.6,5.7] ; for constant threshold
-  TvirVals = [1.1,1.0,0.9,0.75,0.5] ; for Tviracc threshold
+  TcutVals = [5.3,5.5,5.7] ;[5.3,5.4,5.5,5.6,5.7] ; for constant threshold
+  TvirVals = [1.1,1.0,0.8,0.4] ;[1.1,1.0,0.9,0.75,0.5,0.3] ; for Tviracc threshold
   
   nCuts = n_elements(TcutVals)
   nVirs = n_elements(TvirVals)
+  
+  ; check if save exists
+  saveTag = ''
+  if sP.trMCPerCell eq -1 then saveTag = '.trVel'
+  if sP.trMCPerCell gt 0 then  saveTag = '.trMC'
+  if sP.trMCPerCell eq 0 then  saveTag = '.SPH'
+  
+  saveFilename = sP.derivPath + 'binCF' + saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.cut' + str(nCuts) + '.vir' + str(nVirs) + '.' + sgSelect + '.' + accMode + '.sav'
+  
+  ; results exist, return
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,r
+  endif  
   
   minNum = 6
   xrange = [9.5,12.5]
@@ -1189,7 +1233,7 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
                gmem_num     : lonarr(n_elements(mt.galcatIDList))          }
   
   ; loop over all tracked subgroups (galaxy, Tmax)
-  for i=0,n_elements(hist_gal)-1 do begin
+  for i=0L,n_elements(hist_gal)-1 do begin
     if hist_gal[i] gt 0 then begin
       ; list of indices of galaxy gas particles in this subgroup
       loc_inds_gal = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
@@ -1220,7 +1264,7 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
   endfor
   
   ; loop over all tracked subgroups (groupmem, Tmax)
-  for i=0,n_elements(hist_gmem)-1 do begin
+  for i=0L,n_elements(hist_gmem)-1 do begin
     if hist_gmem[i] gt 0 then begin
       ; list of indices of groupmem gas particles in this subgroup
       loc_inds_gmem = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
@@ -1275,7 +1319,7 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
                    gmem_num     : lonarr(n_elements(mt.galcatIDList))          }
   
   ; loop over all tracked subgroups (galaxy, Tcur)
-  for i=0,n_elements(hist_gal)-1 do begin
+  for i=0L,n_elements(hist_gal)-1 do begin
     if hist_gal[i] gt 0 then begin
       ; list of indices of galaxy gas particles in this subgroup
       loc_inds_gal   = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
@@ -1310,7 +1354,7 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
   endfor  
   
   ; loop over all tracked subgroups (groupmem, Tcur)
-  for i=0,n_elements(hist_gmem)-1 do begin
+  for i=0L,n_elements(hist_gmem)-1 do begin
     if hist_gmem[i] gt 0 then begin
       ; list of indices of groupmem gas particles in this subgroup
       loc_inds_gmem   = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
@@ -1365,8 +1409,10 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
   ;logMassBinCen = logMassBinCen[0:-2] ; remove last
   
   ; manual
-  logMassBins=[9.5,10.0,10.15,10.3,10.45,10.6,10.75,10.9,11.0,$
-               11.1,11.25,11.5,11.75,12.0,12.25,13.0]
+  ;logMassBins=[9.5,10.0,10.15,10.3,10.45,10.6,10.75,10.9,11.0,$
+  ;             11.1,11.25,11.5,11.75,12.0,12.25,13.0]
+  logMassBins=[9.5,10.0,10.1,10.2,10.3,10.4,10.5,10.6,10.7,10.8,10.9,11.0,$
+               11.1,11.25,11.5,11.75,11.9,13.1]
   logMassNBins = n_elements(logMassBins)-1
   logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
   logMassBinCen = logMassBinCen[0:-2]
@@ -1450,6 +1496,11 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
   
   r = {coldFrac:coldFrac,coldFrac_cur:coldFrac_cur,medianVals:medianVals,medianVals_cur:medianVals_cur,$
        logMassBinCen:logMassBinCen,xrange:xrange,TcutVals:TcutVals,TvirVals:TvirVals}
+       
+  ; save
+  save,r,filename=saveFilename
+  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
+  
   return, r
   
 end

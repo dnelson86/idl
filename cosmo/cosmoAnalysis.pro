@@ -13,8 +13,11 @@ function galaxyCat, sP=sP
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  galcut_T   = 6.0
-  galcut_rho = 0.25
+  radcut_rvir = 0.0 ; fraction of rvir as maximum for gal, minimum for gmem (zero to disable)
+  if sP.run eq 'gadget_rad' or sP.run eq 'tracernew_rad' then radcut_rvir = 0.15
+  radcut_out  = 1.5  ; fraction of rvir as maximum for gmem
+  galcut_T    = 6.0
+  galcut_rho  = 0.25
 
   ; if snap specified, run only one snapshot (and/or just return previous results)
   if (sP.snap ne -1) then begin
@@ -51,13 +54,15 @@ function galaxyCat, sP=sP
     ; load ids of particles in all subfind groups
     gc = loadGroupCat(sP=sP,/readIDs)
     gcPIDs = gcPIDList(gc=gc,select='all',partType='gas')
-    
+
     ; load gas ids and match to catalog
     ids  = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
     match,gcPIDs,ids,gc_ind,ids_ind,count=countMatch,/sort
     ids_ind = ids_ind[sort(gc_ind)] ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs
                                     ; need this if we want ids[ids_ind], temp[ids_ind], etc to be
                                     ; in the same order as the group catalog id list
+
+    if countMatch ne n_elements(gcPIDs) then message,'Error: Failed to locate all gcPIDs in gas ids.'
 
     gcPIDs = !NULL
     gc_ind = !NULL
@@ -83,10 +88,66 @@ function galaxyCat, sP=sP
     a3inv = 1.0 / (scalefac*scalefac*scalefac)
     dens *= a3inv
     
-    w = where(alog10(temp) - galcut_rho * alog10(dens) lt galcut_T,$
-              countCut,comp=wComp,ncomp=countComp)
+    ; (rho,temp) cut
+    wGal = where(alog10(temp) - galcut_rho * alog10(dens) lt galcut_T,$
+                 countGal,comp=wGmem,ncomp=countGmem)
 
-    if (countCut eq 0 or countComp eq 0) then begin
+    ; calculate radial distances of gas elements to primary parents
+    if radcut_rvir ne 0.0 then begin
+      print,'GALCAT: ENFORCING RADIAL CUT!'
+      
+      pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+      pos = pos[*,ids_ind]
+      
+      ; find group center positions with most bound particles for each group
+      subgroupCen = subgroupPosByMostBoundID(sP=sP)
+  
+      ; create PRIMARY parent -subgroup- ID list
+      if gc.nSubgroupsTot ne total(gc.groupNsubs,/int) then message,'Error: Subgroup counts mismatch.'
+      parIDs = lonarr(gc.nSubgroupsTot)
+      offset = 0L
+      
+      for gID=0L,gc.nGroupsTot-1 do begin
+        if gc.groupNSubs[gID] gt 0 then begin
+          parIDs[offset:offset+gc.groupNSubs[gID]-1] = cmreplicate(gc.groupFirstSub[gID],gc.groupNSubs[gID])
+          offset += gc.groupNSubs[gID]
+        endif
+      endfor
+  
+      ; replicate group parent IDs (of PRIMARY/parent) to each member particle
+      sgParIDs  = lonarr(total(gc.subgroupLenType[0,*],/int))
+      offset = 0L
+      
+      for sgID=0L,gc.nSubgroupsTot-1 do begin
+        if gc.subgroupLenType[0,sgID] gt 0 then begin
+          sgParIDs[offset:offset+gc.subgroupLenType[0,sgID]-1] = $
+            cmreplicate(parIDs[sgID],gc.subgroupLenType[0,sgID])
+          offset += gc.subgroupLenType[0,sgID]
+        endif
+      endfor
+      
+      if offset ne n_elements(sgParIDs) then message,'Error: Bad parent ID replication.'
+      
+      ; calulate radial vector of gas from group center (PRI)
+      rad_pri  = periodicDists(subgroupCen[*,sgParIDs],pos,sP=sP)
+      par_rvir = gc.group_r_crit200[gc.subgroupGrNr[sgParIDs]] ; normalize by fof parent rvir
+
+      ; fof has rvir=0 (no SO values) if zero subgroups, marginal overdensity, or low total mass
+      ; these are low mass halos which we aren't going to plot anyways
+      w = where(par_rvir eq 0.0,count)
+      if count gt 0 then begin
+        par_rvir[w] = 1e-8 ; remove with outer radial cut
+      endif
+
+      rad_pri /= par_rvir
+
+      ; override (rho,temp) cut with (rho,temp,rad) cut
+      wGal  = where(alog10(temp) - galcut_rho*alog10(dens) lt galcut_T and rad_pri lt radcut_rvir,countGal)
+      wGmem = where(alog10(temp) - galcut_rho*alog10(dens) ge galcut_T and $
+                     rad_pri ge radcut_rvir and rad_pri le radcut_out,countGmem)
+    endif
+
+    if countGal eq 0 or countGmem eq 0 then begin
       print,'Warning: Empty galaxy cut or comp. Skipping: ' + strmid(saveFilename1,strlen(sP.derivPath))
       continue
     endif
@@ -95,15 +156,15 @@ function galaxyCat, sP=sP
     dens = !NULL
     
     ; make subsets of ids matching galaxy cut and complement
-    ids_groupmem = ids[wComp]
-    ids = ids[w]    
+    ids_groupmem = ids[wGmem]
+    ids = ids[wGal]  
 
     ; construct group member catalog
     if (not file_test(saveFilename2)) then begin
     
-      groupmemLen = ulonarr(gc.nSubgroupsTot)
-      groupmemOff = ulonarr(gc.nSubgroupsTot)
-      groupmemIDs = ulonarr(n_elements(ids_groupmem))
+      groupmemLen = lonarr(gc.nSubgroupsTot)
+      groupmemOff = lonarr(gc.nSubgroupsTot)
+      groupmemIDs = lon64arr(n_elements(ids_groupmem))
       
       nextOff = 0UL
       
@@ -127,25 +188,21 @@ function galaxyCat, sP=sP
         
       end
   
-      ; debug: make sure all gas particles were found in the group catalog
+      ; make sure all gas particles were found in the group catalog
       match,ids_groupmem,groupmemIDs,ind1,ind2,count=countCheck
-      if (countCheck ne n_elements(ids_groupmem)) then begin
-        print,'Uhoh, check2.',countCheck,n_elements(ids_groupmem)
-        nuniq = n_elements(uniq(ids_groupmem[sort(ids_groupmem)]))
-        stop
-      endif
+      if countCheck ne n_elements(ids_groupmem) then message,'Error: Failed to locate all gmem.'
 
       ; save group membership catalog
       save,groupmemLen,groupmemOff,groupmemIDs,filename=saveFilename2    
-      print,'Saved: '+strmid(saveFilename2,strlen(sP.derivPath))+' ['+str(countComp)+'/'+str(countMatch)+']'    
+      print,'Saved: '+strmid(saveFilename2,strlen(sP.derivPath))+' ['+str(countGmem)+'/'+str(countMatch)+']'    
     
     endif
 
     ; construct galaxy catalog
     if (not file_test(saveFilename1)) then begin
-      galaxyLen = ulonarr(gc.nSubgroupsTot)
-      galaxyOff = ulonarr(gc.nSubgroupsTot)
-      galaxyIDs = ulonarr(n_elements(ids))
+      galaxyLen = lonarr(gc.nSubgroupsTot)
+      galaxyOff = lonarr(gc.nSubgroupsTot)
+      galaxyIDs = lon64arr(n_elements(ids))
       
       nextOff = 0UL
       
@@ -169,9 +226,13 @@ function galaxyCat, sP=sP
         
       end
       
+      ; make sure all gas particles were found in the group catalog
+      match,ids,galaxyIDs,ind1,ind2,count=countCheck
+      if countCheck ne n_elements(ids) then message,'Error: Failed to locate all gal.'
+
       ; save galaxy catalog
       save,galaxyLen,galaxyOff,galaxyIDs,filename=saveFilename1
-      print,'Saved: '+strmid(saveFilename1,strlen(sP.derivPath))+' ['+str(countCut)+'/'+str(countMatch)+']'
+      print,'Saved: '+strmid(saveFilename1,strlen(sP.derivPath))+' ['+str(countGal)+'/'+str(countMatch)+']'
     endif
 
   endfor ;snapRange

@@ -1,6 +1,6 @@
 ; mergerTree.pro
 ; cosmological halo tracking / merger tree through time
-; dnelson mar.2012
+; dnelson jun.2012
 
 ; mergerTree(): construct simplified merger tree for tracking halos/subhalos through time across snaps
 ; 
@@ -13,10 +13,9 @@ function mergerTree, sP=sP, makeNum=makeNum
 
   ; config
   partMatchFracTol = 0.6   ; 60% minimum match between particle members of the specified type
-  massDiffFracTol  = 0.2   ; 20% agreement in total mass or better
-  positionDiffTol  = 200.0 ; 200kpc maximum separation
-  minSubgroupLen   = 64    ; do not try to match subgroups with less than N total particles
-                           ; 128,256=20 512=64 (for speed)
+  massDiffFracTol  = 0.4   ; 40% agreement in total mass or better
+  positionDiffTol  = 100.0 ; 200kpc maximum separation
+  minSubgroupLen   = 100   ; do not try to match subgroups with less than N total particles (for speed)
 
   ptNum = partTypeNum('dm') ; use dark matter particles (only) for matching
 
@@ -76,17 +75,17 @@ function mergerTree, sP=sP, makeNum=makeNum
 
     partIDs_cur = !NULL ; no longer used
     
-    curSGEndCum = 0L
-    indCount = 0L
+    curSGEndCum = 0LL
+    indCount = 0LL
     
     ; find parent of each current subgroup in "previous" catalog: loop over each current subgroup
-    for i=0L,gcCur.nSubgroupsTot-1 do begin
+    for i=0LL,gcCur.nSubgroupsTot-1 do begin
       
       ; find subset of matched indices of this current subgroup in all "previous" subgroups
       if gcCur.subgroupLenType[ptNum,i] eq 0 then continue
       
       ; METHOD A. one touch per element walk
-      countTot = 0L
+      countTot = 0LL
       while (indCount+countTot) lt matchCount do begin
         if cur_ind[indCount+countTot] ge curSGEndCum+gcCur.subgroupLenType[ptNum,i] then break
         countTot += 1
@@ -114,13 +113,13 @@ function mergerTree, sP=sP, makeNum=makeNum
       if gcCur.subgroupLen[i] lt minSubgroupLen then continue
       
       ; create an array to store the number of particles found in each "previous" subgroup
-      prevSGIndex  = 0L
+      prevSGIndex  = 0LL
       prevSGEndCum = ulong(gcPrev.subgroupLenType[ptNum,0])
       partCount    = fltarr(gcPrev.nSubgroupsTot)
       
       ; walk through matched indices in cur_ind (and so prev_ind) and assign counts to each 
       ; subgroup owner in the "previous" snapshot
-      for j=0L,countTot-1 do begin
+      for j=0LL,countTot-1 do begin
         if pInds[j] lt prevSGEndCum then begin
           ; this particle is within the subgroupOffset for this prevSGIndex
           partCount[prevSGIndex] += 1.0
@@ -147,6 +146,11 @@ function mergerTree, sP=sP, makeNum=makeNum
 
       if massDiffFrac lt massDiffFracTol and positionDiff lt positionDiffTol and $
          maxFrac gt partMatchFracTol then Parent[i] = max_index
+         
+      ; DEBUG: what matches are we loosing?
+      ;if massDiffFrac gt massDiffFracTol or positionDiff gt positionDiffTol or $
+      ;  maxFrac lt partMatchFracTol and gcCur.subgroupMass[i] ge 1.0 then $
+      ;  print,codeMassToLogMsun(gcCur.subgroupMass[i]),maxFrac,massDiffFrac,positionDiff
          
       ; DEBUG: verify
       ;debug_curIDs  = gcCur.IDs [gcCur.subgroupOffsetType[ptNum,i]:$
@@ -291,10 +295,13 @@ function mergerTreeSubset, sP=sP, verbose=verbose
     gcIDs[wNoPar] = 0 ; from this point on, will contain incorrect values, must use noParMask to select
     
     wPar = where(noParMask eq 0B,nleft)
+    wPar10 = where(noParMask eq 0B and hMass[0,*] ge 1.0,nleft10)
+    tot10 = where(hMass[0,*] ge 1.0,ntot10)
     
     if keyword_set(verbose) then $
       print,' ['+string(sP.snap,format='(i3)')+'] remaining: '+string(nleft,format='(i5)')+' ('+$
-        string(float(nleft)/n_elements(gcIDs)*100,format='(f4.1)')+'%)
+        string(float(nleft)/n_elements(gcIDs)*100,format='(f4.1)')+'%) massive: '+string(nleft10,format='(i5)')+' ('+$
+        string(float(nleft10)/ntot10*100,format='(f4.1)')+'%)
      
     ; store
     times[i] = h.time
@@ -402,6 +409,9 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
     
     gas_ids = !NULL
     
+    if countGal ne n_elements(mt.galcatSub.gal) or countGmem ne n_elements(mt.galcatSub.gmem) then $
+      message,'Error: Check.'
+    
     ; locate tracer children (indices) of gas id subsets
     galcat_gal_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
     galcat_gmem_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
@@ -433,7 +443,49 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
   endif
   
   if sP.trMCPerCell eq -1 then begin
-    message,'todo'
+    ; load gas ids
+    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+
+    ; match galcat IDs to gas_ids
+    match,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+    inds_gal = ids_gal_ind[sort(galcat_ind)]
+    
+    match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+    inds_gmem = ids_gmem_ind[sort(galcat_ind)]
+    
+    if countGal ne n_elements(mt.galcatSub.gal) or countGmem ne n_elements(mt.galcatSub.gmem) then $
+      message,'Error: Failed to locate all of galcat in gas_ids (overflow64?).'
+
+    gas_ids = !NULL
+    
+    ; locate tracer children (indices) of gas id subsets
+    galcat_gal_trids  = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gal,child_counts=galcat_gal_cc)
+    galcat_gmem_trids = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gmem,child_counts=galcat_gmem_cc)
+    
+    inds_gal  = !NULL
+    inds_gmem = !NULL
+    
+    ; convert tracer children indices to tracer IDs at this zMin if we are returning them
+    if keyword_set(galcat_gal_trids) then begin
+      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
+      galcat_gal_trids  = tr_ids[galcat_gal_trids]
+      galcat_gmem_trids = tr_ids[galcat_gmem_trids]
+      tr_ids   = !NULL
+    endif
+    
+    ; create a gcIndOrig for the tracers
+    gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,$
+                                     child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc}) 
+                  
+    ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
+    if keyword_set(compactMtS) then begin
+      placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
+      gcIndOrigTr.gal = placeMap[gcIndOrigTr.gal-minid]
+      gcIndOrigTr.gmem = placeMap[gcIndOrigTr.gmem-minid]
+      placeMap = !NULL
+    endif
+    
+    return,gcIndOrigTr
   endif
 
 end

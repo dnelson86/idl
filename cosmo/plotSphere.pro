@@ -439,7 +439,7 @@ pro plotHaloShellValueComp
                       ;z2.301 g2289 a2034
                       ;z2.314 g981 a927
   
-  radInds  = [3]        ; pre-saved radFacs (3=0.25, 4=0.5, 7=rvir)
+  radInds  = [7]        ; pre-saved radFacs (3=0.25, 4=0.5, 7=rvir)
   rot_ang  = [0,45]      ; [lat,long] center in deg (left,up)
   cutSubS  = 1          ; cut satellite substructures out from halo
   
@@ -463,12 +463,12 @@ pro plotHaloShellValueComp
                "log ( Angular Momentum ) [kpc km/s]"]
                
   ; rvir
-  ;ranges = list([4.3,6.0],[-1.0,1.5],[1.0,3.0],[-1.0,1.0],$
-  ;              [-400,400],[6.0,9.0],[0.0,1.0],[3.8,5.0]) ;dm[-0.5,1.0],[0.0,200.0]
+  ranges = list([4.3,6.5],[-1.0,1.5],[2.0,3.0],[-1.0,1.0],$
+                [-400,400],[6.0,9.0],[0.0,1.0],[3.8,5.0]) ;dm[-0.5,1.0],[0.0,200.0]
         
   ; 0.5/0.25 rvir
-  ranges = list([4.3,7.0],[-1.0,1.5],[3.0,4.5],[-1.5,1.5],$
-                [-400,400],[6.0,9.0],[0.0,2.0],[3.5,4.5]) ;dm[-0.5,1.0],[100.0,300.0]
+  ;ranges = list([4.3,7.0],[-1.0,1.5],[3.0,4.5],[-1.5,1.5],$
+  ;              [-400,400],[6.0,9.0],[0.0,2.0],[3.5,4.5]) ;dm[-0.5,1.0],[100.0,300.0]
                
   ratioToMean = [0,1,0,0,0,0,0,0] ; plot value/mean(value) ratio
   plotLog     = [0,1,1,0,0,1,0,1] ; plot log(value)
@@ -581,64 +581,161 @@ pro plotHaloShellValueComp
   stop
 end
 
-; calcShellFrac
+; calcShellInfallFrac(): calculate angular covering fraction of infalling mass flux
 
-pro calcShellFrac
+function calcShellInfallFrac, sP=sP
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  redshift = 2
-  sP = simParams(res=512,run='gadget',redshift=float(redshift))  
-  
-  num = 100
-  
-  gc = loadGroupCat(sP=sP,/skipIDs)
-  priIDs = gcIDList(gc=gc,select='pri')
-  priMasses = codeMassToLogMsun(gc.subgroupMass[priIDs])
-  subgroupIDs = priIDs[0:num]
-  priMasses = priMasses[0:num]
-  
-  radInd      = 0     ; pre-saved radFacs
+  radFacs     = [0.25,0.5,1.0] ; fractions of the virial radius to save results
   cutSubS     = 1     ; cut satellite substructures out from halo
-
-  partType  = 'gas'
-  valName   = 'density'
-  threshVal = 10.0
+  minLogMass  = 10.0  ; minimum halo mass
+  partType    = 'gas'
+  valName     = 'radmassflux'
+  threshVal   = 0.0 ; strict inflow
   
-  frac = fltarr(n_elements(subgroupIDs))
+  ; check for existence of save
+  saveFilename = sP.derivPath + 'shellFrac.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.mm' + str(fix(minLogMass*10)) + '.cut' + str(cutSubS) + '.rad' + $
+    str(n_elements(radFacs)) + '.' + partType + '.' + valName + '.sav'
+    
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,r
+  endif
+  
+  ; load subgroup IDs
+  gc        = loadGroupCat(sP=sP,/skipIDs)
+  priIDs    = gcIDList(gc=gc,select='pri')
+  priMasses = codeMassToLogMsun(gc.subgroupMass[priIDs])
+  
+  w = where(priMasses ge minLogMass,count)
+  subgroupIDs = priIDs[w]
+  priMasses = priMasses[w]
+  
+  ; arrays
+  r = { fracInfall  : fltarr(n_elements(radFacs),n_elements(subgroupIDs))  ,$
+        subgroupIDs : subgroupIDs         ,$
+        priMasses   : priMasses           ,$
+        count       : count               ,$
+        radFacs     : radFacs             ,$
+        nRadFacs    : n_elements(radFacs) ,$
+        cutSubS     : cutSubS             ,$
+        minLogMass  : minLogMass          ,$
+        threshVal   : threshVal            }
 
+  ; interpolate all halos (and save)
+  ;hsv = haloShellValue(sP=sP,partType=partType,valName=valName,subgroupIDs=subgroupIDs,$
+  ;                     cutSubS=cutSubS,radFacs=radFacs)
+
+  print,'calculating...'
   foreach subgroupID,subgroupIDs,k do begin
-
+    if k mod 100 eq 0 then print,k
+    
     ; interpolate onto the shell (load)
     hsv = haloShellValue(sP=sP,partType=partType,valName=valName,subgroupIDs=[subgroupID],$
-                         cutSubS=cutSubS,radFacs=[1.0])
+                         cutSubS=cutSubS,radFacs=radFacs)
     
     ; data
-    healpix_data = reform( hsv.value[*,radInd] / mean(hsv.value[*,radInd]) )
-    
-    ; calculate sky covering fraction with log(rho/mean rho) > threshold
-    w = where(healpix_data ge threshVal, countAbove, ncomp=countBelow)
-    frac[k] = float(countAbove) / countBelow
-    
-    ;print,string(subgroupID,format='(i5)')+"  "+string(frac[k],format='(f5.3)')
-    ;print,median(hsv.value[*,radInd]),mean(hsv.value[*,radInd])        
+    for radInd=0,n_elements(radFacs)-1 do begin
+      healpix_data = reform(hsv.value[*,radInd])
+      
+      ; calculate sky covering fraction with log(rho/mean rho) > threshold
+      w = where(healpix_data ge threshVal, countAbove, ncomp=countBelow)
+      r.fracInfall[radInd,k] = float(countAbove) / hsv.nPx
+      
+      ;print,string(subgroupID,format='(i5)')+"  r="+string(radFacs[radInd],format='(f4.2)')+"  "+$
+      ;      string(r.fracInfall[radInd,k]*100,format='(f5.2)')+'%'
+    endfor
+       
   endforeach
   
-  ; plot
-  start_PS, sP.plotPath+'fracvsmass_'+partType+'-'+valName+'_z'+str(redshift)+'.eps'
+  ; save
+  save,r,filename=saveFilename
+  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
+  
+  return, r
+end
+
+; plotShellInfallFracComp(): compare arepo/gadget infall covering fraction vs halo mas
+
+pro plotShellInfallFracComp
+
+  sPg = simParams(res=512,run='gadget',redshift=2.0)
+  sPa = simParams(res=512,run='tracer',redshift=2.0)
+  
+  ffG = calcShellInfallFrac(sP=sPg)
+  ffA = calcShellInfallFrac(sP=sPa)
+  
+  ; red/blue as in Vogelsberger+
+  colorsA = [getColor24([255,200,200]),getColor24([255,100,100]),getColor24([255,0,0])] ; 128,256,512 AR
+  colorsG = [getColor24([200,200,255]),getColor24([100,100,255]),getColor24([0,0,255])] ; 128,256,512 GA
+  cInd = 2
+  
+  ; green/orange higher contrast
+  ;colorsA = [getColor24(['91'x,'e5'x,'9b'x]),getColor24(['12'x,'b2'x,'25'x]),getColor24(['03'x,'60'x,'0f'x])]
+  ;colorsG = [getColor24(['f6'x,'a1'x,'9c'x]),getColor24(['e6'x,'21'x,'17'x]),getColor24(['7b'x,'0a'x,'04'x])]
+  ;cInd = 1
+  
+  ; bin fractions into halo mass bins and make median lines
+  logMassBins=[9.5,10.0,10.1,10.2,10.3,10.4,10.5,10.6,10.7,10.8,10.9,11.0,$
+               11.1,11.25,11.5,11.75,11.9,13.1]
+  logMassNBins = n_elements(logMassBins)-1
+  logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
+  logMassBinCen = logMassBinCen[0:-2]
+  
+  medians = { gadget : fltarr(ffG.nRadFacs,logMassNBins) + !values.f_nan ,$
+              arepo  : fltarr(ffA.nRadFacs,logMassNBins) + !values.f_nan  }
+              
+  ; calculate median accretion rate in bins of halo mass
+  for i=0,logMassNbins-1 do begin
+
+    w = where(ffG.priMasses gt logMassBins[i] and ffG.priMasses le logMassBins[i+1],count)
+    if count gt 0 then for j=0,ffG.nRadFacs-1 do medians.gadget[j,i] = median(ffG.fracInfall[j,w])
+      
+    w = where(ffA.priMasses gt logMassBins[i] and ffA.priMasses le logMassBins[i+1],count)
+    if count gt 0 then for j=0,ffA.nRadFacs-1 do medians.arepo[j,i] = median(ffA.fracInfall[j,w])
+    
+  endfor  
+
+  ; debug plot (all points)
+  start_PS, sPg.plotPath+'fracvsmass.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+str(sPg.res)+'.'+str(sPg.snap)+'.eps'
     ; plot
-    xrange = minmax(priMasses)+[-0.2,0.2]
-    yrange = [0.0,max(frac)*1.1]
+    xrange = minmax(ffG.priMasses)+[-0.2,0.2]
+    yrange = [0.0,1.0]
     
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-      ytitle="Filamentarity",xtitle="log ( Halo Mass ) "+textoidl(" [M_{sun}]")
+      ytitle="Angular Covering Fraction of Infall",xtitle="log ( Halo Mass ) "+textoidl(" [M_{sun}]")
       
-    ;cgPlot,[0,0],yrange,line=0,color=cgColor('light gray'),/overplot
+    cgPlot,xrange,[0.5,0.5],line=0,color=cgColor('light gray'),/overplot
     
-    cgPlot,priMasses,frac,psym=4,color=getColor(0),/overplot    
+    for j=0,ffG.nRadFacs-1 do $
+      cgPlot,ffG.priMasses,ffG.fracInfall[j,*],psym=4,color=getColor(j),/overplot 
   end_PS
-  stop
+
+  ; plot
+  start_PS, sPg.plotPath+'infallFrac.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+str(sPg.res)+'.'+str(sPg.snap)+'.eps'
+    ; plot
+    xrange = [10.0,12.5]
+    yrange = [0.0,1.0]
+    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      ytitle="Angular Covering Fraction of Infall",xtitle=textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]")
+      
+    cgPlot,xrange,[0.5,0.5],line=0,color=cgColor('light gray'),/overplot
+    
+    for j=0,ffG.nRadFacs-1 do $
+      cgPlot,logMassBinCen,medians.gadget[j,*],line=j,color=colorsG[cInd],/overplot
+    for j=0,ffA.nRadFacs-1 do $
+      cgPlot,logMassBinCen,medians.arepo[j,*],line=j,color=colorsA[cInd],/overplot
+      
+    ; legends
+    strings = textoidl('r/r_{vir} = ')+['0.25','0.5','1.0']
+    legend,strings,linestyle=indgen(ffG.nRadFacs),linesize=0.25,box=0,/top,/left
+    legend,['gadget','arepo'],textcolor=[colorsG[cInd],colorsA[cInd]],box=0,/top,/right
+  end_PS
+
 end
 
 ; plotHaloShellDensMovie(): 
