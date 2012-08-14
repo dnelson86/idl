@@ -160,7 +160,7 @@ function gcIDList, sP=sP, gc=gc, select=select
   if (select eq 'pri') then begin
   
     ; "background"/"main subhalos"/"halos" only
-    for i=0UL,n_elements(gc.subgroupLen)-1 do begin
+    for i=0L,n_elements(gc.subgroupLen)-1 do begin
       if (gc.subgroupGrnr[i] eq prevGrNr) then begin
         prevGrNr = gc.subgroupGrnr[i]
       endif else begin
@@ -181,7 +181,7 @@ function gcIDList, sP=sP, gc=gc, select=select
   if (select eq 'sec') then begin
   
     ; "satellites"/"subhalos" only
-    for i=0UL,n_elements(gc.subgroupLen)-1 do begin
+    for i=0L,n_elements(gc.subgroupLen)-1 do begin
       if (gc.subgroupGrnr[i] ne prevGrNr) then begin
         prevGrNr = gc.subgroupGrnr[i]
       endif else begin
@@ -201,7 +201,7 @@ function gcIDList, sP=sP, gc=gc, select=select
   if (select eq 'all') then begin
   
     ; both primary and secondary
-    for i=0UL,n_elements(gc.subgroupLen)-1 do begin
+    for i=0L,n_elements(gc.subgroupLen)-1 do begin
     
       if (keyword_set(minNumPart)) then begin
         if (gc.subgroupLen[i] ge minNumPartVal) then $
@@ -334,7 +334,7 @@ end
 ;
 ; gcIDList : return only a replicated parent ID list of the specified subgroups in the groupcat
 ; child_counts: return a replicated list for tracers which have multiplicity inside each gas cell
-;               as specified in child_counts
+;               or star particle as specified in child_counts
 
 function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs, $
                              gcIDList=gcIDList, child_counts=child_counts
@@ -349,29 +349,26 @@ function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs, $
     
     if keyword_set(child_counts) then $
       if n_elements(child_counts.gal) ne total(galcat.galaxyLen[gcIDList],/int) or $
-         n_elements(child_counts.gmem) ne total(galcat.groupmemLen[gcIDList],/int) then $
-         message,'Error: Child_counts gal/gmem should have same size as galcat gcIDList subset.'
+         n_elements(child_counts.gmem) ne total(galcat.groupmemLen[gcIDList],/int) or $
+         n_elements(child_counts.stars) ne total(galcat.stellarLen[gcIDList],/int) then $
+         message,'Error: Child_counts gal/gmem/stars should have same size as galcat gcIDList subset.'
          
     if keyword_set(child_counts) then begin
       if total(child_counts.gal,/int) gt 2e9 then stop ; consider lon64/removing /int
       if total(child_counts.gmem,/int) gt 2e9 then stop
+      if total(child_counts.stars,/int) gt 2e9 then stop
     endif else begin
-      child_counts = { gal  : lonarr(total(galcat.galaxyLen[gcIDList],/int))+1   ,$
-                       gmem : lonarr(total(galcat.groupmemLen[gcIDList],/int))+1  }
+      child_counts = { gal   : lonarr(total(galcat.galaxyLen[gcIDList],/int))+1   ,$
+                       gmem  : lonarr(total(galcat.groupmemLen[gcIDList],/int))+1 ,$
+                       stars : lonarr(total(galcat.stellarLen[gcIDList],/int))+1   }
     endelse
     
-    ; old version without child_counts
-    ;r = { gal  : lonarr(total(galcat.galaxyLen[gcIDList],/int))  ,$
-    ;      gmem : lonarr(total(galcat.groupmemLen[gcIDList],/int)) }
+    r = { gal   : lonarr(total(child_counts.gal,/int))  ,$
+          gmem  : lonarr(total(child_counts.gmem,/int)) ,$
+          stars : lonarr(total(child_counts.stars,/int)) }
     
-    r = { gal  : lonarr(total(child_counts.gal,/int))  ,$
-          gmem : lonarr(total(child_counts.gmem,/int)) }
-    
-    offsetGal  = 0L
-    offsetGmem = 0L
-    
-    offsetGal_c  = 0L
-    offsetGmem_c = 0L
+    offset   = { gal : 0L, gmem: 0L, stars: 0L }
+    offset_c = { gal : 0L, gmem: 0L, stars: 0L }
     
     foreach gcID,gcIDList do begin
     
@@ -387,29 +384,32 @@ function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs, $
         
         ; galaxies
         if galcat.galaxyLen[gcID] gt 0 then begin
-          tot_children = total(child_counts.gal[offsetGal_c:offsetGal_c+galcat.galaxyLen[gcID]-1],/int)
-          gal_ind_end = offsetGal+tot_children-1
+          tot_children = total(child_counts.gal[offset_c.gal:offset_c.gal+galcat.galaxyLen[gcID]-1],/int)
+          gal_ind_end = offset.gal+tot_children-1
 
-          if tot_children gt 0 then r.gal[offsetGal:gal_ind_end] = cmreplicate(parID,tot_children)
-          offsetGal += tot_children
-          offsetGal_c += galcat.galaxyLen[gcID]
-          
-          ;r.gal[offsetGal:offsetGal+galcat.galaxyLen[gcID]-1] = $
-          ;  cmreplicate(parID,galcat.galaxyLen[gcID])
-          ;offsetGal += galcat.galaxyLen[gcID]
+          if tot_children gt 0 then r.gal[offset.gal:gal_ind_end] = cmreplicate(parID,tot_children)
+          offset.gal += tot_children
+          offset_c.gal += galcat.galaxyLen[gcID]
         endif
         
         ; group members
         if galcat.groupmemLen[gcID] gt 0 then begin
-          tot_children = total(child_counts.gmem[offsetGmem_c:offsetGmem_c+galcat.groupmemLen[gcID]-1],/int)
-          gmem_ind_end = offsetGmem+tot_children-1
+          tot_children = total(child_counts.gmem[offset_c.gmem:offset_c.gmem+galcat.groupmemLen[gcID]-1],/int)
+          gmem_ind_end = offset.gmem+tot_children-1
 
-          if tot_children gt 0 then r.gmem[offsetGmem:gmem_ind_end] = cmreplicate(parID,tot_children)
-          offsetGmem += tot_children
-          offsetGmem_c += galcat.groupmemLen[gcID]
-          ;r.gmem[offsetGamem:offsetGmem+galcat.groupmemLen[gcID]-1] = $
-          ;  cmreplicate(parID,galcat.groupmemLen[gcID])
-          ;offsetGmem += galcat.groupmemLen[gcID]
+          if tot_children gt 0 then r.gmem[offset.gmem:gmem_ind_end] = cmreplicate(parID,tot_children)
+          offset.gmem += tot_children
+          offset_c.gmem += galcat.groupmemLen[gcID]
+        endif
+        
+        ; stars
+        if galcat.stellarLen[gcID] gt 0 then begin
+          tot_children = total(child_counts.stars[offset_c.stars:offset_c.stars+galcat.stellarLen[gcID]-1],/int)
+          stars_ind_end = offset.stars+tot_children-1
+
+          if tot_children gt 0 then r.stars[offset.stars:stars_ind_end] = cmreplicate(parID,tot_children)
+          offset.stars += tot_children
+          offset_c.stars += galcat.stellarLen[gcID]
         endif
         
     endforeach
@@ -455,35 +455,42 @@ function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir, p
   endelse
    
   ; arrays
-  r = { gal  : fltarr(n_elements(galcat.galaxyIDs))    ,$
-        gmem : fltarr(n_elements(galcat.groupmemIDs))   }
+  r = { gal   : fltarr(n_elements(galcat.galaxyIDs))    ,$
+        gmem  : fltarr(n_elements(galcat.groupmemIDs))  ,$
+        stars : fltarr(n_elements(galcat.stellarIDs))    }
   
   ; masses (log msun)
   if keyword_set(mass) then begin
-    r.gal  = gc.subgroupMass[gcInd.gal]
-    r.gmem = gc.subgroupMass[gcInd.gmem]
+    r.gal   = gc.subgroupMass[gcInd.gal]
+    r.gmem  = gc.subgroupMass[gcInd.gmem]
+    r.stars = gc.subgroupMass[gcInd.stars]
     
-    r.gal  = codeMassToLogMsun(r.gal)
-    r.gmem = codeMassToLogMsun(r.gmem)
+    r.gal   = codeMassToLogMsun(r.gal)
+    r.gmem  = codeMassToLogMsun(r.gmem)
+    r.stars = codeMassToLogMsun(r.stars)
   endif
 
   ; calculate virial temperatures (K)
   if keyword_set(virTemp) then begin
-    r.gal  = gc.subgroupMass[gcInd.gal]
-    r.gmem = gc.subgroupMass[gcInd.gmem]
+    r.gal   = gc.subgroupMass[gcInd.gal]
+    r.gmem  = gc.subgroupMass[gcInd.gmem]
+    r.stars = gc.subgroupMass[gcInd.stars]
     
     redshift = snapNumToRedshift(sP=sP)
   
-    r.gal  = alog10(codeMassToVirTemp(r.gal,sP=sP))
-    r.gmem = alog10(codeMassToVirTemp(r.gmem,sP=sP))
+    r.gal   = alog10(codeMassToVirTemp(r.gal,sP=sP))
+    r.gmem  = alog10(codeMassToVirTemp(r.gmem,sP=sP))
+    r.stars = alog10(codeMassToVirTemp(r.stars,sP=sP))
   endif
   
   if keyword_set(rVir) then begin
-    r.gal  = gc.subgroupGrnr[gcInd.gal]
-    r.gmem = gc.subgroupGrnr[gcInd.gmem]
+    r.gal   = gc.subgroupGrnr[gcInd.gal]
+    r.gmem  = gc.subgroupGrnr[gcInd.gmem]
+    r.stars = gc.subgroupGrnr[gcInd.stars]
     
-    r.gal  = gc.group_r_crit200[r.gal]
-    r.gmem = gc.group_r_crit200[r.gmem]
+    r.gal   = gc.group_r_crit200[r.gal]
+    r.gmem  = gc.group_r_crit200[r.gmem]
+    r.stars = gc.group_r_crit200[r.stars]
   endif
 
   return,r
@@ -509,7 +516,8 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, child_counts=ch
   endif
   
   if max(galcat.galaxyLen+galcat.galaxyOff) gt 2e9 then stop ; change to lon64arr
-  if max(galcat.groupmemLen+galcat.groupmemOff) gt 2e9 then stop  
+  if max(galcat.groupmemLen+galcat.groupmemOff) gt 2e9 then stop
+  if max(galcat.stellarLen+galcat.stellarOff) gt 2e9 then stop
   
   ; make mask for requested indices
   gcIDMask = bytarr(n_elements(galcat.galaxyLen))
@@ -517,26 +525,33 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, child_counts=ch
   if ~keyword_set(gcIDList) then gcIDMask[*] = 1B
   
   ; normal indices return
-  r = {gal  : ulonarr(total(galcat.galaxyLen[gcIDList],/int)) ,$
-       gmem : ulonarr(total(galcat.groupmemLen[gcIDList],/int)) }  
+  r = {gal   : ulonarr(total(galcat.galaxyLen[gcIDList],/int))   ,$
+       gmem  : ulonarr(total(galcat.groupmemLen[gcIDList],/int)) ,$
+       stars : ulonarr(total(galcat.stellarLen[gcIDList],/int))   }  
   
-  offsetGal  = 0L
-  offsetGmem = 0L  
+  offset = { gal : 0L, gmem : 0L, stars: 0L }
   
   ; (1) make list for gas cells/particles
   foreach gcID, gcIDList do begin
     ; galaxy
     if (galcat.galaxyLen[gcID] gt 0) then begin
       galInds    = ulindgen(galcat.galaxyLen[gcID]) + galcat.galaxyOff[gcID]
-      r.gal[offsetGal:offsetGal+galcat.galaxyLen[gcID]-1] = galInds
-      offsetGal += galcat.galaxyLen[gcID]
+      r.gal[offset.gal:offset.gal+galcat.galaxyLen[gcID]-1] = galInds
+      offset.gal += galcat.galaxyLen[gcID]
     endif
     
     ; group member
     if (galcat.groupmemLen[gcID] gt 0) then begin
       gmemInds    = ulindgen(galcat.groupmemLen[gcID]) + galcat.groupmemOff[gcID]
-      r.gmem[offsetGmem:offsetGmem+galcat.groupmemLen[gcID]-1] = gmemInds
-      offsetGmem += galcat.groupmemLen[gcID]
+      r.gmem[offset.gmem:offset.gmem+galcat.groupmemLen[gcID]-1] = gmemInds
+      offset.gmem += galcat.groupmemLen[gcID]
+    endif
+    
+    ; stars
+    if (galcat.stellarLen[gcID] gt 0) then begin
+      starsInds    = ulindgen(galcat.stellarLen[gcID]) + galcat.stellarOff[gcID]
+      r.stars[offset.stars:offset.stars+galcat.stellarLen[gcID]-1] = starsInds
+      offset.stars += galcat.stellarLen[gcID]
     endif
   endforeach
   
@@ -544,20 +559,20 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, child_counts=ch
   if ~keyword_set(child_counts) then return,r
   
   if n_elements(child_counts.gal) ne total(galcat.galaxyLen,/int) or $
-     n_elements(child_counts.gmem) ne total(galcat.groupmemLen,/int) then $
-     message,'Error: Child_counts gal/gmem should have same size as full galcat subset.'
+     n_elements(child_counts.gmem) ne total(galcat.groupmemLen,/int) or $
+     n_elements(child_counts.stars) ne total(galcat.stellarLen,/int) then $
+     message,'Error: Child_counts gal/gmem/stars should have same size as full galcat subset.'
 
   if total(child_counts.gal,/int) gt 2e9 then stop ; consider lon64/removing /int
   if total(child_counts.gmem,/int) gt 2e9 then stop
+  if total(child_counts.stars,/int) gt 2e9 then stop
 
-  rcc = { gal  : ulonarr(total(child_counts.gal[r.gal],/int))  ,$
-          gmem : ulonarr(total(child_counts.gmem[r.gmem],/int)) }
+  rcc = { gal   : ulonarr(total(child_counts.gal[r.gal],/int))    ,$
+          gmem  : ulonarr(total(child_counts.gmem[r.gmem],/int))  ,$
+          stars : ulonarr(total(child_counts.stars[r.stars],/int)) }
        
-  offsetGal  = 0L
-  offsetGmem = 0L
-  
-  offsetGal_all  = 0UL
-  offsetGmem_all = 0UL
+  offset     = { gal : 0L, gmem : 0L, stars : 0L }
+  offset_all = { gal : 0L, gmem : 0L, stars : 0L }
   
   for gcID=0UL,n_elements(galcat.galaxyLen)-1 do begin
     ; galaxy
@@ -568,14 +583,14 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, child_counts=ch
       ; add indices only for specified galaxy IDs
       if gcIDMask[gcID] eq 1B and tot_children_gal gt 0 then begin
         ; calculate place and store indices
-        galInds = ulindgen(tot_children_gal) + offsetGal_all
-        rcc.gal[offsetGal:offsetGal+tot_children_gal-1] = galInds
+        galInds = ulindgen(tot_children_gal) + offset_all.gal
+        rcc.gal[offset.gal:offset.gal+tot_children_gal-1] = galInds
   
-        offsetGal += tot_children_gal
+        offset.gal += tot_children_gal
       endif
       
       ; add child counts to indice array offset
-      offsetGal_all  += tot_children_gal
+      offset_all.gal  += tot_children_gal
     endif      
                   
     ; group member
@@ -587,18 +602,38 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, child_counts=ch
       ; add indices only for specified group member IDs
       if gcIDMask[gcID] eq 1B and tot_children_gmem gt 0 then begin
         ; calculate place and store indices
-        gmemInds     = ulindgen(tot_children_gmem) + offsetGmem_all
-        rcc.gmem[offsetGmem:offsetGmem+tot_children_gmem-1] = gmemInds
+        gmemInds     = ulindgen(tot_children_gmem) + offset_all.gmem
+        rcc.gmem[offset.gmem:offset.gmem+tot_children_gmem-1] = gmemInds
         
-        offsetGmem += tot_children_gmem
+        offset.gmem += tot_children_gmem
       endif
       
-      offsetGmem_all += tot_children_gmem
+      offset_all.gmem += tot_children_gmem
+    endif
+    
+    ; stars
+    if galcat.stellarLen[gcID] gt 0 then begin
+      ; calculate total number of children in this subgroup             
+      tot_children_stars = total(child_counts.stars[galcat.stellarOff[gcID]:$
+                                                   galcat.stellarOff[gcID]+galcat.stellarLen[gcID]-1],/int)
+            
+      ; add indices only for specified stellar IDs
+      if gcIDMask[gcID] eq 1B and tot_children_stars gt 0 then begin
+        ; calculate place and store indices
+        starInds     = ulindgen(tot_children_stars) + offset_all.stars
+        rcc.stars[offset.stars:offset.stars+tot_children_stars-1] = starInds
+        
+        offset.stars  += tot_children_stars
+      endif
+      
+      offset_all.stars += tot_children_stars
     endif
     
   endfor
   
-  if offsetGal ne n_elements(rcc.gal) or offsetGmem ne n_elements(rcc.gmem) then message,'Error.'
+  if offset.gal   ne n_elements(rcc.gal) or $
+     offset.gmem  ne n_elements(rcc.gmem) or $
+     offset.stars ne n_elements(rcc.stars) then message,'Error.'
 
     ; this code isn't useful here but is the variable-count replicate (better verify though):
     ;galInds = ulonarr(tot_children)
@@ -994,7 +1029,6 @@ function findMatchedHalos, sP1=sP1, sP2=sP2
 
   r = {matchedInds:matchedInds,massDiffs:massDiffs,posDiffs:posDiffs,wMatch:wMatch,nMatched:nMatched}
   
-  ;save
   ; save
   save,r,filename=saveFilename
   
@@ -1176,7 +1210,7 @@ function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap
 
   if not file_test(saveFileName) then stop
   if n_elements(snap) eq 0 then snap = sP.snap
-  if snap eq -1 then stop
+  if snap[0] eq -1 then stop
   
   ; restore
   restore,saveFilename
@@ -1184,12 +1218,12 @@ function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap
   if (not keyword_set(time)) then begin
     if (keyword_set(all)) then return,redshifts
     
-    if (snap ge 0 and snap lt n_elements(redshifts)) then $
+    if (snap[0] ge 0 and snap[0] lt n_elements(redshifts)) then $
       return,redshifts[snap]
   endif else begin
     if (keyword_set(all)) then return,times
       
-    if (snap ge 0 and snap lt n_elements(redshifts)) then $
+    if (snap[0] ge 0 and snap[0] lt n_elements(redshifts)) then $
       return,times[snap]
   endelse
 

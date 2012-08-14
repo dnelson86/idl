@@ -1,6 +1,6 @@
 ; mergerTree.pro
 ; cosmological halo tracking / merger tree through time
-; dnelson jun.2012
+; dnelson aug.2012
 
 ; mergerTree(): construct simplified merger tree for tracking halos/subhalos through time across snaps
 ; 
@@ -190,49 +190,151 @@ function mergerTree, sP=sP, makeNum=makeNum
 
 end
 
-pro debugPlt, sP=sP
+; mergerTreeAdaptiveSubset():
+;                     walk the merger tree from sP.snap back to start of the group catalogs and calculate
+;                     the snapshot to which each halo can be tracked in time. also calculate
+;                     a few properties for these subgroups back in time (r_vir,T_vir,position) and 
+;                     the subset of the galaxycat at maxSnap that we can track back using this selection
 
-  restore,sP.plotPath+'temprad.sav',/verbose
+function mergerTreeAdaptiveSubset, sP=sP, verbose=verbose
 
-    ; debug plots
-    xpts = indgen(maxSnap-minSnap)
-    num = 100
-    off = 11
-    xrange = [1,max(xpts)]
-    yrange = [0.0,2.0]
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  ; config
+  maxSnap = sP.snap
+  minSnap = sP.groupCatRange[0] + 1 ;z=6
+  
+  smoothKer = 3 ; 1,3,5 number of snapshots
+  units = getUnits()
+  
+  ; set saveFilename and check for existence
+  saveFilename = sP.derivPath + 'mTreeAdaSub.'+sP.savPrefix+str(sP.res)+'.'+$
+                 str(maxSnap)+'-'+str(minSnap)+'.sK'+str(smoothKer)+'.sav'  
+
+  if file_test(saveFilename) then begin
+    restore, saveFilename
+    return, r
+  endif
+
+  print,'Walking merger tree for adaptive halo selection...'
+
+  numBack = maxSnap - minSnap
+  
+  for i=0,numBack+floor(smoothKer/2.0)-1 do begin
+    ; load
+    h = loadSnapshotHeader(sP=sP)
+    gc = loadGroupCat(sP=sP,/skipIDs)
+    subgroupCen = subgroupPosByMostBoundID(sP=sP)
+
+    ; on first snapshot select primary halos and allocate arrays
+    if i eq 0 then begin
+      gcIDs = gcIDList(gc=gc,select='pri')
+
+      gcIDPlace = lindgen(n_elements(gcIDs)) ; initial placement in ascending order of ID
+      
+      times     = fltarr(numBack+floor(smoothKer/2.0))
+      hPos      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDPlace))
+      hVel      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDPlace))
+      hMass     = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
+      hVirRad   = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
+      hVirTemp  = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
+      noParMask = bytarr(n_elements(gcIDPlace))
+      hMinSnap  = intarr(n_elements(gcIDPlace)) - 1
+    endif
+  
+    ; which gcIDs still valid? only new "no parents"
+    ;wPar = where(gcIDs ne -1,ncomp=count,comp=wNoPar)
+    wNoPar = where(gcIDs eq -1 and noParMask eq 0B)
+    
+    noParMask[wNoPar] = 1B
+    hMinSnap[wNoPar] = sP.snap + 1 ; mark end of tracking for halos with no valid parent at this snapshot
+    gcIDs[wNoPar] = -1 ; from this point on, will contain incorrect values, must use noParMask to select
+    
+    wPar = where(hMinSnap eq -1,nleft)
+    wPar10 = where(hMinSnap eq -1 and hMass[0,*] ge 1.0,nleft10)
+    tot10 = where(hMass[0,*] ge 1.0,ntot10)
+    
+    if keyword_set(verbose) then $
+      print,' ['+string(sP.snap,format='(i3)')+'] remaining: '+string(nleft,format='(i5)')+' ('+$
+        string(float(nleft)/n_elements(gcIDs)*100,format='(f4.1)')+'%) massive: '+string(nleft10,format='(i5)')+' ('+$
+        string(float(nleft10)/ntot10*100,format='(f4.1)')+'%) '
         
-    start_PS, sP.plotPath + 'debug_radgal-1.eps'
-        fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
-           title=str(sP.res)+textoidl("^3")+" z = "+string(sP.redshift,format='(f3.1)')+" gal-1",$
-           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys,/xlog
-        for i=0,num-1 do $
-          fsc_plot,xpts,radtemp.gal[*,i],line=0,thick=!p.thick-1.0,/overplot,color=getColor(i)
-    end_PS
+    ; store only currently valid gcIDs
+    w = where(gcIDs ne -1,count)
+    if count eq 0 then message,'error'
     
-    start_PS, sP.plotPath + 'debug_radgal-2.eps'
-        fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
-           title=str(sP.res)+textoidl("^3")+" z = "+string(sP.redshift,format='(f3.1)')+" gal-2",$
-           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys,/xlog
-        for i=off*num,off*num+num-1 do $
-          fsc_plot,xpts,radtemp.gal[*,i],line=0,thick=!p.thick-1.0,/overplot,color=getColor(i)
-    end_PS
+    times[i] = h.time
+    hPos[i,*,gcIDPlace[w]]   = subgroupCen[*,gcIDs[w]]
+    hVel[i,*,gcIDPlace[w]]   = gc.subgroupVel[*,gcIDs[w]]
+    hMass[i,gcIDPlace[w]]    = gc.subgroupMass[gcIDs[w]]
+    hVirRad[i,gcIDPlace[w]]  = gc.group_r_crit200[gc.subgroupGrNr[gcIDs[w]]]
+    hVirTemp[i,gcIDPlace[w]] = alog10(codeMassToVirTemp(gc.subgroupMass[gcIDs[w]],sP=sP))
+
+    ; load mergerTree and change subgroup IDs to parents at the prior snapshot
+    Parent = mergerTree(sP=sP)
     
-    start_PS, sP.plotPath + 'debug_radgmem-1.eps'
-        fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
-           title=str(sP.res)+textoidl("^3")+" z = "+string(sP.redshift,format='(f3.1)')+" gmem-1",$
-           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys,/xlog
-        for i=0,num-1 do $
-          fsc_plot,xpts,radtemp.gmem[*,i],line=0,thick=!p.thick-1.0,/overplot,color=getColor(i)
-    end_PS
+    gcIDs[w] = Parent[gcIDs[w]] ; change to parent IDs
+
+    sP.snap -= 1
+  endfor
+  
+  Parent = !NULL
+  gcIDs  = !NULL
+  gcIDPlace = !NULL
+  noParMask = !NULL
+  subgroupCen = !NULL
+  
+  hPosSm = hPos
+  hVelSm = hVel
+  
+  ; created smoothed estimates of pos(t), vel(t), mass(t), r_vir(t) and T_vir(t) for halos
+  for i=0,n_elements(hMass[0,*])-1 do begin
+    endInd = maxSnap - hMinSnap[i]
+    if endInd eq 0 or endInd lt smoothKer or hMinSnap[i] eq -1 then continue
     
-    start_PS, sP.plotPath + 'debug_radgmem-2.eps'
-        fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
-           title=str(sP.res)+textoidl("^3")+" z = "+string(sP.redshift,format='(f3.1)')+" gmem-2",$
-           xtitle="Number of Snapshots Back",ytitle="Radius / Rvir",/xs,/ys,/xlog
-        for i=off*num,off*num+num-1 do $
-          fsc_plot,xpts,radtemp.gmem[*,i],line=0,thick=!p.thick-1.0,/overplot,color=getColor(i)
-    end_PS
-stop
+    hPosSm[0:endInd,0,i]   = smooth(reform(hPos[0:endInd,0,i]),smoothKer)
+    hPosSm[0:endInd,1,i]   = smooth(reform(hPos[0:endInd,1,i]),smoothKer)
+    hPosSm[0:endInd,2,i]   = smooth(reform(hPos[0:endInd,2,i]),smoothKer)
+    hVelSm[0:endInd,0,i]   = smooth(reform(hVel[0:endInd,0,i]),smoothKer)
+    hVelSm[0:endInd,1,i]   = smooth(reform(hVel[0:endInd,1,i]),smoothKer)
+    hVelSm[0:endInd,2,i]   = smooth(reform(hVel[0:endInd,2,i]),smoothKer)
+    
+    hMass[0:endInd,i]    = smooth(reform(hMass[0:endInd,i]),smoothKer)
+    hVirRad[0:endInd,i]  = smooth(reform(hVirRad[0:endInd,i]),smoothKer)
+    hVirTemp[0:endInd,i] = smooth(reform(hVirTemp[0:endInd,i]),smoothKer)
+  endfor
+  
+  ; load galaxy/group member catalogs at zMin for gas ids to search for
+  sP.snap = maxSnap
+  galcat = galaxyCat(sP=sP)
+  
+  ; replicate parent IDs (of PRIMARY/parent)
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  galcatIDList = gcIDList(gc=gc,select='pri') ; this is the starting gcIDs from above
+  
+  ; replicated galcat parent IDs for each galcatSub member
+  gcIndOrig = galCatRepParentIDs(galcat=galcat,gcIDList=galcatIDList)
+  
+  ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
+  placeMap = getIDIndexMap(galcatIDList,minid=minid)
+  gcIndOrig.gal   = placeMap[gcIndOrig.gal-minid]
+  gcIndOrig.gmem  = placeMap[gcIndOrig.gmem-minid]
+  gcIndOrig.stars = placeMap[gcIndOrig.stars-minid]
+  placeMap = !NULL
+  
+  ; get the subset of the galcat indices in sgIDList
+  galcatSub = galcatINDList(galcat=galcat,gcIDList=galcatIDList)
+  
+  r = {galcatIDList:galcatIDList,gcIndOrig:gcIndOrig,galcatSub:galcatSub,$
+       hPos:hPos,hVel:hVel,hPosSm:hPosSm,hVelSm:hVelSm,$
+       hVirRad:hVirRad,hVirTemp:hVirTemp,hMass:hMass,hMinSnap:hMinSnap,$
+       times:times,minSnap:minSnap,maxSnap:maxSnap,smoothKer:smoothKer}
+
+  ; save
+  save,r,filename=saveFilename
+  print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
+
+  return,r
 end
 
 ; mergerTreeSubset(): walk the merger tree from sP.snap back to some min snap and return the subset of the 
@@ -240,15 +342,21 @@ end
 ;                     a few properties for these subgroups back in time (r_vir,T_vir,position) and 
 ;                     the subset of the galaxycat at maxSnap that we can track back using this selection
 ;
-; NOTE: minSnap is decided here (change will require recalculation of all accretionTimes)
+; NOTE: minSnap is decided here (change will require recalculation of all accretionTimes/accretionModes)
 
 function mergerTreeSubset, sP=sP, verbose=verbose
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-
+  
+  ; --------------------------------------------------------------------------------------------------
+  ; switch to new adaptive mtS
+  ;print,'Note: mergerTreeAdaptiveSubset'
+  mt = mergerTreeAdaptiveSubset(sP=sP,verbose=verbose)
+  return,mt
+  ; --------------------------------------------------------------------------------------------------
+  
   ; config
   maxSnap = sP.snap
-  ;minSnap = sP.groupCatRange[0] + 1 ;z=6
   minSnap = redshiftToSnapnum(4.0,sP=sP)
   
   smoothKer = 3 ; 1,3,5 number of snapshots
@@ -334,6 +442,7 @@ function mergerTreeSubset, sP=sP, verbose=verbose
   hMass    = smooth(hMass[*,galcatIDList],[1,smoothKer])
   hVirRad  = smooth(hVirRad[*,galcatIDList],[1,smoothKer])
   hVirTemp = smooth(hVirTemp[*,galcatIDList],[1,smoothKer])
+  print,'smooth ker warning'
   
   ; load galaxy/group member catalogs at zMin for gas ids to search for
   sP.snap = maxSnap
@@ -373,7 +482,9 @@ end
 ;                           replicated galcat parent ID list for tracer simulations
 
 function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compactMtS, $
-                                 trids_gal=galcat_gal_trids, trids_gmem=galcat_gmem_trids
+                                 trids_gal=galcat_gal_trids, trids_gmem=galcat_gmem_trids, $ ; outputs
+                                 trids_stars=galcat_stars_trids, gc_gal_cc=galcat_gal_cc, $ ; outputs
+                                 gc_gmem_cc=galcat_gmem_cc, gc_stars_cc=galcat_stars_cc ; outputs
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function cosmoTracerChildren, galaxyCat
@@ -388,8 +499,9 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
     ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
     if keyword_set(compactMtS) then begin
       placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
-      gcIndOrig.gal = placeMap[gcIndOrig.gal-minid]
-      gcIndOrig.gmem = placeMap[gcIndOrig.gmem-minid]
+      gcIndOrig.gal   = placeMap[gcIndOrig.gal-minid]
+      gcIndOrig.gmem  = placeMap[gcIndOrig.gmem-minid]
+      gcIndOrig.stars = placeMap[gcIndOrig.stars-minid]
       placeMap = !NULL
     endif
     
@@ -409,33 +521,45 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
     
     gas_ids = !NULL
     
+    ; load star ids and match
+    star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+    
+    match,galcat.stellarIDs[mt.galcatSub.stars],star_ids,galcat_ind,ids_stars_ind,count=countStars,/sort
+    ids_stars = star_ids[ids_stars_ind[sort(galcat_ind)]]
+    
+    star_ids = !NULL
+    
     if countGal ne n_elements(mt.galcatSub.gal) or countGmem ne n_elements(mt.galcatSub.gmem) then $
       message,'Error: Check.'
     
     ; locate tracer children (indices) of gas id subsets
-    galcat_gal_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
-    galcat_gmem_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
-    
-    ids_gal  = !NULL
-    ids_gmem = !NULL
+    galcat_gal_trids   = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
+    galcat_gmem_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
+    galcat_stars_trids = cosmoTracerChildren(sP=sP, /getInds, starIDs=ids_stars, child_counts=galcat_stars_cc)
+     
+    ids_gal   = !NULL
+    ids_gmem  = !NULL
+    ids_stars = !NULL
     
     ; convert tracer children indices to tracer IDs at this zMin if we are returning them
     if keyword_set(galcat_gal_trids) then begin
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-      galcat_gal_trids  = tr_ids[galcat_gal_trids]
-      galcat_gmem_trids = tr_ids[galcat_gmem_trids]
+      galcat_gal_trids   = tr_ids[galcat_gal_trids]
+      galcat_gmem_trids  = tr_ids[galcat_gmem_trids]
+      galcat_stars_trids = tr_ids[galcat_stars_trids]
       tr_ids   = !NULL
     endif
     
     ; create a gcIndOrig for the tracers
     gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,$
-                                     child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc}) 
+                                     child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc,stars:galcat_stars_cc}) 
                   
     ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
     if keyword_set(compactMtS) then begin
       placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
-      gcIndOrigTr.gal = placeMap[gcIndOrigTr.gal-minid]
-      gcIndOrigTr.gmem = placeMap[gcIndOrigTr.gmem-minid]
+      gcIndOrigTr.gal   = placeMap[gcIndOrigTr.gal-minid]
+      gcIndOrigTr.gmem  = placeMap[gcIndOrigTr.gmem-minid]
+      gcIndOrigTr.stars = placeMap[gcIndOrigTr.stars-minid]
       placeMap = !NULL
     endif
     
@@ -452,6 +576,8 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
     
     match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
     inds_gmem = ids_gmem_ind[sort(galcat_ind)]
+    
+    ; no stars
     
     if countGal ne n_elements(mt.galcatSub.gal) or countGmem ne n_elements(mt.galcatSub.gmem) then $
       message,'Error: Failed to locate all of galcat in gas_ids (overflow64?).'
@@ -614,6 +740,122 @@ function mergerTreeINDList, sP=sP, galcat=galcat, mt=mt, gcIDList=gcIDList
   
   return,rcc
   
+end
+
+; trackHaloPosition(): return a new position for some halo gcID at an earlier snapshot using mergerTree
+    
+function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
+    
+    ; try to trace back to this snapshot for new halo center position
+    failSnap = -1
+    sgCenters = fltarr(3,sP.snap-endSnap+1) ; xyz ckpc
+    times     = fltarr(sP.snap-endSnap+1) ; Gyr age
+    
+    gcIDcur = gcID ; starting halo ID
+    startSnap = sP.snap ; starting snapshot number
+    
+    for m=startSnap,endSnap,-1 do begin
+      ;print,m,gcIDcur,failSnap
+      sP.snap = m
+      
+      ; haven't failed yet, keep recording positions
+      if failSnap eq -1 then begin
+        sgcen = subgroupPosByMostBoundID(sP=sP)
+        sgCenters[*,startSnap-m] = sgcen[*,gcIDcur]
+        
+        ; record times for possible extrapolation
+        h = loadSnapshotHeader(sP=sP)
+        times[startSnap-m] = redshiftToAgeFlat(1/h.time-1)
+      endif
+      
+      ; load most massive progenitor and move index
+      Parent = mergerTree(sP=sP)
+      
+      if Parent[gcIDcur] eq -1 then failSnap = sP.snap
+      gcIDcur = Parent[gcIDcur]
+    endfor
+    
+    if failSnap eq -1 then begin
+      ; successfully tracked back, load new subgroup centers and use
+      haloPos = sgCenters[*,-1]
+    endif else begin
+      ; failed to find a good parent history
+      if failSnap eq startSnap or failSnap eq startSnap-1 then begin
+        ; zero or one parents (one or two centers), just use starting position
+        haloPos = sgCenters[*,0]
+      endif else begin
+        ; at least two parents (three positions), do an extrapolation to the ending snapshot
+        print,'untested'
+        sP.snap = endSnap
+        h = loadSnapshotHeader(sP=sP)
+        timeEnd = redshiftToAgeFlat(1/h.time-1)
+        
+        inds = where(times ne 0.0,count)
+        if count lt 3 then message,'error'
+        
+        xPos = interpol(sgCenters[0,w],times[w],timeEnd)
+        yPos = interpol(sgCenters[1,w],times[w],timeEnd)
+        zPos = interpol(sgCenters[2,w],times[w],timeEnd)
+        haloPos = [xPos,yPos,zPos]
+      endelse
+    endelse
+    
+    return,haloPos
+end
+
+; plotHaloTracking(): plot fraction of successful halo adaptive tracking vs redshift
+
+pro plotHaloTracking, sP=sP
+
+  minMasses = [10.0,10.5,11.0,11.5] ; z=2 masses in log(msun)
+  
+  mt = mergerTreeAdaptiveSubset(sP=sP,/verbose)
+  numSnaps = mt.maxSnap - mt.minSnap
+  
+  ; arrays
+  hMasses = codeMassToLogMsun(reform(mt.hMass[0,*]))
+  fracs = fltarr(n_elements(minMasses),numSnaps)
+  
+  redshifts = reverse(snapNumToRedshift(sP=sP,snap=indgen(numSnaps)+mt.minSnap))
+  
+  ; loop over each snapshot, calculate number above each mass threshold remaining
+  for i=0,numSnaps-1 do begin
+    curSnap = mt.maxSnap - i
+    
+    for j=0,n_elements(minMasses)-1 do begin
+      w = where(mt.hMinSnap lt curSnap and hMasses ge minMasses[j],count)
+      fracs[j,i] = float(count)
+    endfor
+    print,i,curSnap,redshifts[i],fracs[0,i]
+  endfor
+  
+  ; convert totals to fractions
+  for j=0,n_elements(minMasses)-1 do begin
+    w = where(hMasses ge minMasses[j],count)
+    fracs[j,*] /= float(count)
+  endfor
+
+  ; plot
+  start_PS, sP.plotPath + 'halotracking.eps'
+    
+      xrange = [2.0,6.0]
+      yrange = [0.0,max(fracs)*1.1]
+      
+      fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+               xtitle="Redshift",ytitle="Fraction Tracked"
+      
+      ; plot by mass threshold
+      for j=0,n_elements(minMasses)-1 do begin
+        fsc_plot,redshifts,fracs[j,*],/overplot,color=getColor(j)
+      endfor
+      
+      legend,['M > '+string(minMasses,format='(f4.1)')],$
+        textcolors=getColor(indgen(n_elements(minMasses)),/name),box=0,/bottom,/left
+    
+  end_PS
+  
+  stop
+
 end
 
 ; plotHaloEvo(): plot evolution of halo masses, virial temperatures, positions, r200 using mergerTree()

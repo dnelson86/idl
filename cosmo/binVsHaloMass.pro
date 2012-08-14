@@ -1,6 +1,922 @@
 ; plotVsHaloMass.pro
 ; gas accretion project - bin quantities as a function of halo mass
-; dnelson jul.2012
+; dnelson aug.2012
+
+; haloMassBinAccRate(): bin accretion rate (in cold/hot) as a function of halo mass
+
+function haloMassBinAccRate, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
+  ; current time
+  h = loadSnapshotHeader(sP=sP)
+  curtime = 1/h.time - 1 ; redshift
+  curtime = redshiftToAgeFlat(curtime)*1e9 ; yr  
+  
+  ; time window to consider accretion over
+  if ~keyword_set(TW) then message,'time window required (in Myr)'
+  
+  if str(TW) eq 'all' then begin
+    timeWindow = curtime - redshiftToAgeFlat(6.0)*1e9 ; go back to z=6 (in yr)
+  endif else begin
+    timeWindow = TW * 1e6 ; convert input Myr to yr
+  endelse
+    
+  print,timeWindow/1e6,' Myr'
+
+  ; config
+  nCuts = n_elements(sP.TcutVals)
+  nVirs = n_elements(sP.TvirVals)
+  
+  radIndHaloAcc = 0 ; 1.0 rvir crossing for halo accretion
+  radIndGalAcc  = 4 ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
+  
+  xrange = [9.5,12.6]
+  
+  ; check if save exists
+  saveFilename = sP.derivPath + 'binAR.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.cut' + str(nCuts) + '.vir' + str(nVirs) + '.' + sgSelect + '.' + accMode + $
+    '.r' + str(radIndHaloAcc) + '.r' + str(radIndGalAcc) + '.sav'
+  
+  ; results exist, return
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,r
+  endif   
+  
+  ; make a uniform gas selection at the start
+  at = accretionTimes(sP=sP)
+  mt = mergerTreeSubset(sP=sP)
+  
+  wAm = accModeInds(at=at,accMode=accMode,sP=sP,/mask)
+    
+  ; reverse histogram parent IDs of all particles/tracers in this selection
+  gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sP,/compactMtS)
+  
+  hist_gal   = histogram(gcIndOrig.gal[wAm.gal],min=0,loc=loc_gal,rev=rev_gal)
+  hist_gmem  = histogram(gcIndOrig.gmem[wAm.gmem],min=0,loc=loc_gmem,rev=rev_gmem)
+  hist_stars = histogram(gcIndOrig.stars[wAm.stars],min=0,loc=loc_stars,rev=rev_stars)
+  
+  ; load max temps, current tvir, tvir at accretion
+  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  
+  ; load current temps and current SFR
+  curTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  curSFR  = gcSubsetProp(sP=sP,select=sgSelect,/curSingleVal,singleValField='sfr',$
+                         /mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+
+  ; load group cat for subgroup masses
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  gcMasses = codeMassToLogMsun(gc.subgroupMass[mt.galcatIDList])
+  gc = !NULL
+
+  ; structures to store results (Tmax)
+  coldAccRate = { gal_const     : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+                  gmem_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+                  stars_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+                  gal_tvircur   : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                  gmem_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                  stars_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                  gal_tviracc   : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                  gmem_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                  stars_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                  both_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$ ; both=gal+stars
+                  both_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                  both_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                  total_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$ ; total=gal+stars+gmem
+                  total_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                  total_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                  gal_num       : lonarr(n_elements(mt.galcatIDList))         ,$
+                  gmem_num      : lonarr(n_elements(mt.galcatIDList))         ,$
+                  stars_num     : lonarr(n_elements(mt.galcatIDList))          }
+                  
+  hotAccRate = { gal_const     : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+                 gmem_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+                 stars_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+                 gal_tvircur   : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                 gmem_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                 stars_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                 gal_tviracc   : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                 gmem_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                 stars_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                 both_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$ ; both=gal+stars
+                 both_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                 both_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                 total_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$ ; total=gal+stars+gmem
+                 total_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                 total_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                 gal_num       : lonarr(n_elements(mt.galcatIDList))         ,$
+                 gmem_num      : lonarr(n_elements(mt.galcatIDList))         ,$
+                 stars_num     : lonarr(n_elements(mt.galcatIDList))          }
+               
+  ; loop over all tracked subgroups (galaxy)
+  for i=0L,n_elements(hist_gal)-1 do begin
+    if hist_gal[i] gt 0 then begin
+      ; list of indices of galaxy gas particles in this subgroup
+      loc_inds_gal = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
+      
+      ; corresponding accretion times for these particles
+      
+      ; OLD: galaxy accretion defined as rvir (or any other radius) crossing time
+      ;loc_atime_gal = reform(at.accTime_gal[radIndGalAcc,wAm.gal[loc_inds_gal]])
+      
+      ; NEW: galaxy accretion defined as (rho,temp) joining time or 0.15rvir crossing time (most recent)
+      loc_atime_gal = reform(at.accTimeRT_gal[wAm.gal[loc_inds_gal]])
+      
+      r_crossing_time = reform(at.accTime_gal[radIndGalAcc,wAm.gal[loc_inds_gal]])
+      w = where(r_crossing_time gt loc_atime_gal,count)
+      if count gt 0 then loc_atime_gal[w] = r_crossing_time[w]
+      
+      loc_atime_gal = 1/loc_atime_gal - 1 ; redshift
+      loc_atime_gal = redshiftToAgeFlat(loc_atime_gal)*1e9 ; yr
+      
+      ; make a count of those falling in the time window
+      w = where(curtime - loc_atime_gal le timeWindow,nloc)
+      
+      coldAccRate.gal_num[i] = nloc
+      
+      ; maximum past temps, cur and acc tvirs for only those particles in the time window
+      if nloc gt 0 then begin
+        loc_maxt_gal = maxTemp.gal[loc_inds_gal[w]]
+        loc_curtvir_gal = curTvir.gal[loc_inds_gal[w]]
+        loc_acctvir_gal = accTvir.gal[loc_inds_gal[w]]
+  
+        ; count mass elements with Tmax below each constant temperature threshold
+        for j=0,nCuts-1 do begin
+          w = where(loc_maxt_gal le sP.TcutVals[j],count_cold,ncomp=count_hot)
+          coldAccRate.gal_const[j,i] = count_cold
+          hotAccRate.gal_const[j,i]  = count_hot
+        endfor
+        
+        for j=0,nVirs-1 do begin
+          ; count mass elements with Tmax below Tvir at current time
+          w = where(10.0^loc_maxt_gal / 10.0^loc_curtvir_gal le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          coldAccRate.gal_tvircur[j,i] = count_cold
+          hotAccRate.gal_tvircur[j,i]  = count_hot
+    
+          ; count mass elements with Tmax below Tvir at accretion time
+          w = where(10.0^loc_maxt_gal / 10.0^loc_acctvir_gal le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          coldAccRate.gal_tviracc[j,i] = count_cold
+          hotAccRate.gal_tviracc[j,i]  = count_hot
+        endfor
+      endif ;nloc>0
+    endif
+  endfor
+  
+  ; loop over all tracked subgroups (groupmem)
+  for i=0L,n_elements(hist_gmem)-1 do begin
+    if hist_gmem[i] gt 0 then begin
+      ; list of indices of galaxy gas particles in this subgroup
+      loc_inds_gmem = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
+      
+      ; corresponding accretion times for these particles
+      loc_atime_gmem = reform(at.accTime_gmem[radIndHaloAcc,wAm.gmem[loc_inds_gmem]])
+      loc_atime_gmem = 1/loc_atime_gmem - 1 ; redshift
+      loc_atime_gmem = redshiftToAgeFlat(loc_atime_gmem)*1e9 ; yr
+      
+      ; make a count of those falling in the time window
+      w = where(curtime - loc_atime_gmem le timeWindow,nloc)
+      
+      coldAccRate.gmem_num[i] = nloc
+      
+      ; maximum past temps, cur and acc tvirs for only those particles in the time window
+      loc_maxt_gmem = maxTemp.gmem[loc_inds_gmem[w]]
+      loc_curtvir_gmem = curTvir.gmem[loc_inds_gmem[w]]
+      loc_acctvir_gmem = accTvir.gmem[loc_inds_gmem[w]]
+
+      ; count mass elements with Tmax below each constant temperature threshold
+      for j=0,nCuts-1 do begin
+        w = where(loc_maxt_gmem le sP.TcutVals[j],count_cold,ncomp=count_hot)
+        coldAccRate.gmem_const[j,i] = count_cold
+        hotAccRate.gmem_const[j,i]  = count_hot
+      endfor
+      
+      for j=0,nVirs-1 do begin
+        ; count mass elements with Tmax below Tvir at current time
+        w = where(10.0^loc_maxt_gmem / 10.0^loc_curtvir_gmem le sP.TvirVals[j],count_cold,ncomp=count_hot)
+        coldAccRate.gmem_tvircur[j,i] = count_cold
+        hotAccRate.gmem_tvircur[j,i]  = count_hot
+  
+        ; count mass elements with Tmax below Tvir at accretion time
+        w = where(10.0^loc_maxt_gmem / 10.0^loc_acctvir_gmem le sP.TvirVals[j],count_cold,ncomp=count_hot)
+        coldAccRate.gmem_tviracc[j,i] = count_cold
+        hotAccRate.gmem_tviracc[j,i]  = count_hot
+      endfor
+    endif
+  endfor
+  
+  ; loop over all tracked subgroups (stars)
+  for i=0L,n_elements(hist_stars)-1 do begin
+    if hist_stars[i] gt 0 then begin
+      ; list of indices of star gas particles in this subgroup
+      loc_inds_stars = rev_stars[rev_stars[i]:rev_stars[i+1]-1]
+      
+      ; corresponding accretion times for these particles
+      
+      ; stellar accretion defined as (rho,temp) joining time or 0.15rvir crossing time (most recent)
+      loc_atime_stars = reform(at.accTimeRT_stars[wAm.stars[loc_inds_stars]])
+      
+      r_crossing_time = reform(at.accTime_stars[radIndGalAcc,wAm.stars[loc_inds_stars]])
+      w = where(r_crossing_time gt loc_atime_stars,count)
+      if count gt 0 then loc_atime_stars[w] = r_crossing_time[w]
+      
+      ; convert from scale factor to age of the universe
+      loc_atime_gal = 1/loc_atime_gal - 1 ; redshift
+      loc_atime_gal = redshiftToAgeFlat(loc_atime_gal)*1e9 ; yr
+      
+      ; note: if no 0.15rvir crossing time exists (crossed as a star particle, not as a gas cell) then
+      ;       set the accretion time to t=-1 which moves it outside any timeWindow (do not consider)
+      w = where(r_crossing_time eq -1,count)
+      if count gt 0 then loc_atime_stars[w] = -1.0
+      
+      ; make a count of those falling in the time window
+      w = where(curtime - loc_atime_stars le timeWindow,nloc)
+      
+      coldAccRate.stars_num[i] = nloc
+      
+      ; maximum past temps, cur and acc tvirs for only those particles in the time window
+      if nloc gt 0 then begin
+        loc_maxt_stars = maxTemp.stars[loc_inds_stars[w]]
+        loc_curtvir_stars = curTvir.stars[loc_inds_stars[w]]
+        loc_acctvir_stars = accTvir.stars[loc_inds_stars[w]]
+  
+        ; count mass elements with Tmax below each constant temperature threshold
+        for j=0,nCuts-1 do begin
+          w = where(loc_maxt_stars le sP.TcutVals[j],count_cold,ncomp=count_hot)
+          coldAccRate.stars_const[j,i] = count_cold
+          hotAccRate.stars_const[j,i]  = count_hot
+        endfor
+        
+        for j=0,nVirs-1 do begin
+          ; count mass elements with Tmax below Tvir at current time
+          w = where(10.0^loc_maxt_stars / 10.0^loc_curtvir_stars le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          coldAccRate.stars_tvircur[j,i] = count_cold
+          hotAccRate.stars_tvircur[j,i]  = count_hot
+    
+          ; count mass elements with Tmax below Tvir at accretion time
+          w = where(10.0^loc_maxt_stars / 10.0^loc_acctvir_stars le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          coldAccRate.stars_tviracc[j,i] = count_cold
+          hotAccRate.stars_tviracc[j,i]  = count_hot
+        endfor
+      endif ;nloc>0
+    endif
+  endfor
+  
+  ; convert total(counts) to msun/year
+  if sP.trMCPerCell le 0 then massPerPart = sP.targetGasMass ; SPH or vel tracer
+  if sP.trMCPerCell gt 0 then massPerPart = sP.trMassConst ; MC tracer
+  
+  coldAccRate.gal_const     *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  coldAccRate.gmem_const    *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  coldAccRate.stars_const   *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  coldAccRate.gal_tvircur   *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  coldAccRate.gmem_tvircur  *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  coldAccRate.stars_tvircur *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  coldAccRate.gal_tviracc   *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  coldAccRate.gmem_tviracc  *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  coldAccRate.stars_tviracc *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  
+  hotAccRate.gal_const     *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  hotAccRate.gmem_const    *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  hotAccRate.stars_const   *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  hotAccRate.gal_tvircur   *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  hotAccRate.gmem_tvircur  *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  hotAccRate.stars_tvircur *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  hotAccRate.gal_tviracc   *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  hotAccRate.gmem_tviracc  *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  hotAccRate.stars_tviracc *= massPerPart * units.UnitMass_in_Msun / timeWindow
+  
+  ; create totals of gal, stars, gmem
+  for j=0,nVirs-1 do begin
+    coldAccRate.both_tvircur[j,*]  = coldAccRate.gal_tvircur[j,*] + coldAccRate.stars_tvircur[j,*]
+    coldAccRate.both_tviracc[j,*]  = coldAccRate.gal_tviracc[j,*] + coldAccRate.stars_tviracc[j,*]
+    coldAccRate.total_tvircur[j,*] = coldAccRate.both_tvircur[j,*] + coldAccRate.gmem_tvircur[j,*]
+    coldAccRate.total_tviracc[j,*] = coldAccRate.both_tviracc[j,*] + coldAccRate.gmem_tviracc[j,*]
+    
+    hotAccRate.both_tvircur[j,*]  = hotAccRate.gal_tvircur[j,*] + hotAccRate.stars_tvircur[j,*]
+    hotAccRate.both_tviracc[j,*]  = hotAccRate.gal_tviracc[j,*] + hotAccRate.stars_tviracc[j,*]
+    hotAccRate.total_tvircur[j,*] = hotAccRate.both_tvircur[j,*] + hotAccRate.gmem_tvircur[j,*]
+    hotAccRate.total_tviracc[j,*] = hotAccRate.both_tviracc[j,*] + hotAccRate.gmem_tviracc[j,*]
+  endfor
+  
+  for j=0,nCuts-1 do begin
+    coldAccRate.both_const[j,*]  = coldAccRate.gal_const[j,*] + coldAccRate.stars_const[j,*]
+    coldAccRate.total_const[j,*] = coldAccRate.both_const[j,*] + coldAccRate.gmem_const[j,*]
+    hotAccRate.both_const[j,*]  = hotAccRate.gal_const[j,*] + hotAccRate.stars_const[j,*]
+    hotAccRate.total_const[j,*] = hotAccRate.both_const[j,*] + hotAccRate.gmem_const[j,*]
+  endfor
+  
+  ; bin fractions into halo mass bins and make median lines
+  logMassBins=[9.5,10.0,10.1,10.2,10.3,10.4,10.5,10.6,10.7,10.8,10.9,11.0,$
+               11.1,11.25,11.5,11.75,11.9,13.1]
+  logMassNBins = n_elements(logMassBins)-1
+  logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
+  logMassBinCen = logMassBinCen[0:-2]
+  
+  ; structures to store the binned values
+  coldMedian = { gal_const     : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 stars_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 gmem_const    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 both_const    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 total_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 gal_tVircur   : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 stars_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 gmem_tVircur  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 both_tVircur  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 total_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 gal_tViracc   : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 stars_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 gmem_tViracc  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 both_tViracc  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 total_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan  }
+                 
+  hotMedian = { gal_const     : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                stars_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                gmem_const    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                both_const    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                total_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                gal_tVircur   : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                stars_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                gmem_tVircur  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                both_tVircur  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                total_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                gal_tViracc   : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                stars_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                gmem_tViracc  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                both_tViracc  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                total_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan  }
+                
+  ; total of hot+cold (separated by gal, gmem, stars, both=gal+stars, tot=gal+stars+gmem)
+  totalHCMedian = { gal    : fltarr(logMassNbins) + !values.f_nan ,$
+                    gmem   : fltarr(logMassNbins) + !values.f_nan ,$
+                    stars  : fltarr(logMassNbins) + !values.f_nan ,$
+                    both   : fltarr(logMassNbins) + !values.f_nan ,$
+                    tot    : fltarr(logMassNbins) + !values.f_nan  }      
+                 
+  ; calculate median accretion rate in bins of halo mass
+  for i=0,logMassNbins-1 do begin
+
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1],count)
+    
+    if count gt 0 then begin
+      for j=0,nVirs-1 do begin
+        ; gal (hot+cold)
+        coldMedian.gal_tVirCur[j,i]   = median(coldAccRate.gal_tvircur[j,w])
+        coldMedian.gal_tVirAcc[j,i]   = median(coldAccRate.gal_tviracc[j,w])
+        hotMedian.gal_tVirCur[j,i]    = median(hotAccRate.gal_tvircur[j,w])
+        hotMedian.gal_tVirAcc[j,i]    = median(hotAccRate.gal_tviracc[j,w])
+        
+        ; gmem (hot+cold)
+        coldMedian.gmem_tVirCur[j,i]  = median(coldAccRate.gmem_tvircur[j,w])
+        coldMedian.gmem_tVirAcc[j,i]  = median(coldAccRate.gmem_tviracc[j,w])
+        hotMedian.gmem_tVirCur[j,i]   = median(hotAccRate.gmem_tvircur[j,w])
+        hotMedian.gmem_tVirAcc[j,i]   = median(hotAccRate.gmem_tviracc[j,w]) 
+        
+        ; stars (hot+cold)
+        coldMedian.stars_tVirCur[j,i] = median(coldAccRate.stars_tvircur[j,w])
+        coldMedian.stars_tVirAcc[j,i] = median(coldAccRate.stars_tviracc[j,w])
+        hotMedian.stars_tVirCur[j,i]  = median(hotAccRate.stars_tvircur[j,w])
+        hotMedian.stars_tVirAcc[j,i]  = median(hotAccRate.stars_tviracc[j,w]) 
+        
+        ; both=gal+stars (hot+cold)
+        coldMedian.both_tVirCur[j,i]  = median(coldAccRate.both_tvircur[j,w])
+        coldMedian.both_tVirAcc[j,i]  = median(coldAccRate.both_tviracc[j,w])
+        hotMedian.both_tVirCur[j,i]   = median(hotAccRate.both_tvircur[j,w])
+        hotMedian.both_tVirAcc[j,i]   = median(hotAccRate.both_tviracc[j,w])
+        
+        ; total=gal+stars+gmem (hot+cold)
+        coldMedian.total_tVirCur[j,i] = median(coldAccRate.total_tvircur[j,w])
+        coldMedian.total_tVirAcc[j,i] = median(coldAccRate.total_tviracc[j,w])
+        hotMedian.total_tVirCur[j,i]  = median(hotAccRate.total_tvircur[j,w])
+        hotMedian.total_tVirAcc[j,i]  = median(hotAccRate.total_tviracc[j,w])
+      endfor
+      
+      for j=0,nCuts-1 do begin
+        coldMedian.gal_const[j,i]   = median(coldAccRate.gal_const[j,w])
+        hotMedian.gal_const[j,i]    = median(hotAccRate.gal_const[j,w])
+        coldMedian.gmem_const[j,i]  = median(coldAccRate.gmem_const[j,w])
+        hotMedian.gmem_const[j,i]   = median(hotAccRate.gmem_const[j,w])
+        coldMedian.stars_const[j,i] = median(coldAccRate.stars_const[j,w])
+        hotMedian.stars_const[j,i]  = median(hotAccRate.stars_const[j,w])
+        
+        coldMedian.both_const[j,i]  = median(coldAccRate.both_const[j,w])
+        hotMedian.both_const[j,i]   = median(hotAccRate.both_const[j,w])
+        coldMedian.total_const[j,i] = median(coldAccRate.total_const[j,w])
+        hotMedian.total_const[j,i]  = median(hotAccRate.total_const[j,w])
+      endfor
+      
+      ; totals (same under any cold/hot definition)
+      totalHCMedian.gal[i]   = median(coldAccRate.gal_const[0,w]+hotAccRate.gal_const[0,w])
+      totalHCMedian.gmem[i]  = median(coldAccRate.gmem_const[0,w]+hotAccRate.gmem_const[0,w])
+      totalHCMedian.stars[i] = median(coldAccRate.stars_const[0,w]+hotAccRate.stars_const[0,w])
+      totalHCMedian.both[i]  = median(coldAccRate.both_const[0,w]+hotAccRate.both_const[0,w])
+      totalHCMedian.tot[i]   = median(coldAccRate.total_const[0,w]+hotAccRate.total_const[0,w])
+    endif    
+    
+  endfor  
+  
+  ; debug: plot individual points
+  xrange = [10.0,12.5]
+  yrange = [0.1,50.0]
+  
+  constInd = 2 ; log(T)=5.5
+  tVirInd  = 1 ; Tmax/Tvir=1
+
+  hMasses = codeMassToLogMsun(mt.hMass[0,*])  
+  
+  if 0 then begin
+  start_PS, sP.plotPath + 'accRateRaw.const.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+$
+    '_tw'+string(timeWindow/1e6,format='(i4)')+'.eps'
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
+      ytitle="Const Accretion Rate [Msun/yr]",xtitle=textoidl("log ( M_{halo} ) [_{ }M_{sun }]")
+
+    cgPlot,hMasses,coldAccRate.gal_const[constInd,*],color=getColor(1),psym=4,/overplot
+    cgPlot,hMasses,hotAccRate.gal_const[constInd,*],color=getColor(3),psym=4,/overplot
+    cgPlot,logMassBinCen,coldMedian.gal_const[constInd,*],color=getColor(1),line=0,/overplot
+    cgPlot,logMassBinCen,hotMedian.gal_const[constInd,*],color=getColor(3),line=0,/overplot
+    
+    cgPlot,hMasses,coldAccRate.gmem_const[constInd,*],color=getColor(4),psym=4,/overplot
+    cgPlot,hMasses,hotAccRate.gmem_const[constInd,*],color=getColor(5),psym=4,/overplot
+    cgPlot,logMassBinCen,coldMedian.gmem_const[constInd,*],color=getColor(4),line=0,/overplot
+    cgPlot,logMassBinCen,hotMedian.gmem_const[constInd,*],color=getColor(5),line=0,/overplot
+    legend,['cold gal','hot gal','cold gmem','hot gmem'],textcolor=getColor([1,3,4,5],/name),box=0,/top,/left
+  end_PS
+  
+  start_PS, sP.plotPath + 'accRateRaw.tvircur.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+$
+    '_tw'+string(timeWindow/1e6,format='(i4)')+'.eps'
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
+      ytitle="Tvircur Accretion Rate [Msun/yr]",xtitle=textoidl("log ( M_{halo} ) [_{ }M_{sun }]")
+    
+    cgPlot,hMasses,coldAccRate.gal_tvircur[tVirInd,*],color=getColor(1),psym=4,/overplot
+    cgPlot,hMasses,hotAccRate.gal_tvircur[tVirInd,*],color=getColor(3),psym=4,/overplot
+    cgPlot,logMassBinCen,coldMedian.gal_tvircur[tVirInd,*],color=getColor(1),line=0,/overplot
+    cgPlot,logMassBinCen,hotMedian.gal_tvircur[tVirInd,*],color=getColor(3),line=0,/overplot
+    
+    cgPlot,hMasses,coldAccRate.gmem_tvircur[tVirInd,*],color=getColor(4),psym=4,/overplot
+    cgPlot,hMasses,hotAccRate.gmem_tvircur[tVirInd,*],color=getColor(5),psym=4,/overplot
+    cgPlot,logMassBinCen,coldMedian.gmem_tvircur[tVirInd,*],color=getColor(4),line=0,/overplot
+    cgPlot,logMassBinCen,hotMedian.gmem_tvircur[tVirInd,*],color=getColor(5),line=0,/overplot
+    legend,['cold gal','hot gal','cold gmem','hot gmem'],textcolor=getColor([1,3,4,5],/name),box=0,/top,/left
+  end_PS
+  
+  start_PS, sP.plotPath + 'accRateRaw.tviracc.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+$
+    '_tw'+string(timeWindow/1e6,format='(i4)')+'.eps'
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
+      ytitle="Tviracc Accretion Rate [Msun/yr]",xtitle=textoidl("log ( M_{halo} ) [_{ }M_{sun }]")
+    
+    cgPlot,hMasses,coldAccRate.gal_tviracc[tVirInd,*],color=getColor(1),psym=4,/overplot
+    cgPlot,hMasses,hotAccRate.gal_tviracc[tVirInd,*],color=getColor(3),psym=4,/overplot
+    cgPlot,logMassBinCen,coldMedian.gal_tviracc[tVirInd,*],color=getColor(1),line=0,/overplot
+    cgPlot,logMassBinCen,hotMedian.gal_tviracc[tVirInd,*],color=getColor(3),line=0,/overplot
+    
+    cgPlot,hMasses,coldAccRate.gmem_tviracc[tVirInd,*],color=getColor(4),psym=4,/overplot
+    cgPlot,hMasses,hotAccRate.gmem_tviracc[tVirInd,*],color=getColor(5),psym=4,/overplot
+    cgPlot,logMassBinCen,coldMedian.gmem_tviracc[tVirInd,*],color=getColor(4),line=0,/overplot
+    cgPlot,logMassBinCen,hotMedian.gmem_tviracc[tVirInd,*],color=getColor(5),line=0,/overplot
+    legend,['cold gal','hot gal','cold gmem','hot gmem'],textcolor=getColor([1,3,4,5],/name),box=0,/top,/left
+  end_PS
+  endif ;0
+  
+  r = {coldMedian:coldMedian,hotMedian:hotMedian,totalHCMedian:totalHCMedian,$
+       xrange:xrange,radIndGalAcc:radIndGalAcc,radIndHaloAcc:radIndHaloAcc,$
+       logMassBins:logMassBins,logMassBinCen:logMassBinCen,$
+       TcutVals:sP.TcutVals,TvirVals:sP.TvirVals}
+       
+  ; save
+  save,r,filename=saveFilename
+  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
+  
+  return,r
+end
+
+; haloMassBinColdFracs(): bin cold fraction as a function of halo mass (using different definitions)
+
+function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  ; config
+  nCuts = n_elements(sP.TcutVals)
+  nVirs = n_elements(sP.TvirVals)
+  
+  minNum = 6
+  xrange = [9.5,12.5]
+  
+  ; check if save exists  
+  saveFilename = sP.derivPath + 'binCF.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.cut' + str(nCuts) + '.vir' + str(nVirs) + '.' + sgSelect + '.' + accMode + '.sav'
+  
+  ; results exist, return
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,r
+  endif
+  
+  ; make a uniform gas selection at the start
+  at = accretionTimes(sP=sP)
+  mt = mergerTreeSubset(sP=sP)
+  
+  wAm = accModeInds(at=at,accMode=accMode,sP=sP)
+    
+  ; reverse histogram parent IDs of all particles/tracers in this selection
+  gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sP,/compactMtS)
+  
+  hist_gal   = histogram(gcIndOrig.gal[wAm.gal],min=0,loc=loc_gal,rev=rev_gal)
+  hist_gmem  = histogram(gcIndOrig.gmem[wAm.gmem],min=0,loc=loc_gmem,rev=rev_gmem)
+  hist_stars = histogram(gcIndOrig.stars[wAm.stars],min=0,loc=loc_stars,rev=rev_stars)
+  
+  ; load max temps, current tvir, tvir at accretion
+  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  
+  ; load current temps and current SFR
+  curTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  curSFR  = gcSubsetProp(sP=sP,select=sgSelect,/curSingleVal,singleValField='sfr',$
+                         /mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+
+  ; load group cat for subgroup masses
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  gcMasses = codeMassToLogMsun(gc.subgroupMass[mt.galcatIDList])
+  gc = !NULL
+
+  ; structures to store results (Tmax)
+  coldFrac = { gal_const     : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+               gmem_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+               stars_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+               gal_tvircur   : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+               gmem_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+               stars_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+               gal_tviracc   : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+               gmem_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+               stars_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+               both_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$ ; both=gal+stars
+               both_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+               both_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+               total_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$ ; total=gal+stars+gmem
+               total_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+               total_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+               gal_num       : lonarr(n_elements(mt.galcatIDList))         ,$
+               gmem_num      : lonarr(n_elements(mt.galcatIDList))         ,$
+               stars_num     : lonarr(n_elements(mt.galcatIDList))          }
+  
+  ; loop over all tracked subgroups (galaxy, Tmax)
+  for i=0L,n_elements(hist_gal)-1 do begin
+    if hist_gal[i] gt 0 then begin
+      ; list of indices of galaxy gas particles in this subgroup
+      loc_inds_gal = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
+      
+      ; debug
+      ;loc_inds_gal2 = where(gcIndOrigTr.gal[gal_w] eq i)
+      ;if ~array_equal(loc_inds_gal,loc_inds_gal2) then print,'error'
+      
+      loc_maxt_gal = maxTemp.gal[loc_inds_gal]
+      nloc = n_elements(loc_maxt_gal)
+      
+      coldFrac.gal_num[i] = nloc
+      
+      ; count fraction Tmax below each constant temperature threshold
+      for j=0,nCuts-1 do begin
+        w = where(loc_maxt_gal le sP.TcutVals[j],count_below)
+        coldFrac.gal_const[j,i] = float(count_below) / nloc
+      endfor
+      
+      for j=0,nVirs-1 do begin
+        ; count fraction Tmax below Tvir at current time
+        w = where(10.0^loc_maxt_gal / 10.0^curTvir.gal[loc_inds_gal] le sP.TvirVals[j],count_below)
+        coldFrac.gal_tvircur[j,i] = float(count_below) / nloc
+  
+        ; count fraction Tmax below Tvir at accretion time
+        w = where(10.0^loc_maxt_gal / 10.0^accTvir.gal[loc_inds_gal] le sP.TvirVals[j],count_below)
+        coldFrac.gal_tviracc[j,i] = float(count_below) / nloc
+      endfor
+    endif
+  endfor
+  
+  ; loop over all tracked subgroups (groupmem, Tmax)
+  for i=0L,n_elements(hist_gmem)-1 do begin
+    if hist_gmem[i] gt 0 then begin
+      ; list of indices of groupmem gas particles in this subgroup
+      loc_inds_gmem = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
+      loc_maxt_gmem = maxTemp.gmem[loc_inds_gmem]
+      nloc = n_elements(loc_maxt_gmem)
+      
+      coldFrac.gmem_num[i] = nloc
+      
+      ; count fraction Tmax below each constant temperature threshold
+      for j=0,nCuts-1 do begin
+        w = where(loc_maxt_gmem le sP.TcutVals[j],count_below)
+        coldFrac.gmem_const[j,i] = float(count_below) / nloc
+      endfor
+      
+      for j=0,nVirs-1 do begin
+        ; count fraction Tmax below Tvir at current time
+        w = where(10.0^loc_maxt_gmem / 10.0^curTvir.gmem[loc_inds_gmem] le sP.TvirVals[j],count_below)
+        coldFrac.gmem_tvircur[j,i] = float(count_below) / nloc
+  
+        ; count fraction Tmax below Tvir at accretion time
+        w = where(10.0^loc_maxt_gmem / 10.0^accTvir.gmem[loc_inds_gmem] le sP.TvirVals[j],count_below)
+        coldFrac.gmem_tviracc[j,i] = float(count_below) / nloc
+      endfor
+    endif
+  endfor
+  
+  ; loop over all tracked subgroups (stars, Tmax)
+  for i=0L,n_elements(hist_stars)-1 do begin
+    if hist_stars[i] gt 0 then begin
+      ; list of indices of star gas particles in this subgroup
+      loc_inds_stars = rev_stars[rev_stars[i]:rev_stars[i+1]-1]
+      loc_maxt_stars = maxTemp.stars[loc_inds_stars]
+      nloc = n_elements(loc_maxt_stars)
+      
+      coldFrac.stars_num[i] = nloc
+      
+      ; count fraction Tmax below each constant temperature threshold
+      for j=0,nCuts-1 do begin
+        w = where(loc_maxt_stars le sP.TcutVals[j],count_below)
+        coldFrac.stars_const[j,i] = float(count_below) / nloc
+      endfor
+      
+      for j=0,nVirs-1 do begin
+        ; count fraction Tmax below Tvir at current time
+        w = where(10.0^loc_maxt_stars / 10.0^curTvir.stars[loc_inds_stars] le sP.TvirVals[j],count_below)
+        coldFrac.stars_tvircur[j,i] = float(count_below) / nloc
+  
+        ; count fraction Tmax below Tvir at accretion time
+        w = where(10.0^loc_maxt_gmem / 10.0^accTvir.stars[loc_inds_stars] le sP.TvirVals[j],count_below)
+        coldFrac.stars_tviracc[j,i] = float(count_below) / nloc
+      endfor
+    endif
+  endfor
+  
+  ; create totals of gal, gmem, stars (Tmax)
+  for j=0,nVirs-1 do begin
+    coldFrac.both_tvircur[j,*]  = (coldFrac.gal_tvircur[j,*] * coldFrac.gal_num + $
+                                   coldFrac.stars_tvircur[j,*] * coldFrac.stars_num) / $
+                                  (coldFrac.gal_num + coldFrac.stars_num)
+    coldFrac.total_tvircur[j,*] = (coldFrac.gal_tvircur[j,*] * coldFrac.gal_num + $
+                                   coldFrac.gmem_tvircur[j,*] * coldFrac.gmem_num + $
+                                   coldFrac.stars_tvircur[j,*] * coldFrac.stars_num) / $
+                                  (coldFrac.gal_num + coldFrac.stars_num + coldFrac.gmem_num)
+                                 
+    coldFrac.both_tviracc[j,*]  = (coldFrac.gal_tviracc[j,*] * coldFrac.gal_num + $
+                                   coldFrac.stars_tviracc[j,*] * coldFrac.stars_num) / $
+                                  (coldFrac.gal_num + coldFrac.stars_num)
+    coldFrac.total_tviracc[j,*] = (coldFrac.gal_tviracc[j,*] * coldFrac.gal_num + $
+                                   coldFrac.gmem_tviracc[j,*] * coldFrac.gmem_num + $
+                                   coldFrac.stars_tviracc[j,*] * coldFrac.stars_num) / $
+                                  (coldFrac.gal_num + coldFrac.stars_num + coldFrac.gmem_num)    
+  endfor
+  
+  for j=0,nCuts-1 do begin
+    coldFrac.both_const[j,*]  = (coldFrac.gal_const[j,*] * coldFrac.gal_num + $
+                                 coldFrac.gmem_const[j,*] * coldFrac.gmem_num) / $
+                                (coldFrac.gal_num + coldFrac.gmem_num)  
+    coldFrac.total_const[j,*] = (coldFrac.gal_const[j,*] * coldFrac.gal_num + $
+                                 coldFrac.gmem_const[j,*] * coldFrac.gmem_num + $
+                                 coldFrac.stars_const[j,*] * coldFrac.stars_num) / $
+                                (coldFrac.gal_num + coldFrac.stars_num + coldFrac.gmem_num)  
+  endfor
+  
+  ; structures to store results (Tcur) (stars have no current temp)
+  coldFrac_cur = { gal_const     : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+                   gmem_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
+                   stars_const   : -1   ,$
+                   gal_tvircur   : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                   gmem_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                   stars_tvircur : -1   ,$
+                   gal_tviracc   : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                   gmem_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                   stars_tviracc : -1   ,$
+                   both_const    : -1   ,$ ; both=gal+stars
+                   both_tvircur  : -1   ,$ ; leave empty for Tcur so we don't use it by accident
+                   both_tviracc  : -1   ,$
+                   total_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$ ; total=gal+stars+gmem
+                   total_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                   total_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
+                   gal_num       : lonarr(n_elements(mt.galcatIDList))         ,$
+                   gmem_num      : lonarr(n_elements(mt.galcatIDList))         ,$
+                   stars_num     : -1                                           }
+  
+  ; loop over all tracked subgroups (galaxy, Tcur)
+  for i=0L,n_elements(hist_gal)-1 do begin
+    if hist_gal[i] gt 0 then begin
+      ; list of indices of galaxy gas particles in this subgroup
+      loc_inds_gal   = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
+      loc_curt_gal   = curTemp.gal[loc_inds_gal]
+      loc_cursfr_gal = curSFR.gal[loc_inds_gal]
+      
+      ; select only non-eff eos gas
+      w_sfr = where(loc_cursfr_gal ne 0.0,count_nosfr)
+      if count_nosfr gt 0 then begin
+        loc_curt_gal = loc_curt_gal[w_sfr] ; select
+        loc_inds_gal = loc_inds_gal[w_sfr]
+        
+        coldFrac_cur.gal_num[i] = count_nosfr
+      
+        ; count fraction Tcur below each constant temperature threshold
+        for j=0,nCuts-1 do begin
+          w = where(loc_curt_gal le sP.TcutVals[j],count_below)
+          coldFrac_cur.gal_const[j,i] = float(count_below) / count_nosfr
+        endfor
+        
+        for j=0,nVirs-1 do begin
+          ; count fraction Tmax below Tvir at current time
+          w = where(10.0^loc_curt_gal / 10.0^curTvir.gal[loc_inds_gal] le sP.TvirVals[j],count_below)
+          coldFrac_cur.gal_tvircur[j,i] = float(count_below) / count_nosfr
+    
+          ; count fraction Tmax below Tvir at accretion time
+          w = where(10.0^loc_curt_gal / 10.0^accTvir.gal[loc_inds_gal] le sP.TvirVals[j],count_below)
+          coldFrac_cur.gal_tviracc[j,i] = float(count_below) / count_nosfr
+        endfor
+      endif ; cursfr!=0
+    endif ; hist_gal>0
+  endfor  
+  
+  ; loop over all tracked subgroups (groupmem, Tcur)
+  for i=0L,n_elements(hist_gmem)-1 do begin
+    if hist_gmem[i] gt 0 then begin
+      ; list of indices of groupmem gas particles in this subgroup
+      loc_inds_gmem   = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
+      loc_curt_gmem   = curTemp.gmem[loc_inds_gmem]
+      loc_cursfr_gmem = curSFR.gmem[loc_inds_gmem]
+      
+      ; select only non-eff eos gas
+      w_sfr = where(loc_cursfr_gmem ne 0.0,count_nosfr)
+      if count_nosfr gt 0 then begin
+        loc_curt_gmem = loc_curt_gmem[w_sfr] ; select
+        loc_inds_gmem = loc_inds_gmem[w_sfr]
+        
+        coldFrac_cur.gmem_num[i] = count_nosfr
+      
+        ; count fraction Tcur below each constant temperature threshold
+        for j=0,nCuts-1 do begin
+          w = where(loc_curt_gmem le sP.TcutVals[j],count_below)
+          coldFrac_cur.gmem_const[j,i] = float(count_below) / count_nosfr
+        endfor
+        
+        for j=0,nVirs-1 do begin
+          ; count fraction Tmax below Tvir at current time
+          w = where(10.0^loc_curt_gmem / 10.0^curTvir.gmem[loc_inds_gmem] le sP.TvirVals[j],count_below)
+          coldFrac_cur.gmem_tvircur[j,i] = float(count_below) / count_nosfr
+    
+          ; count fraction Tmax below Tvir at accretion time
+          w = where(10.0^loc_curt_gmem / 10.0^accTvir.gmem[loc_inds_gmem] le sP.TvirVals[j],count_below)
+          coldFrac_cur.gmem_tviracc[j,i] = float(count_below) / count_nosfr
+        endfor
+      endif ; cursfr!=0
+    endif ; hist_gal>0
+  endfor
+  
+  ; no stars: no current temperature
+                        
+  ; create totals of gal, gmem, stars (Tcur)
+  for j=0,nVirs-1 do begin
+    coldFrac_cur.total_tvircur[j,*] = (coldFrac_cur.gal_tvircur[j,*] * coldFrac_cur.gal_num + $
+                                       coldFrac_cur.gmem_tvircur[j,*] * coldFrac_cur.gmem_num) / $
+                                      (coldFrac_cur.gal_num + coldFrac_cur.gmem_num)
+                                 
+    coldFrac_cur.total_tviracc[j,*] = (coldFrac_cur.gal_tviracc[j,*] * coldFrac_cur.gal_num + $
+                                       coldFrac_cur.gmem_tviracc[j,*] * coldFrac_cur.gmem_num) / $
+                                      (coldFrac_cur.gal_num + coldFrac_cur.gmem_num)  
+  endfor
+  
+  for j=0,nCuts-1 do begin
+    coldFrac_cur.total_const[j,*] = (coldFrac_cur.gal_const[j,*] * coldFrac_cur.gal_num + $
+                                 coldFrac_cur.gmem_const[j,*] * coldFrac_cur.gmem_num) / $
+                                (coldFrac_cur.gal_num + coldFrac_cur.gmem_num)  
+  endfor
+  
+  ; bin fractions into halo mass bins and make median lines
+  logMassBins=[9.5,10.0,10.1,10.2,10.3,10.4,10.5,10.6,10.7,10.8,10.9,11.0,$
+               11.1,11.25,11.5,11.75,11.9,13.1]
+  logMassNBins = n_elements(logMassBins)-1
+  logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
+  logMassBinCen = logMassBinCen[0:-2]
+ 
+  medianVals = { gal_const     : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 stars_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 gmem_const    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 both_const    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 total_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                 gal_tVircur   : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 stars_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 gmem_tVircur  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 both_tVircur  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 total_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 gal_tViracc   : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 stars_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 gmem_tViracc  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 both_tViracc  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                 total_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan  }
+               
+  medianVals_cur = { gal_const     : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                     stars_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                     gmem_const    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                     both_const    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                     total_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+                     gal_tVircur   : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                     stars_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                     gmem_tVircur  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                     both_tVircur  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                     total_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                     gal_tViracc   : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                     stars_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                     gmem_tViracc  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                     both_tViracc  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+                     total_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan  }
+  
+  ; calculate median in bins (Tmax) and enforce minimum particle numbers
+  for i=0,logMassNbins-1 do begin
+    ; gal (Tmax)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac.gal_num ge minNum,count)
+    print,logMassBins[i],count
+    if count gt 0 then begin
+      for j=0,nVirs-1 do medianVals.gal_tVircur[j,i] = median(coldFrac.gal_tvircur[j,w])
+      for j=0,nVirs-1 do medianVals.gal_tViracc[j,i] = median(coldFrac.gal_tviracc[j,w])
+      for j=0,nCuts-1 do medianVals.gal_const[j,i]   = median(coldFrac.gal_const[j,w])
+    endif
+    
+    ; gmem (Tmax)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac.gmem_num ge minNum,count)
+    if count gt 0 then begin
+      for j=0,nVirs-1 do medianVals.gmem_tVircur[j,i] = median(coldFrac.gmem_tvircur[j,w])
+      for j=0,nVirs-1 do medianVals.gmem_tViracc[j,i] = median(coldFrac.gmem_tviracc[j,w])
+      for j=0,nCuts-1 do medianVals.gmem_const[j,i]   = median(coldFrac.gmem_const[j,w])
+    endif
+    
+    ; stars (Tmax)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac.stars_num ge minNum,count)
+    if count gt 0 then begin
+      for j=0,nVirs-1 do medianVals.stars_tVircur[j,i] = median(coldFrac.stars_tvircur[j,w])
+      for j=0,nVirs-1 do medianVals.stars_tViracc[j,i] = median(coldFrac.stars_tviracc[j,w])
+      for j=0,nCuts-1 do medianVals.stars_const[j,i]   = median(coldFrac.stars_const[j,w])
+    endif
+    
+    ; both (Tmax)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac.gal_num+coldFrac.gmem_num ge minNum,count)
+    if count gt 0 then begin
+      for j=0,nVirs-1 do medianVals.both_tVircur[j,i] = median(coldFrac.both_tvircur[j,w])
+      for j=0,nVirs-1 do medianVals.both_tViracc[j,i] = median(coldFrac.both_tviracc[j,w])
+      for j=0,nCuts-1 do medianVals.both_const[j,i]   = median(coldFrac.both_const[j,w])
+    endif
+    
+    ; total (Tmax)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac.gal_num+coldFrac.gmem_num+coldFrac.stars_num ge minNum,count)
+    if count gt 0 then begin
+      for j=0,nVirs-1 do medianVals.total_tVircur[j,i] = median(coldFrac.total_tvircur[j,w])
+      for j=0,nVirs-1 do medianVals.total_tViracc[j,i] = median(coldFrac.total_tviracc[j,w])
+      for j=0,nCuts-1 do medianVals.total_const[j,i]   = median(coldFrac.total_const[j,w])
+    endif
+    
+    ; gal (Tcur)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac_cur.gal_num ge minNum,count)
+    if count gt 0 then begin
+      for j=0,nVirs-1 do medianVals_cur.gal_tVircur[j,i] = median(coldFrac_cur.gal_tvircur[j,w])
+      for j=0,nVirs-1 do medianVals_cur.gal_tViracc[j,i] = median(coldFrac_cur.gal_tviracc[j,w])
+      for j=0,nCuts-1 do medianVals_cur.gal_const[j,i]   = median(coldFrac_cur.gal_const[j,w])
+    endif
+    
+    ; gmem (Tcur)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac_cur.gmem_num ge minNum,count)
+    if count gt 0 then begin
+      for j=0,nVirs-1 do medianVals_cur.gmem_tVircur[j,i] = median(coldFrac_cur.gmem_tvircur[j,w])
+      for j=0,nVirs-1 do medianVals_cur.gmem_tViracc[j,i] = median(coldFrac_cur.gmem_tviracc[j,w])
+      for j=0,nCuts-1 do medianVals_cur.gmem_const[j,i]   = median(coldFrac_cur.gmem_const[j,w])
+    endif
+    
+    ; total (Tcur)
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              coldFrac_cur.gal_num+coldFrac_cur.gmem_num ge minNum,count)
+    if count gt 0 then begin
+      for j=0,nVirs-1 do medianVals_cur.total_tVircur[j,i] = median(coldFrac_cur.total_tvircur[j,w])
+      for j=0,nVirs-1 do medianVals_cur.total_tViracc[j,i] = median(coldFrac_cur.total_tviracc[j,w])
+      for j=0,nCuts-1 do medianVals_cur.total_const[j,i]   = median(coldFrac_cur.total_const[j,w])
+    endif    
+  endfor
+  
+  r = {coldFrac:coldFrac,coldFrac_cur:coldFrac_cur,medianVals:medianVals,medianVals_cur:medianVals_cur,$
+       logMassBinCen:logMassBinCen,xrange:xrange,TcutVals:sP.TcutVals,TvirVals:sP.TvirVals}
+
+  ; save
+  save,r,filename=saveFilename
+  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
+  
+  return, r
+  
+end
+
+; ------------------------------------------------------------------------------------------------------
 
 ; haloMassBinAngMom(): bin angular momentum for accreting gas as a function of parent halo mass
 
@@ -636,11 +1552,10 @@ function haloMassBinModeMasses, sP=sP, sgSelect=sgSelect, accMode=accMode, KDE=K
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
 
-  TcutVals = [5.3,5.5,5.7] ;[5.3,5.4,5.5,5.6,5.7] ; for constant threshold
   xrange   = [10.0,12.5] ; mass bin range
   
   logMassBinSize = 0.2 ;/ (sP.res/128)
-  nCuts = n_elements(TcutVals)
+  nCuts = n_elements(sP.TcutVals)
   
   ; make a uniform gas selection at the start
   at = accretionTimes(sP=sP)
@@ -707,7 +1622,7 @@ function haloMassBinModeMasses, sP=sP, sgSelect=sgSelect, accMode=accMode, KDE=K
       
       ; count fraction Tmax below each constant temperature threshold
       for j=0,nCuts-1 do begin
-        w = where(loc_maxt le TcutVals[j],count_below,ncomp=count_above)
+        w = where(loc_maxt le sP.TcutVals[j],count_below,ncomp=count_above)
         coldMass.const_gal[j,i]   = count_below * massGasPart
         hotMass.const_gal[j,i]    = count_above * massGasPart
         totalMass.const_gal[j,i]  = (count_below+count_above) * massGasPart
@@ -736,7 +1651,7 @@ function haloMassBinModeMasses, sP=sP, sgSelect=sgSelect, accMode=accMode, KDE=K
       
       ; count fraction Tmax below each constant temperature threshold
       for j=0,nCuts-1 do begin
-        w = where(loc_maxt le TcutVals[j],count_below,ncomp=count_above)
+        w = where(loc_maxt le sP.TcutVals[j],count_below,ncomp=count_above)
         coldMass.const_gmem[j,i]  = count_below * massGasPart
         hotMass.const_gmem[j,i]   = count_above * massGasPart
         totalMass.const_gmem[j,i] = (count_below+count_above) * massGasPart
@@ -787,720 +1702,4 @@ function haloMassBinModeMasses, sP=sP, sgSelect=sgSelect, accMode=accMode, KDE=K
   r = {coldMass:coldMass,hotMass:hotMass,totalMass:totalMass,logMassBinCen:logMassBinCen,xrange:xrange,$
        tt_gal:tt_gal,tt_gmem:tt_gmem}
   return,r
-end
-
-; haloMassBinAccRate(): bin accretion rate (in cold/hot) as a function of halo mass
-
-function haloMassBinAccRate, sP=sP, sgSelect=sgSelect, accMode=accMode, radInd=radInd
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-  units = getUnits()
-  
-  ; current time
-  h = loadSnapshotHeader(sP=sP)
-  curtime = 1/h.time - 1 ; redshift
-  curtime = redshiftToAgeFlat(curtime)*1e9 ; yr  
-  
-  timeWindow = curtime - redshiftToAgeFlat(4.0)*1e9 ; go back to z=4
-  print,timeWindow/1e6,' Myr'
-
-  ; config
-  TcutVals = [5.3,5.5,5.7] ;[5.3,5.4,5.5,5.6,5.7] ; for constant threshold
-  TvirVals = [1.1,1.0,0.8,0.4] ;[1.1,1.0,0.9,0.75,0.5,0.3] ; for Tviracc threshold
-  
-  nCuts = n_elements(TcutVals)
-  nVirs = n_elements(TvirVals)
-  
-  ; check if save exists
-  saveTag = ''
-  if sP.trMCPerCell eq -1 then saveTag = '.trVel'
-  if sP.trMCPerCell gt 0 then  saveTag = '.trMC'
-  if sP.trMCPerCell eq 0 then  saveTag = '.SPH'
-  
-  saveFilename = sP.derivPath + 'binAR' + saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
-    str(sP.snap) + '.cut' + str(nCuts) + '.vir' + str(nVirs) + '.' + sgSelect + '.' + accMode + $
-    '.r' + str(radInd) + '.sav'
-  
-  ; results exist, return
-  if file_test(saveFilename) then begin
-    restore,saveFilename
-    return,r
-  endif   
-  
-  xrange = [9.5,12.6]
-  
-  logMassBinSize = 0.3 / (sP.res/128)
-  
-  ; make a uniform gas selection at the start
-  at = accretionTimes(sP=sP)
-  mt = mergerTreeSubset(sP=sP)
-  
-  wAm = accModeInds(at=at,accMode=accMode,sP=sP,/mask)
-    
-  ; reverse histogram parent IDs of all particles/tracers in this selection
-  gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sP,/compactMtS)
-  
-  hist_gal  = histogram(gcIndOrig.gal[wAm.gal],min=0,loc=loc_gal,rev=rev_gal)
-  hist_gmem = histogram(gcIndOrig.gmem[wAm.gmem],min=0,loc=loc_gmem,rev=rev_gmem)
-  
-  ; load max temps, current tvir, tvir at accretion
-  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  
-  ; load current temps and current SFR
-  curTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  curSFR  = gcSubsetProp(sP=sP,select=sgSelect,/curSingleVal,singleValField='sfr',$
-                         /mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-
-  ; load group cat for subgroup masses
-  gc = loadGroupCat(sP=sP,/skipIDs)
-  gcMasses = codeMassToLogMsun(gc.subgroupMass[mt.galcatIDList])
-  gc = !NULL
-
-  ; structures to store results (Tmax)
-  coldAccRate = { gal_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-                  gmem_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-                  gal_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                  gmem_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                  gal_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                  gmem_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                  both_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-                  both_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                  both_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                  gal_num      : lonarr(n_elements(mt.galcatIDList))         ,$
-                  gmem_num     : lonarr(n_elements(mt.galcatIDList))          }
-                  
-  hotAccRate = { gal_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-                 gmem_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-                 gal_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                 gmem_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                 gal_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                 gmem_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                 both_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-                 both_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                 both_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))   ,$
-                 gal_num      : lonarr(n_elements(mt.galcatIDList))         ,$
-                 gmem_num     : lonarr(n_elements(mt.galcatIDList))          }
-               
-  ; loop over all tracked subgroups (galaxy)
-  for i=0L,n_elements(hist_gal)-1 do begin
-    if hist_gal[i] gt 0 then begin
-      ; list of indices of galaxy gas particles in this subgroup
-      loc_inds_gal = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
-      
-      ; corresponding accretion times for these particles
-      loc_atime_gal = reform(at.accTime_gal[radInd,wAm.gal[loc_inds_gal]])
-      loc_atime_gal = 1/loc_atime_gal - 1 ; redshift
-      loc_atime_gal = redshiftToAgeFlat(loc_atime_gal)*1e9 ; yr
-      
-      ; make a count of those falling in the time window
-      w = where(curtime - loc_atime_gal le timeWindow,nloc)
-      
-      coldAccRate.gal_num[i] = nloc
-      
-      ; maximum past temps, cur and acc tvirs for only those particles in the time window
-      if nloc gt 0 then begin
-        loc_maxt_gal = maxTemp.gal[loc_inds_gal[w]]
-        loc_curtvir_gal = curTvir.gal[loc_inds_gal[w]]
-        loc_acctvir_gal = accTvir.gal[loc_inds_gal[w]]
-  
-        ; count mass elements with Tmax below each constant temperature threshold
-        for j=0,nCuts-1 do begin
-          w = where(loc_maxt_gal le TcutVals[j],count_cold,ncomp=count_hot)
-          coldAccRate.gal_const[j,i] = count_cold
-          hotAccRate.gal_const[j,i]  = count_hot
-        endfor
-        
-        for j=0,nVirs-1 do begin
-          ; count mass elements with Tmax below Tvir at current time
-          w = where(10.0^loc_maxt_gal / 10.0^loc_curtvir_gal le TvirVals[j],count_cold,ncomp=count_hot)
-          coldAccRate.gal_tvircur[j,i] = count_cold
-          hotAccRate.gal_tvircur[j,i]  = count_hot
-    
-          ; count mass elements with Tmax below Tvir at accretion time
-          w = where(10.0^loc_maxt_gal / 10.0^loc_acctvir_gal le TvirVals[j],count_cold,ncomp=count_hot)
-          coldAccRate.gal_tviracc[j,i] = count_cold
-          hotAccRate.gal_tviracc[j,i]  = count_hot
-        endfor
-      endif ;nloc>0
-    endif
-  endfor
-  
-  ; loop over all tracked subgroups (groupmem)
-  for i=0L,n_elements(hist_gmem)-1 do begin
-    if hist_gmem[i] gt 0 then begin
-      ; list of indices of galaxy gas particles in this subgroup
-      loc_inds_gmem = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
-      
-      ; corresponding accretion times for these particles
-      loc_atime_gmem = reform(at.accTime_gmem[radInd,wAm.gmem[loc_inds_gmem]])
-      loc_atime_gmem = 1/loc_atime_gmem - 1 ; redshift
-      loc_atime_gmem = redshiftToAgeFlat(loc_atime_gmem)*1e9 ; yr
-      
-      ; make a count of those falling in the time window
-      w = where(curtime - loc_atime_gmem le timeWindow,nloc)
-      
-      coldAccRate.gmem_num[i] = nloc
-      
-      ; maximum past temps, cur and acc tvirs for only those particles in the time window
-      loc_maxt_gmem = maxTemp.gmem[loc_inds_gmem[w]]
-      loc_curtvir_gmem = curTvir.gmem[loc_inds_gmem[w]]
-      loc_acctvir_gmem = accTvir.gmem[loc_inds_gmem[w]]
-
-      ; count mass elements with Tmax below each constant temperature threshold
-      for j=0,nCuts-1 do begin
-        w = where(loc_maxt_gmem le TcutVals[j],count_cold,ncomp=count_hot)
-        coldAccRate.gmem_const[j,i] = count_cold
-        hotAccRate.gmem_const[j,i]  = count_hot
-      endfor
-      
-      for j=0,nVirs-1 do begin
-        ; count mass elements with Tmax below Tvir at current time
-        w = where(10.0^loc_maxt_gmem / 10.0^loc_curtvir_gmem le TvirVals[j],count_cold,ncomp=count_hot)
-        coldAccRate.gmem_tvircur[j,i] = count_cold
-        hotAccRate.gmem_tvircur[j,i]  = count_hot
-  
-        ; count mass elements with Tmax below Tvir at accretion time
-        w = where(10.0^loc_maxt_gmem / 10.0^loc_acctvir_gmem le TvirVals[j],count_cold,ncomp=count_hot)
-        coldAccRate.gmem_tviracc[j,i] = count_cold
-        hotAccRate.gmem_tviracc[j,i]  = count_hot
-      endfor
-    endif
-  endfor
-  
-  ; convert total(counts) to msun/year
-  if sP.trMCPerCell le 0 then massPerPart = sP.targetGasMass ; SPH or vel tracer
-  if sP.trMCPerCell gt 0 then massPerPart = sP.trMassConst ; MC tracer
-  
-  coldAccRate.gal_const    *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  coldAccRate.gmem_const   *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  coldAccRate.gal_tvircur  *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  coldAccRate.gmem_tvircur *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  coldAccRate.gal_tviracc  *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  coldAccRate.gmem_tviracc *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  
-  hotAccRate.gal_const    *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  hotAccRate.gmem_const   *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  hotAccRate.gal_tvircur  *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  hotAccRate.gmem_tvircur *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  hotAccRate.gal_tviracc  *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  hotAccRate.gmem_tviracc *= massPerPart * units.UnitMass_in_Msun / timeWindow
-  
-  ; create composite gal+gmem
-  for j=0,nVirs-1 do begin
-    coldAccRate.both_tvircur[j,*] = coldAccRate.gal_tvircur[j,*] + coldAccRate.gmem_tvircur[j,*]
-    coldAccRate.both_tviracc[j,*] = coldAccRate.gal_tviracc[j,*] + coldAccRate.gmem_tviracc[j,*]
-    
-    hotAccRate.both_tvircur[j,*] = hotAccRate.gal_tvircur[j,*] + hotAccRate.gmem_tvircur[j,*]
-    hotAccRate.both_tviracc[j,*] = hotAccRate.gal_tviracc[j,*] + hotAccRate.gmem_tviracc[j,*]
-  endfor
-  
-  for j=0,nCuts-1 do begin
-    coldAccRate.both_const[j,*] = coldAccRate.gal_const[j,*] + coldAccRate.gmem_const[j,*]
-    hotAccRate.both_const[j,*] = hotAccRate.gal_const[j,*] + hotAccRate.gmem_const[j,*]
-  endfor
-  
-  ; bin fractions into halo mass bins and make median lines
-  ;logMassNbins  = floor((xrange[1]-xrange[0]) / logMassBinSize)
-  ;logMassBins   = linspace(xrange[0],xrange[1],logMassNbins+1) ; edges
-  ;logMassBinCen = linspace(xrange[0],xrange[1],logMassNbins+1) + logMassBinSize/2.0
-  ;logMassBinCen = logMassBinCen[0:-2] ; remove last
-  
-  ; manual
-  ;logMassBins=[9.5,10.0,10.15,10.3,10.45,10.6,10.75,10.9,11.0,$
-  ;             11.1,11.25,11.5,11.75,12.0,12.25,13.0]
-  logMassBins=[9.5,10.0,10.1,10.2,10.3,10.4,10.5,10.6,10.7,10.8,10.9,11.0,$
-               11.1,11.25,11.5,11.75,11.9,13.1]
-  logMassNBins = n_elements(logMassBins)-1
-  logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
-  logMassBinCen = logMassBinCen[0:-2]
-  
-  ; structures to store the binned values
-  coldMedian = { gal_const    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                 gmem_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                 both_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                 gal_tVircur  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                 gmem_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                 both_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                 gal_tViracc  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                 gmem_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                 both_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan  }
-                 
-  hotMedian = { gal_const    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                gmem_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                both_const   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                gal_tVircur  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                gmem_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                both_tVircur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                gal_tViracc  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                gmem_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                both_tViracc : fltarr(nVirs,logMassNbins) + !values.f_nan  }
-                
-  totalMedian = { gal    : fltarr(logMassNbins) + !values.f_nan ,$
-                  gmem   : fltarr(logMassNbins) + !values.f_nan ,$
-                  both   : fltarr(logMassNbins) + !values.f_nan  }         
-                 
-  ; calculate median accretion rate in bins of halo mass
-  for i=0,logMassNbins-1 do begin
-
-    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1],count)
-    
-    if count gt 0 then begin
-      for j=0,nVirs-1 do begin
-        ; gal (hot+cold)
-        coldMedian.gal_tVirCur[j,i]  = median(coldAccRate.gal_tvircur[j,w])
-        coldMedian.gal_tVirAcc[j,i]  = median(coldAccRate.gal_tviracc[j,w])
-        hotMedian.gal_tVirCur[j,i]   = median(hotAccRate.gal_tvircur[j,w])
-        hotMedian.gal_tVirAcc[j,i]   = median(hotAccRate.gal_tviracc[j,w])
-        
-        ; gmem (hot+cold)
-        coldMedian.gmem_tVirCur[j,i]  = median(coldAccRate.gmem_tvircur[j,w])
-        coldMedian.gmem_tVirAcc[j,i]  = median(coldAccRate.gmem_tviracc[j,w])
-        hotMedian.gmem_tVirCur[j,i]   = median(hotAccRate.gmem_tvircur[j,w])
-        hotMedian.gmem_tVirAcc[j,i]   = median(hotAccRate.gmem_tviracc[j,w]) 
-        
-        ; both (hot+cold)
-        coldMedian.both_tVirCur[j,i]  = median(coldAccRate.both_tvircur[j,w])
-        coldMedian.both_tVirAcc[j,i]  = median(coldAccRate.both_tviracc[j,w])
-        hotMedian.both_tVirCur[j,i]   = median(hotAccRate.both_tvircur[j,w])
-        hotMedian.both_tVirAcc[j,i]   = median(hotAccRate.both_tviracc[j,w])
-      endfor
-      
-      for j=0,nCuts-1 do begin
-        coldMedian.gal_const[j,i]    = median(coldAccRate.gal_const[j,w])
-        hotMedian.gal_const[j,i]     = median(hotAccRate.gal_const[j,w])
-        
-        coldMedian.gmem_const[j,i]   = median(coldAccRate.gmem_const[j,w])
-        hotMedian.gmem_const[j,i]    = median(hotAccRate.gmem_const[j,w])
-        
-        coldMedian.both_const[j,i]   = median(coldAccRate.both_const[j,w])
-        hotMedian.both_const[j,i]    = median(hotAccRate.both_const[j,w])
-      endfor
-      
-      ; totals (same under any cold/hot definition)
-      totalMedian.gal[i]   = median(coldAccRate.gal_const[0,w]+hotAccRate.gal_const[0,w])
-      totalMedian.gmem[i]  = median(coldAccRate.gmem_const[0,w]+hotAccRate.gmem_const[0,w])
-      totalMedian.both[i]  = median(coldAccRate.both_const[0,w]+hotAccRate.both_const[0,w])
-    endif    
-    
-  endfor  
-  
-  ; debug: plot individual points
-  xrange = [10.0,12.5]
-  yrange = [0.1,50.0]
-  
-  constInd = 2 ; log(T)=5.5
-  tVirInd  = 1 ; Tmax/Tvir=1
-
-  hMasses = codeMassToLogMsun(mt.hMass[0,*])  
-  
-  if 0 then begin
-  start_PS, sP.plotPath + 'accRateRaw.const.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+$
-    '_tw'+string(timeWindow/1e6,format='(i4)')+'.eps'
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
-      ytitle="Const Accretion Rate [Msun/yr]",xtitle=textoidl("log ( M_{halo} ) [_{ }M_{sun }]")
-
-    cgPlot,hMasses,coldAccRate.gal_const[constInd,*],color=getColor(1),psym=4,/overplot
-    cgPlot,hMasses,hotAccRate.gal_const[constInd,*],color=getColor(3),psym=4,/overplot
-    cgPlot,logMassBinCen,coldMedian.gal_const[constInd,*],color=getColor(1),line=0,/overplot
-    cgPlot,logMassBinCen,hotMedian.gal_const[constInd,*],color=getColor(3),line=0,/overplot
-    
-    cgPlot,hMasses,coldAccRate.gmem_const[constInd,*],color=getColor(4),psym=4,/overplot
-    cgPlot,hMasses,hotAccRate.gmem_const[constInd,*],color=getColor(5),psym=4,/overplot
-    cgPlot,logMassBinCen,coldMedian.gmem_const[constInd,*],color=getColor(4),line=0,/overplot
-    cgPlot,logMassBinCen,hotMedian.gmem_const[constInd,*],color=getColor(5),line=0,/overplot
-    legend,['cold gal','hot gal','cold gmem','hot gmem'],textcolor=getColor([1,3,4,5],/name),box=0,/top,/left
-  end_PS
-  
-  start_PS, sP.plotPath + 'accRateRaw.tvircur.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+$
-    '_tw'+string(timeWindow/1e6,format='(i4)')+'.eps'
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
-      ytitle="Tvircur Accretion Rate [Msun/yr]",xtitle=textoidl("log ( M_{halo} ) [_{ }M_{sun }]")
-    
-    cgPlot,hMasses,coldAccRate.gal_tvircur[tVirInd,*],color=getColor(1),psym=4,/overplot
-    cgPlot,hMasses,hotAccRate.gal_tvircur[tVirInd,*],color=getColor(3),psym=4,/overplot
-    cgPlot,logMassBinCen,coldMedian.gal_tvircur[tVirInd,*],color=getColor(1),line=0,/overplot
-    cgPlot,logMassBinCen,hotMedian.gal_tvircur[tVirInd,*],color=getColor(3),line=0,/overplot
-    
-    cgPlot,hMasses,coldAccRate.gmem_tvircur[tVirInd,*],color=getColor(4),psym=4,/overplot
-    cgPlot,hMasses,hotAccRate.gmem_tvircur[tVirInd,*],color=getColor(5),psym=4,/overplot
-    cgPlot,logMassBinCen,coldMedian.gmem_tvircur[tVirInd,*],color=getColor(4),line=0,/overplot
-    cgPlot,logMassBinCen,hotMedian.gmem_tvircur[tVirInd,*],color=getColor(5),line=0,/overplot
-    legend,['cold gal','hot gal','cold gmem','hot gmem'],textcolor=getColor([1,3,4,5],/name),box=0,/top,/left
-  end_PS
-  
-  start_PS, sP.plotPath + 'accRateRaw.tviracc.'+accMode+'.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+$
-    '_tw'+string(timeWindow/1e6,format='(i4)')+'.eps'
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
-      ytitle="Tviracc Accretion Rate [Msun/yr]",xtitle=textoidl("log ( M_{halo} ) [_{ }M_{sun }]")
-    
-    cgPlot,hMasses,coldAccRate.gal_tviracc[tVirInd,*],color=getColor(1),psym=4,/overplot
-    cgPlot,hMasses,hotAccRate.gal_tviracc[tVirInd,*],color=getColor(3),psym=4,/overplot
-    cgPlot,logMassBinCen,coldMedian.gal_tviracc[tVirInd,*],color=getColor(1),line=0,/overplot
-    cgPlot,logMassBinCen,hotMedian.gal_tviracc[tVirInd,*],color=getColor(3),line=0,/overplot
-    
-    cgPlot,hMasses,coldAccRate.gmem_tviracc[tVirInd,*],color=getColor(4),psym=4,/overplot
-    cgPlot,hMasses,hotAccRate.gmem_tviracc[tVirInd,*],color=getColor(5),psym=4,/overplot
-    cgPlot,logMassBinCen,coldMedian.gmem_tviracc[tVirInd,*],color=getColor(4),line=0,/overplot
-    cgPlot,logMassBinCen,hotMedian.gmem_tviracc[tVirInd,*],color=getColor(5),line=0,/overplot
-    legend,['cold gal','hot gal','cold gmem','hot gmem'],textcolor=getColor([1,3,4,5],/name),box=0,/top,/left
-  end_PS
-  endif ;0
-  
-  r = {coldMedian:coldMedian,hotMedian:hotMedian,totalMedian:totalMedian,$
-       xrange:xrange,radInd:radInd,logMassBins:logMassBins,logMassBinCen:logMassBinCen,$
-       TcutVals:TcutVals,TvirVals:TvirVals}
-       
-  ; save
-  save,r,filename=saveFilename
-  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
-  
-  return,r
-end
-
-; haloMassBinColdFracs(): bin cold fraction as a function of halo mass (using different definitions)
-
-function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  ; config
-  TcutVals = [5.3,5.5,5.7] ;[5.3,5.4,5.5,5.6,5.7] ; for constant threshold
-  TvirVals = [1.1,1.0,0.8,0.4] ;[1.1,1.0,0.9,0.75,0.5,0.3] ; for Tviracc threshold
-  
-  nCuts = n_elements(TcutVals)
-  nVirs = n_elements(TvirVals)
-  
-  ; check if save exists
-  saveTag = ''
-  if sP.trMCPerCell eq -1 then saveTag = '.trVel'
-  if sP.trMCPerCell gt 0 then  saveTag = '.trMC'
-  if sP.trMCPerCell eq 0 then  saveTag = '.SPH'
-  
-  saveFilename = sP.derivPath + 'binCF' + saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
-    str(sP.snap) + '.cut' + str(nCuts) + '.vir' + str(nVirs) + '.' + sgSelect + '.' + accMode + '.sav'
-  
-  ; results exist, return
-  if file_test(saveFilename) then begin
-    restore,saveFilename
-    return,r
-  endif  
-  
-  minNum = 6
-  xrange = [9.5,12.5]
-  
-  logMassBinSize = 0.45 / (sP.res/128)
-  
-  ; make a uniform gas selection at the start
-  at = accretionTimes(sP=sP)
-  mt = mergerTreeSubset(sP=sP)
-  
-  wAm = accModeInds(at=at,accMode=accMode,sP=sP)
-    
-  ; reverse histogram parent IDs of all particles/tracers in this selection
-  gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sP,/compactMtS)
-  
-  hist_gal  = histogram(gcIndOrig.gal[wAm.gal],min=0,loc=loc_gal,rev=rev_gal)
-  hist_gmem = histogram(gcIndOrig.gmem[wAm.gmem],min=0,loc=loc_gmem,rev=rev_gmem)
-  
-  ; load max temps, current tvir, tvir at accretion
-  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  
-  ; load current temps and current SFR
-  curTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  curSFR  = gcSubsetProp(sP=sP,select=sgSelect,/curSingleVal,singleValField='sfr',$
-                         /mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-
-  ; load group cat for subgroup masses
-  gc = loadGroupCat(sP=sP,/skipIDs)
-  gcMasses = codeMassToLogMsun(gc.subgroupMass[mt.galcatIDList])
-  gc = !NULL
-
-  ; structures to store results (Tmax)
-  coldFrac = { gal_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-               gmem_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-               gal_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-               gmem_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-               gal_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-               gmem_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-               both_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-               both_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-               both_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-               gal_num      : lonarr(n_elements(mt.galcatIDList))         ,$
-               gmem_num     : lonarr(n_elements(mt.galcatIDList))          }
-  
-  ; loop over all tracked subgroups (galaxy, Tmax)
-  for i=0L,n_elements(hist_gal)-1 do begin
-    if hist_gal[i] gt 0 then begin
-      ; list of indices of galaxy gas particles in this subgroup
-      loc_inds_gal = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
-      ;loc_inds_gal2 = where(gcIndOrigTr.gal[gal_w] eq i)
-      ;if ~array_equal(loc_inds_gal,loc_inds_gal2) then print,'error'
-      
-      loc_maxt_gal = maxTemp.gal[loc_inds_gal]
-      nloc = n_elements(loc_maxt_gal)
-      
-      coldFrac.gal_num[i] = nloc
-      
-      ; count fraction Tmax below each constant temperature threshold
-      for j=0,nCuts-1 do begin
-        w = where(loc_maxt_gal le TcutVals[j],count_below)
-        coldFrac.gal_const[j,i] = float(count_below) / nloc
-      endfor
-      
-      for j=0,nVirs-1 do begin
-        ; count fraction Tmax below Tvir at current time
-        w = where(10.0^loc_maxt_gal / 10.0^curTvir.gal[loc_inds_gal] le TvirVals[j],count_below)
-        coldFrac.gal_tvircur[j,i] = float(count_below) / nloc
-  
-        ; count fraction Tmax below Tvir at accretion time
-        w = where(10.0^loc_maxt_gal / 10.0^accTvir.gal[loc_inds_gal] le TvirVals[j],count_below)
-        coldFrac.gal_tviracc[j,i] = float(count_below) / nloc
-      endfor
-    endif
-  endfor
-  
-  ; loop over all tracked subgroups (groupmem, Tmax)
-  for i=0L,n_elements(hist_gmem)-1 do begin
-    if hist_gmem[i] gt 0 then begin
-      ; list of indices of groupmem gas particles in this subgroup
-      loc_inds_gmem = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
-      loc_maxt_gmem = maxTemp.gmem[loc_inds_gmem]
-      nloc = n_elements(loc_maxt_gmem)
-      
-      coldFrac.gmem_num[i] = nloc
-      
-      ; count fraction Tmax below each constant temperature threshold
-      for j=0,nCuts-1 do begin
-        w = where(loc_maxt_gmem le TcutVals[j],count_below)
-        coldFrac.gmem_const[j,i] = float(count_below) / nloc
-      endfor
-      
-      for j=0,nVirs-1 do begin
-        ; count fraction Tmax below Tvir at current time
-        w = where(10.0^loc_maxt_gmem / 10.0^curTvir.gmem[loc_inds_gmem] le TvirVals[j],count_below)
-        coldFrac.gmem_tvircur[j,i] = float(count_below) / nloc
-  
-        ; count fraction Tmax below Tvir at accretion time
-        w = where(10.0^loc_maxt_gmem / 10.0^accTvir.gmem[loc_inds_gmem] le TvirVals[j],count_below)
-        coldFrac.gmem_tviracc[j,i] = float(count_below) / nloc
-      endfor
-    endif
-  endfor
-  
-  ; create composite gal+gmem (Tmax)
-  for j=0,nVirs-1 do $
-  coldFrac.both_tvircur[j,*] = (coldFrac.gal_tvircur[j,*] * coldFrac.gal_num + $
-                           coldFrac.gmem_tvircur[j,*] * coldFrac.gmem_num) / $
-                          (coldFrac.gal_num + coldFrac.gmem_num)
-  for j=0,nVirs-1 do $
-  coldFrac.both_tviracc[j,*] = (coldFrac.gal_tviracc[j,*] * coldFrac.gal_num + $
-                           coldFrac.gmem_tviracc[j,*] * coldFrac.gmem_num) / $
-                          (coldFrac.gal_num + coldFrac.gmem_num)
-  for j=0,nCuts-1 do $
-    coldFrac.both_const[j,*] = (coldFrac.gal_const[j,*] * coldFrac.gal_num + $
-                                coldFrac.gmem_const[j,*] * coldFrac.gmem_num) / $
-                               (coldFrac.gal_num + coldFrac.gmem_num)  
-  
-  ; structures to store results (Tcur)
-  coldFrac_cur = { gal_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-                   gmem_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-                   gal_tvircur  : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-                   gmem_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-                   gal_tviracc  : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-                   gmem_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-                   both_const   : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
-                   both_tvircur : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-                   both_tviracc : fltarr(nVirs,n_elements(mt.galcatIDList))         ,$
-                   gal_num      : lonarr(n_elements(mt.galcatIDList))         ,$
-                   gmem_num     : lonarr(n_elements(mt.galcatIDList))          }
-  
-  ; loop over all tracked subgroups (galaxy, Tcur)
-  for i=0L,n_elements(hist_gal)-1 do begin
-    if hist_gal[i] gt 0 then begin
-      ; list of indices of galaxy gas particles in this subgroup
-      loc_inds_gal   = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
-      loc_curt_gal   = curTemp.gal[loc_inds_gal]
-      loc_cursfr_gal = curSFR.gal[loc_inds_gal]
-      
-      ; select only non-eff eos gas
-      w_sfr = where(loc_cursfr_gal ne 0.0,count_nosfr)
-      if count_nosfr gt 0 then begin
-        loc_curt_gal = loc_curt_gal[w_sfr] ; select
-        loc_inds_gal = loc_inds_gal[w_sfr]
-        
-        coldFrac_cur.gal_num[i] = count_nosfr
-      
-        ; count fraction Tcur below each constant temperature threshold
-        for j=0,nCuts-1 do begin
-          w = where(loc_curt_gal le TcutVals[j],count_below)
-          coldFrac_cur.gal_const[j,i] = float(count_below) / count_nosfr
-        endfor
-        
-        for j=0,nVirs-1 do begin
-          ; count fraction Tmax below Tvir at current time
-          w = where(10.0^loc_curt_gal / 10.0^curTvir.gal[loc_inds_gal] le TvirVals[j],count_below)
-          coldFrac_cur.gal_tvircur[j,i] = float(count_below) / count_nosfr
-    
-          ; count fraction Tmax below Tvir at accretion time
-          w = where(10.0^loc_curt_gal / 10.0^accTvir.gal[loc_inds_gal] le TvirVals[j],count_below)
-          coldFrac_cur.gal_tviracc[j,i] = float(count_below) / count_nosfr
-        endfor
-      endif ; cursfr!=0
-    endif ; hist_gal>0
-  endfor  
-  
-  ; loop over all tracked subgroups (groupmem, Tcur)
-  for i=0L,n_elements(hist_gmem)-1 do begin
-    if hist_gmem[i] gt 0 then begin
-      ; list of indices of groupmem gas particles in this subgroup
-      loc_inds_gmem   = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
-      loc_curt_gmem   = curTemp.gmem[loc_inds_gmem]
-      loc_cursfr_gmem = curSFR.gmem[loc_inds_gmem]
-      
-      ; select only non-eff eos gas
-      w_sfr = where(loc_cursfr_gmem ne 0.0,count_nosfr)
-      if count_nosfr gt 0 then begin
-        loc_curt_gmem = loc_curt_gmem[w_sfr] ; select
-        loc_inds_gmem = loc_inds_gmem[w_sfr]
-        
-        coldFrac_cur.gmem_num[i] = count_nosfr
-      
-        ; count fraction Tcur below each constant temperature threshold
-        for j=0,nCuts-1 do begin
-          w = where(loc_curt_gmem le TcutVals[j],count_below)
-          coldFrac_cur.gmem_const[j,i] = float(count_below) / count_nosfr
-        endfor
-        
-        for j=0,nVirs-1 do begin
-          ; count fraction Tmax below Tvir at current time
-          w = where(10.0^loc_curt_gmem / 10.0^curTvir.gmem[loc_inds_gmem] le TvirVals[j],count_below)
-          coldFrac_cur.gmem_tvircur[j,i] = float(count_below) / count_nosfr
-    
-          ; count fraction Tmax below Tvir at accretion time
-          w = where(10.0^loc_curt_gmem / 10.0^accTvir.gmem[loc_inds_gmem] le TvirVals[j],count_below)
-          coldFrac_cur.gmem_tviracc[j,i] = float(count_below) / count_nosfr
-        endfor
-      endif ; cursfr!=0
-    endif ; hist_gal>0
-  endfor
-                        
-  ; create composite gal+gmem (Tcur)
-  for j=0,nVirs-1 do $
-  coldFrac_cur.both_tvircur[j,*] = (coldFrac_cur.gal_tvircur[j,*] * coldFrac_cur.gal_num + $
-                                    coldFrac_cur.gmem_tvircur[j,*] * coldFrac_cur.gmem_num) / $
-                                   (coldFrac_cur.gal_num + coldFrac_cur.gmem_num)
-  for j=0,nVirs-1 do $
-  coldFrac_cur.both_tviracc[j,*] = (coldFrac_cur.gal_tviracc[j,*] * coldFrac_cur.gal_num + $
-                                    coldFrac_cur.gmem_tviracc[j,*] * coldFrac_cur.gmem_num) / $
-                                   (coldFrac_cur.gal_num + coldFrac_cur.gmem_num)
-  for j=0,nCuts-1 do $
-    coldFrac_cur.both_const[j,*] = (coldFrac_cur.gal_const[j,*] * coldFrac_cur.gal_num + $
-                                    coldFrac_cur.gmem_const[j,*] * coldFrac_cur.gmem_num) / $
-                                   (coldFrac_cur.gal_num + coldFrac_cur.gmem_num)                       
-  
-  ; bin fractions into halo mass bins and make median lines
-  ;logMassNbins  = floor((xrange[1]-xrange[0]) / logMassBinSize)
-  ;logMassBins   = linspace(xrange[0],xrange[1],logMassNbins+1) ; edges
-  ;logMassBinCen = linspace(xrange[0],xrange[1],logMassNbins+1) + logMassBinSize/2.0
-  ;logMassBinCen = logMassBinCen[0:-2] ; remove last
-  
-  ; manual
-  ;logMassBins=[9.5,10.0,10.15,10.3,10.45,10.6,10.75,10.9,11.0,$
-  ;             11.1,11.25,11.5,11.75,12.0,12.25,13.0]
-  logMassBins=[9.5,10.0,10.1,10.2,10.3,10.4,10.5,10.6,10.7,10.8,10.9,11.0,$
-               11.1,11.25,11.5,11.75,11.9,13.1]
-  logMassNBins = n_elements(logMassBins)-1
-  logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
-  logMassBinCen = logMassBinCen[0:-2]
- 
-  medianVals = { const_gal    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                 const_gmem   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                 const_both   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                 tVircur_gal  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                 tVircur_gmem : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                 tVircur_both : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                 tViracc_gal  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                 tViracc_gmem : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                 tViracc_both : fltarr(nVirs,logMassNbins) + !values.f_nan  }
-                 
-  medianVals_cur = { const_gal    : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                     const_gmem   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                     const_both   : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-                     tVircur_gal  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                     tVircur_gmem : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                     tVircur_both : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                     tViracc_gal  : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                     tViracc_gmem : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-                     tViracc_both : fltarr(nVirs,logMassNbins) + !values.f_nan  }
-  
-  ; calculate median in bins (Tmax) and enforce minimum particle numbers
-  for i=0,logMassNbins-1 do begin
-    ; gal (Tmax)
-    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
-              coldFrac.gal_num ge minNum,count)
-    if count gt 0 then begin
-      for j=0,nVirs-1 do medianVals.tVircur_gal[j,i] = median(coldFrac.gal_tvircur[j,w])
-      for j=0,nVirs-1 do medianVals.tViracc_gal[j,i] = median(coldFrac.gal_tviracc[j,w])
-      for j=0,nCuts-1 do medianVals.const_gal[j,i]   = median(coldFrac.gal_const[j,w])
-    endif
-    
-    ; gmem (Tmax)
-    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
-              coldFrac.gmem_num ge minNum,count)
-    if count gt 0 then begin
-      for j=0,nVirs-1 do medianVals.tVircur_gmem[j,i] = median(coldFrac.gmem_tvircur[j,w])
-      for j=0,nVirs-1 do medianVals.tViracc_gmem[j,i] = median(coldFrac.gmem_tviracc[j,w])
-      for j=0,nCuts-1 do medianVals.const_gmem[j,i]   = median(coldFrac.gmem_const[j,w])
-    endif
-    
-    ; both (Tmax)
-    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
-              coldFrac.gal_num+coldFrac.gmem_num ge minNum,count)
-    if count gt 0 then begin
-      for j=0,nVirs-1 do medianVals.tVircur_both[j,i] = median(coldFrac.both_tvircur[j,w])
-      for j=0,nVirs-1 do medianVals.tViracc_both[j,i] = median(coldFrac.both_tviracc[j,w])
-      for j=0,nCuts-1 do medianVals.const_both[j,i]   = median(coldFrac.both_const[j,w])
-    endif
-    
-    ; gal (Tcur)
-    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
-              coldFrac_cur.gal_num ge minNum,count)
-    if count gt 0 then begin
-      for j=0,nVirs-1 do medianVals_cur.tVircur_gal[j,i] = median(coldFrac_cur.gal_tvircur[j,w])
-      for j=0,nVirs-1 do medianVals_cur.tViracc_gal[j,i] = median(coldFrac_cur.gal_tviracc[j,w])
-      for j=0,nCuts-1 do medianVals_cur.const_gal[j,i]   = median(coldFrac_cur.gal_const[j,w])
-    endif
-    
-    ; gmem (Tcur)
-    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
-              coldFrac_cur.gmem_num ge minNum,count)
-    if count gt 0 then begin
-      for j=0,nVirs-1 do medianVals_cur.tVircur_gmem[j,i] = median(coldFrac_cur.gmem_tvircur[j,w])
-      for j=0,nVirs-1 do medianVals_cur.tViracc_gmem[j,i] = median(coldFrac_cur.gmem_tviracc[j,w])
-      for j=0,nCuts-1 do medianVals_cur.const_gmem[j,i]   = median(coldFrac_cur.gmem_const[j,w])
-    endif
-    
-    ; both (Tcur)
-    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
-              coldFrac_cur.gal_num+coldFrac_cur.gmem_num ge minNum,count)
-    if count gt 0 then begin
-      for j=0,nVirs-1 do medianVals_cur.tVircur_both[j,i] = median(coldFrac_cur.both_tvircur[j,w])
-      for j=0,nVirs-1 do medianVals_cur.tViracc_both[j,i] = median(coldFrac_cur.both_tviracc[j,w])
-      for j=0,nCuts-1 do medianVals_cur.const_both[j,i]   = median(coldFrac_cur.both_const[j,w])
-    endif    
-  endfor
-  
-  r = {coldFrac:coldFrac,coldFrac_cur:coldFrac_cur,medianVals:medianVals,medianVals_cur:medianVals_cur,$
-       logMassBinCen:logMassBinCen,xrange:xrange,TcutVals:TcutVals,TvirVals:TvirVals}
-       
-  ; save
-  save,r,filename=saveFilename
-  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
-  
-  return, r
-  
 end

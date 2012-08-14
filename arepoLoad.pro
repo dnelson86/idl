@@ -94,7 +94,7 @@ function loadDensityField, fileBase, m, axes=axes
     
     ;read temperature field
     temp = fltarr(nPixelsY, nPixelsX)
-    readu,1,temp
+    ;readu,1,temp
     
   close,1
 

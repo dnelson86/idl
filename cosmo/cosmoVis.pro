@@ -782,6 +782,318 @@ pro scatterMapHalosComp
   stop
 end
 
+; scatterMapPastPosComp(): plot past positions of gas segregated by hot/cold (compare arepo/gadget top/bottom)
+
+pro scatterMapPastPosComp
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  sPg = simParams(res=512,run='gadget',redshift=2.0)
+  sPa = simParams(res=128,run='tracer',redshift=2.0)
+  print,'change tracer 256 to 512'
+  print,'128!'
+  
+  ; OLD512 z2.304 g2342 a2132 -- z2.301 g2289 a2034 -- z2.130 g6369 a5966 axes02 -- z2.64 g5498 a5097
+  ; NEW512 z2.304 g2342 a?
+  ; NEW256 z2.304 g673 a510
+  gcIDg = 2342
+  gcIDa = 510
+
+  ; config
+  sizeFac     = 3.5       ; times rvir
+  tempMinMax  = [4.0,7.0] ; log(K)
+  coldTempCut = 5.0       ; log(K)
+  timeBack    = 500.0     ; Myr
+  velVecFac   = 0.01      ; times velocity (km/s) in plotted kpc
+  accMode     = 'all'
+  axisPair    = [0,1]     ; xy
+  
+  ; GADGET
+  ; ------
+  gc = loadGroupCat(sP=sPg,/skipIDs,/verbose)
+  
+  saveFilename = sPg.derivPath + 'cutout.' + sPg.savPrefix + str(sPg.res) + '.' + str(sPg.snap) + $
+                 '.h' + str(gcIDg) + '.tb' + str(fix(timeBack)) + '.sf' + str(fix(sizeFac*10)) + '.sav'
+  
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+  endif else begin     
+    ; load ids at starting redshift and make a hot/cold galaxy selection
+    print,'Locating...'
+    at = accretionTimes(sP=sPg)
+    mt = mergerTreeSubset(sP=sPg)
+    
+    wAm = accModeInds(at=at,accMode=accMode,sP=sPg,/mask)
+    
+    ; find group members
+    gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sPg)
+    ww = where(gcIndOrig.gal[wAm.gal] eq gcIDg,count)
+    
+    gcIndOrig = !NULL & at = !NULL & mt = !NULL
+    
+    ; load max temps, current tvir, tvir at accretion
+    accTvir = gcSubsetProp(sP=sPg,select='pri',/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    maxTemp = gcSubsetProp(sP=sPg,select='pri',/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    
+    accTvir = accTvir.gal[ww]
+    maxTemp = maxTemp.gal[ww]
+    ratio   = 10.0^maxTemp / 10.0^accTvir
+    
+    ; load galcat and make gas ID list
+    galIDs = gcSubsetProp(sP=sPg,select='pri',/elemIDs,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    galIDs = galIDs.gal[ww]
+    wAm = !NULL
+    
+    galIDs = { hot : galIDs[where(ratio ge 1.0)], cold : galIDs[where(ratio lt 1.0)] }
+    if n_elements(galIDs.hot) + n_elements(galIDs.cold) ne n_elements(ratio) then message,'error'
+    
+    ; calculate previous snapshot required and load
+    snapTimes = snapNumToRedshift(sP=sPg,/all)
+    snapTimes = snapTimes[where(snapTimes ne -1)]
+    snapTimes = redshiftToAgeFlat(snapTimes)
+    
+    curAge = redshiftToAgeFlat(snapNumToRedshift(sP=sPg))
+    
+    newSnap = value_locate(curAge-snapTimes,timeBack/1000.0)
+    
+    ; track halo back in time (if possible) to get an earlier center position
+    boxCen = trackHaloPosition(sP=sPg,gcID=gcIDg,endSnap=newSnap)
+    
+    ; calculate bounds
+    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcIDg]] / 10.0) * 10.0
+    boxSizeImg = [boxSize,boxSize,boxSize] ; cube   
+    
+    sPg.snap = newSnap
+
+    ; load ids and match for indices
+    print,'Loading...'
+    ids = loadSnapshotSubset(sP=sPg,partType='gas',field='ids')
+    match,ids,galIDs.hot,ids_ind_hot,inds2,count=countHot
+    match,ids,galIDs.cold,ids_ind_cold,inds2,count=countCold
+    if countHot ne n_elements(galIDs.hot) or countCold ne n_elements(galIDs.cold) then message,'error2'
+    ids = !NULL
+    
+    ; load u,nelec and calculate temperature
+    u     = loadSnapshotSubset(sP=sPg,partType='gas',field='u')
+    nelec = loadSnapshotSubset(sP=sPg,partType='gas',field='nelec')
+    temp  = alog10(convertUtoTemp(u,nelec))
+    u     = !NULL
+    nelec = !NULL
+    temp = { hot : temp[ids_ind_hot], cold : temp[ids_ind_cold] }
+  
+    ; load gas positions and velocities
+    pos = loadSnapshotSubset(sP=sPg,partType='gas',field='pos')
+    pos = { hot : pos[*,ids_ind_hot], cold : pos[*,ids_ind_cold] }
+    vel = loadSnapshotSubset(sP=sPg,partType='gas',field='vel')
+    vel = { hot : vel[*,ids_ind_hot], cold : vel[*,ids_ind_cold] }
+    
+    ; adjust positions periodic relative
+    xDist = pos.hot[0,*] - boxCen[0]
+    yDist = pos.hot[1,*] - boxCen[1]
+    zDist = pos.hot[2,*] - boxCen[2]
+    
+    correctPeriodicDistVecs, xDist, sP=sPg
+    correctPeriodicDistVecs, yDist, sP=sPg
+    correctPeriodicDistVecs, zDist, sP=sPg
+
+    pos.hot[0,*] = xDist & pos.hot[1,*] = yDist & pos.hot[2,*] = zDist
+    
+    xDist = pos.cold[0,*] - boxCen[0]
+    yDist = pos.cold[1,*] - boxCen[1]
+    zDist = pos.cold[2,*] - boxCen[2]
+    
+    correctPeriodicDistVecs, xDist, sP=sPg
+    correctPeriodicDistVecs, yDist, sP=sPg
+    correctPeriodicDistVecs, zDist, sP=sPg
+    
+    pos.cold[0,*] = xDist & pos.cold[1,*] = yDist & pos.cold[2,*] = zDist
+        
+    xDist = !NULL & yDist = !NULL & zDist = !NULL
+    
+    ; create endpoint for each position point for the velocity vector line
+    pos2 = { hot : pos.hot, cold : pos.cold }
+    pos2.hot[0,*] = pos.hot[0,*] + vel.hot[0,*]*velVecFac
+    pos2.hot[1,*] = pos.hot[1,*] + vel.hot[1,*]*velVecFac
+    pos2.hot[2,*] = pos.hot[2,*] + vel.hot[2,*]*velVecFac
+    pos2.cold[0,*] = pos.cold[0,*] + vel.cold[0,*]*velVecFac
+    pos2.cold[1,*] = pos.cold[1,*] + vel.cold[1,*]*velVecFac
+    pos2.cold[2,*] = pos.cold[2,*] + vel.cold[2,*]*velVecFac
+
+    ; save
+    save,pos,temp,pos2,sPg,galIDs,gcIDg,sizeFac,boxCen,boxSizeImg,filename=saveFilename
+    print,'Saved: '+strmid(saveFilename,strlen(sPg.derivPath))
+  
+  endelse
+
+  ; create color index mapping
+  colorinds_hot = (temp.hot-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
+  colorinds_hot = fix(colorinds_hot + 50.0) > 0 < 255 ;50-255  
+  colorinds_cold = (temp.cold-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
+  colorinds_cold = fix(colorinds_cold + 50.0) > 0 < 255 ;50-255  
+  
+  print,'rendering gadget...'
+  ; get box center (in terms of specified axes)
+  haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcIDg]] ;ckpc
+  haloMass = codeMassToLogMsun(gc.subgroupMass[gcIDg])
+  
+  plotFilename = 'scatter.'+sPg.savPrefix+str(sPg.res)+'.h'+str(gcIDg)+'-'+sPa.savPrefix+str(sPa.res)+$
+                 '.h'+str(gcIDa)+'.tb-'+str(fix(timeBack))+'.'+str(sPg.snap)+'.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
+
+  config = {boxSizeImg:boxSizeImg,plotFilename:plotFilename,haloVirRad:haloVirRad,haloMass:haloMass,$
+            axisPair:axisPair,sP:sPg,barMM:tempMinMax,barType:'1temp'}
+  
+  ; plot
+  start_PS, sPg.plotPath + config.plotFilename, xs=8, ys=8
+  plotScatterComp,pos.hot,pos2.hot,pos.cold,pos2.cold,colorinds_hot,colorinds_cold,config=config,/top           
+
+
+  ; AREPO
+  ; -----
+  gc = loadGroupCat(sP=sPa,/skipIDs,/verbose)
+  
+  saveFilename = sPa.derivPath + 'cutout.' + sPa.savPrefix + str(sPa.res) + '.' + str(sPa.snap) + $
+                 '.h' + str(gcIDa) + '.tb' + str(fix(timeBack)) + '.sf' + str(fix(sizeFac*10)) + '.sav'
+  
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+  endif else begin
+    ; load ids at starting redshift and make a hot/cold galaxy selection
+    print,'Locating...'
+    at = accretionTimes(sP=sPa)
+    mt = mergerTreeSubset(sP=sPa)
+    
+    wAm = accModeInds(at=at,accMode=accMode,sP=sPa)
+    at = !NULL
+    
+    ; find group members
+    gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sPa)
+    ww = where(gcIndOrig.gal[wAm.gal] eq gcIDg,count)
+    
+    gcIndOrig = !NULL & mt = !NULL & wAm = !NULL
+    
+    ; load max temps, current tvir, tvir at accretion
+    accTvir = gcSubsetProp(sP=sPa,select='pri',/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    maxTemp = gcSubsetProp(sP=sPa,select='pri',/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+
+    accTvir = accTvir.gal[ww]
+    maxTemp = maxTemp.gal[ww]
+    ratio   = 10.0^maxTemp / 10.0^accTvir
+    
+    ; load galcat and make tracer ID list
+    galIDs = gcSubsetProp(sP=sPa,select='pri',/elemIDs,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    galIDs = galIDs.gal[ww]
+    
+    galIDs = { hot : galIDs[where(ratio ge 1.0)], cold : galIDs[where(ratio lt 1.0)] }
+    if n_elements(galIDs.hot) + n_elements(galIDs.cold) ne n_elements(ratio) then message,'error'
+    
+    ; calculate previous snapshot required and load
+    snapTimes = snapNumToRedshift(sP=sPa,/all)
+    snapTimes = snapTimes[where(snapTimes ne -1)]
+    snapTimes = redshiftToAgeFlat(snapTimes)
+    
+    curAge = redshiftToAgeFlat(snapNumToRedshift(sP=sPa))
+    
+    newSnap = value_locate(curAge-snapTimes,timeBack/1000.0)
+    
+    ; track halo back in time (if possible) to get an earlier center position
+    boxCen = trackHaloPosition(sP=sPa,gcID=gcIDg,endSnap=newSnap)
+    
+    ; calculate bounds
+    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcIDg]] / 10.0) * 10.0
+    boxSizeImg = [boxSize,boxSize,boxSize] ; cube   
+    
+    sPa.snap = newSnap
+
+    ; load ids and match for tracer indices
+    print,'Loading...'
+    ids = loadSnapshotSubset(sP=sPa,partType='tracerMC',field='tracerIDs')
+    match,ids,galIDs.hot,ids_ind_hot,inds2,count=countHot
+    match,ids,galIDs.cold,ids_ind_cold,inds2,count=countCold
+    if countHot ne n_elements(galIDs.hot) or countCold ne n_elements(galIDs.cold) then message,'error2'
+    ids = !NULL
+    
+    ; load parent IDs, gas ids, and convert to parent indices
+    parIDs = loadSnapshotSubset(sP=sPa,partType='tracerMC',field='parentIDs')
+    parIDs = { hot : parIDs[ids_ind_hot], cold : parIDs[ids_ind_cold] }
+    
+    ids = loadSnapshotSubset(sP=sPa,partType='gas',field='ids')
+    placeMap = getIDIndexMap(ids,minid=minid)
+    ids = !NULL
+    
+    ids_ind_hot  = placeMap[parIDs.hot-minid]  ; replace ids_ind_hot with gas indices
+    ids_ind_cold = placeMap[parIDs.cold-minid] ; same
+    placeMap = !NULL
+  
+    ; load u,nelec and parent gas cells calculate temperature
+    u     = loadSnapshotSubset(sP=sPg,partType='gas',field='u')
+    nelec = loadSnapshotSubset(sP=sPg,partType='gas',field='nelec')
+    temp  = alog10(convertUtoTemp(u,nelec))
+    u     = !NULL
+    nelec = !NULL
+    temp = { hot : temp[ids_ind_hot], cold : temp[ids_ind_cold] }
+  
+    ; load gas positions and velocities
+    pos = loadSnapshotSubset(sP=sPg,partType='gas',field='pos')
+    pos = { hot : pos[*,ids_ind_hot], cold : pos[*,ids_ind_cold] }
+    vel = loadSnapshotSubset(sP=sPg,partType='gas',field='vel')
+    vel = { hot : vel[*,ids_ind_hot], cold : vel[*,ids_ind_cold] }
+    
+    ; adjust positions periodic relative
+    xDist = pos.hot[0,*] - boxCen[0]
+    yDist = pos.hot[1,*] - boxCen[1]
+    zDist = pos.hot[2,*] - boxCen[2]
+    
+    correctPeriodicDistVecs, xDist, sP=sPg
+    correctPeriodicDistVecs, yDist, sP=sPg
+    correctPeriodicDistVecs, zDist, sP=sPg
+
+    pos.hot[0,*] = xDist & pos.hot[1,*] = yDist & pos.hot[2,*] = zDist
+    
+    xDist = pos.cold[0,*] - boxCen[0]
+    yDist = pos.cold[1,*] - boxCen[1]
+    zDist = pos.cold[2,*] - boxCen[2]
+    
+    correctPeriodicDistVecs, xDist, sP=sPg
+    correctPeriodicDistVecs, yDist, sP=sPg
+    correctPeriodicDistVecs, zDist, sP=sPg
+    
+    pos.cold[0,*] = xDist & pos.cold[1,*] = yDist & pos.cold[2,*] = zDist
+        
+    xDist = !NULL & yDist = !NULL & zDist = !NULL
+    
+    ; create endpoint for each position point for the velocity vector line
+    pos2 = { hot : pos.hot, cold : pos.cold }
+    pos2.hot[0,*] = pos.hot[0,*] + vel.hot[0,*]*velVecFac
+    pos2.hot[1,*] = pos.hot[1,*] + vel.hot[1,*]*velVecFac
+    pos2.hot[2,*] = pos.hot[2,*] + vel.hot[2,*]*velVecFac
+    pos2.cold[0,*] = pos.cold[0,*] + vel.cold[0,*]*velVecFac
+    pos2.cold[1,*] = pos.cold[1,*] + vel.cold[1,*]*velVecFac
+    pos2.cold[2,*] = pos.cold[2,*] + vel.cold[2,*]*velVecFac
+
+    ; save
+    save,pos,temp,pos2,sPa,galIDs,gcIDa,sizeFac,boxCen,boxSizeImg,filename=saveFilename
+    print,'Saved: '+strmid(saveFilename,strlen(sPg.derivPath))
+  
+  endelse
+
+  print,'rendering arepo...'
+  ; get box center (in terms of specified axes)
+  haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcIDa]] ;ckpc
+  haloMass = codeMassToLogMsun(gc.subgroupMass[gcIDa])
+
+  ; fix halo mass if we're using old (x2 bug) catalogs
+  if sPa.run eq 'arepo' then haloMass = codeMassToLogMsun(0.5*gc.subgroupMass[gcIDa])
+
+  config = {boxSizeImg:boxSizeImg,plotFilename:plotFilename,haloVirRad:haloVirRad,haloMass:haloMass,$
+            axisPair:axisPair,sP:sPa,barMM:tempMinMax,barType:'1temp'}
+  
+  ; plot
+  plotScatterComp,loc_pos,loc_pos2,loc_pos_cold,loc_pos2_cold,colorinds,colorinds_cold,config=config,/bottom
+  end_PS, pngResize=60
+  
+  stop
+end
+
 ; mosaicHalosComp(): mosaic 4x2 comparison between arepo/gadget (cold only)
 
 pro mosaicHalosComp

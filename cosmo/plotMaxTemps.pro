@@ -1,6 +1,6 @@
 ; plotMaxTemps.pro
 ; gas accretion project - plots related to maximum past temperature of the gas
-; dnelson jul.2012
+; dnelson aug.2012
 
 ; plotTmaxVsTvirAccComp(); plot the previous max temp vs. the virial temperature of the parent halos at the
 ;                          time of accretion for arepo vs. gadget
@@ -10,10 +10,14 @@ pro plotTmaxVsTvirAccComp
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  sP1 = simParams(res=256,run='gadget',redshift=3.0)
-  sP2 = simParams(res=256,run='tracer',redshift=3.0) ; f=-1 use velocity tracers
-  print,'redshift 3'
-  binSizeLog = 0.15 / (sP1.res/128)
+  sPg = simParams(res=256,run='gadget',redshift=2.0)
+  sPa = simParams(res=256,run='tracer',redshift=2.0) ; f=-1 use velocity tracers
+
+  ; old
+  sPg.derivPath = '/n/home07/dnelson/data3/sims.gadget/256_20Mpc/data.files.bak/'
+  sPa.derivPath = '/n/home07/dnelson/data3/sims.tracers/256_20Mpc/data.files.bak/'
+
+  binSizeLog = 0.15 / (sPg.res/128)
   
   sgSelect = 'pri'
   accMode  = 'all'
@@ -24,33 +28,24 @@ pro plotTmaxVsTvirAccComp
   
   cInd = 1
   
-  ; red+blue as in Vogelsberger+
-  ;colorsA = [getColor24([255,200,200]),getColor24([255,100,100]),getColor24([255,0,0])] ; 128,256,512 AR
-  ;colorsG = [getColor24([200,200,255]),getColor24([100,100,255]),getColor24([0,0,255])] ; 128,256,512 GA
-
-  ; green+purple/brown alternative
-  colorsA = [getColor24(['bd'x,'e1'x,'98'x]),getColor24(['45'x,'89'x,'00'x]),getColor24(['21'x,'61'x,'00'x])]
-  ;colorsG = [getColor24(['d6'x,'92'x,'d8'x]),getColor24(['60'x,'00'x,'63'x]),getColor24(['2d'x,'00'x,'2f'x])]
-  colorsG = [getColor24(['d5'x,'a9'x,'8b'x]),getColor24(['98'x,'3d'x,'00'x]),getColor24(['48'x,'1d'x,'00'x])]
-
-  ; load sP1 (gadget)
-  accTvir_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  curTvir_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  maxTemp_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
+  ; load sPg (gadget)
+  accTvir_gadget = gcSubsetProp(sP=sPg,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  curTvir_gadget = gcSubsetProp(sP=sPg,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  maxTemp_gadget = gcSubsetProp(sP=sPg,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
  
   ; load parent halo masses so we can make halo massbins
-  parentMass_ga = gcSubsetProp(sP=sP1,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  parentMass_ga = gcSubsetProp(sP=sPg,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
 
-  ; load sP2 (tracer)
-  accTvir_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  curTvir_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  maxTemp_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  ; load sPa (tracer)
+  accTvir_tracer = gcSubsetProp(sP=sPa,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  curTvir_tracer = gcSubsetProp(sP=sPa,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  maxTemp_tracer = gcSubsetProp(sP=sPa,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
 
-  parentMass_tr = gcSubsetProp(sP=sP2,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  parentMass_tr = gcSubsetProp(sP=sPa,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
     
   ; plot (0) - 3x2 mass bins separated out and each panel with gadget+arepo, gal vs. gmem
-  start_PS, sP1.plotPath + 'tmax_tviracc_3x2.'+accMode+'.'+sP1.plotPrefix+'.'+sP2.plotPrefix+'.'+$
-            str(sP1.res)+'_'+str(sP1.snap)+'.eps', /big
+  start_PS, sPg.plotPath + 'tmax_tviracc_3x2.'+accMode+'.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
+            str(sPg.res)+'_'+str(sPg.snap)+'.eps', /big
     !p.thick += 1
     xrange = [-2.2,1.2]
     yrange = [6e-4,1.0]
@@ -90,22 +85,22 @@ pro plotTmaxVsTvirAccComp
       ; histogram gadget (gal) differences
       vals = [10.0^maxTemp_gadget.gal[wGadget_gal]/10.0^accTvir_gadget.gal[wGadget_gal]]
       hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[1],color=colorsG[cInd],/overplot
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[1],color=sPg.colorsG[cInd],/overplot
   
       ; histogram tracer (gal) differences
       vals = [10.0^maxTemp_tracer.gal[wTracer_gal]/10.0^accTvir_tracer.gal[wTracer_gal]]
       hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[1],color=colorsA[cInd],/overplot
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[1],color=sPa.colorsA[cInd],/overplot
     
       ; histogram gadget (gmem) differences
       vals = [10.0^maxTemp_gadget.gmem[wGadget_gmem]/10.0^accTvir_gadget.gmem[wGadget_gmem]]
       hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[0],color=colorsG[cInd],/overplot
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[0],color=sPg.colorsG[cInd],/overplot
   
       ; histogram tracer (gmem) differences
       vals = [10.0^maxTemp_tracer.gmem[wTracer_gmem]/10.0^accTvir_tracer.gmem[wTracer_gmem]]
       hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[0],color=colorsA[cInd],/overplot
+      cgPlot,loc+binsizeLog*0.5,float(hist)/total(hist),line=lines[0],color=sPa.colorsA[cInd],/overplot
     
       ; legends
       massBinStr = string(massBins[j],format='(f4.1)') + ' < log(M) < ' + $
@@ -114,7 +109,7 @@ pro plotTmaxVsTvirAccComp
       cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.0,alignment=0.5
           
       if j eq 0 then $
-        legend,['gadget','arepo'],textcolors=[colorsG[cInd],colorsA[cInd]],box=0,$
+        legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
           position=[-2.0,0.1],charsize=!p.charsize-0.1,spacing=!p.charsize+0.5
     
     endfor
@@ -131,14 +126,14 @@ pro plotTmaxVsTvirAccComp
 
   ; plot (1) - compare tmax to tvir at time of accretion (both gal+gmem)
   if 0 then begin
-  start_PS, sP1.plotPath + 'tmax_tviracc_comp_both.'+str(sP1.res)+'_'+str(sP1.snap)+'.eps'
+  start_PS, sPg.plotPath + 'tmax_tviracc_comp_both.'+str(sPg.res)+'_'+str(sPg.snap)+'.eps'
     !p.thick += 1
     xrange = [-2.5,1.2]
     yrange = [1e-3,1.0]
     
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
       ytitle="Mass Fraction",xtitle=textoidl("log( T_{max} / T_{vir,acc} )")
-      ;title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sP1.redshift,format='(f3.1)')+")"
+      ;title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sPg.redshift,format='(f3.1)')+")"
     cgPlot,[0,0],yrange,line=0,color=fsc_color('light gray'),/overplot
     
     strings = []
@@ -182,14 +177,14 @@ pro plotTmaxVsTvirAccComp
   end_PS
   
   ; plot (2) - compare tmax to tvir at time of accretion (gal only)
-  start_PS, sP1.plotPath + 'tmax_tviracc_comp_gal.'+str(sP1.res)+'_'+str(sP1.snap)+'.eps'
+  start_PS, sPg.plotPath + 'tmax_tviracc_comp_gal.'+str(sPg.res)+'_'+str(sPg.snap)+'.eps'
     !p.thick += 1
     xrange = [-2.5,1.2]
     yrange = [1e-3,1.0]
     
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
       ytitle="Mass Fraction",xtitle=textoidl("log( T_{max} / T_{vir,acc} )")
-      ;title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sP1.redshift,format='(f3.1)')+")"
+      ;title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sPg.redshift,format='(f3.1)')+")"
     cgPlot,[0,0],yrange,line=0,color=fsc_color('light gray'),/overplot
     
     strings = []
@@ -229,14 +224,14 @@ pro plotTmaxVsTvirAccComp
   end_PS
   
   ; plot (3) - compare tmax to tvir at time of accretion (gmem)
-  start_PS, sP1.plotPath + 'tmax_tviracc_comp_gmem.'+str(sP1.res)+'_'+str(sP1.snap)+'.eps'
+  start_PS, sPg.plotPath + 'tmax_tviracc_comp_gmem.'+str(sPg.res)+'_'+str(sPg.snap)+'.eps'
     !p.thick += 1
     xrange = [-2.5,1.2]
     yrange = [1e-3,1.0]
     
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
       ytitle="Mass Fraction",xtitle=textoidl("log( T_{max} / T_{vir,acc} )")
-      ;title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sP1.redshift,format='(f3.1)')+")"
+      ;title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sPg.redshift,format='(f3.1)')+")"
     cgPlot,[0,0],yrange,line=0,color=fsc_color('light gray'),/overplot
     
     strings = []
@@ -276,14 +271,14 @@ pro plotTmaxVsTvirAccComp
   end_PS
   
   ; plot (4) - same plot using current Tvir instead of Tvir at accretion time
-  start_PS, sP1.plotPath + 'tmax_tvircur_comp.'+str(sP1.res)+'_'+str(sP1.snap)+'.eps'
+  start_PS, sPg.plotPath + 'tmax_tvircur_comp.'+str(sPg.res)+'_'+str(sPg.snap)+'.eps'
     !p.thick += 1
     xrange = [-2.5,1.0]
     yrange = [1e-3,1.0]
     
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,$
       ytitle="Mass Fraction",xtitle=textoidl("log ( T_{max} / T_{vir,cur} )")+"",$
-      title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sP1.redshift,format='(f3.1)')+")"
+      title=str(res)+textoidl("^3")+" Gadget vs. ArepoMC (z="+string(sPg.redshift,format='(f3.1)')+")"
     cgPlot,[1,1],yrange,line=0,color=fsc_color('light gray'),/overplot
     
     strings = []
@@ -336,10 +331,10 @@ pro plotTmaxHistos
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  sP1 = simParams(res=256,run='gadget',redshift=2.0)
-  sP2 = simParams(res=256,run='tracer',redshift=2.0) ; f=-1 use velocity tracers
+  sPg = simParams(res=256,run='gadget',redshift=2.0)
+  sPa = simParams(res=256,run='tracer',redshift=2.0) ; f=-1 use velocity tracers
   
-  binSizeLog = 0.2 / (sP1.res/128)
+  binSizeLog = 0.2 / (sPg.res/128)
   
   sgSelect = 'pri'
   accMode  = 'all'   
@@ -348,26 +343,17 @@ pro plotTmaxHistos
   
   cInd = 1
   
-  ; red+blue as in Vogelsberger+
-  ;colorsA = [getColor24([255,200,200]),getColor24([255,100,100]),getColor24([255,0,0])] ; 128,256,512 AR
-  ;colorsG = [getColor24([200,200,255]),getColor24([100,100,255]),getColor24([0,0,255])] ; 128,256,512 GA
-
-  ; green+purple/brown alternative
-  colorsA = [getColor24(['bd'x,'e1'x,'98'x]),getColor24(['45'x,'89'x,'00'x]),getColor24(['21'x,'61'x,'00'x])]
-  ;colorsG = [getColor24(['d6'x,'92'x,'d8'x]),getColor24(['60'x,'00'x,'63'x]),getColor24(['2d'x,'00'x,'2f'x])]
-  colorsG = [getColor24(['d5'x,'a9'x,'8b'x]),getColor24(['98'x,'3d'x,'00'x]),getColor24(['48'x,'1d'x,'00'x])]
-
-  ; load sP1 (gadget)
-  accTvir_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  maxTemp_gadget = gcSubsetProp(sP=sP1,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
+  ; load sPg (gadget)
+  accTvir_gadget = gcSubsetProp(sP=sPg,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  maxTemp_gadget = gcSubsetProp(sP=sPg,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
  
-  ; load sP2 (tracer)
-  accTvir_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  maxTemp_tracer = gcSubsetProp(sP=sP2,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  ; load sPa (tracer)
+  accTvir_tracer = gcSubsetProp(sP=sPa,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  maxTemp_tracer = gcSubsetProp(sP=sPa,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
 
   ; plot (1) - histos of tmax/tviracc
-  start_PS, sP1.plotPath + 'tmax_histos1.'+accMode+'.'+sP1.plotPrefix+'.'+sP2.plotPrefix+'.'+$
-            str(sP1.res)+'_'+str(sP1.snap)+'.eps', /big
+  start_PS, sPg.plotPath + 'tmax_histos1.'+accMode+'.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
+            str(sPg.res)+'_'+str(sPg.snap)+'.eps', /big
     !p.thick += 1
     
     xrange = [-2.0,1.5]
@@ -379,24 +365,24 @@ pro plotTmaxHistos
     ; histogram gadget (gal) differences
     vals = [10.0^maxTemp_gadget.gal/10.0^accTvir_gadget.gal]
     hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)*sP1.targetGasMass,line=lines[1],color=colorsG[cInd],/overplot
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sPg.targetGasMass,line=lines[1],color=sPg.colorsG[cInd],/overplot
 
     ; histogram tracer (gal) differences
     vals = [10.0^maxTemp_tracer.gal/10.0^accTvir_tracer.gal]
     hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)*sP2.trMassConst,line=lines[1],color=colorsA[cInd],/overplot
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sPa.trMassConst,line=lines[1],color=sPa.colorsA[cInd],/overplot
   
     ; histogram gadget (gmem) differences
     vals = [10.0^maxTemp_gadget.gmem/10.0^accTvir_gadget.gmem]
     hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)*sP1.targetGasMass,line=lines[0],color=colorsG[cInd],/overplot
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sPg.targetGasMass,line=lines[0],color=sPg.colorsG[cInd],/overplot
 
     ; histogram tracer (gmem) differences
     vals = [10.0^maxTemp_tracer.gmem/10.0^accTvir_tracer.gmem]
     hist = histogram(alog10(vals),binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)*sP2.trMassConst,line=lines[0],color=colorsA[cInd],/overplot
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sPa.trMassConst,line=lines[0],color=sPa.colorsA[cInd],/overplot
   
-    legend,['gadget','arepo'],textcolors=[colorsG[cInd],colorsA[cInd]],box=0,$
+    legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
       /top,/right,spacing=!p.charsize+0.5
     
     legend,['central galaxy','halo atmosphere'],linestyle=[0,1],$
@@ -406,8 +392,8 @@ pro plotTmaxHistos
   end_PS
   
   ; plot (2) - histos of unnormalized tmax
-  start_PS, sP1.plotPath + 'tmax_histos2.'+accMode+'.'+sP1.plotPrefix+'.'+sP2.plotPrefix+'.'+$
-            str(sP1.res)+'_'+str(sP1.snap)+'.eps', /big
+  start_PS, sPg.plotPath + 'tmax_histos2.'+accMode+'.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
+            str(sPg.res)+'_'+str(sPg.snap)+'.eps', /big
     !p.thick += 1
     
     xrange = [3.5,8.0]
@@ -418,21 +404,21 @@ pro plotTmaxHistos
     
     ; histogram gadget (gal) differences
     hist = histogram(maxTemp_gadget.gal,binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)*sP1.targetGasMass,line=lines[1],color=colorsG[cInd],/overplot
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sPg.targetGasMass,line=lines[1],color=sPg.colorsG[cInd],/overplot
 
     ; histogram tracer (gal) differences
     hist = histogram(maxTemp_tracer.gal,binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)*sP2.trMassConst,line=lines[1],color=colorsA[cInd],/overplot
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sPa.trMassConst,line=lines[1],color=sPa.colorsA[cInd],/overplot
   
     ; histogram gadget (gmem) differences
     hist = histogram(maxTemp_gadget.gmem,binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)*sP1.targetGasMass,line=lines[0],color=colorsG[cInd],/overplot
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sPg.targetGasMass,line=lines[0],color=sPg.colorsG[cInd],/overplot
 
     ; histogram tracer (gmem) differences
     hist = histogram(maxTemp_tracer.gmem,binsize=binsizeLog,loc=loc)
-    cgPlot,loc+binsizeLog*0.5,float(hist)*sP2.trMassConst,line=lines[0],color=colorsA[cInd],/overplot
+    cgPlot,loc+binsizeLog*0.5,float(hist)*sPa.trMassConst,line=lines[0],color=sPa.colorsA[cInd],/overplot
   
-    legend,['gadget','arepo'],textcolors=[colorsG[cInd],colorsA[cInd]],box=0,$
+    legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
       /top,/right,spacing=!p.charsize+0.5
     
     legend,['central galaxy','halo atmosphere'],linestyle=[0,1],$

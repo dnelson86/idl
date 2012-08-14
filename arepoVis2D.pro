@@ -88,6 +88,11 @@ pro plotDensityField, filePath, snaps, axes=axes, writePNG=writePNG, writeJPG=wr
     ;loadColorTable, 'blue-red', rgb_table=rgbTable
     loadct,11,rgb_table=rgbTable
 
+    ; override?
+    ;w = where(df.dens ge 5.0,count,comp=wc)
+    ;if count gt 0 then df.dens[w] = -1.0
+    ;print,minmax(df.dens[wc])
+
     if not keyword_set(minMax) then colorMinMax = minmax(df.dens)
     if keyword_set(minMax) then colorMinMax = minMax
     

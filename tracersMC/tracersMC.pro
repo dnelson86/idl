@@ -7,10 +7,11 @@
 pro checkSnapshotIntegrity
 
   ; config
-  sP = simParams(res=128,run='tracerMC.ref',f='1')
+  sP = simParams(res=512,run='tracer',redshift=2.0)
+  sP.simPath = '/n/hernquistfs2/sgenel/'
   
-  snaps = indgen(350)
-  subBox = 1 ; subBox snapshot numbering or main snapshot numbering
+  snaps = [11]
+  subBox = 0 ; subBox snapshot numbering or main snapshot numbering
 
   foreach snap,snaps do begin
     ; load
@@ -20,15 +21,22 @@ pro checkSnapshotIntegrity
     h = loadSnapshotHeader(sP=sP,subBox=subBox)
     
     gas_ids    = loadSnapshotSubset(sP=sP,partType='gas',field='ids',subBox=subBox)
-    star_ids   = loadSnapshotSubset(sP=sP,partType='stars',field='ids',subBox=subBox)
+    
+    star_ids = []
+    if (h.nPartTot[4] gt 0) then $
+      star_ids   = loadSnapshotSubset(sP=sP,partType='stars',field='ids',subBox=subBox)
+
     gas_numtr  = loadSnapshotSubset(sP=sP,partType='gas',field='numtr',subBox=subBox)
-    star_numtr = loadSnapshotSubset(sP=sP,partType='stars',field='numtr',subBox=subBox)
+    stop
+    star_numtr = [0]
+    if (h.nPartTot[4] gt 0) then $
+      star_numtr = loadSnapshotSubset(sP=sP,partType='stars',field='numtr',subBox=subBox)
     
     tr_ids    = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids',subBox=subBox)
     tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids',subBox=subBox)
     
     print,' load done, checking...'
-  
+
     ; check for strange IDs
     w = where(tr_ids eq 0,count_zero)
     if (count_zero ne 0) then stop ;bunch with ID=0 are all attached to a star (must be a bug)
@@ -101,21 +109,32 @@ pro checkSnapshotIntegrity
 end
 
 ; cosmoTracerChildren(): return indices (or optionally IDs) of child tracer particles of 
-;                        specified gas cells (by indices gasInds or ids gasIDs)
+;                        specified gas cells/stars (by indices gasInds or ids gasIDs or ids starIDs)
+; note: for MC tracers should not mix gas and stellar searches, do separately
 
 function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=verbose, $
-                              gasInds=gasInds, gasIDs=gasIDs, $ ; input: gas cells to search
+                              gasInds=gasInds, gasIDs=gasIDs, starIDs=starIDs, $ ; input: gas cells/stars to search
                               child_counts=child_counts ; optional output
                               
-  if (n_elements(gasInds) eq 0 and n_elements(gasIDs) eq 0) then stop
-  if (not keyword_set(getInds) and not keyword_set(getIDs)) then stop
+  if (n_elements(gasInds) eq 0 and n_elements(gasIDs) eq 0 and n_elements(starIDs) eq 0) then message,'Input required.'
+  if (not keyword_set(getInds) and not keyword_set(getIDs)) then message,'Output type required.'
+  if (n_elements(gasIDs) gt 0 and n_elements(starIDs) gt 0) then message,'Either gas or stars.'
   
-  if (n_elements(gasIDs) eq 0) then begin
+  if n_elements(gasIDs) eq 0 and n_elements(starIDs) eq 0 then begin
     ; convert input gas indices into IDs
-    if n_elements(gasInds) eq 0 then stop ; indices required if IDs not specified
+    if n_elements(gasInds) eq 0 then stop ; gas indices required if IDs not specified (no starInds support)
     gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')    
     gasIDs = gas_ids[gasInds]
     gas_ids = !NULL
+  endif
+  
+  pt = 'gas'
+  
+  ; if we input stars, switch particle type and override gasIDs with starIDs
+  if n_elements(starIDs) gt 0 then begin
+    pt = 'stars'
+    gasIDs = starIDs
+    starIDs = !NULL
   endif
   
   ; get tracer parent IDs
@@ -132,9 +151,14 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=ver
   child_counts = child_counts[gasIDs]
 
   ; DEBUG: sanity check on child counts
-  ;num_tr = loadSnapshotSubset(sP.simPath,snapNum=sP.snap,partType='gas',field='numtr')
-  ;num_tr = num_tr[gasInds]
-  ;if not array_equal(child_counts,num_tr) then stop
+  gas_ids = loadSnapshotSubset(sP=sP,partType=pt,field='ids')
+  placeMap = getIDIndexMap(gas_ids,minid=minid)
+  gas_ids = !NULL
+  
+  num_tr = loadSnapshotSubset(sP=sP,partType=pt,field='numtr')
+  num_tr = num_tr[placeMap[gasIDs-minid]]
+  placeMap = !NULL
+  if not array_equal(child_counts,num_tr) then message,'Error: Tracer child count mismatch.'
 
   w = where(child_counts gt 0,count)
   if (count eq 0) then return, []

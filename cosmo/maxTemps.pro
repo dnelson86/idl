@@ -1,6 +1,6 @@
 ; maxTemps.pro
 ; gas accretion project - past temperature history of gas
-; dnelson jun.2012
+; dnelson aug.2012
 
 ; -----------------------------------------------------------------------------------------------------
 ; maxTemps(): find maximum temperature for gas particles in galaxy/group member catalogs at redshift
@@ -8,12 +8,11 @@
 ;             the simulation
 ;
 ; NOTE: currently temps are only saved for gas in groups at the end of the interval (not all gas)
-; saveRedshifts: if not set, then the history trace runs down to sP.snap and is saved
-;                if set, save at each redshift as it is reached, running to the lowest
 ; -----------------------------------------------------------------------------------------------------
 
-function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
-                   loadByGas=loadByGas, loadAllTrGal=loadAllTrGal, loadAllTrGmem=loadAllTrGmem ; load opt
+function maxTemps, sP=sP, zStart=zStart, restart=restart, $
+                   loadByGas=loadByGas, $ ; load options
+                   loadAllTrGal=loadAllTrGal, loadAllTrGmem=loadAllTrGmem, loadAllTrStars=loadAllTrStars
 
   forward_function cosmoTracerChildren, cosmoTracerVelParents
   compile_opt idl2, hidden, strictarr, strictarrsubs
@@ -24,31 +23,19 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
   minSnap = redshiftToSnapnum(zStart,sP=sP)
 
   ; set maximum snapshot (minimum redshift) (-1 do not include final snapshot in Tmax search)
-  if not keyword_set(saveRedshifts) then $
-    saveSnaps = [sP.snap - 1]
-  if keyword_set(saveRedshifts) then $
-    saveSnaps = redshiftToSnapnum(saveRedshifts,sP=sP) - 1
-
-  if keyword_set(saveRedshifts) then stop ; DO NOT USE (in order to know which tracers to follow the
-                                          ; properties of we have to first know the galaxy catalog of
-                                          ; interest, but for multiple save times the only realistic
-                                          ; approach would be to process all tracers and at each save
-                                          ; time extract the subset in that galaxy catalog (TODO)
-  maxSnap = max(saveSnaps)
+  maxSnap = sP.snap - 1
+  
+  snapRange = [minSnap,maxSnap]
   
   ; set saveFilename and check for existence
-  if keyword_set(loadByGas) or keyword_set(loadAllTrGal) or keyword_set(loadAllTrGmem) then begin
-    if ((keyword_set(loadAllTrGas) or keyword_set(loadAllTrGmem)) and sP.trMCPerCell eq 0) then $
-      message,'Cannot load all tracers for SPH type.'
-    
-    saveTag = ''
-    if sP.trMCPerCell eq -1 then saveTag = '.trVel'
-    if sP.trMCPerCell gt 0 then  saveTag = '.trMC'
-    if sP.trMCPerCell eq 0 then  saveTag = '.SPH'
+  if (keyword_set(loadByGas) or keyword_set(loadAllTrGal) or keyword_set(loadAllTrGmem) or $
+      keyword_set(loadAllTrStars)) then begin
+    if ((keyword_set(loadAllTrGas) or keyword_set(loadAllTrGmem) or keyword_set(loadAllTrStars)) and $
+      sP.trMCPerCell eq 0) then message,'Cannot load all tracers for SPH type.'
     
     ; load the condensed results (one per gas particle in galcat)
     if keyword_set(loadByGas) then begin
-      saveFilename = sP.derivPath+'maxtemp'+saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
+      saveFilename = sP.derivPath+'maxtemp.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
                      str(minSnap)+'-'+str(maxSnap)+'.sav'
       
       if not file_test(saveFilename) then message,'Error: Specified maxTemps not found!'
@@ -58,7 +45,7 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
     
     ; load the results for all tracers (galaxy)
     if keyword_set(loadAllTrGal) then begin
-      saveFilename = sP.derivPath + 'maxtemp'+saveTag+'.gal.'+sP.savPrefix+str(sP.res)+'.'+$
+      saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.gal.'+sP.savPrefix+str(sP.res)+'.'+$
                      str(minSnap)+'-'+str(maxSnap)+'.sav'
                      
       if not file_test(saveFilename) then message,'Error: Specified maxTemps gal not found!'
@@ -68,14 +55,27 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
     
     ; load the results for all tracers (groupmem)
     if keyword_set(loadAllTrGmem) then begin
-        saveFilename = sP.derivPath + 'maxtemp'+saveTag+'.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
                         str(minSnap)+'-'+str(maxSnap)+'.sav'
                      
       if not file_test(saveFilename) then message,'Error: Specified maxTemps gmem not found!'
       restore, saveFilename
       return, rtr_gmem
     endif
+    
+    ; load the results for all tracers (stars)
+    if keyword_set(loadAllTrStars) then begin
+        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.stars.'+sP.savPrefix+str(sP.res)+'.'+$
+                        str(minSnap)+'-'+str(maxSnap)+'.sav'
+                     
+      if not file_test(saveFilename) then message,'Error: Specified maxTemps stars not found!'
+      restore, saveFilename
+      return, rtr_stars
+    endif
   endif
+  
+  resFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.restart.'+sP.savPrefix+str(sP.res)+'.'+$
+                        str(minSnap)+'-'+str(maxSnap)+'.sav'
   
   ; load galaxy/group member catalogs at zMin for gas ids to search for
   galcat = galaxyCat(sP=sP) ;sP.snap is still at zMin
@@ -83,24 +83,44 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
   ; NO TRACERS CASE - track the particles themselves back in time (SPH)
   ; ---------------
   if sP.trMCPerCell eq 0 then begin
+  
     print,'Calculating new maxtemp using ( SPH Particles ) res = '+str(sP.res)+$
       ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
       
-    ; store the main arrays for all tracers as structures so we can write them directly
-      r = {maxTemps_gal       : fltarr(n_elements(galcat.galaxyIDs))   ,$
-           maxTemps_gmem      : fltarr(n_elements(galcat.groupmemIDs)) ,$
-           maxTempTime_gal    : fltarr(n_elements(galcat.galaxyIDs))   ,$
-           maxTempTime_gmem   : fltarr(n_elements(galcat.groupmemIDs)) ,$
-           maxTempDisp_gal    : 0 ,$
-           maxTempDisp_gmem   : 0 ,$ ; no dispersions for sph
-           maxTemps_min_gal   : 0 ,$
-           maxTemps_min_gmem  : 0 ,$ ; no minimum values for sph
-           maxTemps_mean_gal  : 0 ,$
-           maxTemps_mean_gmem : 0}   ; no mean values for sph
+    if ~file_test(resFilename) then begin ; no restart  
+        ; store the main arrays for all tracers as structures so we can write them directly
+        r = {maxTemps_gal       : fltarr(n_elements(galcat.galaxyIDs))   ,$
+             maxTemps_gmem      : fltarr(n_elements(galcat.groupmemIDs)) ,$
+             maxTemps_stars     : fltarr(n_elements(galcat.stellarIDs))  ,$
+             maxTempTime_gal    : fltarr(n_elements(galcat.galaxyIDs))   ,$
+             maxTempTime_gmem   : fltarr(n_elements(galcat.groupmemIDs)) ,$
+             maxTempTime_stars  : fltarr(n_elements(galcat.stellarIDs))  ,$
+             maxTempDisp_gal    : 0 ,$
+             maxTempDisp_gmem   : 0 ,$ ; no dispersions for sph
+             maxTempDisp_stars  : 0 ,$
+             maxTemps_min_gal   : 0 ,$
+             maxTemps_min_gmem  : 0 ,$ ; no minimum values for sph
+             maxTemps_min_stars : 0 ,$
+             maxTemps_mean_gal  : 0 ,$ ; no mean values for sph
+             maxTemps_mean_gmem : 0 ,$
+             maxTemps_mean_stars : 0 }
+    endif else begin
+      ; restart
+      if ~keyword_set(restart) then message,'Error: Restart file exists but restart not requested.'
+      restore,resFilename,/verbose
+      snapRange[0] = m
+    endelse    
     
-    for m=minSnap,maxSnap,1 do begin
+    for m=snapRange[0],snapRange[1],1 do begin
       sP.snap = m
       print,m
+      
+      ; save restart?
+      if m mod 10 eq 0 and m gt minSnap and keyword_set(restart) then begin
+        print,' --- Writing restart! ---'
+        save,r,m,filename=resFilename
+        print,' --- Done! ---'
+      endif
       
       ; load gas ids and match to catalog
       ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
@@ -113,6 +133,10 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       match,galcat.groupmemIDs,ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
       ids_gmem_ind = ids_gmem_ind[sort(galcat_ind)]
       
+      ; match galcat star ids to current gas ids
+      match,galcat.stellarIDs,ids,galcat_ind,ids_stars_ind,count=countStars,/sort
+      ids_stars_ind = ids_stars_ind[sort(galcat_ind)]
+      
       ids        = !NULL
       galcat_ind = !NULL
       
@@ -122,43 +146,55 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       
       u_gal  = u[ids_gal_ind]
       u_gmem = u[ids_gmem_ind]
+      if countStars gt 0 then u_stars = u[ids_stars_ind]
       u = !NULL
       
       nelec_gal  = nelec[ids_gal_ind]
       nelec_gmem = nelec[ids_gmem_ind]
+      if countStars gt 0 then nelec_stars = nelec[ids_stars_ind]
       nelec = !NULL
       
       temp_gal  = convertUtoTemp(u_gal,nelec_gal,/log)
       temp_gmem = convertUtoTemp(u_gmem,nelec_gmem,/log)
+      if countStars gt 0 then temp_stars = convertUtoTemp(u_stars,nelec_stars,/log)
       
       ; load gas SFR and select off the effective EOS (SFR must be zero)
       sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
       
       sfr_gal  = sfr[ids_gal_ind]
       sfr_gmem = sfr[ids_gmem_ind]
+      if countStars gt 0 then sfr_stars = sfr[ids_stars_ind]
       
       sfr = !NULL
       
       ; replace existing values if current snapshot has higher temps (enforce off effective EOS)
       w1 = where(temp_gal gt r.maxTemps_gal and sfr_gal eq 0.0,count1)
-      if (count1 gt 0) then begin
+      if count1 gt 0 then begin
         r.maxTemps_gal[w1]    = temp_gal[w1]
         r.maxTempTime_gal[w1] = snapNumToRedshift(sP=sP,/time)
       endif
       
       ; replace existing values if current snapshot has higher temps (group members)
       w2 = where(temp_gmem gt r.maxTemps_gmem and sfr_gmem eq 0.0,count2)
-      if (count2 gt 0) then begin
+      if count2 gt 0 then begin
         r.maxTemps_gmem[w2]    = temp_gmem[w2]
         r.maxTempTime_gmem[w2] = snapNumToRedshift(sP=sP,/time)
       endif
       
+      ; if galcat stars are gas at this snapshot, and off eEOS, replace with higher temps
+      if countStars gt 0 then begin
+        w3 = where(temp_stars gt r.maxTemps_stars and sfr_stars eq 0.0,count3)
+        if count3 gt 0 then begin
+          r.maxTemps_stars[w3] = temp_stars[w3]
+          r.maxTempTime_stars[w3] = snapNumToRedshift(sP=sP,/time)
+        endif
+      endif
+      
       ; SAVE?
-      if total(sP.snap eq saveSnaps) gt 0 then begin
+      if sP.snap eq maxSnap then begin
         ; set savefilename
-        w = where(sP.snap eq saveSnaps)
         saveFilename = sP.derivPath + 'maxtemp.SPH.'+sP.savPrefix+str(sP.res)+'.'+$
-                       str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
+                       str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
           print,'WARNING: ['+saveFilename+'] exists, skipping write!'
@@ -179,47 +215,77 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
     print,'Calculating new maxtemp using ( TracerMC ) res = '+str(sP.res)+$
       ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
       
-    ; load gas ids
-    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    if ~file_test(resFilename) then begin ; no restart   
+      ; load gas ids
+      gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+  
+      ; match galcat IDs to gas_ids
+      match,galcat.galaxyIDs,gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+      ids_gal = gas_ids[ids_gal_ind[sort(galcat_ind)]]
+      
+      match,galcat.groupmemIDs,gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+      ids_gmem = gas_ids[ids_gmem_ind[sort(galcat_ind)]]
+      
+      gas_ids = !NULL
+      
+      ; load star ids and match
+      star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+      
+      match,galcat.stellarIDs,star_ids,galcat_ind,ids_stars_ind,count=countStars,/sort
+      ids_stars = star_ids[ids_stars_ind[sort(galcat_ind)]]
+      
+      star_ids = !NULL
+      
+      ; locate tracer children (indices) of gas id subsets
+      galcat_gal_trids   = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
+      galcat_gmem_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
+      galcat_stars_trids = cosmoTracerChildren(sP=sP, /getInds, starIDs=ids_stars, child_counts=galcat_stars_cc)
+      
+      ; convert tracer children indices to tracer IDs at this zMin
+      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
+      
+      galcat_gal_trids   = tr_ids[galcat_gal_trids]
+      galcat_gmem_trids  = tr_ids[galcat_gmem_trids]
+      galcat_stars_trids = tr_ids[galcat_stars_trids]
+  
+      tr_ids    = !NULL
+      ids_gal   = !NULL
+      ids_gmem  = !NULL
+      ids_stars = !NULL
+      galcat    = !NULL ; not used past this point
+      
+      ; store the main arrays for all tracers as structures so we can write them directly
+      rtr_gal  = { maxTemps      : fltarr(n_elements(galcat_gal_trids))  ,$
+                   maxTempTime   : fltarr(n_elements(galcat_gal_trids))  ,$
+                   child_counts  : galcat_gal_cc }
+      galcat_gal_cc  = !NULL
+             
+      rtr_gmem = { maxTempTime  : fltarr(n_elements(galcat_gmem_trids)) ,$
+                   maxTemps     : fltarr(n_elements(galcat_gmem_trids)) ,$
+                   child_counts : galcat_gmem_cc }
+      galcat_gmem_cc = !NULL
+      
+      rtr_stars = { maxTempTime  : fltarr(n_elements(galcat_stars_trids)) ,$
+                    maxTemps     : fltarr(n_elements(galcat_stars_trids)) ,$
+                    child_counts : galcat_stars_cc }
+      galcat_stars_cc = !NULL
+    endif else begin
+      ; restart
+      if ~keyword_set(restart) then message,'Error: Restart file exists but restart not requested.'
+      restore,resFilename,/verbose
+      snapRange[0] = m
+    endelse 
 
-    ; match galcat IDs to gas_ids
-    match,galcat.galaxyIDs,gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
-    ids_gal = gas_ids[ids_gal_ind[sort(galcat_ind)]]
-    
-    match,galcat.groupmemIDs,gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-    ids_gmem = gas_ids[ids_gmem_ind[sort(galcat_ind)]]
-    
-    gas_ids = !NULL
-    
-    ; locate tracer children (indices) of gas id subsets
-    galcat_gal_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
-    galcat_gmem_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
-    
-    ; convert tracer children indices to tracer IDs at this zMin
-    tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-    
-    galcat_gal_trids  = tr_ids[galcat_gal_trids]
-    galcat_gmem_trids = tr_ids[galcat_gmem_trids]
-
-    tr_ids   = !NULL
-    ids_gal  = !NULL
-    ids_gmem = !NULL
-    galcat   = !NULL ; not used past this point
-    
-    ; store the main arrays for all tracers as structures so we can write them directly
-    rtr_gal  = { maxTemps      : fltarr(n_elements(galcat_gal_trids))  ,$
-                 maxTempTime   : fltarr(n_elements(galcat_gal_trids))  ,$
-                 child_counts  : galcat_gal_cc }
-    galcat_gal_cc  = !NULL
-           
-    rtr_gmem = { maxTempTime  : fltarr(n_elements(galcat_gmem_trids)) ,$
-                 maxTemps     : fltarr(n_elements(galcat_gmem_trids)) ,$
-                 child_counts : galcat_gmem_cc }
-    galcat_gmem_cc = !NULL
-
-    for m=minSnap,maxSnap,1 do begin
+    for m=snapRange[0],snapRange[1],1 do begin
       sP.snap = m
       print,m  
+  
+      ; save restart?
+      if m mod 10 eq 0 and m gt minSnap and keyword_set(restart) then begin
+        print,' --- Writing restart! ---'
+        save,rtr_gal,rtr_gmem,rtr_stars,galcat_gal_trids,galcat_gmem_trids,galcat_stars_trids,m,filename=resFilename
+        print,' --- Done! ---'
+      endif
   
       ; load tracer ids and match to child ids from zMin
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
@@ -231,6 +297,9 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       
       match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
       trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
+      
+      match,galcat_stars_trids,tr_ids,galcat_ind,trids_stars_ind,count=countStars,/sort
+      trids_stars_ind = trids_stars_ind[sort(galcat_ind)]
       
       tr_ids     = !NULL
       galcat_ind = !NULL
@@ -244,14 +313,16 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       tr_maxtemp = alog10(tr_maxtemp)
       w = !NULL
       
-      temp_gal  = tr_maxtemp[trids_gal_ind]
-      temp_gmem = tr_maxtemp[trids_gmem_ind]
+      temp_gal   = tr_maxtemp[trids_gal_ind]
+      temp_gmem  = tr_maxtemp[trids_gmem_ind]
+      temp_stars = tr_maxtemp[trids_stars_ind]
       tr_maxtemp = !NULL
       
       tr_maxtemp_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp_time')
       
-      temp_time_gal  = tr_maxtemp_time[trids_gal_ind]
-      temp_time_gmem = tr_maxtemp_time[trids_gmem_ind]
+      temp_time_gal   = tr_maxtemp_time[trids_gal_ind]
+      temp_time_gmem  = tr_maxtemp_time[trids_gmem_ind]
+      temp_time_stars = tr_maxtemp_time[trids_stars_ind]
       tr_maxtemp_time = !NULL
       
       ; replace existing values if current snapshot has higher temps (galaxy members)
@@ -268,17 +339,26 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
         rtr_gmem.maxTempTime[w2] = temp_time_gmem[w2] ; sub-snapshot timing
       endif
       
-      temp_gal  = !NULL
-      temp_gmem = !NULL
-      temp_time_gal  = !NULL
-      temp_time_gmem = !NULL
+      ; replace existing values if current snapshot has higher temps (stars)
+      ; note: if tracers are still inside a star particle, their maxtemp entry will be zero
+      w3 = where(temp_stars gt rtr_stars.maxTemps,count3)
+      if (count3 gt 0) then begin
+        rtr_stars.maxTemps[w3]    = temp_stars[w3]
+        rtr_stars.maxTempTime[w3] = temp_time_stars[w3] ; sub-snapshot timing
+      endif
+      
+      temp_gal   = !NULL
+      temp_gmem  = !NULL
+      temp_stars = !NULL
+      temp_time_gal   = !NULL
+      temp_time_gmem  = !NULL
+      temp_time_stars = !NULL
       
       ; SAVE?
-      if total(sP.snap eq saveSnaps) gt 0 then begin
+      if sP.snap eq maxSnap then begin
         ; (1) full tracer information (galaxy members) - set savefilename
-        w = where(sP.snap eq saveSnaps)
         saveFilename = sP.derivPath + 'maxtemp.trMC.gal.'+sP.savPrefix+str(sP.res)+'.'+$
-                       str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
+                       str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
           print,'WARNING: ['+saveFilename+'] exists, skipping write!'
@@ -290,9 +370,8 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
         endelse
         
         ; (2) full tracer information (group members) - set savefilename
-        w = where(sP.snap eq saveSnaps)
         saveFilename = sP.derivPath + 'maxtemp.trMC.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
-                       str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
+                       str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
           print,'WARNING: ['+saveFilename+'] exists, skipping write!'
@@ -303,10 +382,22 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
           print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
         endelse
         
+        ; (2) full tracer information (group members) - set savefilename
+        saveFilename = sP.derivPath + 'maxtemp.trMC.stars.'+sP.savPrefix+str(sP.res)+'.'+$
+                       str(minSnap)+'-'+str(maxSnap)+'.sav'
+
+        if file_test(saveFilename) then begin
+          print,'WARNING: ['+saveFilename+'] exists, skipping write!'
+        endif else begin
+          ; output all star tracer values at this point and the child counts so they can be 
+          ; matched back up to their parents later
+          save,rtr_stars,filename=saveFilename
+          print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
+        endelse
+        
         ; (3) values condensed to gas parents - set savefilename
-        w = where(sP.snap eq saveSnaps)
         saveFilename = sP.derivPath + 'maxtemp.trMC.'+sP.savPrefix+str(sP.res)+'.'+$
-                       str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
+                       str(minSnap)+'-'+str(maxSnap)+'.sav'
                        
         if file_test(saveFilename) then begin
           print,'WARNING: ['+saveFilename+'] exists, skipping write!'
@@ -322,18 +413,25 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
              maxTemps_gmem      : fltarr(n_elements(rtr_gmem.child_counts)) ,$
              maxTempTime_gmem   : fltarr(n_elements(rtr_gmem.child_counts)) ,$
              maxTempDisp_gmem   : fltarr(n_elements(rtr_gmem.child_counts)) ,$
+             maxTemps_stars     : fltarr(n_elements(rtr_stars.child_counts)) ,$
+             maxTempTime_stars  : fltarr(n_elements(rtr_stars.child_counts)) ,$
+             maxTempDisp_stars  : fltarr(n_elements(rtr_stars.child_counts)) ,$
                                                                       $
-             maxTemps_min_gal   : fltarr(n_elements(rtr_gal.child_counts))  ,$ ; min(maxTemps)
-             maxTemps_mean_gal  : fltarr(n_elements(rtr_gal.child_counts))  ,$ ; mean(maxTemps)
-             maxTemps_min_gmem  : fltarr(n_elements(rtr_gmem.child_counts)) ,$
-             maxTemps_mean_gmem : fltarr(n_elements(rtr_gmem.child_counts)) ,$
+             maxTemps_min_gal    : fltarr(n_elements(rtr_gal.child_counts))  ,$ ; min(maxTemps)
+             maxTemps_mean_gal   : fltarr(n_elements(rtr_gal.child_counts))  ,$ ; mean(maxTemps)
+             maxTemps_min_gmem   : fltarr(n_elements(rtr_gmem.child_counts)) ,$
+             maxTemps_mean_gmem  : fltarr(n_elements(rtr_gmem.child_counts)) ,$
+             maxTemps_min_stars  : fltarr(n_elements(rtr_stars.child_counts)) ,$
+             maxTemps_mean_stars : fltarr(n_elements(rtr_stars.child_counts)) ,$
                                                                       $
-             maxTempTime_min_gal   : fltarr(n_elements(rtr_gal.child_counts))  ,$ ; time of min(maxTemps)
-             maxTempTime_mean_gal  : fltarr(n_elements(rtr_gal.child_counts))  ,$ ; mean(times maxTemps)
-             maxTempTime_min_gmem  : fltarr(n_elements(rtr_gmem.child_counts)) ,$
-             maxTempTime_mean_gmem : fltarr(n_elements(rtr_gmem.child_counts))  }
+             maxTempTime_min_gal    : fltarr(n_elements(rtr_gal.child_counts))  ,$ ; time of min(maxTemps)
+             maxTempTime_mean_gal   : fltarr(n_elements(rtr_gal.child_counts))  ,$ ; mean(times maxTemps)
+             maxTempTime_min_gmem   : fltarr(n_elements(rtr_gmem.child_counts)) ,$
+             maxTempTime_mean_gmem  : fltarr(n_elements(rtr_gmem.child_counts)) ,$
+             maxTempTime_min_stars  : fltarr(n_elements(rtr_stars.child_counts)) ,$
+             maxTempTime_mean_stars : fltarr(n_elements(rtr_stars.child_counts))  }
         
-        for i=0,n_elements(rtr_gal.child_counts)-1 do begin
+        for i=0L,n_elements(rtr_gal.child_counts)-1 do begin
           if rtr_gal.child_counts[i] gt 0 then begin
             ; for each gas cell, collect its child tracers
             childInds = lindgen(rtr_gal.child_counts[i]) + offset
@@ -358,7 +456,7 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
         
         offset = 0L
         
-        for i=0,n_elements(rtr_gmem.child_counts)-1 do begin
+        for i=0L,n_elements(rtr_gmem.child_counts)-1 do begin
           if rtr_gmem.child_counts[i] gt 0 then begin
             ; for each gas cell, collect its child tracers
             childInds = lindgen(rtr_gmem.child_counts[i]) + offset
@@ -381,6 +479,31 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
           endif
         endfor
         
+        offset = 0L
+        
+        for i=0L,n_elements(rtr_stars.child_counts)-1 do begin
+          if rtr_stars.child_counts[i] gt 0 then begin
+            ; for each star particle, collect its child tracers
+            childInds = lindgen(rtr_stars.child_counts[i]) + offset
+            
+            locMaxTemps    = rtr_stars.maxTemps[childInds]
+            locMaxTempTime = rtr_stars.maxTempTime[childInds]
+            
+            ; save the maximum value reached by any child tracer and the stddev of the population maxima
+            r.maxTemps_stars[i]    = max(locMaxTemps,indmax)
+            r.maxTempTime_stars[i] = locMaxTempTime[indmax]
+            r.maxTempDisp_stars[i] = stddev(locMaxTemps)
+            
+            ; save minimum and means (and associated times)
+            r.maxTemps_min_stars[i]     = min(locMaxTemps,indmin)
+            r.maxTempTime_min_stars[i]  = locMaxTempTime[indmin]
+            r.maxTemps_mean_stars[i]    = mean(locMaxTemps)
+            r.maxTempTime_mean_stars[i] = mean(locMaxTempTime)
+            
+            offset += rtr_stars.child_counts[i]
+          endif
+        endfor
+        
         ; save for future lookups        
         save,r,filename=saveFilename
         print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
@@ -396,47 +519,63 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
     print,'Calculating new maxtemp using ( TracerVEL ) res = '+str(sP.res)+$
       ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
 
-    ; load gas ids
-    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    print,'NOTE: no stars for tracerVEL'
 
-    ; match galcat IDs to gas_ids
-    match,galcat.galaxyIDs,gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
-    inds_gal = ids_gal_ind[sort(galcat_ind)]
-    
-    match,galcat.groupmemIDs,gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-    inds_gmem = ids_gmem_ind[sort(galcat_ind)]
-
-    gas_ids = !NULL
-    
-    ; locate tracer children (indices) of gas id subsets
-    galcat_gal_trids  = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gal,child_counts=galcat_gal_cc)
-    galcat_gmem_trids = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gmem,child_counts=galcat_gmem_cc)
-    
-    ; convert tracer children indices to tracer IDs at this zMin
-    tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
-    
-    galcat_gal_trids  = tr_ids[galcat_gal_trids]
-    galcat_gmem_trids = tr_ids[galcat_gmem_trids]
-
-    tr_ids   = !NULL
-    inds_gal  = !NULL
-    inds_gmem = !NULL
-    galcat   = !NULL ; not used past this point
-
-    ; store the main arrays for all tracers as structures so we can write them directly
-    rtr_gal  = { maxTemps      : fltarr(n_elements(galcat_gal_trids))  ,$
-                 maxTempTime   : fltarr(n_elements(galcat_gal_trids))  ,$
-                 child_counts  : galcat_gal_cc }
-    galcat_gal_cc  = !NULL
-           
-    rtr_gmem = { maxTempTime  : fltarr(n_elements(galcat_gmem_trids)) ,$
-                 maxTemps     : fltarr(n_elements(galcat_gmem_trids)) ,$
-                 child_counts : galcat_gmem_cc }
-    galcat_gmem_cc = !NULL
+    if ~file_test(resFilename) then begin ; no restart   
+      ; load gas ids
+      gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
   
-    for m=minSnap,maxSnap,1 do begin
+      ; match galcat IDs to gas_ids
+      match,galcat.galaxyIDs,gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+      inds_gal = ids_gal_ind[sort(galcat_ind)]
+      
+      match,galcat.groupmemIDs,gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+      inds_gmem = ids_gmem_ind[sort(galcat_ind)]
+  
+      gas_ids = !NULL
+      
+      ; locate tracer children (indices) of gas id subsets
+      galcat_gal_trids  = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gal,child_counts=galcat_gal_cc)
+      galcat_gmem_trids = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gmem,child_counts=galcat_gmem_cc)
+      
+      ; convert tracer children indices to tracer IDs at this zMin
+      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
+      
+      galcat_gal_trids  = tr_ids[galcat_gal_trids]
+      galcat_gmem_trids = tr_ids[galcat_gmem_trids]
+  
+      tr_ids   = !NULL
+      inds_gal  = !NULL
+      inds_gmem = !NULL
+      galcat   = !NULL ; not used past this point
+  
+      ; store the main arrays for all tracers as structures so we can write them directly
+      rtr_gal  = { maxTemps      : fltarr(n_elements(galcat_gal_trids))  ,$
+                   maxTempTime   : fltarr(n_elements(galcat_gal_trids))  ,$
+                   child_counts  : galcat_gal_cc }
+      galcat_gal_cc  = !NULL
+             
+      rtr_gmem = { maxTempTime  : fltarr(n_elements(galcat_gmem_trids)) ,$
+                   maxTemps     : fltarr(n_elements(galcat_gmem_trids)) ,$
+                   child_counts : galcat_gmem_cc }
+      galcat_gmem_cc = !NULL
+    endif else begin
+      ; restart
+      if ~keyword_set(restart) then message,'Error: Restart file exists but restart not requested.'
+      restore,resFilename,/verbose
+      snapRange[0] = m
+    endelse 
+    
+    for m=snapRange[0],snapRange[1],1 do begin
       sP.snap = m
       print,m  
+  
+      ; save restart?
+      if m mod 10 eq 0 and m gt minSnap and keyword_set(restart) then begin
+        print,' --- Writing restart! ---'
+        save,rtr_gal,rtr_gmem,galcat_gal_trids,galcat_gmem_trids,m,filename=resFilename
+        print,' --- Done! ---'
+      endif
   
       ; load tracer ids and match to child ids from zMin
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
@@ -485,11 +624,10 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
       temp_time_gmem = !NULL
      
       ; SAVE?
-      if total(sP.snap eq saveSnaps) gt 0 then begin
+      if sP.snap eq maxSnap then begin
         ; (1) full tracer information (galaxy members) - set savefilename
-        w = where(sP.snap eq saveSnaps)
         saveFilename = sP.derivPath + 'maxtemp.trVel.gal.'+sP.savPrefix+str(sP.res)+'.'+$
-                       str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
+                       str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
           print,'WARNING: ['+saveFilename+'] exists, skipping write!'
@@ -501,9 +639,8 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
         endelse
         
         ; (2) full tracer information (group members) - set savefilename
-        w = where(sP.snap eq saveSnaps)
         saveFilename = sP.derivPath + 'maxtemp.trVel.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
-                       str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
+                       str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
           print,'WARNING: ['+saveFilename+'] exists, skipping write!'
@@ -515,9 +652,8 @@ function maxTemps, sP=sP, zStart=zStart, saveRedshifts=saveRedshifts, $
         endelse
         
         ; (3) values condensed to gas parents - set savefilename
-        w = where(sP.snap eq saveSnaps)
         saveFilename = sP.derivPath + 'maxtemp.trVel.'+sP.savPrefix+str(sP.res)+'.'+$
-                       str(minSnap)+'-'+str(saveSnaps[w[0]])+'.sav'
+                       str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
           print,'WARNING: ['+saveFilename+'] exists, skipping write!'
@@ -778,5 +914,42 @@ pro plotEvolIGMTemp
   cgText,x1,0.01,textoidl("IGM Gas Temperature [ log K ]"),alignment=0.5,/normal    
   
   end_PS
+
+end
+
+; checkStarIDs(): make sure SPH star ids turn once into gas IDs moving backwards in time
+; note: in Arepo runs spawned (not converted) stars will have new IDs with no progenitor gas cell info
+
+pro checkStarIDs
+
+  sP = simParams(res=128,run='gadget',redshift=2.0)
+  
+  ; load all star particle IDs
+  ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+  ids_sort = sort(ids)
+  mask = intarr(n_elements(ids))
+   
+  for m=sP.snap,0,-1 do begin
+    sP.snap = m
+    
+    ; load gas ids and match
+    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    match,gas_ids,ids,gas_ind,star_ind,count=count1
+    star_ind = star_ind[ids_sort]
+    
+    if count1 gt 0 then mask[star_ind] += 1
+    
+    ; load star ids and match
+    star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+    match,star_ids,ids,star_ind_cur,star_ind_orig,count=count2
+    
+    if count1+count2 ne n_elements(ids) then message,'Did not find all original star IDs.'
+    
+    ; for those stars that are still stars, make sure we have never seen them as gas
+    star_ind_orig = star_ind_orig[ids_sort]
+    if max(mask[star_ind_orig]) gt 0 then message,'Error: Flip gas back to star.'
+    
+    print,m,float(count2)/(count1+count2),float(count1)/(count1+count2)
+  endfor
 
 end

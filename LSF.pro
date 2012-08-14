@@ -7,7 +7,7 @@
 pro makeArepoFoFBsub
 
   ; config
-  res = 256
+  res = 512
   run = 'tracer'
   ;f = '10'
   
@@ -16,22 +16,24 @@ pro makeArepoFoFBsub
   snapZ = redshiftToSnapNum([6.0,5.0,4.0,3.0,2.0,1.0,0.0],sP=sP)
   print,snapZ
 
-  snapRange = [313,314,1]
+  ;snapRange = [132,150,1]
+  snaps = [129,132,133,134,135,136,137,138,139,140]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 64 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
+  nProcs    = 128 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
                  ;               256^3=4 (n32tile4 PartAllocFactor=2.5 MaxMemSize=7900)
                  ;               512^3=16 (n64tile4 PartAllocFactor=1.5 though n32tile4 ok until z=2)
-  ptile     = 4 ; span[ptile=X]
+  ptile     = 8 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
   excludeHosts = ['hero2402'] ;leave empty otherwise
  
   paramFile = "param_fof.txt"
 
-  for snap=snapRange[0],snapRange[1],snapRange[2] do begin
- 
+  ;for snap=snapRange[0],snapRange[1],snapRange[2] do begin
+  foreach snap,snaps do begin
+  
     ; write bjob file
     jobFileName = sP.plotPath + 'job_fof.bsub'
     
@@ -52,7 +54,7 @@ pro makeArepoFoFBsub
     
     ; write header
     printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q keck'
+    printf,lun,'#BSUB -q nancy'
     printf,lun,'#BSUB -J fof_' + str(snap) + ''
     printf,lun,'#BSUB -n ' + str(nProcs)
     printf,lun,'#BSUB -R "' + selectStr + 'span[ptile=' + str(ptile) + ']"' ;rusage[mem=31000]
@@ -84,7 +86,7 @@ pro makeArepoFoFBsub
       spawn, 'rm ' + sP.plotPath + 'job_fof.bsub'
     endif
   
-  endfor ;snapRange
+  endforeach ;snapRange
 
 end
 
