@@ -259,7 +259,6 @@ function accretionTimes, sP=sP, restart=restart
             tvir = [ mt.hVirTemp[mt.maxSnap-m-1,mt.gcIndOrig.gmem[gmem_w[i]]], $
                      mt.hVirTemp[mt.maxSnap-m,mt.gcIndOrig.gmem[gmem_w[i]]] ]
                      
-            ; fix: interpolating to the m-1 snapshot could be untracked, in which case mt.hVirTemp=0
             if tvir[0] eq 0.0 or abs(tvir[0]-tvir[1]) gt 0.5 then tvir[0]=tvir[1]
             tvir = interpol(tvir,times,time) ; lerp tvir to time=tcross
             r.accHaloTvir_gmem[gmem_w[i]] = tvir            
@@ -278,7 +277,6 @@ function accretionTimes, sP=sP, restart=restart
               tvir = [ mt.hVirTemp[mt.maxSnap-m-1,mt.gcIndOrig.stars[curInd]], $
                        mt.hVirTemp[mt.maxSnap-m,mt.gcIndOrig.stars[curInd]] ]
                        
-              ; fix: interpolating to the m-1 snapshot could be untracked, in which case mt.hVirTemp=0
               if tvir[0] eq 0.0 or abs(tvir[0]-tvir[1]) gt 0.5 then tvir[0]=tvir[1]
               tvir = interpol(tvir,times,time) ; lerp tvir to time=tcross
               r.accHaloTvir_stars[curInd] = tvir

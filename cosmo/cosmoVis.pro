@@ -274,8 +274,11 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         !p.thick = 1.0
         !p.charsize = 0.8
       
+        ; fill with black background
+        if ~keyword_set(bottom) then $
+          cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('black')
+      
         ; color table and establish temperature -> color mapping
-        cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('black')
         loadColorTable,'helix';,/reverse
         
         TVLCT, rr, gg, bb, /GET
@@ -794,10 +797,11 @@ pro scatterMapPastPosComp
   print,'128!'
   
   ; OLD512 z2.304 g2342 a2132 -- z2.301 g2289 a2034 -- z2.130 g6369 a5966 axes02 -- z2.64 g5498 a5097
-  ; NEW512 z2.304 g2342 a?
-  ; NEW256 z2.304 g673 a510
+  ; NEW512 z2.304 g2342 a?    -- 
+  ; NEW256 z2.304 g673 a510   -- 
+  ; NEW128 z2.304 g217 a150   -- 
   gcIDg = 2342
-  gcIDa = 510
+  gcIDa = 150
 
   ; config
   sizeFac     = 3.5       ; times rvir
@@ -811,7 +815,7 @@ pro scatterMapPastPosComp
   ; GADGET
   ; ------
   gc = loadGroupCat(sP=sPg,/skipIDs,/verbose)
-  
+
   saveFilename = sPg.derivPath + 'cutout.' + sPg.savPrefix + str(sPg.res) + '.' + str(sPg.snap) + $
                  '.h' + str(gcIDg) + '.tb' + str(fix(timeBack)) + '.sf' + str(fix(sizeFac*10)) + '.sav'
   
@@ -946,7 +950,6 @@ pro scatterMapPastPosComp
   start_PS, sPg.plotPath + config.plotFilename, xs=8, ys=8
   plotScatterComp,pos.hot,pos2.hot,pos.cold,pos2.cold,colorinds_hot,colorinds_cold,config=config,/top           
 
-
   ; AREPO
   ; -----
   gc = loadGroupCat(sP=sPa,/skipIDs,/verbose)
@@ -965,9 +968,11 @@ pro scatterMapPastPosComp
     wAm = accModeInds(at=at,accMode=accMode,sP=sPa)
     at = !NULL
     
-    ; find group members
-    gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sPa)
-    ww = where(gcIndOrig.gal[wAm.gal] eq gcIDg,count)
+    ; find group members (and get tracer ID list)
+    gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sPa,trids_gal=galcat_gal_trids)
+    ww = where(gcIndOrig.gal[wAm.gal] eq gcIDa,count)
+    
+    galIDs = galcat_gal_trids[wAm.gal[ww]]
     
     gcIndOrig = !NULL & mt = !NULL & wAm = !NULL
     
@@ -978,10 +983,6 @@ pro scatterMapPastPosComp
     accTvir = accTvir.gal[ww]
     maxTemp = maxTemp.gal[ww]
     ratio   = 10.0^maxTemp / 10.0^accTvir
-    
-    ; load galcat and make tracer ID list
-    galIDs = gcSubsetProp(sP=sPa,select='pri',/elemIDs,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-    galIDs = galIDs.gal[ww]
     
     galIDs = { hot : galIDs[where(ratio ge 1.0)], cold : galIDs[where(ratio lt 1.0)] }
     if n_elements(galIDs.hot) + n_elements(galIDs.cold) ne n_elements(ratio) then message,'error'
@@ -996,10 +997,10 @@ pro scatterMapPastPosComp
     newSnap = value_locate(curAge-snapTimes,timeBack/1000.0)
     
     ; track halo back in time (if possible) to get an earlier center position
-    boxCen = trackHaloPosition(sP=sPa,gcID=gcIDg,endSnap=newSnap)
+    boxCen = trackHaloPosition(sP=sPa,gcID=gcIDa,endSnap=newSnap)
     
     ; calculate bounds
-    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcIDg]] / 10.0) * 10.0
+    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcIDa]] / 10.0) * 10.0
     boxSizeImg = [boxSize,boxSize,boxSize] ; cube   
     
     sPa.snap = newSnap
@@ -1025,17 +1026,17 @@ pro scatterMapPastPosComp
     placeMap = !NULL
   
     ; load u,nelec and parent gas cells calculate temperature
-    u     = loadSnapshotSubset(sP=sPg,partType='gas',field='u')
-    nelec = loadSnapshotSubset(sP=sPg,partType='gas',field='nelec')
+    u     = loadSnapshotSubset(sP=sPa,partType='gas',field='u')
+    nelec = loadSnapshotSubset(sP=sPa,partType='gas',field='nelec')
     temp  = alog10(convertUtoTemp(u,nelec))
     u     = !NULL
     nelec = !NULL
     temp = { hot : temp[ids_ind_hot], cold : temp[ids_ind_cold] }
   
     ; load gas positions and velocities
-    pos = loadSnapshotSubset(sP=sPg,partType='gas',field='pos')
+    pos = loadSnapshotSubset(sP=sPa,partType='gas',field='pos')
     pos = { hot : pos[*,ids_ind_hot], cold : pos[*,ids_ind_cold] }
-    vel = loadSnapshotSubset(sP=sPg,partType='gas',field='vel')
+    vel = loadSnapshotSubset(sP=sPa,partType='gas',field='vel')
     vel = { hot : vel[*,ids_ind_hot], cold : vel[*,ids_ind_cold] }
     
     ; adjust positions periodic relative
@@ -1043,9 +1044,9 @@ pro scatterMapPastPosComp
     yDist = pos.hot[1,*] - boxCen[1]
     zDist = pos.hot[2,*] - boxCen[2]
     
-    correctPeriodicDistVecs, xDist, sP=sPg
-    correctPeriodicDistVecs, yDist, sP=sPg
-    correctPeriodicDistVecs, zDist, sP=sPg
+    correctPeriodicDistVecs, xDist, sP=sPa
+    correctPeriodicDistVecs, yDist, sP=sPa
+    correctPeriodicDistVecs, zDist, sP=sPa
 
     pos.hot[0,*] = xDist & pos.hot[1,*] = yDist & pos.hot[2,*] = zDist
     
@@ -1053,9 +1054,9 @@ pro scatterMapPastPosComp
     yDist = pos.cold[1,*] - boxCen[1]
     zDist = pos.cold[2,*] - boxCen[2]
     
-    correctPeriodicDistVecs, xDist, sP=sPg
-    correctPeriodicDistVecs, yDist, sP=sPg
-    correctPeriodicDistVecs, zDist, sP=sPg
+    correctPeriodicDistVecs, xDist, sP=sPa
+    correctPeriodicDistVecs, yDist, sP=sPa
+    correctPeriodicDistVecs, zDist, sP=sPa
     
     pos.cold[0,*] = xDist & pos.cold[1,*] = yDist & pos.cold[2,*] = zDist
         
@@ -1072,23 +1073,26 @@ pro scatterMapPastPosComp
 
     ; save
     save,pos,temp,pos2,sPa,galIDs,gcIDa,sizeFac,boxCen,boxSizeImg,filename=saveFilename
-    print,'Saved: '+strmid(saveFilename,strlen(sPg.derivPath))
+    print,'Saved: '+strmid(saveFilename,strlen(sPa.derivPath))
   
   endelse
+
+  ; create color index mapping
+  colorinds_hot = (temp.hot-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
+  colorinds_hot = fix(colorinds_hot + 50.0) > 0 < 255 ;50-255  
+  colorinds_cold = (temp.cold-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
+  colorinds_cold = fix(colorinds_cold + 50.0) > 0 < 255 ;50-255  
 
   print,'rendering arepo...'
   ; get box center (in terms of specified axes)
   haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcIDa]] ;ckpc
   haloMass = codeMassToLogMsun(gc.subgroupMass[gcIDa])
 
-  ; fix halo mass if we're using old (x2 bug) catalogs
-  if sPa.run eq 'arepo' then haloMass = codeMassToLogMsun(0.5*gc.subgroupMass[gcIDa])
-
   config = {boxSizeImg:boxSizeImg,plotFilename:plotFilename,haloVirRad:haloVirRad,haloMass:haloMass,$
             axisPair:axisPair,sP:sPa,barMM:tempMinMax,barType:'1temp'}
   
   ; plot
-  plotScatterComp,loc_pos,loc_pos2,loc_pos_cold,loc_pos2_cold,colorinds,colorinds_cold,config=config,/bottom
+  plotScatterComp,pos.hot,pos2.hot,pos.cold,pos2.cold,colorinds_hot,colorinds_cold,config=config,/bottom
   end_PS, pngResize=60
   
   stop

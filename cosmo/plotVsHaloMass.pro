@@ -392,7 +392,7 @@ pro plotColdFracVsHaloMass
   ; 512
   print,'todo change to 512'
   sPg = simParams(res=256,run='gadget',redshift=redshift)
-  sPa = simParams(res=256,run='tracer',redshift=redshift) ; f=-1 use velocity tracers
+  sPa = simParams(res=128,run='tracer',redshift=redshift) ; f=-1 use velocity tracers
   
   ; old
   ;sPg.derivPath = '/n/home07/dnelson/data3/sims.gadget/256_20Mpc/data.files.bak/'
@@ -403,7 +403,7 @@ pro plotColdFracVsHaloMass
 
   ; load 256
   cfG_256 = haloMassBinColdFracs(sP=simParams(res=256,run='gadget',redshift=redshift),sgSelect=sgSelect,accMode=accMode)
-  cfA_256 = haloMassBinColdFracs(sP=simParams(res=256,run='tracer',redshift=redshift),sgSelect=sgSelect,accMode=accMode)
+  cfA_256 = haloMassBinColdFracs(sP=simParams(res=128,run='tracer',redshift=redshift),sgSelect=sgSelect,accMode=accMode)
   
   ; load 128
   cfG_128 = haloMassBinColdFracs(sP=simParams(res=128,run='gadget',redshift=redshift),sgSelect=sgSelect,accMode=accMode)
@@ -709,7 +709,7 @@ pro plotByMode
   ; config
   sgSelect = 'pri'
   redshift = 2.0
-  res = 128
+  res = 256
   
   timeWindow = 1000.0 ; Myr
  
@@ -734,7 +734,7 @@ pro plotByMode
   arA_clumpy   = haloMassBinAccRate(sP=sPa,sgSelect=sgSelect,timeWindow=timeWindow,accMode='clumpy') 
   arG_stripped = haloMassBinAccRate(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='stripped')
   arA_stripped = haloMassBinAccRate(sP=sPa,sgSelect=sgSelect,timeWindow=timeWindow,accMode='stripped')
-  
+  stop
   sK     = 3 ; smoothing kernel size
   cInd   = 1 ; color index
   virInd = 0 ; 1.0 Tvir

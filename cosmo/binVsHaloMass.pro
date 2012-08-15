@@ -532,7 +532,7 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
   accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
   curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
   maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  
+
   ; load current temps and current SFR
   curTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
   curSFR  = gcSubsetProp(sP=sP,select=sgSelect,/curSingleVal,singleValField='sfr',$
@@ -646,7 +646,7 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
         coldFrac.stars_tvircur[j,i] = float(count_below) / nloc
   
         ; count fraction Tmax below Tvir at accretion time
-        w = where(10.0^loc_maxt_gmem / 10.0^accTvir.stars[loc_inds_stars] le sP.TvirVals[j],count_below)
+        w = where(10.0^loc_maxt_stars / 10.0^accTvir.stars[loc_inds_stars] le sP.TvirVals[j],count_below)
         coldFrac.stars_tviracc[j,i] = float(count_below) / nloc
       endfor
     endif
@@ -834,7 +834,6 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
     ; gal (Tmax)
     w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
               coldFrac.gal_num ge minNum,count)
-    print,logMassBins[i],count
     if count gt 0 then begin
       for j=0,nVirs-1 do medianVals.gal_tVircur[j,i] = median(coldFrac.gal_tvircur[j,w])
       for j=0,nVirs-1 do medianVals.gal_tViracc[j,i] = median(coldFrac.gal_tviracc[j,w])
@@ -861,7 +860,7 @@ function haloMassBinColdFracs, sP=sP, sgSelect=sgSelect, accMode=accMode
     
     ; both (Tmax)
     w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
-              coldFrac.gal_num+coldFrac.gmem_num ge minNum,count)
+              coldFrac.gal_num+coldFrac.stars_num ge minNum,count)
     if count gt 0 then begin
       for j=0,nVirs-1 do medianVals.both_tVircur[j,i] = median(coldFrac.both_tvircur[j,w])
       for j=0,nVirs-1 do medianVals.both_tViracc[j,i] = median(coldFrac.both_tviracc[j,w])
