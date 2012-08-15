@@ -509,28 +509,32 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
   endif
 
   if sP.trMCPerCell gt 0 then begin
-    ; load gas ids
-    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+  ; note: all this ID loading seems unnecessary, since ids_gal=galcat.galaxyIDs[mt.galcatSub.gal] etc
+  ;  ; load gas ids
+  ;  gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
 
-    ; match galcat IDs to gas_ids
-    match,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
-    ids_gal = gas_ids[ids_gal_ind[sort(galcat_ind)]]
+  ;  ; match galcat IDs to gas_ids
+  ;  match,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+  ;  ids_gal = gas_ids[ids_gal_ind[sort(galcat_ind)]]
+
+  ;  match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+  ;  ids_gmem = gas_ids[ids_gmem_ind[sort(galcat_ind)]]
     
-    match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-    ids_gmem = gas_ids[ids_gmem_ind[sort(galcat_ind)]]
+  ;  gas_ids = !NULL
     
-    gas_ids = !NULL
+  ;  ; load star ids and match
+  ;  star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
     
-    ; load star ids and match
-    star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+  ;  match,galcat.stellarIDs[mt.galcatSub.stars],star_ids,galcat_ind,ids_stars_ind,count=countStars,/sort
+  ;  ids_stars = star_ids[ids_stars_ind[sort(galcat_ind)]]
     
-    match,galcat.stellarIDs[mt.galcatSub.stars],star_ids,galcat_ind,ids_stars_ind,count=countStars,/sort
-    ids_stars = star_ids[ids_stars_ind[sort(galcat_ind)]]
-    
-    star_ids = !NULL
-    
-    if countGal ne n_elements(mt.galcatSub.gal) or countGmem ne n_elements(mt.galcatSub.gmem) then $
-      message,'Error: Check.'
+  ;  star_ids = !NULL
+ ;   if countGal ne n_elements(mt.galcatSub.gal) or countGmem ne n_elements(mt.galcatSub.gmem) then $
+ ;     message,'Error: Check.'
+ 
+    ids_gal   = galcat.galaxyIDs[mt.galcatSub.gal] ; new
+    ids_gmem  = galcat.groupmemIDs[mt.galcatSub.gmem]
+    ids_stars = galcat.stellarIDs[mt.galcatSub.stars]
     
     ; locate tracer children (indices) of gas id subsets
     galcat_gal_trids   = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
@@ -766,13 +770,13 @@ function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
         ; record times for possible extrapolation
         h = loadSnapshotHeader(sP=sP)
         times[startSnap-m] = redshiftToAgeFlat(1/h.time-1)
+      
+        ; load most massive progenitor and move index
+        Parent = mergerTree(sP=sP)
+        
+        if Parent[gcIDcur] eq -1 then failSnap = sP.snap
+        gcIDcur = Parent[gcIDcur]
       endif
-      
-      ; load most massive progenitor and move index
-      Parent = mergerTree(sP=sP)
-      
-      if Parent[gcIDcur] eq -1 then failSnap = sP.snap
-      gcIDcur = Parent[gcIDcur]
     endfor
     
     if failSnap eq -1 then begin

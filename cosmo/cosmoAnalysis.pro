@@ -636,12 +636,12 @@ function gcSubsetProp, sP=sP, select=select, $
     ; if all tracers requested, find children of all the gas IDs in the groupcat
     if keyword_set(allTR) then begin
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-      ids_gal    = tr_ids[tracerCosmoChildren(sP=sP,gasIDs=galcat.galaxyIDs,/getInds)]
-      ids_gmem   = tr_ids[tracerCosmoChildren(sP=sP,gasIDs=galcat.groupmemIDs,/getInds)]
-      ids_gstars = tr_ids[tracerCosmoChildren(sP=sP,gasIDs=galcat.stellarIDs,/getInds)]
+      ids_gal   = tr_ids[cosmoTracerChildren(sP=sP,gasIDs=galcat.galaxyIDs[galcatInds.gal],/getInds)]
+      ids_gmem  = tr_ids[cosmoTracerChildren(sP=sP,gasIDs=galcat.groupmemIDs[galcatInds.gmem],/getInds)]
+      ids_stars = tr_ids[cosmoTracerChildren(sP=sP,starIDs=galcat.stellarIDs[galcatInds.stars],/getInds)]
       tr_ids = !NULL
       
-      r = {gal:ids_gal[galcatInds.gal],gmem:ids_gmem[galcatInds.gmem],stars:ids_stars[galcatInds.stars]}
+      r = {gal:ids_gal,gmem:ids_gmem,stars:ids_stars}
       
       ids_gal = !NULL & ids_gmem = !NULL & ids_stars = !NULL
       
