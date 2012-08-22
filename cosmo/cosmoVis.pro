@@ -1,6 +1,6 @@
 ; cosmoVis.pro
 ; cosmological boxes - 2d visualization
-; dnelson jul.2012
+; dnelson aug.2012
 
 ; webglCutouts(): make halo centered cutouts for the webGL app
 
@@ -149,7 +149,7 @@ pro webglCutouts;, sP=sP, gcIDs=gcIDs
                   sizeFac  : float(sizeFac)      ,$ ; bounding box size
                   data     : reform(dataout,n_elements(dataout)) $
                 }
-    
+                
     ; write file
     openw,lun,fileName,/get_lun
     writeu,lun,outStruct
@@ -797,7 +797,7 @@ pro scatterMapPastPosComp
   print,'128!'
   
   ; OLD512 z2.304 g2342 a2132 -- z2.301 g2289 a2034 -- z2.130 g6369 a5966 axes02 -- z2.64 g5498 a5097
-  ; NEW512 z2.304 g2342 a?    -- 
+  ; NEW512 z2.304 g2342 a1996 -- 
   ; NEW256 z2.304 g673 a510   -- 
   ; NEW128 z2.304 g217 a150   -- 
   gcIDg = 2342

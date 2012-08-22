@@ -1,8 +1,36 @@
 ; arepoVTK.pro
 ; helper functions to test ArepoRT and ArepoVTK
-; dnelson aug.2011
+; dnelson aug.2012
 
 @helper
+
+; makeCosmoCutout(): output HDF5 format spatial cutout around a halo
+
+pro makeVTKCosmoCutout
+
+  ; config
+  sP = simParams(res=512,run='tracer',redshift=2.0)
+  
+  gcID    = 1996 ; NEW512 z2.304 g2342 a1996
+  sizeFac = 3.6 ; times rvir for the bounding box of each cutout
+
+  ; target list
+  gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
+  sgcen = subgroupPosByMostBoundID(sP=sP) 
+  
+  ; get subhalo position and size of imaging box
+  boxCen     = sgcen[*,gcID]
+  boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]] / 10.0) * 10.0
+  boxSizeImg = [boxSize,boxSize,boxSize] ; cube
+
+  print,'boxCen',boxCen
+  print,'boxSize',boxSize
+
+  ; make cutout
+  createSnapshotCutout,sP=sP,fOut='cutout.hdf5',$
+    cenPos=boxCen,boxSize=boxSizeImg,/includeGas,/convertUtoTemp,/verbose
+
+end
 
 pro plotScalings
 

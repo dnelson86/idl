@@ -112,6 +112,12 @@ pro match, a, b, suba, subb, COUNT = count, SORT = sort;, epsilon=epsilon
  ind = [ lindgen(na), lindgen(nb) ]       ;combined list of indices
  vec = [ bytarr(na), replicate(1b,nb) ]  ;flag of which vector in  combined
                                          ;list   0 - a   1 - b
+
+ if min(ind) lt 0 then begin
+   print,'Warning: Overflow in match ind, switching to l64indgen (dnelson).'
+   ind = [ l64indgen(na), l64indgen(nb) ]
+ endif
+
 ; sort combined list
 
  sub = sort(c)
@@ -123,10 +129,7 @@ pro match, a, b, suba, subb, COUNT = count, SORT = sort;, epsilon=epsilon
 ; find duplicates in sorted combined list
 
  n = na + nb                            ;total elements in c
- ;if epsilon eq 0. then $
-    firstdup = where( (c EQ shift(c,-1)) and (vec NE shift(vec,-1)), Count ) ;$
- ;else $
- ;   firstdup = where( (abs(c - shift(c,-1)) lt epsilon) and (vec NE shift(vec,-1)), Count )
+ firstdup = where( (c EQ shift(c,-1)) and (vec NE shift(vec,-1)), Count ) ;$
 
  c = !NULL
 
@@ -138,8 +141,17 @@ pro match, a, b, suba, subb, COUNT = count, SORT = sort;, epsilon=epsilon
 
  dup = lonarr( Count*2 )                     ;both duplicate values
  even = lindgen( N_elements(firstdup))*2     ;Changed to LINDGEN 6-Sep-1991
+
+ if min(even) lt 0 then begin
+   print,'Warning: Overflow in match even, switching to 64bit (dnelson).'
+   dup  = lon64arr( Count*2 )
+   even = l64indgen( n_elements(firstdup) )*2
+ endif
+
  dup[even] = firstdup
  dup[even+1] = firstdup+1
+ firstdup = !NULL
+
  ind = ind[dup]                         ;indices of duplicates
  vec = vec[dup]                         ;vector id of duplicates
  subb = ind[ where( vec, complement = vzero) ]             ;b subscripts

@@ -30,7 +30,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        run:          '',$    ; copied from input
        redshift:     -1.0,$  ; copied from input
        $ ; analysis parameters:
-       minNumGasPart: 0,$    ; minimum number of gas particles required to use subgroup
+       minNumGasPart: 0,$    ; minimum number of gas particles required to use subgroup (unused)
        radcut_rvir:   0.15,$ ; galcat: fraction of rvir as maximum for gal/stars, minimum for gmem (zero to disable)
        radcut_out:    1.5,$  ; galcat: fraction of rvir as maximum for gmem
        galcut_T:      6.0,$  ; galcat: temp coefficient for (rho,temp) galaxy cut
@@ -40,9 +40,11 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        TvirVals:      [1.0,0.8,0.4],$ ; T/Tvir coefficients for variable threshold comparisons
        $ ; plotting/vis parameters:
        colorsA:       [getColor24(['00'x,'eb'x,'00'x]),getColor24(['00'x,'bd'x,'00'x]),getColor24(['00'x,'90'x,'00'x])],$ ; green 128,256,512
-       colorsG:       [getColor24(['e6'x,'7a'x,'22'x]),getColor24(['b3'x,'5f'x,'1b'x]),getColor24(['80'x,'44'x,'13'x])] $ ; brown 128,256,512
+       colorsG:       [getColor24(['e6'x,'7a'x,'22'x]),getColor24(['b3'x,'5f'x,'1b'x]),getColor24(['80'x,'44'x,'13'x])],$ ; brown 128,256,512
        $ ;colorsA:       [getColor24([255,200,200]),getColor24([255,100,100]),getColor24([255,0,0])],$ ; red 128,256,512 (alternative)
-       $ ;colorsG:       [getColor24([200,200,255]),getColor24([100,100,255]),getColor24([0,0,255])] $ ; blue 128,256,512 (alternative)
+       $ ;colorsG:       [getColor24([200,200,255]),getColor24([100,100,255]),getColor24([0,0,255])],$ ; blue 128,256,512 (alternative)
+       radIndHaloAcc: 0,$     ; 1.0 rvir crossing for halo accretion
+       radIndGalAcc:  4 $     ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
       }
 
   ; copy inputs

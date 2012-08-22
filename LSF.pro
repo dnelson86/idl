@@ -17,7 +17,7 @@ pro makeArepoFoFBsub
   print,snapZ
 
   ;snapRange = [132,150,1]
-  snaps = [129,132,133,134,135,136,137,138,139,140]
+  snaps = [189]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
@@ -27,7 +27,7 @@ pro makeArepoFoFBsub
   ptile     = 8 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
-  excludeHosts = ['hero2402'] ;leave empty otherwise
+  excludeHosts = ['hero0103','hero2205','hero0410','hero2413','hero1004'] ;leave empty otherwise
  
   paramFile = "param_fof.txt"
 
@@ -210,3 +210,61 @@ pro makeArepoProjBsub
   endfor ;snapRange
 
 end
+
+; runGasAccPaper(): run all analysis and make all plots (run fof+subfind first)
+
+pro runGasAccPaper
+
+  ; config
+  redshifts   = [2.0,3.0]
+  resolutions = [128,256,512]
+  runs        = ['gadget','tracer']
+  
+  sgSelect    = 'pri'
+  timeWindows = list('all',1000.0,250.0) ; Myr
+  accModes    = ['all','smooth','clumpy','stripped']
+  
+  foreach res,resolutions do begin
+    foreach run,runs do begin
+      foreach redshift,redshifts do begin
+      
+        ; simulation parameters
+        sP = simParams(res=res,run=run,redshift=redshift)
+        snap = sP.snap
+        
+        ; catalogs at analysis redshift
+        x = galaxyCat(sP=sP)
+        x = galaxyCatRadii(sP=sP)
+        
+        ; primary analysis
+        x = maxTemps(sP=sP) & sP.snap = snap
+        x = mergerTree(sP=sP,makeNum=snap) & sP.snap = snap
+        x = accretionTimes(sP=sP) & sP.snap = snap
+        x = accretionMode(sP=sP)
+        
+        ; binning for plots
+        foreach timeWindow,timeWindows do begin
+          foreach accMode,accModes do begin
+            x = haloMassBinValues(sP=sP,sgSelect=sgSelect,timeWindow=timeWindow,accMode=accMode)
+          endforeach
+        endforeach
+        
+      endforeach
+    endforeach
+  endforeach
+        
+  ; line plots
+  plotAccRateVsHaloMass
+  plotColdFracVsHaloMass
+  plotByMode
+  plotTmaxHistos
+  
+  ; visual plots
+  scatterMapHalosComp
+  scatterMapPastPosComp
+  mosaicHalosComp
+  scatterMapHalosGasDM
+  plotHaloShellValueComp
+  
+end
+
