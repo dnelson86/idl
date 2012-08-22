@@ -1389,12 +1389,12 @@ end
 
 ; createSnapshotCutout(): create a new HDF5 snapshot-format file containing a spatial subregion
 
-pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=cenPos, boxSize=boxSize, $
+pro createSnapshotCutout, sP=sP, fOut=fOut, cenPos=cenPos, boxSize=boxSize, $
                           includeGas=includeGas, includeStars=includeStars, includeDM=includeDM, $
-                          verbose=verbose
+                          convertUtoTemp=convertUtoTemp, verbose=verbose
 
   ; config
-  if (not keyword_set(fOut)   or not keyword_set(snapPath) or not keyword_set(snapNum) or $
+  if (not keyword_set(fOut)   or not keyword_set(sP) or $
       not keyword_set(cenPos) or not keyword_set(boxSize)) then begin
     print,'Error: Missing required inputs.'
     return
@@ -1410,10 +1410,10 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
   if not keyword_set(verbose)      then verbose = 0
 
   ; load original (structure only)
-  ext = string(snapNum,format='(I3.3)')
-  f = snapPath + 'snapdir_' + ext + '/snap_' + ext + '.0.hdf5'
+  ext = string(sP.snap,format='(I3.3)')
+  f = sP.simPath + 'snapdir_' + ext + '/snap_' + ext + '.0.hdf5'
   s = h5_parse(f)
-  
+
   ; modify base and header
   s._NAME    = fOut
   s._FILE    = fOut
@@ -1423,7 +1423,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
   ; load gas positions and make selection
   ; ---
   if keyword_set(includeGas) then begin
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='pos',verbose=verbose)
+    gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='pos',verbose=verbose)
     
     wGas = where( abs(gasfield[0,*]-cenPos[0]) le boxSize[0]/2.0 and $
                   abs(gasfield[1,*]-cenPos[1]) le boxSize[1]/2.0 and $
@@ -1433,173 +1433,193 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
                   
     gasfield = gasfield[*,wGas]
     
-    ; modify data
+    ; gas - coordinates
     s.PARTTYPE0.COORDINATES._DIMENSIONS    = [3,countGas]
     s.PARTTYPE0.COORDINATES._NELEMENTS     = countGas*3
     s1 = mod_struct(s.PARTTYPE0.COORDINATES,'_DATA',gasfield) ;change _DATA size
     s2 = mod_struct(s.PARTTYPE0,'COORDINATES',s1) ;update PARTTYPE0 with child  
   
     ; gas - CM
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='cm',verbose=verbose)
-    gasfield = gasfield[*,wGas]
-   
-    s.PARTTYPE0.CENTER_OF_MASS._DIMENSIONS    = [3,countGas]
-    s.PARTTYPE0.CENTER_OF_MASS._NELEMENTS     = countGas*3
-    s1 = mod_struct(s.PARTTYPE0.CENTER_OF_MASS,'_DATA',gasfield)
-    s2 = mod_struct(s2,'CENTER_OF_MASS',s1)
+    if tag_exist(s.parttype0,'center_of_mass') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='cm',verbose=verbose)
+      gasfield = gasfield[*,wGas]
+     
+      s.PARTTYPE0.CENTER_OF_MASS._DIMENSIONS    = [3,countGas]
+      s.PARTTYPE0.CENTER_OF_MASS._NELEMENTS     = countGas*3
+      s1 = mod_struct(s.PARTTYPE0.CENTER_OF_MASS,'_DATA',gasfield)
+      s2 = mod_struct(s2,'CENTER_OF_MASS',s1)
+    endif
     
     ; gas - coolingrate
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='coolingrate',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.COOLINGRATE._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.COOLINGRATE._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.COOLINGRATE,'_DATA',gasfield)
-    s2 = mod_struct(s2,'COOLINGRATE',s1)
+    if tag_exist(s.parttype0,'coolingrate') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='coolingrate',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.COOLINGRATE._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.COOLINGRATE._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.COOLINGRATE,'_DATA',gasfield)
+      s2 = mod_struct(s2,'COOLINGRATE',s1)
+    endif
     
     ; gas - density
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='density',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.DENSITY._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.DENSITY._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.DENSITY,'_DATA',gasfield)
-    s2 = mod_struct(s2,'DENSITY',s1)
+    if tag_exist(s.parttype0,'density') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='density',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.DENSITY._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.DENSITY._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.DENSITY,'_DATA',gasfield)
+      s2 = mod_struct(s2,'DENSITY',s1)
+    endif
     
     ; gas - electronabundance
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='nelec',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.ELECTRONABUNDANCE._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.ELECTRONABUNDANCE._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.ELECTRONABUNDANCE,'_DATA',gasfield)
-    s2 = mod_struct(s2,'ELECTRONABUNDANCE',s1)
+    if tag_exist(s.parttype0,'electronabundance') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='nelec',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.ELECTRONABUNDANCE._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.ELECTRONABUNDANCE._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.ELECTRONABUNDANCE,'_DATA',gasfield)
+      s2 = mod_struct(s2,'ELECTRONABUNDANCE',s1)
+    endif
     
     ; gas - internal energy
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='u',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.INTERNALENERGY._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.INTERNALENERGY._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.INTERNALENERGY,'_DATA',gasfield)
-    s2 = mod_struct(s2,'INTERNALENERGY',s1)
+    if tag_exist(s.parttype0,'internalenergy') then begin
+      if keyword_set(convertUtoTemp) and tag_exist(s.parttype0,'electronabundance') then begin
+        utherm = loadSnapshotSubset(sP=sP,partType='gas',field='u',verbose=verbose)
+        utherm = utherm[wGas]
+        gasfield = convertUtoTemp(utherm,gasfield,/log) ; log(K)
+      endif else begin
+        gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='u',verbose=verbose)
+        gasfield = gasfield[wGas]
+      endelse
+      
+      s.PARTTYPE0.INTERNALENERGY._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.INTERNALENERGY._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.INTERNALENERGY,'_DATA',gasfield)
+      s2 = mod_struct(s2,'INTERNALENERGY',s1)
+    endif
     
     ; gas - machnumber
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='machnum',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.MACHNUMBER._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.MACHNUMBER._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.MACHNUMBER,'_DATA',gasfield)
-    s2 = mod_struct(s2,'MACHNUMBER',s1)
+    if tag_exist(s.parttype0,'machnumber') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='machnum',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.MACHNUMBER._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.MACHNUMBER._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.MACHNUMBER,'_DATA',gasfield)
+      s2 = mod_struct(s2,'MACHNUMBER',s1)
+    endif
     
     ; gas - massses
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='mass',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.MASSES._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.MASSES._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.MASSES,'_DATA',gasfield)
-    s2 = mod_struct(s2,'MASSES',s1)
-    
-    ; gas - maxfaceangle
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='maxfaceangle',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.MAXFACEANGLE._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.MAXFACEANGLE._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.MAXFACEANGLE,'_DATA',gasfield)
-    s2 = mod_struct(s2,'MAXFACEANGLE',s1)
+    if tag_exist(s.parttype0,'masses') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='mass',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.MASSES._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.MASSES._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.MASSES,'_DATA',gasfield)
+      s2 = mod_struct(s2,'MASSES',s1)
+    endif
     
     ; gas - metallicity
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='metallicity',verbose=verbose)
-    gasfield = gasfield[wGas]
+    if tag_exist(s.parttype0,'metallicity') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='metallicity',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.METALLICITY._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.METALLICITY._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.METALLICITY,'_DATA',gasfield)
+      s2 = mod_struct(s2,'METALLICITY',s1)
+    endif
     
-    s.PARTTYPE0.METALLICITY._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.METALLICITY._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.METALLICITY,'_DATA',gasfield)
-    s2 = mod_struct(s2,'METALLICITY',s1)
-  
     ; gas - nh
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='nh',verbose=verbose)
-    gasfield = gasfield[wGas]
+    if tag_exist(s.parttype0,'neutralhydrogenabundance') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='nh',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.NEUTRALHYDROGENABUNDANCE._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.NEUTRALHYDROGENABUNDANCE._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.NEUTRALHYDROGENABUNDANCE,'_DATA',gasfield)
+      s2 = mod_struct(s2,'NEUTRALHYDROGENABUNDANCE',s1)
+    endif
     
-    s.PARTTYPE0.NEUTRALHYDROGENABUNDANCE._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.NEUTRALHYDROGENABUNDANCE._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.NEUTRALHYDROGENABUNDANCE,'_DATA',gasfield)
-    s2 = mod_struct(s2,'NEUTRALHYDROGENABUNDANCE',s1)
-    
-    ; gas - num faces per cell
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='numfaces',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.NUMBER_OF_FACES_OF_CELL._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.NUMBER_OF_FACES_OF_CELL._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.NUMBER_OF_FACES_OF_CELL,'_DATA',gasfield)
-    s2 = mod_struct(s2,'NUMBER_OF_FACES_OF_CELL',s1)
+    ; gas - num tracers per cell
+    if tag_exist(s.parttype0,'numtracers') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='numtracers',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.NUMTRACERS._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.NUMTRACERS._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.NUMTRACERS,'_DATA',gasfield)
+      s2 = mod_struct(s2,'NUMTRACERS',s1)
+    endif
     
     ; gas - particleIDs
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='ids',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.PARTICLEIDS._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.PARTICLEIDS._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.PARTICLEIDS,'_DATA',gasfield)
-    s2 = mod_struct(s2,'PARTICLEIDS',s1)
+    if tag_exist(s.parttype0,'particleids') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='ids',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.PARTICLEIDS._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.PARTICLEIDS._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.PARTICLEIDS,'_DATA',gasfield)
+      s2 = mod_struct(s2,'PARTICLEIDS',s1)
+    endif
     
     ; gas - potential
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='potential',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.POTENTIAL._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.POTENTIAL._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.POTENTIAL,'_DATA',gasfield)
-    s2 = mod_struct(s2,'POTENTIAL',s1)
+    if tag_exist(s.parttype0,'potential') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='potential',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.POTENTIAL._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.POTENTIAL._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.POTENTIAL,'_DATA',gasfield)
+      s2 = mod_struct(s2,'POTENTIAL',s1)
+    endif
     
     ; gas - hsml
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='hsml',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.SMOOTHINGLENGTH._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.SMOOTHINGLENGTH._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.SMOOTHINGLENGTH,'_DATA',gasfield)
-    s2 = mod_struct(s2,'SMOOTHINGLENGTH',s1)
+    if tag_exist(s.parttype0,'smoothinglength') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='hsml',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.SMOOTHINGLENGTH._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.SMOOTHINGLENGTH._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.SMOOTHINGLENGTH,'_DATA',gasfield)
+      s2 = mod_struct(s2,'SMOOTHINGLENGTH',s1)
+    endif
     
     ; gas - sfr
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='sfr',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.STARFORMATIONRATE._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.STARFORMATIONRATE._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.STARFORMATIONRATE,'_DATA',gasfield)
-    s2 = mod_struct(s2,'STARFORMATIONRATE',s1)
-    
-    ; gas - surface area
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='surfarea',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.SURFACE_AREA._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.SURFACE_AREA._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.SURFACE_AREA,'_DATA',gasfield)
-    s2 = mod_struct(s2,'SURFACE_AREA',s1)
+    if tag_exist(s.parttype0,'starformationrate') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='sfr',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.STARFORMATIONRATE._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.STARFORMATIONRATE._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.STARFORMATIONRATE,'_DATA',gasfield)
+      s2 = mod_struct(s2,'STARFORMATIONRATE',s1)
+    endif
     
     ; gas - velocities
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='vel',verbose=verbose)
-    gasfield = gasfield[*,wGas]
-    
-    s.PARTTYPE0.VELOCITIES._DIMENSIONS    = [3,countGas]
-    s.PARTTYPE0.VELOCITIES._NELEMENTS     = countGas*3
-    s1 = mod_struct(s.PARTTYPE0.VELOCITIES,'_DATA',gasfield)
-    s2 = mod_struct(s2,'VELOCITIES',s1)
+    if tag_exist(s.parttype0,'velocities') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='vel',verbose=verbose)
+      gasfield = gasfield[*,wGas]
+      
+      s.PARTTYPE0.VELOCITIES._DIMENSIONS    = [3,countGas]
+      s.PARTTYPE0.VELOCITIES._NELEMENTS     = countGas*3
+      s1 = mod_struct(s.PARTTYPE0.VELOCITIES,'_DATA',gasfield)
+      s2 = mod_struct(s2,'VELOCITIES',s1)
+    endif
     
     ; gas - volume
-    gasfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='gas',field='volume',verbose=verbose)
-    gasfield = gasfield[wGas]
-    
-    s.PARTTYPE0.VOLUME._DIMENSIONS    = [countGas]
-    s.PARTTYPE0.VOLUME._NELEMENTS     = countGas
-    s1 = mod_struct(s.PARTTYPE0.VOLUME,'_DATA',gasfield)
-    s2 = mod_struct(s2,'VOLUME',s1)
+    if tag_exist(s.parttype0,'volume') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='volume',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.VOLUME._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.VOLUME._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.VOLUME,'_DATA',gasfield)
+      s2 = mod_struct(s2,'VOLUME',s1)
+    endif
     
     ;import new PARTTYPE0 structure
     s = mod_struct(s,'PARTTYPE0',s2)
@@ -1613,7 +1633,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
   ; load DM positions and make selection
   ; ---
   if keyword_set(includeDM) then begin
-    dmfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='dm',field='pos',verbose=verbose)
+    dmfield = loadSnapshotSubset(sP=sP,partType='dm',field='pos',verbose=verbose)
   
     wDM = where( abs(dmfield[0,*]-cenPos[0]) le boxSize[0]/2.0 and $
                  abs(dmfield[1,*]-cenPos[1]) le boxSize[1]/2.0 and $
@@ -1630,7 +1650,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
     s2 = mod_struct(s.PARTTYPE1,'COORDINATES',s1)
   
     ; dm - particleIDs
-    dmfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='dm',field='ids',verbose=verbose)
+    dmfield = loadSnapshotSubset(sP=sP,partType='dm',field='ids',verbose=verbose)
     dmfield = dmfield[wDM]
     
     s.PARTTYPE1.PARTICLEIDS._DIMENSIONS    = [countDM]
@@ -1639,7 +1659,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
     s2 = mod_struct(s2,'PARTICLEIDS',s1)
     
     ; dm - potential
-    dmfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='dm',field='potential',verbose=verbose)
+    dmfield = loadSnapshotSubset(sP=sP,partType='dm',field='potential',verbose=verbose)
     dmfield = dmfield[wDM]
     
     s.PARTTYPE1.POTENTIAL._DIMENSIONS    = [countDM]
@@ -1648,7 +1668,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
     s2 = mod_struct(s2,'POTENTIAL',s1)
   
     ; dm - velocities
-    dmfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='dm',field='vel',verbose=verbose)
+    dmfield = loadSnapshotSubset(sP=sP,partType='dm',field='vel',verbose=verbose)
     dmfield = dmfield[*,wDM]
     
     s.PARTTYPE1.VELOCITIES._DIMENSIONS    = [3,countDM]
@@ -1668,7 +1688,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
   ; load star positions and make selection
   ; ---
   if keyword_set(includeStars) then begin
-    starfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='stars',field='pos',verbose=verbose)
+    starfield = loadSnapshotSubset(sP=sP,partType='stars',field='pos',verbose=verbose)
   
     wStars = where( abs(starfield[0,*]-cenPos[0]) le boxSize[0]/2.0 and $
                     abs(starfield[1,*]-cenPos[1]) le boxSize[1]/2.0 and $
@@ -1685,7 +1705,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
     s2 = mod_struct(s.PARTTYPE4,'COORDINATES',s1)
   
     ; stars - masses
-    starfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='stars',field='mass',verbose=verbose)
+    starfield = loadSnapshotSubset(sP=sP,partType='stars',field='mass',verbose=verbose)
     starfield = starfield[wStars]
     
     s.PARTTYPE4.MASSES._DIMENSIONS    = [countStars]
@@ -1694,7 +1714,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
     s2 = mod_struct(s2,'MASSES',s1)
    
     ; stars - metallicity
-    starfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='stars',field='metallicity',verbose=verbose)
+    starfield = loadSnapshotSubset(sP=sP,partType='stars',field='metallicity',verbose=verbose)
     starfield = starfield[wStars]
     
     s.PARTTYPE4.METALLICITY._DIMENSIONS    = [countStars]
@@ -1703,7 +1723,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
     s2 = mod_struct(s2,'METALLICITY',s1)
   
     ; stars - particleIDs
-    starfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='stars',field='ids',verbose=verbose)
+    starfield = loadSnapshotSubset(sP=sP,partType='stars',field='ids',verbose=verbose)
     starfield = starfield[wStars]
     
     s.PARTTYPE4.PARTICLEIDS._DIMENSIONS    = [countStars]
@@ -1712,7 +1732,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
     s2 = mod_struct(s2,'PARTICLEIDS',s1)
     
     ; stars - potential
-    starfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='stars',field='potential',verbose=verbose)
+    starfield = loadSnapshotSubset(sP=sP,partType='stars',field='potential',verbose=verbose)
     starfield = starfield[wStars]
     
     s.PARTTYPE4.POTENTIAL._DIMENSIONS    = [countStars]
@@ -1721,7 +1741,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
     s2 = mod_struct(s2,'POTENTIAL',s1)
   
     ; stars - particleIDs
-    starfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='stars',field='sftime',verbose=verbose)
+    starfield = loadSnapshotSubset(sP=sP,partType='stars',field='sftime',verbose=verbose)
     starfield = starfield[wStars]
     
     s.PARTTYPE4.STELLARFORMATIONTIME._DIMENSIONS    = [countStars]
@@ -1730,7 +1750,7 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
     s2 = mod_struct(s2,'STELLARFORMATIONTIME',s1)
   
     ; stars - velocities
-    starfield = loadSnapshotSubset(snapPath,snapNum=snapNum,partType='stars',field='vel',verbose=verbose)
+    starfield = loadSnapshotSubset(sP=sP,partType='stars',field='vel',verbose=verbose)
     starfield = starfield[*,wStars]
     
     s.PARTTYPE4.VELOCITIES._DIMENSIONS    = [3,countStars]
@@ -1753,12 +1773,17 @@ pro createSnapshotCutout, snapPath=snapPath, snapNum=snapNum, fOut=fOut, cenPos=
   s.HEADER.NUMPART_TOTAL._DATA        = [countGas,countDM,0,0,countStars,0]  
   
   ;delete unused structures
-  if not keyword_set(includeGas) then $
+  if ~keyword_set(includeGas) then $
     s = mod_struct(s,'PARTTYPE0',/delete)
-  if not keyword_set(includeDM) then $
+  if ~keyword_set(includeDM) then $
     s = mod_struct(s,'PARTTYPE1',/delete)
-  if not keyword_set(includeStars) then $
+  if ~keyword_set(includeStars) then $
     s = mod_struct(s,'PARTTYPE4',/delete)
+    
+  if tag_exist(s,'parttype2') then $ ; tracerVEL
+    s = mod_struct(s,'PARTTYPE2',/delete)
+  if tag_exist(s,'parttype3') then $ ; tracerMC
+    s = mod_struct(s,'PARTTYPE3',/delete)
   
   ; output
   h5_create, fOut, s
