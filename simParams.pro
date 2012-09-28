@@ -216,7 +216,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   ; ComparisonProject arepo (no tracers) 128,256,512 @ 20Mpc
   if (run eq 'arepo') then begin
     r.minNumGasPart = -1 ; no additional cut
-    r.trMCPerCell   = 1 ; no actual tracers, but flag as non-sph
+    r.trMCPerCell   = 0 ; no actual tracers ;, but flag as non-sph
     
     if keyword_set(f) then stop ; shouldn't be specified
     if res ne 128 and res ne 256 and res ne 512 then stop

@@ -4,6 +4,48 @@
 
 @helper
 
+; makeVTKColorTable(): output .tbl discrete color table
+
+pro makeVTKColorTable
+
+  ; load colortable into rgb[N,3]
+  loadColorTable,'helix',rgb_table=rgb
+  
+  ; idl builtins
+  ;loadct,33
+  ;tvlct,rgb,/get
+  
+  start = 0
+  
+  nVals = n_elements(rgb[*,0])
+
+  fileName = 'cubehelix_1_50.tbl'
+
+  ; alpha channel
+  alpha = fltarr(nVals) + 1.0 ; uniform
+
+  ; write
+  openW,lun,fileName,/GET_LUN
+  
+  ; header
+  printf,lun,'# comment'
+  printf,lun,str(nVals-start)
+  
+  for j=start,nVals-1 do begin
+    outText = string(rgb[j,0],format='(f5.1)') + " " + $
+              string(rgb[j,1],format='(f5.1)') + " " + $
+              string(rgb[j,2],format='(f5.1)') + " " + $
+              string(alpha[j],format='(f4.2)')
+    printf,lun,outText
+  endfor
+  
+  close,lun
+  free_lun, lun
+    
+  stop
+
+end
+
 ; makeCosmoCutout(): output HDF5 format spatial cutout around a halo
 
 pro makeVTKCosmoCutout
@@ -11,7 +53,7 @@ pro makeVTKCosmoCutout
   ; config
   sP = simParams(res=512,run='tracer',redshift=2.0)
   
-  gcID    = 1996 ; NEW512 z2.304 g2342 a1996
+  gcID    = 2004 ; NEW512 z2.304 g2342 a2004
   sizeFac = 3.6 ; times rvir for the bounding box of each cutout
 
   ; target list
@@ -27,7 +69,7 @@ pro makeVTKCosmoCutout
   print,'boxSize',boxSize
 
   ; make cutout
-  createSnapshotCutout,sP=sP,fOut='cutout.hdf5',$
+  createSnapshotCutout,sP=sP,fOut='/n/home07/dnelson/cutout_arepo2.hdf5',$
     cenPos=boxCen,boxSize=boxSizeImg,/includeGas,/convertUtoTemp,/verbose
 
 end

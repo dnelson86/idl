@@ -1372,3 +1372,89 @@ pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted
   fsc_text,(xRange[0]-xRange[1])/2.0,yRange[1]+yTextOff*5.0,"Time [Gyr]",alignment=0.5
 
 end
+
+; getMatchedIDs(): return subgroup IDs given the z2.haloID from the HaloComparisonProject
+;                  account for resolution, redshift, and run
+
+function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID
+
+  if sPa.res ne sPg.res then message,'Error: Resolutions differ.'
+  if sPa.snap ne sPg.snap then message,'Error: Snapshots differ.'
+  
+  redshift = sPa.redshift
+  if redshift ne 2.0 then message,'Error: Only redshift 2.'
+  
+  ; info
+  r = { a:9999999, g:9999999, axes:[0,1] }
+  
+  ; z2.314 (disappearing fan along bottom, all-sky views for paper)
+  if haloID eq 314 then begin
+    if sPa.res eq 512 then begin
+      if sPa.run eq 'tracer'    then r.a = 816
+      if sPg.run eq 'gadget'    then r.g = 981
+      if sPa.run eq 'arepo'     then r.a = 879 ;had as 927 in comparison project?
+      if sPg.run eq 'gadgetold' then r.g = 981
+    endif
+  
+  endif
+  
+  ; z2.304 (four filaments aligned in a plus pattern, high mass example for paper)
+  if haloID eq 304 then begin    
+    if sPa.res eq 512 then begin
+      if sPa.run eq 'tracer'    then r.a = 2004
+      if sPg.run eq 'gadget'    then r.g = 2342
+      if sPa.run eq 'arepo'     then r.a = 2132
+      if sPg.run eq 'gadgetold' then r.g = 2342
+    endif
+    
+    if sPa.res eq 256 then begin
+      if sPa.run eq 'tracer'    then r.a = 510
+      if sPg.run eq 'gadget'    then r.g = 673
+    endif
+    
+    if sPa.res eq 128 then begin
+      if sPa.run eq 'tracer'    then r.a = 150
+      if sPg.run eq 'gadget'    then r.g = 217
+    endif
+  endif
+  
+  ; z2.301
+  if haloID eq 301 then begin    
+    if sPa.res eq 512 then begin
+      if sPa.run eq 'arepo'     then r.a = 2034
+      if sPg.run eq 'gadgetold' then r.g = 2289
+    endif
+  endif
+  
+  ; z2.130 (low mass example for paper)
+  if haloID eq 130 then begin
+    r.axes = [0,2]
+    if sPa.res eq 512 then begin
+      if sPa.run eq 'arepo'     then r.a = 5966
+      if sPg.run eq 'gadgetold' then r.g = 6369
+      if sPa.run eq 'tracer'    then r.a = 5611
+      if sPg.run eq 'gadget'    then r.g = 6369
+    endif
+    
+    if sPa.res eq 256 then begin
+      if sPa.run eq 'tracer'    then r.a = 1527
+      if sPg.run eq 'gadget'    then r.g = 1888
+    endif
+    
+    if sPa.res eq 128 then begin
+      if sPa.run eq 'tracer'    then r.a = 619
+      if sPg.run eq 'gadget'    then r.g = 802
+    endif
+  endif
+  
+  ; z2.64
+  if haloID eq 64 then begin
+    if sPa.res eq 512 then begin
+      if sPa.run eq 'arepo'     then r.a = 5097
+      if sPg.run eq 'gadgetold' then r.g = 5498
+    endif
+  endif
+  
+  return,r
+
+end

@@ -16,8 +16,8 @@ pro makeArepoFoFBsub
   snapZ = redshiftToSnapNum([6.0,5.0,4.0,3.0,2.0,1.0,0.0],sP=sP)
   print,snapZ
 
-  ;snapRange = [132,150,1]
-  snaps = [189]
+  ;snapRange = [200,209,1]
+  snaps = [227,228,230,231,232,233]
 
   ; job config
   spawnJobs = 1 ; execute bsub?

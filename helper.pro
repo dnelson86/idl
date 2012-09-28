@@ -907,14 +907,17 @@ end
 @accretionTraj
 @accretionTrajVis
 @cosmoVis
+@cosmoVisMap
 @cosmoSphere
 @cosmoOverDens
+@haloCompProj
 
 @plotGalCat
 @plotMaxTemps
 @plotSphere
 @binVsHaloMass
 @plotVsHaloMass
+@plotRadProfiles
 
 @tracersVel_Cosmo
 @tracersVel_Halos
