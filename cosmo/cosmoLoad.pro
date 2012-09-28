@@ -1488,7 +1488,7 @@ pro createSnapshotCutout, sP=sP, fOut=fOut, cenPos=cenPos, boxSize=boxSize, $
       if keyword_set(convertUtoTemp) and tag_exist(s.parttype0,'electronabundance') then begin
         utherm = loadSnapshotSubset(sP=sP,partType='gas',field='u',verbose=verbose)
         utherm = utherm[wGas]
-        gasfield = convertUtoTemp(utherm,gasfield,/log) ; log(K)
+        gasfield = convertUtoTemp(utherm,gasfield) ; Kelvin
       endif else begin
         gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='u',verbose=verbose)
         gasfield = gasfield[wGas]

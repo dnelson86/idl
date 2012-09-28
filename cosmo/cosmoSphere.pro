@@ -310,6 +310,45 @@ pro plotMollweideProj, data, rot_ang=rot_ang, minmax=minmax, ctName=ctName, $
       pxsize = 0.5
       cbar_units = 3.0
     endif
+    
+    ; 3x2 compact tiling with room for 3 colorbars and GADGET/AREPO title
+    if pos eq 'ul_3' then begin
+      w_xll = 0.0 & w_xur = 0.5 & w_yll = 0.70 & w_yur = 0.96
+      x_title = 0.25 & y_title = 0.96
+      pxsize = 0.5
+      cbar_units = 1.5
+    endif
+    if pos eq 'ur_3' then begin
+      w_xll = 0.5 & w_xur = 1.0 & w_yll = 0.70 & w_yur = 0.96
+      x_title = 0.75 & y_title = 0.96
+      pxsize = 0.5
+      cbar_units = 1.5
+    endif
+    if pos eq 'cl_3' then begin
+      w_xll = 0.0 & w_xur = 0.5 & w_yll = 0.39 & w_yur = 0.65
+      x_title = 0.5 & y_title = 0.96
+      pxsize = 0.5
+      cbar_units = 1.5
+    endif
+    if pos eq 'cr_3' then begin
+      w_xll = 0.5 & w_xur = 1.0 & w_yll = 0.39 & w_yur = 0.65
+      x_title = 0.5 & y_title = 0.96
+      pxsize = 0.5
+      cbar_units = 1.5
+    endif
+    if pos eq 'll_3' then begin
+      w_xll = 0.0 & w_xur = 0.5 & w_yll = 0.08 & w_yur = 0.34
+      x_title = 0.5 & y_title = 0.96
+      pxsize = 0.5
+      cbar_units = 1.5
+    endif
+    if pos eq 'lr_3' then begin
+      w_xll = 0.5 & w_xur = 1.0 & w_yll = 0.08 & w_yur = 0.34
+      x_title = 0.5 & y_title = 0.96
+      pxsize = 0.5
+      cbar_units = 1.5
+    endif
+    
   endelse
   
   w_dx = w_xur - w_xll
@@ -326,6 +365,12 @@ pro plotMollweideProj, data, rot_ang=rot_ang, minmax=minmax, ctName=ctName, $
       cbar_dx /= 1.5
       cbar_dy /= 1.0
     endif
+    
+    ; for 3x2 center colorbars for each row
+    if pos eq 'ul_3' or pos eq 'cl_3' or pos eq 'll_3' then begin
+      cbar_dx = 0.5
+      cbar_dy = 1.0/70.0
+    endif
   endif 
   
   cbar_xll = (w_xll+w_xur)/2.0 - cbar_dx/2.0
@@ -334,6 +379,12 @@ pro plotMollweideProj, data, rot_ang=rot_ang, minmax=minmax, ctName=ctName, $
   cbar_yll = cbar_yur - cbar_dy
   
   cbar_units_y = cbar_yll-cbar_dy*cbar_units
+  
+  ; for 3x2 center colorbar for each row
+  if pos eq 'ul_3' or pos eq 'cl_3' or pos eq 'll_3' then begin
+    cbar_xll = 0.5 - cbar_dx/2.0
+    cbar_xur = 0.5 + cbar_dx/2.0
+  endif
   
   ; "big bar" override with bottom centered colorbar (assume no individual colorbars for spacing)
   if keyword_set(bigbar) then begin

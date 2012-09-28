@@ -320,7 +320,7 @@ function critBaryonRatioToCode, ratioToCritB, redshift=redshift
   omega_m   = 0.27
   omega_L   = 0.73
   omega_k   = 0.0
-  omega_b = 0.044
+  omega_b   = 0.044
   
   codeRho = ratioToCritB * omega_b * units.rhoCrit
   

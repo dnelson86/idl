@@ -424,6 +424,106 @@ pro plotHaloShellDensComp
   
 end
 
+; plot2Halo3ValComp(): compare two matched halos with three values each (2 column)
+
+pro plot2Halo3ValComp
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; config
+  redshift = 2
+  
+  sPg = simParams(res=512,run='gadget',redshift=float(redshift))
+  sPa = simParams(res=512,run='tracer',redshift=float(redshift))
+  
+  radInd   = 4        ; pre-saved radFacs (3=0.25, 4=0.5, 7=rvir)
+  rot_ang  = [0,45]   ; [lat,long] center in deg (left,up)
+  cutSubS  = 1        ; cut satellite substructures out from halo
+
+  haloID = 314 ;z2.304 z2.301 z2.130 z2.64
+  gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)
+
+  partTypes = ['gas','gas','gas']
+  valNames  = ['temp','density','radmassflux']
+  ctNames   = ['helix','helix','brewer-redblue']
+  bartitles = ["T_{gas} [_{ }log K_{ }]",$
+               "log ( \rho / <\rho> )",$
+               "Radial Mass Flux [_{ }M_{sun} kpc^{-2} Myr^{-1 }]"]
+
+  ; quantity bounds
+  ranges = list([4.3,6.7],[-0.5,1.5],[-1.5,1.5])
+
+  ratioToMean = [0,1,0] ; plot value/mean(value) ratio
+  plotLog     = [0,1,0] ; plot log(value)
+  symMinMax   = [0,0,1] ; symmetric range about zero
+  mmRound     = [0.1,0.1,0.1] ; round range to a more equal number (slightly clip)
+  
+  pos = ['ul_3','cl_3','ll_3','ur_3','cr_3','lr_3']
+
+  if cutSubS then csTag = '.cutSubS' else csTag = ''
+  
+  ; start plot
+  start_PS, sPg.plotPath+'shell_valcomp_'+sPg.savPrefix+str(sPg.res)+'_'+sPa.savPrefix+str(sPa.res)+'_z'+$
+    str(redshift)+'_h'+str(haloID)+'_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=9.5
+
+    for i=0,2 do begin
+      ; GADGET
+      ; interpolate onto the shell
+      hsv = haloShellValue(sP=sPg,partType=partTypes[i],valName=valNames[i],$
+                           subgroupID=gcID.G,cutSubS=cutSubS)
+
+      ; convert values into ratios to the mean
+      if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
+      else healpix_data = reform(hsv.value[*,radInd])
+      if plotLog[i] then healpix_data = alog10(healpix_data)
+
+      minMaxVal = ranges[i]
+
+      w = where(healpix_data gt minMaxVal[1]*0.99,count)
+      if count gt 0 then healpix_data[w] = minMaxVal[1] * 0.99
+      w = where(healpix_data lt minMaxVal[0]*0.99,count)
+      if count gt 0 then healpix_data[w] = minMaxVal[0] * 0.99
+      
+      print,minMaxVal
+
+      if i eq 0 then $
+        plotMollweideProj,healpix_data,rot_ang=rot_ang,bartitle=bartitles[i],pos=pos[i],$
+          ctName=ctNames[i],minmax=ranges[i],title="GADGET"
+      if i gt 0 then $
+        plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle=bartitles[i],pos=pos[i],$
+          /noerase,ctName=ctNames[i],minmax=ranges[i]
+          
+      ; AREPO
+      ; interpolate onto the shell
+      hsv = haloShellValue(sP=sPa,partType=partTypes[i],valName=valNames[i],$
+                           subgroupID=gcID.A,cutSubS=cutSubS)
+
+      ; convert values into ratios to the mean
+      if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
+      else healpix_data = reform(hsv.value[*,radInd])
+      if plotLog[i] then healpix_data = alog10(healpix_data)
+      
+      minMaxVal = ranges[i]
+
+      w = where(healpix_data gt minMaxVal[1]*0.99,count)
+      if count gt 0 then healpix_data[w] = minMaxVal[1] * 0.99
+      w = where(healpix_data lt minMaxVal[0]*0.99,count)
+      if count gt 0 then healpix_data[w] = minMaxVal[0] * 0.99
+      
+      print,minMaxVal
+
+      if i eq 0 then $
+        plotMollweideProj,healpix_data,rot_ang=rot_ang,bartitle="",pos=pos[i+3],$
+          /noerase,ctName=ctNames[i],minmax=ranges[i],title="AREPO"
+      if i gt 0 then $
+        plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle="",pos=pos[i+3],$
+          /noerase,ctName=ctNames[i],minmax=ranges[i]
+    endfor
+    
+  end_PS, pngResize=60;, /deletePS
+
+end
+
 ; plotHaloShellValueComp(): compare four different particle fields for one halo at one redshift
 
 pro plotHaloShellValueComp
