@@ -17,33 +17,40 @@ function findDMOverDensAtGas, sP=sP
     ; load
     gas_pos = loadSnapshotSubset(sP=sP, field='pos', partType='gas')
     dm_pos  = loadSnapshotSubset(sP=sP, field='pos', partType='dm')
+    h = loadSnapshotHeader(sP=sP)
     
-    ; EXTERNAL C - calculate nearest dm neighbor to each gas position
-    nearest_dm_ind = calcNN(dm_pos,gas_pos,boxSize=sP.boxSize,ndims=3)
-
-    ; DEBUG: for a random subset, verify nearest dm neighbors to each gas position
-    nVerify = 100
-    indVerify = floor(randomu(seed,nVerify) * n_elements(gas_pos[0,*]))
-
-    for i=0,nVerify-1 do begin
-      ; find minimum distance
-      dists = periodicDists(gas_pos[*,indVerify[i]],dm_pos,sP=sP)
-      w = where(dists eq min(dists),count)
+    ; OLD: EXTERNAL C - calculate nearest dm neighbor to each gas position
+    if 0 then begin
+      nearest_dm_ind = calcNN(dm_pos,gas_pos,boxSize=sP.boxSize,ndims=3)
+  
+      ; DEBUG: for a random subset, verify nearest dm neighbors to each gas position
+      nVerify = 100
+      indVerify = floor(randomu(seed,nVerify) * n_elements(gas_pos[0,*]))
+  
+      for i=0,nVerify-1 do begin
+        ; find minimum distance
+        dists = periodicDists(gas_pos[*,indVerify[i]],dm_pos,sP=sP)
+        w = where(dists eq min(dists),count)
+        
+        ; fail?
+        if (count ne 1) then message,'ERROR: More than one mindist in NN debug search!'
+        if (w[0] ne nearest_dm_ind[indVerify[i]]) then message,'ERROR: Nearest neighbor verification failed'
+      endfor
       
-      ; fail?
-      if (count ne 1) then message,'ERROR: More than one mindist in NN debug search!'
-      if (w[0] ne nearest_dm_ind[indVerify[i]]) then message,'ERROR: Nearest neighbor verification failed'
-    endfor
+      ; load saved DM densities and associate with gas (requires SAVE_HSML during SUBFIND)
+      dens_dm = loadHsmlDir(sP=sP,partType='dm',/readDens)
+      gas_dmDens = dens_dm[nearest_dm_ind]
+    endif
+    
+    ; NEW: compute DM density at the position of each gas particle using TopHat method
+    nNGB = 32
+    gas_dmDens = estimateDensityTophat(dm_pos,pos_search=gas_pos,mass=h.masstable[partTypeNum('dm')],$
+                                       ndims=3,nNGB=nNGB,boxSize=sP.boxSize)
 
     gas_pos = !NULL
     dm_pos  = !NULL
     
-    ; load saved DM densities and associate with gas
-    dens_dm = loadHsmlDir(sP=sP,partType='dm',/readDens)
-    gas_dmDens = dens_dm[nearest_dm_ind]
-    
     ; convert density to log(overdensity)
-    h = loadSnapshotHeader(sP=sP)
     meanDensBox = float(h.nPartTot[partTypeNum('dm')] * h.masstable[partTypeNum('dm')] / (sP.boxSize)^3.0)
     gas_dmDens = alog10( gas_dmDens / meanDensBox )    
     
@@ -581,10 +588,10 @@ pro plotGasSinglePropODRangeComp, redshift=redshift
   ; config
   dmOverDensRange = [1.0,2.0] ; log (rho/mean rho)
   fieldName = 'temperature'
-  res = 512
+  res = 256
   
-  sPa = simParams(res=res,run='arepo',redshift=redshift)
-  sPg = simParams(res=res,run='gadget',redshift=redshift)
+  sPa = simParams(res=res,run='tracer',redshift=redshift)
+  sPg = simParams(res=res,run='tracer_nouv',redshift=redshift)
   
   ; make gas selection
   gasDMDens_ar = findDMOverDensAtGas(sP=sPa)
@@ -676,7 +683,8 @@ pro plotGasSinglePropODRangeComp, redshift=redshift
     cgPlot,loc_ga+fieldBinSize*0.5,hist_ga,line=0,color=getColor(1),/overplot
   
     ; legend
-    legend,['gadget','arepo'],textcolors=getColor([1,3],/name),box=0,/right,/top
+    ;legend,['gadget','arepo'],textcolors=getColor([1,3],/name),box=0,/right,/top
+    legend,['arepo noUV','arepo'],textcolors=getColor([1,3],/name),box=0,/right,/top
   
   end_PS
 end

@@ -433,8 +433,8 @@ pro plot2Halo3ValComp
   ; config
   redshift = 2
   
-  sPg = simParams(res=512,run='gadget',redshift=float(redshift))
-  sPa = simParams(res=512,run='tracer',redshift=float(redshift))
+  sPg = simParams(res=128,run='gadget',redshift=float(redshift))
+  sPa = simParams(res=128,run='tracer',redshift=float(redshift))
   
   radInd   = 4        ; pre-saved radFacs (3=0.25, 4=0.5, 7=rvir)
   rot_ang  = [0,45]   ; [lat,long] center in deg (left,up)

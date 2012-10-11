@@ -122,9 +122,9 @@ pro plotByMethod
       cgPlot,AR.logMassBinCen,smooth(AR.fracMedian.gmem_tViracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
       
     ; legend
-    strings = textoidl("T_{max} / T_{vir} < ")+string(GA.TvirVals,format='(f4.1)')
+    strings = textoidl("T_{max} / T_{vir,acc} < ")+string(GA.TvirVals,format='(f4.1)')
     legend,strings,linestyle=indgen(n_elements(GA.TvirVals)),box=0,linesize=0.25,$
-      position=[10.92,0.97],charsize=!p.charsize-0.27
+      position=[10.8,0.97],charsize=!p.charsize-0.27
 
     ; lr: gmem const (gadget/arepo)
     ; ---
@@ -362,7 +362,7 @@ pro plotByMethod
       cgPlot,AR.logMassBinCen,smooth(AR.coldMedian.gmem_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
 
     ; legend
-    strings = textoidl("T_{max} / T_{vir} < ")+string(GA.TvirVals,format='(f4.1)')
+    strings = textoidl("T_{max} / T_{vir,acc} < ")+string(GA.TvirVals,format='(f4.1)')
     legend,strings,linestyle=indgen(n_elements(GA.TvirVals)),box=0,linesize=0.25,position=[10.05,13.0],charsize=!p.charsize-0.1
 
     ; labels
@@ -494,7 +494,7 @@ pro plotByMethod
       cgPlot,AR.logMassBinCen,smooth(AR.coldMedian.stars_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
 
     ; legend
-    strings = textoidl("T_{max} / T_{vir} < ")+string(GA.TvirVals,format='(f4.1)')
+    strings = textoidl("T_{max} / T_{vir,acc} < ")+string(GA.TvirVals,format='(f4.1)')
     legend,strings,linestyle=indgen(n_elements(GA.TvirVals)),box=0,linesize=0.25,position=[10.05,13.0],charsize=!p.charsize-0.1
 
     ; labels
