@@ -17,7 +17,7 @@ pro makeArepoFoFBsub
   print,snapZ
 
   ;snapRange = [200,209,1]
-  snaps = [227,228,230,231,232,233]
+  snaps = [227,228]
 
   ; job config
   spawnJobs = 1 ; execute bsub?

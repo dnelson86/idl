@@ -423,7 +423,7 @@ pro tvim,a,scale=scale,range=range,xrange=xrange,yrange=yrange,$
         rgb_nodata=rgb_nodata,barwidth=barwidth,position=position,rct=rct,$
         xmargin=xmargin,ymargin=ymargin,xtickname=xtickname,ytickname=ytickname,$
         xticks=xticks,yticks=yticks,xtickv=xtickv,ytickv=ytickv,$
-        xlog=xlog,ylog=ylog ;DNELSON pass to final plot
+        xlog=xlog,ylog=ylog,noerase=noerase ;DNELSON pass to final plot
 
 if n_params() eq 0 then begin
   xhelp,'tvim'
@@ -445,7 +445,7 @@ ny=sz(2)
 nxm=nx-1
 nym=ny-1
 plot, [0,1],[0,1],/nodata,xstyle=4,ystyle=4,charsize=pcharsize,xmargin=xmargin,ymargin=ymargin,$
-      xticks=xticks,yticks=yticks,xtickv=xtickv,ytickv=ytickv ;DNELSON added
+      xticks=xticks,yticks=yticks,xtickv=xtickv,ytickv=ytickv,noerase=noerase ;DNELSON added
 px=!x.window*!d.x_vsize
 py=!y.window*!d.y_vsize
 xsize=px(1)-px(0)

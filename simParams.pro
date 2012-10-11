@@ -1,6 +1,6 @@
 ; simParams.pro
 ; return structure of simulation and analysis parameters with consistent information
-; dnelson aug.2012
+; dnelson oct.2012
 
 function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
 
@@ -138,7 +138,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   endif
   
   ; sims.tracers (Velocity + f=10 Monte Carlo) 128,256,512 @ 20Mpc, 320,640 @ 40Mpc
-  if (run eq 'tracer') or (run eq 'tracer_rad') then begin
+  if (run eq 'tracer') or (run eq 'tracer_rad') or (run eq 'tracer_nouv') then begin
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 10
     

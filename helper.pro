@@ -903,6 +903,7 @@ end
 @cosmoAnalysis
 @accretionMode
 @accretionTimes
+@accretionVel
 @maxTemps
 @accretionTraj
 @accretionTrajVis

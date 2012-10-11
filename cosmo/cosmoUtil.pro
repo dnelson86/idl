@@ -1239,6 +1239,14 @@ function snapNumToAge, snap=snap, sP=sP
   z = snapNumToRedshift(snap=snap,sP=sP)
   return, redshiftToAge(z)
 end
+
+function snapNumToAgeFlat, snap=snap, sP=sP
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  if not keyword_set(snap) then snap = sP.snap
+  z = snapNumToRedshift(snap=snap,sP=sP)
+  return, redshiftToAgeFlat(z)
+end
   
 ; rhoTHisto(): make mass-weighted density-temperature 2d histogram
 
@@ -1394,6 +1402,16 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID
       if sPg.run eq 'gadget'    then r.g = 981
       if sPa.run eq 'arepo'     then r.a = 879 ;had as 927 in comparison project?
       if sPg.run eq 'gadgetold' then r.g = 981
+    endif
+    
+    if sPa.res eq 256 then begin
+      if sPa.run eq 'tracer'    then r.a = 169
+      if sPg.run eq 'gadget'    then r.g = 278
+    endif
+    
+    if sPa.res eq 128 then begin
+      if sPa.run eq 'tracer'    then r.a = 50
+      if sPg.run eq 'gadget'    then r.g = 71
     endif
   
   endif

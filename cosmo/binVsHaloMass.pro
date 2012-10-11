@@ -34,7 +34,7 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
   if sP.trMCPerCell gt 0 then massPerPart = sP.trMassConst ; MC tracer
   
   ; check if save exists
-  saveFilename = sP.derivPath + 'binVals.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+  saveFilename = sP.derivPath + 'binnedVals/binVals.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
     str(sP.snap) + '.cut' + str(nCuts) + '.vir' + str(nVirs) + '.' + sgSelect + '.' + accMode + $
     '.r' + str(sP.radIndHaloAcc) + '.r' + str(sP.radIndGalAcc) + '_tw' + str(TW) + '.sav'
   

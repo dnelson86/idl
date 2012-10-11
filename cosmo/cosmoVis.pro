@@ -11,7 +11,7 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
   velVecFac = 0.01 ; times velocity (km/s) in plotted kpc
 
   ; check existence of requested saves if more than one halo
-  saveFilenames = sP.derivPath + 'cutout.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + $
+  saveFilenames = sP.derivPath + 'cutouts/cutout.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + $
                   '.h' + str(gcInd) + '.sf' + str(fix(sizeFac*10)) + '.sav'
                   
   readFlag = 0
@@ -27,12 +27,15 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
   gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
   sgcen = subgroupPosByMostBoundID(sP=sP)   
   
-  ; load u,nelec and calculate temperature
+  ; load u,nelec,dens and calculate temperature,entropy
   u     = loadSnapshotSubset(sP=sP,partType='gas',field='u')
   nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec')
   temp  = alog10(convertUtoTemp(u,nelec))
-  u     = !NULL
   nelec = !NULL
+  dens  = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
+  ent   = calcEntropyCGS(u,dens,/log,sP=sP)
+  u     = !NULL
+  dens  = !NULL
 
   ; load gas positions and velocities
   pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
@@ -44,6 +47,7 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
   sort_inds = sort(randomu(iseed,n_elements(temp)))
   
   temp = temp[sort_inds]
+  ent  = ent[sort_inds]
   pos  = pos[*,sort_inds]
   vel  = vel[*,sort_inds]
   
@@ -66,13 +70,13 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
     correctPeriodicDistVecs, zDist, sP=sP
     
     rvir = gc.group_r_crit200[gc.subgroupGrNr[gcIndCur]]
-    rad = reform(sqrt(xDist*xDist + yDist*yDist + zDist*zDist)) / rvir[0]
   
     ; local (cube) cutout
     wCut = where(abs(xDist) le 0.5*boxSize and abs(yDist) le 0.5*boxSize and $
                  abs(zDist) le 0.5*boxSize,nCutout)
                  
     loc_temp = temp[wCut]
+    loc_ent  = ent[wCut]
     loc_pos  = fltarr(3,nCutout)
     loc_pos[0,*] = xDist[wCut] ; delta
     loc_pos[1,*] = yDist[wCut]
@@ -84,6 +88,19 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
     
     loc_vel = vel[*,wCut]
     
+    ; calculate norm of radial velocity vector
+    rad = reform(loc_pos[0,*]^2.0 + loc_pos[1,*]^2.0 + loc_pos[2,*]^2.0)
+    const_vrad = (loc_vel[0,*] * loc_pos[0,*] + $
+                  loc_vel[1,*] * loc_pos[1,*] + $
+                  loc_vel[2,*] * loc_pos[2,*]) / rad
+                
+    vrad = fltarr(3,nCutout)
+    for i=0,2 do vrad[i,*] = const_vrad * loc_pos[i,*]
+    const_vrad = !NULL
+    rad = !NULL
+    
+    loc_vrad = sqrt(vrad[0,*]^2.0 + vrad[1,*]^2.0 + vrad[2,*]^2.0)
+    
     ; create endpoint for each position point for the velocity vector line
     loc_pos2 = fltarr(3,nCutout)
     loc_pos2[0,*] = loc_pos[0,*] + loc_vel[0,*]*velVecFac
@@ -93,16 +110,17 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
     
     haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcIndCur]] ;ckpc
     haloMass = codeMassToLogMsun(gc.subgroupMass[gcIndCur])
+    haloM200 = codeMassToLogMsun(gc.group_m_crit200[gc.subgroupGrNr[gcIndCur]])
     
     ; fix halo mass if we're using old (x2 bug) catalogs
     if sP.run eq 'gadgetold' or sP.run eq 'arepo' then $
       haloMass = codeMassToLogMsun(0.5*gc.subgroupMass[gcIndCur])  
   
     ; save
-    r = {loc_pos:loc_pos,loc_temp:loc_temp,loc_pos2:loc_pos2,sP:sP,gcID:gcIndCur,$
+    r = {loc_pos:loc_pos,loc_temp:loc_temp,loc_ent:loc_ent,loc_vrad:loc_vrad,loc_pos2:loc_pos2,sP:sP,gcID:gcIndCur,$
          sizeFac:sizeFac,boxSizeImg:boxSizeImg,haloVirRad:haloVirRad,haloMass:haloMass}
          
-    saveFilename = sP.derivPath + 'cutout.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + $
+    saveFilename = sP.derivPath + 'cutouts/cutout.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + $
                    '.h' + str(gcIndCur) + '.sf' + str(fix(sizeFac*10)) + '.sav'  
          
     save,r,filename=saveFilename
@@ -135,8 +153,9 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
       if ~keyword_set(top) and ~keyword_set(bottom) then $
         start_PS, plotPath + config.plotFilename, xs=8, ys=4
       
-        !p.thick = 1.0
+        !p.thick = 3.0
         !p.charsize = 0.8
+        print,'using thick=2'
       
         ; fill with black background
         if ~keyword_set(bottom) then $
@@ -168,7 +187,7 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         if ~keyword_set(bottom) then begin
           len = 250.0 ;ckpc
           cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.3,$
-                 string(len,format='(i3)')+' ckpc',alignment=0.5,color=cgColor('light gray')
+                 string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('light gray')
           cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
                  [config.boxSizeImg[1]/2.1,config.boxSizeImg[1]/2.1],$
                  color=cgColor('light gray'),thick=4.0,/overplot
@@ -212,6 +231,14 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         !y.thick = 1.0
         
         if ~keyword_set(top) then begin
+        
+        ; choose center colorbar label
+        if config.colorField eq 'vrad'     then labelText = "v_{rad} [km/s]"
+        if config.colorField eq 'vradnorm' then labelText = "v_{rad} / v_{200}"
+        if config.colorField eq 'temp'     then labelText = "log T_{gas} [K]"
+        if config.colorField eq 'entropy'  then labelText = "log (S) [cgs]"
+        if config.colorField eq 'overdens' then labelText = "log \rho_{DM} / <\rho_{DM}>"
+                  
         if config.barType eq '2tempvdisp' then begin
           ; temp and veldisp separate colorbars
           colorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
@@ -226,38 +253,42 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
             alignment=0.5,color=cgColor('black'),/normal
         endif
         
-        if config.barType eq '1temp' then begin
-          ; gas temperature one colorbar (centered)
+        if config.barType eq '1bar' then begin
+          ; one colorbar (centered)
           pos = [0.02,0.35,0.076,0.65]
           fac = 1.0
           if keyword_set(bottom) then fac = 0.5
           pos *= [fac,1,fac,1]
           colorbar,position=pos,divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
-          cgText,0.5,0.0375*fac,textoidl("log T_{gas} [K]"),alignment=0.5,color=cgColor('black'),/normal
-          ;cgText,0.365,0.036*fac,'4',alignment=0.5,color=cgColor('black'),/normal
-          ;cgText,0.635,0.036*fac,'7',alignment=0.5,color=cgColor('black'),/normal
+          
+          ; colorbar labels
+          ;cbLabels = str([fix(config.fieldMinMax[0]),fix(config.fieldMinMax[1])]
+          cbLabels = str(string([fix(10*config.fieldMinMax[0])/10,fix(10*config.fieldMinMax[1])/10],format='(f3.1)'))
+          rAdjust = 0.01*(strlen(cbLabels[1])-1)
+          print,strlen(cbLabels[1])
+          
+          cgText,0.5,0.0375*fac,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.365,0.036*fac,cbLabels[0],alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.635-rAdjust,0.036*fac,cbLabels[1],alignment=0.5,color=cgColor('black'),/normal
         endif
         
-        if config.barType eq '1overdens' then begin
-          ; local overdensity one colorbar (centered)
-          colorbar,position=[0.02,0.35,0.076,0.65],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
-          cgText,0.5,0.0375,textoidl("log \rho_{DM} / <\rho_{DM}>"),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.365,0.036,string(config.barMM[0],format='(i3)'),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.635,0.036,string(config.barMM[1],format='(i3)'),alignment=0.5,color=cgColor('black'),/normal
-        endif
-        
-        if config.barType eq '2overdens' then begin
-          ; local overdensity two colorsbars (separate ranges)
+        if config.barType eq '2bar' then begin
+          ; two colorsbars (separate ranges)
           colorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
-          cgText,0.25,0.0375,textoidl("log \rho_{DM} / <\rho_{DM}>"),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.115,0.036,string(config.barMM_left[0],format='(i3)'),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.385,0.036,string(config.barMM_left[1],format='(i3)'),alignment=0.5,color=cgColor('black'),/normal
-
+          cgText,0.25,0.0375,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.115,0.036,str(fix(config.fieldMinMax[0])),alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.385,0.036,str(fix(config.fieldMinMax[1])),alignment=0.5,color=cgColor('black'),/normal
+          
+          ; second (right panel)
+          loc_mm = [config.fieldMinMax[0],config.secondCutVal]
+          if config.secondGt then loc_mm = [config.secondCutVal,config.fieldMinMax[1]]
+          
           colorbar,position=[0.02,0.6,0.076,0.9],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
-          cgText,0.75,0.0375,textoidl("log \rho_{DM} / <\rho_{DM}>"),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.615,0.036,string(config.barMM_right[0],format='(i3)'),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.875,0.036,string(config.barMM_right[1],format='(i3)'),alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.75,0.0375,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.615,0.036,str(fix(loc_mm[0])),alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.885,0.036,str(fix(loc_mm[1])),alignment=0.5,color=cgColor('black'),/normal
         endif
+        
         endif ;top
         
         ; simulation name
@@ -275,30 +306,46 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         endif
         
       if ~keyword_set(top) and ~keyword_set(bottom) then $        
-        end_PS, pngResize=60;, im_options='-negate';, /deletePS
+        end_PS, pngResize=60, /deletePS;, im_options='-negate'
 end
 
 ; scatterMapHalos: plot temperature colored scatter plots with velocity vectors on boxes centered on halos
 
-pro scatterMapHalos, sP=sP, gcIDs=gcIDs
+pro scatterMapHalos;, sP=sP, gcIDs=gcIDs
 
-  sP = simParams(res=512,run='gadget',redshift=2.0)
-  gcIDs = [5498] ;z2.304 g2342 a2132 ;z2.301 g2289 a2034 ;z2.64 g5498 a5097
+  sP = simParams(res=512,run='tracer',redshift=2.0)
+  units = getUnits()
+
+  haloID = 304 ;z2.304 z2.301 z2.130 z2.64
+  gcID = getMatchedIDs(sPa=sP,sPg=sP,haloID=haloID)
+  gcIDs = [gcID.a]
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
 
   ; config
-  sizeFac     = 3.5       ; times rvir
-  tempMinMax  = [4.0,7.0] ; log(K)
-  coldTempCut = 5.0       ; log(K)
+  sizeFac          = 1.5  ; times rvir
+  singleColorScale = 0    ; 1=use same color scale for right panel, 0=rescale
+  secondGt         = 1 ; 1=show greater than cut, 0=show less than cut
+  
+  ; use which field and cut value for right panel?
+  ;secondField = 'temp'     & secondCutVal = 5.0
+  ;secondField = 'entropy'  & secondCutVal = 7.5
+  ;secondField = 'vrad'     & secondCutVal = 200.0
+  secondField = 'vradnorm' & secondCutVal = 2.0
+  
+  ; use which field and minmax for color mapping?
+  ;colorField = 'temp'     & fieldMinMax  = [4.0,7.0]
+  ;colorField = 'entropy'  & fieldMinMax  = [6.5,8.5] ; log(CGS)
+  ;colorField = 'vrad'     & fieldMinMax = [0.0,400.0] ; km/s
+  colorField = 'vradnorm' & fieldMinMax  = [0.0,4.0] ; vrad/v200
   
   axes = list([0,1],[0,2],[1,2]) ;xy,xz,yz
   
   ; make cutouts (multiple or single)
   cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,sizeFac=sizeFac)
-  
+
   ; target list
   gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
   sgcen = subgroupPosByMostBoundID(sP=sP) 
@@ -309,19 +356,38 @@ pro scatterMapHalos, sP=sP, gcIDs=gcIDs
   
     ; load cutout
     cutout = cosmoVisCutout(sP=sP,gcInd=gcID,sizeFac=sizeFac)
-  
+
+    v200 = sqrt(units.G * (10.0^cutout.haloMass / units.UnitMass_in_Msun) / cutout.haloVirRad )
+
     ; create color index mapping
-    colorinds = (cutout.loc_temp-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
+    if colorField eq 'temp'     then fieldVal = cutout.loc_temp
+    if colorField eq 'entropy'  then fieldVal = cutout.loc_ent
+    if colorField eq 'vrad'     then fieldVal = reform(cutout.loc_vrad)
+    if colorField eq 'vradnorm' then fieldVal = reform(cutout.loc_vrad)/v200
+    
+    colorinds = (fieldVal-fieldMinMax[0])*205.0 / (fieldMinMax[1]-fieldMinMax[0]) ;0-205
     colorinds = fix(colorinds + 50.0) > 0 < 255 ;50-255  
   
-    ; local (cold) cutout
-    wCold = where(cutout.loc_temp le coldTempCut,nCutoutCold)
-    print,nCutout,nCutoutCold
+    ; second/right panel cutout
+    wSecond = where(fieldVal le secondCutVal,nCutoutSecond,comp=wComp)
+      
+    ; show gas above this cut value (instead of below)?
+    if secondGt then wSecond = wComp
     
-    loc_pos_cold   = cutout.loc_pos[*,wCold]
-    loc_pos2_cold  = cutout.loc_pos2[*,wCold]
-    colorinds_cold = colorinds[wCold]
-  
+    loc_pos_second   = cutout.loc_pos[*,wSecond]
+    loc_pos2_second  = cutout.loc_pos2[*,wSecond]
+    colorinds_second = colorinds[wSecond]
+    
+    ; use instead a differently scaled color mapping for the second panel?
+    if singleColorScale eq 0 then begin
+      if secondGt eq 1 then $
+        colorinds_second = (fieldVal-secondCutVal)*205.0 / (fieldMinMax[1]-secondCutVal)
+      if secondGt eq 0 then $
+        colorinds_second = (fieldVal-fieldMinMax[0])*205.0 / (secondCutVal-fieldMinMax[0])
+      
+      colorinds_second = colorinds_second[wSecond]
+    endif
+
     ; make a plot for each requested projection direction
     foreach axisPair, axes do begin
            
@@ -329,18 +395,21 @@ pro scatterMapHalos, sP=sP, gcIDs=gcIDs
       boxCenImg  = [sgcen[axisPair[0],gcID],sgcen[axisPair[1],gcID],sgcen[3-axisPair[0]-axisPair[1],gcID]]
       
       print,'['+string(gcID,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
-            str(axisPair[1])+'] with '+str(boxSize[0])+$
-            ' kpc box around subhalo center ['+str(boxCen[0])+' '+str(boxCen[1])+' '+str(boxCen[2])+']'
+            str(axisPair[1])+'] with '+str(cutout.boxSizeImg[0])+$
+            ' kpc box around subhalo center ['+str(boxCenImg[0])+' '+str(boxCenImg[1])+' '+str(boxCenImg[2])+']'
 
       plotFilename = 'scatter.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
-                     '.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
+                     '.axes'+str(axisPair[0])+str(axisPair[1])+'-'+$
+                     colorField+'-'+secondField+'-'+str(secondGt)+'sCS'+str(singleColorScale)+'.eps'
 
-      config = {boxSizeImg:boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
-                haloMass:cutout.haloMass,axisPair:axisPair,sP:sP,barMM:tempMinMax,barType:'none'} ;'1temp'
+      config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
+                haloMass:cutout.haloMass,axisPair:axisPair,sP:sP,$
+                colorField:colorField,fieldMinMax:fieldMinMax,secondCutVal:secondCutVal,secondGt:secondGt,$
+                barMM:fieldMinMax,barType:'2bar'}
       
       ; plot
-      plotScatterComp,cutout.loc_pos,cutout.loc_pos2,loc_pos_cold,loc_pos2_cold,$
-        colorinds,colorinds_cold,config=config            
+      plotScatterComp,cutout.loc_pos,cutout.loc_pos2,loc_pos_second,loc_pos2_second,$
+        colorinds,colorinds_second,config=config            
 
     endforeach ;axisPair
 
@@ -495,7 +564,8 @@ pro scatterMapHalosComp
                  '.h'+str(gcID.a)+'.'+str(sPg.snap)+'.axes'+str(gcID.axes[0])+str(gcID.axes[1])+'.eps'
 
   config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
-            haloMass:cutout.haloMass,axisPair:gcID.axes,sP:sPg,barMM:tempMinMax,barType:'1temp'}
+            colorField:'temp',fieldMinMax:tempMinMax,secondCutVal:coldTempCut,secondGt:0,$
+            haloMass:cutout.haloMass,axisPair:gcID.axes,sP:sPg,barMM:tempMinMax,barType:'1bar'}
   
   ; plot
   start_PS, sPg.plotPath + config.plotFilename, xs=8, ys=8
@@ -528,7 +598,8 @@ pro scatterMapHalosComp
                 sgcen[3-gcID.axes[0]-gcID.axes[1],gcID.a]]
 
   config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
-            haloMass:cutout.haloMass,axisPair:gcID.axes,sP:sPa,barMM:tempMinMax,barType:'1temp'}
+            colorField:'temp',fieldMinMax:tempMinMax,secondCutVal:coldTempCut,secondGt:0,$
+            haloMass:cutout.haloMass,axisPair:gcID.axes,sP:sPa,barMM:tempMinMax,barType:'1bar'}
   
   ; plot
   plotScatterComp,cutout.loc_pos,cutout.loc_pos2,loc_pos_cold,loc_pos2_cold,$
@@ -850,28 +921,42 @@ pro scatterMapPastPosComp
   stop
 end
 
+pro rematch
+
+  sPg = simParams(res=512,run='gadget',redshift=2.0)
+  sPa = simParams(res=512,run='tracer',redshift=2.0)
+
+  gcG = loadGroupCat(sP=sPg,/skipIDs)
+  gcA = loadGroupCat(sP=sPa,/skipIDs)
+
+  gcIDsG = [6369,5151,3338,2824,2538,1117,981,266]
+  
+  foreach gcIDg,gcIDsG do begin
+    dists = periodicDists(gcG.subgroupPos[*,gcIDg],gcA.subgroupPos,sP=sPg)
+    w = where(dists eq min(dists))
+    print,w
+    print,gcG.subgroupMass[gcIDg],gcA.subgroupMass[w[0]]
+  endforeach
+
+end
+
 ; mosaicHalosComp(): mosaic 4x2 comparison between arepo/gadget (cold only)
 
 pro mosaicHalosComp
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  sPg = simParams(res=512,run='gadgetold',redshift=2.0)
-  sPa = simParams(res=512,run='arepo',redshift=2.0)
+  sPg = simParams(res=512,run='gadget',redshift=2.0)
+  sPa = simParams(res=512,run='tracer',redshift=2.0)
   
   ; good candidates:
-  ; z2.10  g4467 a4103 axes12 -- z2.40  g5151 z4789 axes01 -- z2.130 g6369 a5966 axes02
-  ; z2.167 g3338 a3022 axes02 -- z2.251 g2538 a2180 axes12 -- z2.262 g2824 a2513 axes02
-  ; z2.314 g981  a927  axes12 -- z2.315 g1117 a966  axes02 -- z2.291 g1478 a1341 axes02
-  ; z2.322 g266  a257  axes01
-  
   gcIDsG = [6369,5151,3338,2824,2538,1117,981,266]
-  gcIDsA = [5966,4789,3022,2513,2180,966,927,257]
+  gcIDsA = [5611,4518,2874,2389,2058,1037,816,252]
   axes   = list([0,2],[0,1],[0,2],[0,2],[1,2],[0,2],[1,2],[0,1])
   
   ; config
   sizeFac     = 2.5       ; times rvir
-  tempMinMax  = [4.0,7.0] ; log(K)
+  tempMinMax  = [4.0,5.0] ; log(K)
   coldTempCut = 5.0       ; log(K)
   
   ; GADGET
@@ -912,15 +997,16 @@ pro mosaicHalosComp
     loc_pos_cold   = cutout.loc_pos[*,wCold]
     loc_pos2_cold  = cutout.loc_pos2[*,wCold]
     colorinds_cold = colorinds[wCold]
-  
+    
     ; get box center (in terms of specified axes)
     axisPair   = axes[k]
     boxCenImg  = [sgcen[axisPair[0],gcIDg],sgcen[axisPair[1],gcIDg],sgcen[3-axisPair[0]-axisPair[1],gcIDg]]
 
     gaHaloMasses = [gaHaloMasses,cutout.haloMass]
   
-    config = {boxSizeImg:boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
-              haloMass:cutout.haloMass,axisPair:axisPair,sP:sPg,barMM:tempMinMax,barType:'1temp'}
+    config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
+              colorField:'na',fieldMinMax:tempMinMax,secondCutVal:coldTempCut,secondGt:0,$
+              haloMass:cutout.haloMass,axisPair:axisPair,sP:sPg,barMM:tempMinMax,barType:'na'}
     
     ; plot
     xMinMax = [-config.boxSizeImg[0]/2.0,config.boxSizeImg[0]/2.0]
@@ -949,7 +1035,7 @@ pro mosaicHalosComp
     if ~keyword_set(bottom) then begin
       len = 100.0 ;ckpc
       cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.4,$
-             string(len,format='(i3)')+' ckpc',alignment=0.5,color=textColor,charsize=!p.charsize-0.2
+             string(len,format='(i3)')+' kpc',alignment=0.5,color=textColor,charsize=!p.charsize-0.2
       cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
              [config.boxSizeImg[1]/2.1,config.boxSizeImg[1]/2.1],$
              color=textColor,thick=4.0,/overplot
@@ -1000,8 +1086,9 @@ pro mosaicHalosComp
     axisPair   = axes[k]
     boxCenImg  = [sgcen[axisPair[0],gcIDa],sgcen[axisPair[1],gcIDa],sgcen[3-axisPair[0]-axisPair[1],gcIDa]]
   
-    config = {boxSizeImg:boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
-              haloMass:cutout.haloMass,axisPair:axisPair,sP:sPa,barMM:tempMinMax,barType:'1temp'}
+    config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
+              colorField:'na',fieldMinMax:tempMinMax,secondCutVal:coldTempCut,secondGt:0,$
+              haloMass:cutout.haloMass,axisPair:axisPair,sP:sPa,barMM:tempMinMax,barType:'na'}
     
     ; plot
     xMinMax = [-config.boxSizeImg[0]/2.0,config.boxSizeImg[0]/2.0]
@@ -1030,7 +1117,7 @@ pro mosaicHalosComp
     if ~keyword_set(bottom) then begin
       len = 100.0 ;ckpc
       cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.4,$
-             string(len,format='(i3)')+' ckpc',alignment=0.5,color=textColor,charsize=!p.charsize-0.2
+             string(len,format='(i3)')+' kpc',alignment=0.5,color=textColor,charsize=!p.charsize-0.2
       cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
              [config.boxSizeImg[1]/2.1,config.boxSizeImg[1]/2.1],$
              color=textColor,thick=4.0,/overplot
@@ -1066,9 +1153,16 @@ pro mosaicHalosComp
   pos *= [fac,1,fac,1]
   colorbar,position=pos,divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
   cgText,0.5,0.0375*fac,textoidl("log T_{gas} [K]"),alignment=0.5,color=cgColor('black'),/normal
-  cgText,0.365,0.036*fac,'4',alignment=0.5,color=cgColor('black'),/normal
-  cgText,0.635,0.036*fac,'7',alignment=0.5,color=cgColor('black'),/normal
   
+  ; left/right colorbar labels
+  ;cgText,0.365,0.036*fac,str(fix(tempMinMax[0])),alignment=0.5,color=cgColor('black'),/normal
+  ;cgText,0.635,0.036*fac,str(fix(tempMinMax[1])),alignment=0.5,color=cgColor('black'),/normal
+  ;cgText,0.365,0.036*fac,'4',alignment=0.5,color=cgColor('black'),/normal
+  ;cgText,0.635,0.036*fac,'5',alignment=0.5,color=cgColor('black'),/normal
+  cgText,0.370,0.036*fac,string(tempMinMax[0],format='(f3.1)'),alignment=0.5,color=cgColor('black'),/normal
+  cgText,0.627,0.036*fac,string(tempMinMax[1],format='(f3.1)'),alignment=0.5,color=cgColor('black'),/normal
+  
+  ; simname labels
   cgText,0.5,0.95,"GADGET",charsize=!p.charsize+0.4,alignment=0.5,/normal,color=cgColor('white')
   cgText,0.5,0.45,"AREPO",charsize=!p.charsize+0.4,alignment=0.5,/normal,color=cgColor('white')
           

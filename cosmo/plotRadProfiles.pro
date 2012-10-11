@@ -451,8 +451,8 @@ function binRadProfiles, sP=sP
   radBinCen = findgen(nRadBins) / (nRadBins) * (xrange[1]-xrange[0]) + xrange[0] + binSizeRad*0.5
   
   ; check if save exists
-  saveFilename = sP.derivPath + 'binRad.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
-    str(sP.snap) + '.mb' + str(n_elements(massBins)) + '.pn-' + parNorm + '.' + sgSelect + '.' + $
+  saveFilename = sP.derivPath + 'binnedVals/binRad.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.mb' + str(n_elements(massBins)) + '.pn-' + parNorm + '.' + sgSelect + $
     '.mts-' + str(mergerTreeSubset) + '.ats-' + str(accretionTimeSubset) + '.sav'
   
   ; results exist, return
