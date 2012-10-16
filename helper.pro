@@ -226,6 +226,12 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
   if ctName eq 'brewer-redpurple'   then cgLoadct,25,ncolors=255,bottom=bottom,/brewer
   if ctName eq 'brewer-redgreen'    then cgLoadct,26,ncolors=255,bottom=bottom,/brewer
  
+  ; reverse normal/brewer if requested
+  if keyword_set(reverse) then begin
+    tvlct,r,g,b,/get
+    tvlct,reverse(r),reverse(g),reverse(b)
+  endif
+ 
   ; brewer (sequential) (0-16)
 
 end

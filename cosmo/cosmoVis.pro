@@ -9,6 +9,7 @@
 function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
 
   velVecFac = 0.01 ; times velocity (km/s) in plotted kpc
+  hsmlFac = 1.75      ; increase arepo 'hsml' to decrease visualization noise  
 
   ; check existence of requested saves if more than one halo
   saveFilenames = sP.derivPath + 'cutouts/cutout.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + $
@@ -37,9 +38,20 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
   u     = !NULL
   dens  = !NULL
 
-  ; load gas positions and velocities
-  pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
-  vel = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
+  ; load HSMLs or volumes (convert to sizes)
+  if sP.trMCPerCell eq 0 then begin
+    hsml = loadSnapshotSubset(sP=sP,partType='gas',field='hsml')
+    hsml = 1.0 * temporary(hsml); increase hsml to decrease visualization noise
+  endif else begin
+    hsml = loadSnapshotSubset(sP=sP,partType='gas',field='vol')
+    hsml = (temporary(hsml) * 3.0 / (4*!pi))^(1.0/3.0) ;cellrad [ckpc]
+    hsml = hsmlFac * temporary(hsml) ; increase hsml to decrease visualization noise
+  endelse  
+  
+  ; load gas positions, velocities and masses
+  pos  = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+  vel  = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
+  mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
   
   ; randomly shuffle the points (break the peano ordering to avoid "square" visualization artifacts)
   print,'shuffling...'
@@ -48,6 +60,8 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
   
   temp = temp[sort_inds]
   ent  = ent[sort_inds]
+  hsml = hsml[sort_inds]
+  mass = mass[sort_inds]
   pos  = pos[*,sort_inds]
   vel  = vel[*,sort_inds]
   
@@ -77,6 +91,8 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
                  
     loc_temp = temp[wCut]
     loc_ent  = ent[wCut]
+	  loc_hsml = hsml[wCut]
+    loc_mass = mass[wCut]
     loc_pos  = fltarr(3,nCutout)
     loc_pos[0,*] = xDist[wCut] ; delta
     loc_pos[1,*] = yDist[wCut]
@@ -117,7 +133,8 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
       haloMass = codeMassToLogMsun(0.5*gc.subgroupMass[gcIndCur])  
   
     ; save
-    r = {loc_pos:loc_pos,loc_temp:loc_temp,loc_ent:loc_ent,loc_vrad:loc_vrad,loc_pos2:loc_pos2,sP:sP,gcID:gcIndCur,$
+    r = {loc_pos:loc_pos,loc_temp:loc_temp,loc_ent:loc_ent,loc_vrad:loc_vrad,loc_hsml:loc_hsml,$
+	       loc_pos2:loc_pos2,loc_mass:loc_mass,sP:sP,gcID:gcIndCur,boxCen:boxCen,$
          sizeFac:sizeFac,boxSizeImg:boxSizeImg,haloVirRad:haloVirRad,haloMass:haloMass}
          
     saveFilename = sP.derivPath + 'cutouts/cutout.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + $

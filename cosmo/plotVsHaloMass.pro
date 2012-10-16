@@ -137,9 +137,9 @@ pro plotByMethod
       cgPlot,AR.logMassBinCen,smooth(AR.fracMedian.gmem_const[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
 
     ; legend
-    strings = textoidl("T_{max} < T_{c} = ")+string(GA.TcutVals,format='(f4.1)')
+    strings = textoidl("T_{max} < T_{c} = 10^{"+string(GA.TcutVals,format='(f3.1)')+"}")
     legend,strings,linestyle=indgen(n_elements(GA.TcutVals)),box=0,linesize=0.25,$
-      position=[10.95,0.97],charsize=!p.charsize-0.27
+      position=[10.92,0.97],charsize=!p.charsize-0.27
 
     legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,/bottom,/left
 
@@ -223,7 +223,7 @@ pro plotByMethod
       cgPlot,AR.logMassBinCen,smooth(AR.fracMedian.stars_const[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
 
     ; legend
-    strings = textoidl("T_{max} < T_{c} = ")+string(GA.TcutVals,format='(f4.1)')
+    strings = textoidl("T_{max} < T_{c} = 10^{"+string(GA.TcutVals,format='(f3.1)')+"}")
     legend,strings,linestyle=indgen(n_elements(GA.TcutVals)),box=0,linesize=0.4,$
       position=[10.95,0.95],charsize=!p.charsize-0.2
 
@@ -297,7 +297,7 @@ pro plotByMethod
       cgPlot,AR.logMassBinCen,smooth(AR.coldMedian.gmem_const[j,*],sK,/nan),color=sPa.colorsA[1],line=j,/overplot
 
     ; legend
-    strings = textoidl("T_{max} / T_{c} = ")+string(GA.TcutVals,format='(f4.1)')
+    strings = textoidl("T_{max} < T_{c} = 10^{"+string(GA.TcutVals,format='(f3.1)')+"}")
     legend,strings,linestyle=indgen(n_elements(GA.TcutVals)),box=0,linesize=0.25,position=[10.05,13.0]
 
     ; labels
@@ -428,7 +428,7 @@ pro plotByMethod
       cgPlot,AR.logMassBinCen,smooth(AR.coldMedian.stars_const[j,*],sK,/nan),color=sPa.colorsA[1],line=j,/overplot
 
     ; legend
-    strings = textoidl("T_{max} / T_{c} = ")+string(GA.TcutVals,format='(f4.1)')
+    strings = textoidl("T_{max} < T_{c} = 10^{"+string(GA.TcutVals,format='(f3.1)')+"}")
     legend,strings,linestyle=indgen(n_elements(GA.TcutVals)),box=0,linesize=0.25,position=[10.05,13.0]
 
     ; labels
@@ -2289,4 +2289,85 @@ pro plotByRes
 
    end_PS  
   
+end
+
+; plotHotColdMassRatio(): plot the mass ratio of hot to cold material in the "halo atmosphere"
+
+pro plotHotColdMassRatio
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  foreach res,[128,256,512] do begin
+  
+    ; config
+    sPa = simParams(res=res,run='tracer',redshift=2.0)
+    sPg = simParams(res=res,run='gadget',redshift=2.0)
+
+    haloID = 304 ;z2.304 z2.301 z2.130 z2.64
+    gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)   
+    
+    ; load arepo
+    gcA = loadGroupCat(sP=sPa,/readIDs)
+    galcatA = galaxyCat(sP=sPa)
+    parIDsA = galCatRepParentIDs(galcat=galcatA)
+    
+    u     = loadSnapshotSubset(sP=sPa,partType='gas',field='u')
+    nelec = loadSnapshotSubset(sP=sPa,partType='gas',field='ne')
+    temp  = convertUtoTemp(u,nelec)
+    u     = !NULL
+    nelec = !NULL
+    
+    mass = loadSnapshotSubset(sP=sPa,partType='gas',field='mass')
+    ids  = loadSnapshotSubset(sP=sPa,partType='gas',field='ids')
+    
+    ; find gas elements for single halo in galcat
+    w = where(parIDsA.gmem eq gcID.a,count)
+    gmem_ids = galcatA.groupMemIDs[w]
+    
+    match,ids,gmem_ids,ind_ids,ind_gmem_ids,count=countMatch
+    if countMatch ne count then message,'Error: Failed to find all ids.'
+    
+    gmem_temp = temp[ind_ids]
+    
+    ; find gas elements for single halo using primary subgroup and min radius
+    sh_ids = gcPIDList(gc=gcA,select='pri',valGCids=[gcID.a],partType='gas')
+    
+      ; remove galaxy (<0.15 rvir)
+      w = where(parIDsA.gal eq gcID.a,count)
+      sh_ids_gal = galcatA.galaxyIDs[w]
+      
+      sh_ids = removeIntersectionFromB(sh_ids_gal,sh_ids)
+    
+    match,ids,sh_ids,ind_ids_sh,ind_sh_ids,count=countMatchSh
+    if countMatchSh ne n_elements(sh_ids) then message,'Error: Failed to find all sh ids.'
+    
+    sh_temp = temp[ind_ids_sh]
+    
+    ; calculate fraction for single halo
+    tvir = codeMassToVirTemp(gcA.subgroupMass[gcID.a],sP=sPa)
+    
+    foreach tVirRatio,sPa.tVirVals do begin
+    
+      w_cold = where(gmem_temp/tvir le tVirRatio,count_cold)
+      w_hot  = where(gmem_temp/tvir gt tVirRatio,count_hot)
+      
+      if (count_cold+count_hot) ne countMatch then message,'Error: Failed to classify all.'
+      
+      frac = float(count_cold)/(count_hot+count_cold)
+      frac_mass = total(mass[ind_ids[w_cold]]) / (total(mass[ind_ids[w_hot]])+total(mass[ind_ids[w_cold]]))
+      print,res,tVirRatio,frac,frac_mass
+      
+      w_cold = where(sh_temp/tvir le tVirRatio,count_cold)
+      w_hot  = where(sh_temp/tvir gt tVirRatio,count_hot)
+      
+      if (count_cold+count_hot) ne countMatchSh then message,'Error: Failed to classify sh all.'
+      
+      frac = float(count_cold)/(count_hot+count_cold)
+      frac_mass = total(mass[ind_ids_sh[w_cold]]) / (total(mass[ind_ids_sh[w_hot]])+total(mass[ind_ids_sh[w_cold]]))
+      print,res,tVirRatio,frac,frac_mass,'sh'
+    
+    endforeach
+    
+  endforeach
+
 end
