@@ -1,6 +1,6 @@
 ; simParams.pro
 ; return structure of simulation and analysis parameters with consistent information
-; dnelson oct.2012
+; dnelson nov.2012
 
 function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
 
@@ -44,7 +44,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        $ ;colorsA:       [getColor24([255,200,200]),getColor24([255,100,100]),getColor24([255,0,0])],$ ; red 128,256,512 (alternative)
        $ ;colorsG:       [getColor24([200,200,255]),getColor24([100,100,255]),getColor24([0,0,255])],$ ; blue 128,256,512 (alternative)
        radIndHaloAcc: 0,$     ; 1.0 rvir crossing for halo accretion
-       radIndGalAcc:  4 $     ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
+       radIndGalAcc:  4,$     ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
+       gfmElements:   ['H','He','C','N','O','Ne','Mg','Si','Fe'] ,$
+       gfmNumElements: 0, $ ; set to >=1 for GFM runs outputting abundances by metal
+       gfmWinds: 0 $ ; set to 1 for GFM_WINDS
       }
 
   ; copy inputs
@@ -57,6 +60,51 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   endif
   if n_elements(snap) gt 0 then $
     r.snap = snap
+ 
+  ; sims.feedback (Velocity + f=10 Monte Carlo) 128,256 @ 20Mpc w/ "fiducial winds+BH feedback"
+  if (run eq 'feedback') then begin
+    r.minNumGasPart  = -1 ; no additional cut
+    r.trMCPerCell    = 10
+    r.gfmNumElements = 9
+    r.gfmWinds       = 1
+    
+    if res eq 128 or res eq 256 then begin 
+      r.boxSize       = 20000.0
+      r.snapRange     = [0,139]
+      r.groupCatRange = [45,139] ; z6=46, z5=50, z4=55, z3=61, z2=69
+    endif else begin
+      message,'res error'
+    endelse
+    
+    if res eq 128 then r.targetGasMass = 4.76446157e-03
+    if res eq 256 then r.targetGasMass = 5.95556796e-04
+    
+    r.trMassConst = r.targetGasMass / r.trMCPerCell
+    
+    if res eq 128 then r.gravSoft = 4.0
+    if res eq 256 then r.gravSoft = 2.0
+  
+    r.simPath    = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/output/'
+    r.arepoPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/'
+    r.savPrefix  = 'F'
+    r.saveTag    = 'feMC'
+    r.plotPrefix = 'feMC'
+    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.derivPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
+    
+    ; if f=-1 use velocity tracers
+    if keyword_set(f) then begin
+      if f ne -1 then message,'Error.' ; only valid input is -1
+      r.trMCPerCell = -1
+      r.plotPrefix = 'feVel'
+      r.saveTag    = 'feVel'
+    endif
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
  
   ; ComparisonProject GADGET 128,256,512 @ 20Mpc, 320,640 @ 40Mpc
   if (run eq 'gadget') or (run eq 'gadget_rad') then begin
@@ -196,7 +244,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
       if res ne 256 then stop ; only 256 exists
       
       r.snapRange     = [0,139]
-      r.groupCatRange = [45,139] ;z6=45, z5=49, z4=54, z3=60, z2=68
+      r.groupCatRange = [45,139]
       
       r.simPath    = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noUV/output/'
       r.arepoPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noUV/'
@@ -363,33 +411,6 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     
     ; if redshift passed in, convert to snapshot number and save
     if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracerMC.SPT') then begin ; shy's bugtest
-    r.boxSize       = 20000.0
-    r.snapRange     = [1,2]
-    r.groupCatRange = [1,2]
-    
-    if keyword_set(f) then message,'do not set f'
-    f = '10'
-
-    if res ne 128 then message,'only res 128 exists'
-    r.trMCPerCell = fix(f)
-  
-    r.targetGasMass = 4.76446157e-03
-    r.trMassConst = r.targetGasMass / float(r.trMCPerCell)
-    r.gravSoft = 4.0
-  
-    r.simPath    = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.SPT/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.SPT/'
-    r.savPrefix  = 'S.f'+f
-    r.plotPrefix = 'S.f'+f
-    r.plotPath   = '/n/home07/dnelson/dev.tracerMC/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.SPT/data.files/'
-    
-    if (n_elements(redshift) eq 1) then message,'error'
     
     return,r
   endif

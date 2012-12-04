@@ -406,7 +406,7 @@ function accretionTimes, sP=sP, restart=restart
       if m mod 10 eq 0 and m lt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
         save,prevRad,trMinSnap,accMask,accCount,r,gcIndOrigTr,$
-             galcat_gal_trids,galcat_gmem_trids,galcat_stars_ind,prevTime,m,filename=resFilename
+             galcat_gal_trids,galcat_gmem_trids,galcat_stars_trids,prevTime,m,filename=resFilename
         print,' --- Done! ---'
       endif
       
@@ -416,11 +416,13 @@ function accretionTimes, sP=sP, restart=restart
       
       ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
       ; temp[ids_ind], etc to be in the same order as the group catalog id list    
-      match,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal,/sort
-      trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
+      match,galcat_gal_trids,tr_ids,galcat_gal_ind,trids_gal_ind,count=countGal,/sort
+      trids_gal_ind  = trids_gal_ind[sort(galcat_gal_ind)]
+      galcat_gal_ind = galcat_gal_ind[sort(galcat_gal_ind)]
       
-      match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
-      trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
+      match,galcat_gmem_trids,tr_ids,galcat_gmem_ind,trids_gmem_ind,count=countGmem,/sort
+      trids_gmem_ind  = trids_gmem_ind[sort(galcat_ind)]
+      galcat_gmem_ind = galcat_gmem_ind[sort(galcat_gmem_ind)]
       
       match,galcat_stars_trids,tr_ids,galcat_stars_ind,trids_stars_ind,count=countStars,/sort
       trids_stars_ind  = trids_stars_ind[sort(galcat_stars_ind)]
@@ -429,14 +431,20 @@ function accretionTimes, sP=sP, restart=restart
       tr_ids     = !NULL
       galcat_ind = !NULL
       
-      if countGal ne n_elements(galcat_gal_trids) or countGmem ne n_elements(galcat_gmem_trids) then message,'Error: Counts'
+      if countGal ne n_elements(galcat_gal_trids) or $
+         countGmem ne n_elements(galcat_gmem_trids) or $
+         countStars ne n_elements(galcat_stars_trids) then message,'Error: Tracer id match counts'
       
       ; load tracer parents to match to gas
       tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentid')
       tr_parids_gal   = tr_parids[trids_gal_ind]
       tr_parids_gmem  = tr_parids[trids_gmem_ind]
       tr_parids_stars = tr_parids[trids_stars_ind]
-      tr_parids = !NULL
+      
+      tr_parids       = !NULL
+      trids_gal_ind   = !NULL
+      trids_gmem_ind  = !NULL
+      trids_stars_ind = !NULL
       
       ; load gas IDs and convert tracer parent IDs -> indices
       gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
@@ -450,6 +458,33 @@ function accretionTimes, sP=sP, restart=restart
         tr_parids_stars  = tr_parids_stars[ind2]
         galcat_stars_ind = galcat_stars_ind[ind2]
       endif
+      
+      if sP.gfmWinds ne 0 then begin
+        ; GFM: gal/gmem tracers can match stars due to stellar mass return
+        ; for consistency with the paper, we treat this as before, and only search for gas parents
+        ; thus tracers in gas parents in gal/gmem will only get accretion times if they cross e.g.
+        ; 0.15rvir or 1.0rvir with a gas parent (if mass is stellar prior to accretion and then 
+        ; mass returns inside the galaxy this will not be counted under any accretion definition)
+        
+        ; match gal tracer parents to gas ids (keep only htose with gas parents at this snapshot)
+        match,gas_ids,tr_parids_gal,ind1,ind2,count=countGal ; override countGal
+        ind2 = ind2[sort(ind2)]
+        tr_parids_gal  = tr_parids_gal[ind2]
+        galcat_gal_ind = galcat_gal_ind[ind2]
+        
+        ; same for gmem
+        match,gas_ids,tr_parids_gmem,ind1,ind2,count=countGmem ; override countGmem
+        ind2 = ind2[sort(ind2)]
+        tr_parids_gmem  = tr_parids_gmem[ind2]
+        galcat_gmem_ind = galcat_gmem_ind[ind2]
+      endif else begin
+        ; non-GFM: no gal/gmem tracer parents should be stars (debug check)
+        star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+        match,star_ids,tr_parids_gal,ind1,ind2,count=count1
+        match,star_ids,tr_parids_gmem,ind1,ind2,count=count2
+        if count1 or count2 then message,'Error: gal/gmem tracers intersect star IDs at this snap.'
+        star_ids = !NULL
+      endelse
       
       ind1 = !NULL
       ind2 = !NULL
@@ -497,7 +532,7 @@ function accretionTimes, sP=sP, restart=restart
       wGalCut = where(alog10(temp_gal) - sP.galcut_rho * alog10(dens_gal) ge sP.galcut_T and $
                       r.accTimeRT_gal eq -1,countGalCut)
                
-      if countGalCut gt 0 then r.accTimeRT_gal[wGalCut] = h.time
+      if countGalCut gt 0 then r.accTimeRT_gal[galcat_gal_ind[wGalCut]] = h.time
       accCount.galRT += countGalCut
 
       wGalCut  = !NULL
@@ -541,18 +576,20 @@ function accretionTimes, sP=sP, restart=restart
       tr_parids_stars = !NULL
 
       ; calculate current distance of gas particle from smoothed halo center position for galaxy members
-      gal_pri  = periodicDists(reform(mt.hPos[mt.maxSnap-m,*,gcIndOrigTr.gal]),tr_pos_gal,sP=sP)
-      gal_pri /= mt.hVirRad[mt.maxSnap-m,gcIndOrigTr.gal]
+      gal_pri  = periodicDists( $
+        reform(mt.hPos[mt.maxSnap-m,*,gcIndOrigTr.gal[galcat_gal_ind]]),tr_pos_gal,sP=sP)
+      gal_pri /= mt.hVirRad[mt.maxSnap-m,gcIndOrigTr.gal[galcat_gal_ind]]
       tr_pos_gal  = !NULL
       
       ; for group members
-      gmem_pri = periodicDists(reform(mt.hPos[mt.maxSnap-m,*,gcIndOrigTr.gmem]),tr_pos_gmem,sP=sP)
-      gmem_pri /= mt.hVirRad[mt.maxSnap-m,gcIndOrigTr.gmem]
+      gmem_pri = periodicDists( $
+        reform(mt.hPos[mt.maxSnap-m,*,gcIndOrigTr.gmem[galcat_gmem_ind]]),tr_pos_gmem,sP=sP)
+      gmem_pri /= mt.hVirRad[mt.maxSnap-m,gcIndOrigTr.gmem[galcat_gmem_ind]]
       tr_pos_gmem = !NULL
       
       ; stars
       if countStars gt 0 then begin
-        stars_pri = periodicDists($
+        stars_pri = periodicDists( $
           reform(mt.hPos[mt.maxSnap-m,*,gcIndOrigTr.stars[galcat_stars_ind]]),tr_pos_stars,sP=sP)
         stars_pri /= mt.hVirRad[mt.maxSnap-m,gcIndOrigTr.stars[galcat_stars_ind]]
         pos_stars = !NULL
@@ -561,8 +598,10 @@ function accretionTimes, sP=sP, restart=restart
       ; loop over each critical radius
       foreach rVirFac,sP.rVirFacs,k do begin
         ; for particles who are still within r_vir, check if they have passed beyond
-        gal_w  = where(gal_pri ge rVirFac and prevRad.gal lt rVirFac and accMask.gal[k,*] eq 0B,count_gal)
-        gmem_w = where(gmem_pri ge rVirFac and prevRad.gmem lt rVirFac and accMask.gmem[k,*] eq 0B,count_gmem)
+        gal_w  = where(gal_pri ge rVirFac and prevRad.gal[galcat_gal_ind] lt rVirFac and $
+                       accMask.gal[k,galcat_gal_ind] eq 0B,count_gal)
+        gmem_w = where(gmem_pri ge rVirFac and prevRad.gmem[galcat_gmem_ind] lt rVirFac and $
+                       accMask.gmem[k,galcat_gmem_ind] eq 0B,count_gmem)
         
         if countStars gt 0 then begin
           stars_w = where(stars_pri ge rVirFac and prevRad.stars[galcat_stars_ind] lt rVirFac and $
@@ -589,30 +628,34 @@ function accretionTimes, sP=sP, restart=restart
         times = [prevTime,h.time]
         
         for i=0,count_gal-1 do begin
-          radii = [ prevRad.gal[gal_w[i]],gal_pri[gal_w[i]] ]
+          curInd = galcat_gal_ind[gal_w[i]]
+          
+          radii = [ prevRad.gal[curInd],gal_pri[gal_w[i]] ]
           time = interpol(times,radii,rVirFac) ; lerp time to r/rvir=rVirFac
-          r.accTime_gal[k,gal_w[i]] = time
+          r.accTime_gal[k,curInd] = time
           
           if k eq 0 then begin
-            tvir = [ mt.hVirTemp[mt.maxSnap-m-1,gcIndOrigTr.gal[gal_w[i]]], $
-                     mt.hVirTemp[mt.maxSnap-m,gcIndOrigTr.gal[gal_w[i]]] ]
+            tvir = [ mt.hVirTemp[mt.maxSnap-m-1,gcIndOrigTr.gal[curInd]], $
+                     mt.hVirTemp[mt.maxSnap-m,gcIndOrigTr.gal[curInd]] ]
             if tvir[0] eq 0.0 or abs(tvir[0]-tvir[1]) gt 0.5 then tvir[0]=tvir[1]
             tvir = interpol(tvir,times,time) ; lerp tvir to time=tcross
-            r.accHaloTvir_gal[gal_w[i]] = tvir
+            r.accHaloTvir_gal[curInd] = tvir
           endif
         endfor
         
         for i=0,count_gmem-1 do begin
-          radii = [ prevRad.gmem[gmem_w[i]],gmem_pri[gmem_w[i]] ]
+          curInd = galcat_gmem_ind[gmem_w[i]]
+          
+          radii = [ prevRad.gmem[curInd],gmem_pri[gmem_w[i]] ]
           time = interpol(times,radii,rVirFac) ; lerp time to r/rvir=rVirFac
-          r.accTime_gmem[k,gmem_w[i]] = time
+          r.accTime_gmem[k,curInd] = time
           
           if k eq 0 then begin
-            tvir = [ mt.hVirTemp[mt.maxSnap-m-1,gcIndOrigTr.gmem[gmem_w[i]]], $
-                     mt.hVirTemp[mt.maxSnap-m,gcIndOrigTr.gmem[gmem_w[i]]] ]
+            tvir = [ mt.hVirTemp[mt.maxSnap-m-1,gcIndOrigTr.gmem[curInd]], $
+                     mt.hVirTemp[mt.maxSnap-m,gcIndOrigTr.gmem[curInd]] ]
             if tvir[0] eq 0.0 or abs(tvir[0]-tvir[1]) gt 0.5 then tvir[0]=tvir[1]
             tvir = interpol(tvir,times,time) ; lerp tvir to time=tcross
-            r.accHaloTvir_gmem[gmem_w[i]] = tvir
+            r.accHaloTvir_gmem[curInd] = tvir
           endif
         endfor
         
@@ -637,9 +680,10 @@ function accretionTimes, sP=sP, restart=restart
         
         ; if we are on the first snapshot, override accretion times with -1 to indicate always outside rad
         if m eq mt.maxSnap then begin
-          r.accTime_gal[k,gal_w] = -1
-          r.accTime_gmem[k,gmem_w] = -1
+          r.accTime_gal[k,galcat_gal_ind[gal_w]] = -1
+          r.accTime_gmem[k,galcat_gmem_ind[gmem_w]] = -1
           ; stars: no stars will be found in gas at first snapshot
+          if count_stars gt 0 then message,'Strange, matched stars to gas parents at first snapshot.'
         endif else begin
           ; otherwise, update counters for the number of particles we have found the accretion times of
           accCount.gal[k]  += count_gal
@@ -648,8 +692,8 @@ function accretionTimes, sP=sP, restart=restart
         endelse
         
         ; update mask for particles we no longer search for
-        accMask.gal[k,gal_w]   = 1B
-        accMask.gmem[k,gmem_w] = 1B
+        accMask.gal[k,galcat_gal_ind[gal_w]]   = 1B
+        accMask.gmem[k,galcat_gmem_ind[gmem_w]] = 1B
         if countStars gt 0 then accMask.stars[k,galcat_stars_ind[stars_w]] = 1B
       endforeach
       
@@ -662,8 +706,8 @@ function accretionTimes, sP=sP, restart=restart
       if count gt 0 then accMask.stars[*,w] = 1B
       
       ; store current radius of particles
-      prevRad.gal  = gal_pri
-      prevRad.gmem = gmem_pri
+      prevRad.gal[galcat_gal_ind]   = gal_pri
+      prevRad.gmem[galcat_gmem_ind] = gmem_pri
       if countStars gt 0 then prevRad.stars[galcat_stars_ind] = stars_pri
       
       prevTime = h.time

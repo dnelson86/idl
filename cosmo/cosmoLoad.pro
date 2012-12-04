@@ -239,7 +239,13 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
   ; load number of split files from header of first part
   hdf5s    = h5_parse(fileList[0]) ;structure only
   NumFiles = hdf5s.Header.NumFiles._DATA
-  SubfindExistsFlag = tag_exist(hdf5s,'SubhaloLen')
+  
+  ; what additional fields do we have?
+  SubfindExistsFlag    = tag_exist(hdf5s,'SubhaloLen')
+  NewSubfindExistsFlag = tag_exist(hdf5s,'SubhaloSFRinRad')
+  GFMExistsFlag        = tag_exist(hdf5s,'GroupGasMetalFractions')
+  if GFMExistsFlag then gfmNumElements = hdf5s.Group.GroupGasMetalFractions._DIMENSIONS[0]
+  if GFMExistsFlag then gfmNumPhotometrics = hdf5s.Subhalo.SubhaloStellarPhotometrics._DIMENSIONS[0]
   
   if (NumFiles ne nFiles) then $
     message,'ERROR: NumFiles ['+str(NumFiles)+'] differs from number of files found ['+str(nFiles)+'].'
@@ -295,9 +301,9 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
                                                    $
         nGroupsTot          : h.nGroupsTot                ,$
         nSubgroupsTot       : h.nSubgroupsTot             ,$
-        nIDsTot             : h.nIDsTot                    $
-      }
+        nIDsTot             : h.nIDsTot                    }
       
+      ; SUBFIND products
       if (SubfindExistsFlag eq 1) then begin
         sfsub = {                                  $
         Group_M_Mean200 : fltarr(h.nGroupsTot)    ,$
@@ -324,11 +330,42 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
         SubgroupVmax        : fltarr(h.nSubgroupsTot)     ,$
         SubgroupVmaxRad     : fltarr(h.nSubgroupsTot)     ,$
         SubgroupHalfMassRad : fltarr(h.nSubgroupsTot)     ,$
-        SubgroupIDMostBound : lon64arr(h.nSubgroupsTot)    ,$
+        SubgroupIDMostBound : lon64arr(h.nSubgroupsTot)   ,$
         SubgroupGrNr        : lonarr(h.nSubgroupsTot)     ,$
-        SubgroupParent      : ulonarr(h.nSubgroupsTot)     $
-      }
+        SubgroupParent      : ulonarr(h.nSubgroupsTot)     }
+        
         sf = create_struct(sf,sfsub) ;concat
+      endif
+      
+      ; SUBFIND newer products
+      if NewSubfindExistsFlag then begin
+        sfsub = {                                                     $
+        SubgroupHalfMassRadType       : fltarr(6,h.nSubgroupsTot)    ,$
+        SubgroupMassInRad             : fltarr(h.nSubgroupsTot)      ,$
+        SubgroupMassInRadType         : fltarr(6,h.nSubgroupsTot)    ,$
+        SubgroupSFR                   : fltarr(h.nSubgroupsTot)      ,$
+        SubgroupSFRInRad              : fltarr(h.nSubgroupsTot)       }
+        
+        sf = create_struct(sf,sfsub)
+      endif
+      
+      ; GFM products
+      if GFMExistsFlag then begin
+        sfsub = {                                                         $
+        GroupGasMetalFractions  : fltarr(gfmNumElements,h.nGroupsTot)    ,$
+        GroupGasMetallicity     : fltarr(h.nGroupsTot)                   ,$
+        GroupStarMetalFractions : fltarr(gfmNumElements,h.nGroupsTot)    ,$
+        GroupStarMetallicity    : fltarr(h.nGroupsTot)                   ,$
+                                                                          $
+        SubgroupGasMetalFractions     : fltarr(gfmNumElements,h.nSubgroupsTot)    ,$
+        SubgroupGasMetalFractionsSFR  : fltarr(gfmNumElements,h.nSubgroupsTot)    ,$
+        SubgroupGasMetallicity        : fltarr(h.nSubgroupsTot)                   ,$
+        SubgroupGasMetallicitySFR     : fltarr(h.nSubgroupsTot)                   ,$
+        SubgroupStarMetalFractions    : fltarr(gfmNumElements,h.nSubgroupsTot)       ,$
+        SubgroupStarMetallicity       : fltarr(h.nSubgroupsTot)                      ,$
+        SubgroupStellarPhotometrics   : fltarr(gfmNumPhotometrics,h.nSubgroupsTot)    }
+        
+        sf = create_struct(sf,sfsub)
       endif
       
       ; ID load requested?
@@ -353,7 +390,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
     if tag_exist(hdf5s,'GroupSFR') then $
       sf.GroupSFR        [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/GroupSFR"))
     
-    if (SubfindExistsFlag eq 1) then begin
+    if SubfindExistsFlag then begin
       ; these group properties only exist if subfind was run
       sf.Group_M_Mean200 [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/Group_M_Mean200"))
       sf.Group_R_Mean200 [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/Group_R_Mean200"))
@@ -366,29 +403,54 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
       sf.GroupFirstsub   [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/GroupFirstSub"))
     endif
     
+    if GFMExistsFlag then begin
+      sf.GroupGasMetalFractions  [*,skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupGasMetalFractions"))
+      sf.GroupGasMetallicity     [skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupGasMetallicity"))
+      sf.GroupStarMetalFractions [*,skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupStarMetalFractions"))
+      sf.GroupStarMetallicity    [skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupStarMetallicity"))    
+    endif
+    
     skip += h.nGroups
     
     ; fill sf with subhalo data from this part
-    if (SubfindExistsFlag eq 1) then begin
-  sf.SubgroupLen     [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloLen"))
-  sf.SubgroupLenType [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloLenType"))
-  sf.SubgroupMass    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloMass"))
-  sf.SubgroupMassType[*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloMassType"))
-  sf.SubgroupPos     [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloPos"))
-  sf.SubgroupVel     [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVel"))
-  sf.SubgroupCM      [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloCM"))
-  sf.SubgroupSpin    [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloSpin"))
-  
-  sf.SubgroupVelDisp [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVelDisp"))
-  sf.SubgroupVmax    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVmax"))
-  sf.SubgroupVmaxRad [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVmaxRad"))
-  sf.SubgroupHalfMassRad[skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloHalfmassRad"))
-  sf.SubgroupIDMostBound[skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloIDMostbound"))
-  
-  sf.SubgroupGrnr    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloGrNr"))
-  sf.SubgroupParent  [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloParent"))
-  
-  skipSub += h.nSubgroups
+    if SubfindExistsFlag then begin
+      sf.SubgroupLen     [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloLen"))
+      sf.SubgroupLenType [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloLenType"))
+      sf.SubgroupMass    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloMass"))
+      sf.SubgroupMassType[*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloMassType"))
+      sf.SubgroupPos     [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloPos"))
+      sf.SubgroupVel     [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVel"))
+      sf.SubgroupCM      [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloCM"))
+      sf.SubgroupSpin    [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloSpin"))
+      
+      sf.SubgroupVelDisp [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVelDisp"))
+      sf.SubgroupVmax    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVmax"))
+      sf.SubgroupVmaxRad [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloVmaxRad"))
+      sf.SubgroupHalfMassRad[skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloHalfmassRad"))
+      sf.SubgroupIDMostBound[skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloIDMostbound"))
+      
+      sf.SubgroupGrnr    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloGrNr"))
+      sf.SubgroupParent  [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloParent"))
+      
+      if NewSubfindExistsFlag then begin
+        sf.SubgroupHalfMassRadType[*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloHalfmassRadType"))
+        sf.SubgroupMassInRad      [skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloHalfmassRad"))
+        sf.SubgroupMassInRadType  [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloMassInRadType"))
+        sf.SubgroupSFR            [skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloSFR"))
+        sf.SubgroupSFRInRad       [skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloSFRinRad"))
+      endif
+    
+      if GFMExistsFlag then begin
+        sf.SubgroupGasMetalFractions   [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloGasMetalFractions"))
+        sf.SubgroupGasMetalFractionsSFR[*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloGasMetalFractionsSfr"))
+        sf.SubgroupGasMetallicity      [skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloGasMetallicity"))
+        sf.SubgroupGasMetallicitySFR   [skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloGasMetallicitySfr"))
+        sf.SubgroupStarMetalFractions  [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloStarMetalFractions"))
+        sf.SubgroupStarMetallicity     [skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloStarMetallicity"))
+        sf.SubgroupStellarPhotometrics [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloStellarPhotometrics"))
+      endif
+      
+      skipSub += h.nSubgroups
     endif
     
     ; fill sf with IDs from this part (if requested)
@@ -1078,6 +1140,14 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   h5g_close, headerID
   h5f_close, fileID
   
+  ; parse for new GFM related fields
+  hdf5s = h5_parse(fileList[0]) ;structure only
+  GFMExistsFlag  = tag_exist(hdf5s,'GroupGasMetalFractions')
+  if GFMExistsFlag then begin
+    gfmNumElements = hdf5s.Group.GroupGasMetalFractions._DIMENSIONS[0]
+    gfmNumPhotometrics = hdf5s.Subhalo.SubhaloStellarPhotometrics._DIMENSIONS[0]
+  endif
+  
   if (nSplits ne nFiles) then $
     message,'ERROR: NumFilesPerSnapshot ['+str(nSplits)+'] differs from number of split files found ['+$
            str(nFiles)+'].'
@@ -1138,6 +1208,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     rType = 'float'
     fieldName = 'CoolingRate'
     if (partType ne 0) then message,'Error: CoolingRate is gas only!'
+    if GFMExistsFlag then message,'Error: Old field. Use GFM_CoolingRate.'
   endif
   if (field eq 'density' or field eq 'rho' or field eq 'dens') then begin
     rType = 'float'
@@ -1201,30 +1272,118 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     if (partType ne 0) then message,'Error: Vol is gas only!'
   endif
   
+  ; newer
+  if (field eq 'gfm_coolingrate' or field eq 'gfm_coolrate') then begin
+    rType = 'float'
+    fieldName = 'GFM_CoolingRate'
+    if (partType ne 0) then message,'Error: GFM_CoolingRate is gas only!'
+    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
+  endif
+  if (field eq 'gfm_windhosthalomass') then begin
+    rType = 'float'
+    fieldName = 'GFM_WindHostHaloMass'
+    if (partType ne 0) then message,'Error: GFM_WindHostHaloMass is gas only!'
+    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
+  endif
+  if (field eq 'hosthalomass') then begin
+    rType = 'float'
+    fieldName = 'HostHaloMass'
+    if (partType ne 0 and partType ne 5) then message,'Error: HostHaloMass is gas/BHs only!'
+  endif
+  
   ; gas/stars only
+  ; --------------
+  if (field eq 'metallicity' or field eq 'metal') then begin ; OLD
+    rType = 'float'
+    fieldName = 'Metallicity'
+    if (partType ne 0 and partType ne 4) then message,'Error: Z is gas/stars only!'
+    if GFMExistsFlag then message,'Error: Old field. Use GFM_Metallicity.'
+  endif
+  if (field eq 'gfm_metallicity' or field eq 'gfm_z') then begin
+    rType = 'float'
+    fieldName = 'GFM_Metallicity'
+    if (partType ne 0 and partType ne 4) then message,'Error: GFM_Metallicity is gas/stars only!'
+    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
+  endif
+  if (field eq 'gfm_metals') then begin
+    rType = 'float'
+    rDims = gfmNumElements
+    fieldName = 'GFM_CoolingRate'
+    if (partType ne 0 and partType ne 4) then message,'Error: GFM_Metals is gas/stars only!'
+    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
+  endif
+  
+  ; gas/stars/bh only
   ; --------------
   if (field eq 'masses' or field eq 'mass') then begin
     rType = 'float'
     fieldName = 'Masses'
-    if (partType ne 0 and partType ne 4) then message,'Error: Mass is gas/stars only!'
-  endif
-  if (field eq 'metallicity' or field eq 'metal') then begin
-    rType = 'float'
-    fieldName = 'Metallicity'
-    if (partType ne 0 and partType ne 4) then message,'Error: Z is gas/stars only!'
+    if (partType ne 0 and partType ne 4 and partType ne 5) then message,'Error: Mass is gas/stars/BH only!'
   endif
   if (field eq 'numtr' or field eq 'numtracers') then begin
     rType = 'int'
     fieldName = 'NumTracers'
-    if (partType ne 0 and partType ne 4) then message,'Error: NumTracers is gas/stars only!'
+    if (partType ne 0 and partType ne 4 and partType ne 5) then message,'Error: NumTracers is gas/stars/BH only!'
   endif
   
-  ; stars only (TODO: GFM)
+  ; stars only
   ; ----------
-  if (field eq 'stellarformationtime' or field eq 'sftime') then begin
+  if (field eq 'gfm_initialmass' or field eq 'gfm_inimass') then begin
     rType = 'float'
-    fieldName = 'StellarFormationTime'
-    if (partType ne 4) then message,'Error: SFTime is stars only!'
+    fieldName = 'GFM_InitialMass'
+    if (partType ne 4) then message,'Error: GFM_InitialMass is stars only!'
+    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
+  endif
+  if (field eq 'gfm_stellarformationtime' or field eq 'gfm_sftime') then begin
+    rType = 'float'
+    fieldName = 'GFM_StellarFormationTime'
+    if (partType ne 4) then message,'Error: GFM_StellarFormationTime is stars only!'
+    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
+  endif
+  if (field eq 'gfm_stellarphotometrics' or field eq 'gfm_sphot') then begin
+    rType = 'float'
+    rDims = gfmNumPhotometrics
+    fieldName = 'GFM_StellarPhotometrics'
+    if (partType ne 4) then message,'Error: GFM_StellarPhotometrics is stars only!'
+    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
+  endif
+  
+  ; bh only
+  ; -------
+  if (field eq 'bh_coolingluminosity' or field eq 'coolingluminosity') then begin
+    rType = 'float'
+    fieldName = 'BH_CoolingLuminosity'
+    if (partType ne 5) then message,'Error: BH_CoolingLuminosity is BHs only!'
+  endif
+  if (field eq 'bh_halogasmass') then begin
+    rType = 'float'
+    fieldName = 'BH_CoolingLuminosity'
+    if (partType ne 5) then message,'Error: BH_CoolingLuminosity is BHs only!'
+  endif
+  if (field eq 'bh_hsml' or field eq 'bh_smoothinglength') then begin
+    rType = 'float'
+    fieldName = 'BH_HSML'
+    if (partType ne 5) then message,'Error: BH_HSML is BHs only!'
+  endif
+  if (field eq 'bh_mass' or field eq 'bh_masses') then begin
+    rType = 'float'
+    fieldName = 'BH_Mass'
+    if (partType ne 5) then message,'Error: BH_Mass is BHs only!'
+  endif
+  if (field eq 'bh_mdot') then begin
+    rType = 'float'
+    fieldName = 'BH_MDot'
+    if (partType ne 5) then message,'Error: BH_MDot is BHs only!'
+  endif
+  if (field eq 'bh_mdotradio' or field eq 'bh_mdot_radio') then begin
+    rType = 'float'
+    fieldName = 'BH_MDotRadio'
+    if (partType ne 5) then message,'Error: BH_MDotRadio is BHs only!'
+  endif
+  if (field eq 'bh_prog' or field eq 'bh_progs' or field eq 'bh_progenitors') then begin
+    rType = 'float'
+    fieldName = 'BH_Progs'
+    if (partType ne 5) then message,'Error: BH_Progs is BHs only!'
   endif
   
   ; tracers (Monte Carlo)
@@ -1244,7 +1403,8 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   ; ----------------
   if (field eq 'properties' or field eq 'quants' or field eq 'quantities' or $
       field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxdens' or $
-      field eq 'tracer_maxmachnum' or field eq 'tracer_maxentropy') then begin
+      field eq 'tracer_maxmachnum' or field eq 'tracer_maxtemp_maxdens' or field eq 'tracer_maxentropy' or $
+      field eq 'tracer_laststartime' or field eq 'tracer_windcounter' or field eq 'tracer_exchcounter') then begin
     fieldName = 'FluidQuantities'
     rDims = 5 ; WARNING: must match to setup in Arepo run
     rType = 'float'
@@ -1264,7 +1424,8 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       field eq 'velx' or field eq 'vely' or field eq 'velz' or $
       field eq 'cmx' or field eq 'cmy' or field eq 'cmz' or $
       field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxdens' or $
-      field eq 'tracer_maxmachnum' or field eq 'tracer_maxentropy') then begin
+      field eq 'tracer_maxmachnum' or field eq 'tracer_maxtemp_maxdens' or field eq 'tracer_maxentropy' or $
+      field eq 'tracer_laststartime' or field eq 'tracer_windcounter' or field eq 'tracer_exchcounter') then begin
     multiDimSliceFlag = 1
     
     ; override rDims to one
@@ -1290,8 +1451,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       longIDsBits = h5_parse(fileList[0]) ; just parse full structure
       longIDsBits = longIDsBits.partType0.particleIDs._precision
       if longIDsBits eq 32 then r = lonarr(rDims,nPartTot[partType])
-      if longIDsBits eq 64 then r = lon64arr(rDims,nPartTot[partType]) ;lon64arr
-      ;if longIDsBits eq 64 then print,'WARNIING: Loading 64bit IDs as ulong!'
+      if longIDsBits eq 64 then r = lon64arr(rDims,nPartTot[partType])
       if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
     endif else begin
       ; non-ID long field
@@ -1339,11 +1499,15 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
           'velz': fN = 2
           'cmz' : fN = 2
           
-          'tracer_maxtemp'      : fN = 0
-          'tracer_maxtemp_time' : fN = 1
-          'tracer_maxdens'      : fN = 2
-          'tracer_maxmachnum'   : fN = 3
-          'tracer_maxentropy'   : fN = 4
+          'tracer_maxtemp'         : fN = 0
+          'tracer_maxtemp_time'    : fN = 1
+          'tracer_maxdens'         : fN = 2
+          'tracer_maxmachnum'      : fN = 3
+          'tracer_maxtemp_maxdens' : fN = 4
+          'tracer_maxentropy'      : fN = 5
+          'tracer_laststartime'    : fN = 6
+          'tracer_windcounter'     : fN = 7
+          'tracer_exchcounter'     : fN = 8
         endcase
         
         ; start at this column with length equal to the dataset size

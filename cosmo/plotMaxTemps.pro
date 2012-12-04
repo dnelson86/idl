@@ -438,8 +438,8 @@ pro plotTmaxHistos
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  sPg = simParams(res=512,run='gadget',redshift=2.0)
-  sPa = simParams(res=512,run='tracer',redshift=2.0) ; f=-1 use velocity tracers
+  sPg = simParams(res=512,run='gadget',redshift=3.0)
+  sPa = simParams(res=512,run='tracer',redshift=3.0) ; f=-1 use velocity tracers
 
   sgSelect   = 'pri'
   timeWindow = 1000.0 ; Myr
@@ -727,8 +727,8 @@ pro plotTmaxHisto2D
   units = getUnits()
   
   ; config
-  sPg = simParams(res=512,run='gadget',redshift=2.0)
-  sPa = simParams(res=512,run='tracer',redshift=2.0) ; f=-1 use velocity tracers
+  sPg = simParams(res=512,run='gadget',redshift=3.0)
+  sPa = simParams(res=512,run='tracer',redshift=3.0) ; f=-1 use velocity tracers
 
   sgSelect   = 'pri'
   timeWindow = 1000.0 ; Myr
@@ -747,41 +747,7 @@ pro plotTmaxHisto2D
     h2A = binTmaxHisto2D(sP=sPa,sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow)
     h2G = binTmaxHisto2D(sP=sPg,sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow)
   
-    ; plot (1) - arepo tmax (debug)
-    start_PS, sPg.plotPath + 'temp2d_test_tmax_both.'+accMode+'.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
-              str(sPg.res)+'_'+str(sPg.snap)+'.eps', /big
-          
-      loadColorTable, 'helix', /reverse      
-            
-      h2mt = h2A.h2_tmax_both
-      yrange = h2A.mmTemp
-      ytitle = textoidl('log ( T_{max} ) [K]')
-      
-      ; arepo histogram
-      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
-           xtitle=textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),ytitle=ytitle,$
-           barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=h2A.mmMass,yrange=yrange,$
-           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.1,0.14,0.8,0.94]
-           
-      ; colorbar
-      barvals = findgen(ndivs+1)/ndivs*(max(h2mt^exp)-min(h2mt^exp)) + min(h2mt^exp)
-      ticknames = textoidl(str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)')))
-      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
-      colorbar,bottom=1,range=minmax(h2mt),position=[0.83,0.14,0.87,0.94],$
-         /vertical,/right,title=textoidl("M_{gas,tr} [_{ }log h^{-1} M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
-           
-      ; temp lines and legend
-      tvir_vals = alog10(codeMassToVirTemp(10.0^h2A.mmMass/units.UnitMass_in_Msun,sP=sPa))
-      
-      cgPlot,h2A.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
-      cgPlot,h2A.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
-           
-      legend,textoidl(['T_c = 5.5','T_{vir }(M)']),linestyle=lines,$;textcolor=colors,$
-        linesize=0.3,/top,/left,box=0,spacing=!p.charsize+0.5
-                
-    end_PS
-    
-    ; plot (2) - arepo and gadget side by side (tmax)
+    ; plot (1) - arepo and gadget side by side (gal tmax)
     start_PS, sPg.plotPath + 'temp2d_comp_tmax_both.'+accMode+'.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
               str(sPg.res)+'_'+str(sPg.snap)+'.eps', xs=9.0, ys=4.0
           
@@ -804,7 +770,7 @@ pro plotTmaxHisto2D
       cgPlot,h2A.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
       cgText,h2A.mmMass[0]+0.3,Tc_val+0.2,"arepo",color=cgColor(sPa.colorsA[cInd])
            
-      legend,textoidl(['T_c = 5.5','T_{vir }(z=2)']),linestyle=lines,$;textcolor=colors,$
+      legend,textoidl(['T_c = 5.5','T_{vir }(z='+str(fix(sPa.redshift))+')']),linestyle=lines,$;textcolor=colors,$
         linesize=0.3,position=[9.05,6.85],box=0,spacing=!p.charsize+0.5
         
       ; gadget histogram
@@ -839,7 +805,7 @@ pro plotTmaxHisto2D
                 
     end_PS
     
-    ; plot (3) - arepo and gadget side by side (tvircur)
+    ; plot (2) - arepo and gadget side by side (gal tvircur)
     start_PS, sPg.plotPath + 'temp2d_comp_tvircur_both.'+accMode+'.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
               str(sPg.res)+'_'+str(sPg.snap)+'.eps', xs=9.0, ys=4.0
           
@@ -890,7 +856,7 @@ pro plotTmaxHisto2D
                 
     end_PS
     
-    ; plot (4) - arepo and gadget side by side (tviracc)
+    ; plot (3) - arepo and gadget side by side (gal tviracc)
     start_PS, sPg.plotPath + 'temp2d_comp_tviracc_both.'+accMode+'.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
               str(sPg.res)+'_'+str(sPg.snap)+'.eps', xs=9.0, ys=4.0
           
@@ -938,6 +904,116 @@ pro plotTmaxHisto2D
       ; labels
       cgText,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),(0.1+0.8)/2,0.04,alignment=0.5,/normal
       cgText,textoidl("M_{gas,tr} [_{ }log h^{-1} M_{sun }]"),0.98,(0.18+0.94)/2,alignment=0.5,orientation=90,/normal
+                
+    end_PS
+    
+    ; plot (4) - arepo and gadget side by side (gal+gmem 2x2 tmax)
+    start_PS, sPg.plotPath + 'temp2d_comp_tmax_gal_gmem.'+accMode+'.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
+              str(sPg.res)+'_'+str(sPg.snap)+'.eps', xs=9.0, ys=8.0
+          
+      loadColorTable, 'helix', /reverse      
+      ytitle = textoidl('log ( T_{max} ) [K]')
+      
+      pos = list([0.1,0.56,0.47,0.94],$
+                 [0.47,0.56,0.84,0.94],$
+                 [0.1,0.1,0.47,0.48],$
+                 [0.47,0.1,0.84,0.48])
+      
+      ; UL - arepo gal
+      h2mt = h2A.h2_tmax_gal
+      yrange = [h2A.mmTemp[0],(round(h2A.mmTemp[1])*10)/10]
+      
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
+           xtitle="",ytitle=ytitle,barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=h2A.mmMass,yrange=yrange,$
+           xticks=2,xtickv=[9.0,10.0,11.0],xtickname=replicate(' ',10),position=pos[0]
+           
+      ; temp lines and legend
+      tvir_vals = alog10(codeMassToVirTemp(10.0^h2A.mmMass/units.UnitMass_in_Msun,sP=sPa))
+      
+      cgPlot,h2A.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
+      cgPlot,h2A.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
+      cgText,h2A.mmMass[0]+0.3,Tc_val+0.2,"arepo",color=cgColor(sPa.colorsA[cInd])
+           
+      legend,textoidl(['T_c = 5.5','T_{vir }(z='+str(fix(sPa.redshift))+')']),linestyle=lines,$;textcolor=colors,$
+        linesize=0.3,position=[9.05,6.85],box=0,spacing=!p.charsize+0.5
+        
+      ; UR - gadget gal
+      h2mt = h2G.h2_tmax_gal
+      yrange = [h2G.mmTemp[0],(round(h2G.mmTemp[1])*10)/10]
+      
+      loadColorTable, 'helix', /reverse
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
+           xtitle="",ytitle="",$
+           barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=h2A.mmMass,yrange=yrange,$
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],xtickname=replicate(' ',10),position=pos[1],$
+           ytickname=replicate(' ',10),/noerase
+           
+      ; temp lines
+      tvir_vals = alog10(codeMassToVirTemp(10.0^h2G.mmMass/units.UnitMass_in_Msun,sP=sPa))
+      
+      cgPlot,h2G.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
+      cgPlot,h2G.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
+      cgText,h2G.mmMass[0]+0.3,Tc_val+0.2,"gadget",color=cgColor(sPg.colorsG[cInd])
+      
+      ; colorbar
+      barvals = findgen(ndivs+1)/ndivs*(max(h2mt^exp)-min(h2mt^exp)) + min(h2mt^exp)
+      ticknames = textoidl(str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)')))
+      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
+      colorbar,bottom=1,range=minmax(h2mt),position=[pos[1,2]+0.02,pos[1,1],pos[1,2]+0.06,pos[1,3]],$
+         /vertical,/right,title="",$
+         divisions=ndivs,ticknames=ticknames,ncolors=255,charsize=!p.charsize-0.2
+      
+      ; LL - arepo gmem
+      h2mt = h2A.h2_tmax_gmem
+      yrange = [h2A.mmTemp[0],(round(h2A.mmTemp[1])*10)/10]
+      
+      loadColorTable, 'helix', /reverse
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
+           xtitle="",ytitle=ytitle,barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=h2A.mmMass,yrange=yrange,$
+           xticks=2,xtickv=[9.0,10.0,11.0],position=pos[2],/noerase
+      
+      ; temp lines and legend
+      tvir_vals = alog10(codeMassToVirTemp(10.0^h2A.mmMass/units.UnitMass_in_Msun,sP=sPa))
+      
+      cgPlot,h2A.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
+      cgPlot,h2A.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
+      cgText,h2A.mmMass[0]+0.3,Tc_val+0.2,"arepo",color=cgColor(sPa.colorsA[cInd])
+           
+      legend,textoidl(['T_c = 5.5','T_{vir }(z='+str(fix(sPa.redshift))+')']),linestyle=lines,$;textcolor=colors,$
+        linesize=0.3,position=[9.05,6.85],box=0,spacing=!p.charsize+0.5
+      
+      ; LR - gadget gmem
+      h2mt = h2G.h2_tmax_gmem
+      yrange = [h2G.mmTemp[0],(round(h2G.mmTemp[1])*10)/10]
+      
+      loadColorTable, 'helix', /reverse
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
+           xtitle="",ytitle="",$
+           barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=h2A.mmMass,yrange=yrange,$
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=pos[3],$
+           ytickname=replicate(' ',10),/noerase
+      
+      ; temp lines
+      tvir_vals = alog10(codeMassToVirTemp(10.0^h2G.mmMass/units.UnitMass_in_Msun,sP=sPa))
+      
+      cgPlot,h2G.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
+      cgPlot,h2G.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
+      cgText,h2G.mmMass[0]+0.3,Tc_val+0.2,"gadget",color=cgColor(sPg.colorsG[cInd])
+
+      ; colorbar
+      barvals = findgen(ndivs+1)/ndivs*(max(h2mt^exp)-min(h2mt^exp)) + min(h2mt^exp)
+      ticknames = textoidl(str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)')))
+      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
+      colorbar,bottom=1,range=minmax(h2mt),position=[pos[3,2]+0.02,pos[3,1],pos[3,2]+0.06,pos[3,3]],$
+         /vertical,/right,title="",$
+         divisions=ndivs,ticknames=ticknames,ncolors=255,charsize=!p.charsize-0.2
+           
+      ; labels
+      cgText,"Central Galaxy",pos[0,2],pos[1,3]+0.02,/normal,alignment=0.5
+      cgText,"Halo Atmosphere",pos[0,2],pos[2,3]+0.02,/normal,alignment=0.5
+      cgText,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),(0.1+0.8)/2,0.02,alignment=0.5,/normal
+      cgText,textoidl("M_{gas} [_{ }log h^{-1} M_{sun }]"),0.98,mean([pos[1,1],pos[1,3]]),alignment=0.5,orientation=90,/normal
+      cgText,textoidl("M_{gas} [_{ }log h^{-1} M_{sun }]"),0.98,mean([pos[3,1],pos[3,3]]),alignment=0.5,orientation=90,/normal
                 
     end_PS
     

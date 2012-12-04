@@ -409,7 +409,7 @@ function mergerTreeSubset, sP=sP, verbose=verbose
     if keyword_set(verbose) then $
       print,' ['+string(sP.snap,format='(i3)')+'] remaining: '+string(nleft,format='(i5)')+' ('+$
         string(float(nleft)/n_elements(gcIDs)*100,format='(f4.1)')+'%) massive: '+string(nleft10,format='(i5)')+' ('+$
-        string(float(nleft10)/ntot10*100,format='(f4.1)')+'%)
+        string(float(nleft10)/ntot10*100,format='(f4.1)')+'%)'
      
     ; store
     times[i] = h.time
@@ -544,6 +544,32 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
     ids_gal   = !NULL
     ids_gmem  = !NULL
     ids_stars = !NULL
+    
+    ; exclude all tracers with nonzero wind counters (automatically excludes tracers currently in winds as well)
+    if sP.gfmWinds ne 0 then begin
+      tr_windcounter = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
+        
+      w = where(tr_windcounter[galcat_gal_trids] eq 0,count)
+      galcat_gal_trids   = galcat_gal_trids[w]
+      galcat_gal_cc      = (replicate_var(galcat_gal_cc))[w]
+      galcat_gal_cc      = histogram(galcat_gal_cc,min=0)
+      if total(galcat_gal_cc,/int) ne count then message,'error1b'
+        
+      w = where(tr_windcounter[galcat_gmem_trids] eq 0,count)
+      galcat_gmem_trids  = galcat_gmem_trids[w]
+      galcat_gmem_cc     = (replicate_var(galcat_gmem_cc))[w]
+      galcat_gmem_cc     = histogram(galcat_gmem_cc,min=0)
+      if total(galcat_gmem_cc,/int) ne count then message,'error2b'
+        
+      w = where(tr_windcounter[galcat_stars_trids] eq 0,count)
+      galcat_stars_trids = galcat_stars_trids[w]
+      galcat_stars_cc    = (replicate_var(galcat_stars_cc))[w]
+      galcat_stars_cc    = histogram(galcat_stars_cc,min=0)
+      if total(galcat_stars_cc,/int) ne count then message,'error3b'
+        
+      tr_windcounter = !NULL
+      w = !NULL
+    endif
     
     ; convert tracer children indices to tracer IDs at this zMin if we are returning them
     if keyword_set(galcat_gal_trids) then begin
@@ -991,4 +1017,71 @@ pro plotHaloEvo, sP=sP
     
   end_PS
   stop
+end
+
+; plotTrackedDists(): plot mass/tvir at z=2 and at time when each halo stopped tracking
+
+pro plotTrackedDists
+
+  ; config
+  sP = simParams(res=512,run='tracer',redshift=2.0)
+  mt = mergerTreeSubset(sP=sP)
+  binsize = 0.15
+  
+  ; "IGM temperature" model (constant)
+  T_IGM = 4e4 ; K
+  massRanges = list([10.0,12.5],[10.0,10.75],[10.75,11.5],[11.5,12.5]) ; log Msun
+  
+  start_PS, sP.plotPath + 'td.endz.'+sP.plotPrefix+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps',/big
+  
+    !p.multi = [0,2,2]
+    !p.charsize = 1.1
+  
+    foreach massRange,massRanges,k do begin
+    
+      ; choose halos
+      w = where(mt.hMinSnap ne -1 and codeMassToLogMsun(mt.hMass[0,*]) ge massRange[0] and $
+                                      codeMassToLogMsun(mt.hMass[0,*]) lt massRange[1],count)
+      ms_ind = mt.maxSnap - (mt.hMinSnap[w])
+  
+      ; pick ending snapshots based on TIGM
+      temp_ratio = 10.0^mt.hVirTemp[*,w] / T_IGM
+  
+      end1 = lonarr(count) ; snapshot number
+      end2 = lonarr(count)
+  
+      for i=0,count-1 do begin
+        loc_temp_ratio = temp_ratio[*,i]
+        ww = where(loc_temp_ratio ge 1.0,count_loc)
+        if count_loc eq 0 then print,'error',i
+        end1[i] = mt.maxSnap - max(ww)
+    
+        ww = where(loc_temp_ratio ge 2.0,count_loc)
+        if count_loc eq 0 then print,'error',i
+        end2[i] = mt.maxSnap - max(ww)   
+      endfor    
+    
+      ; plot
+      title = "masses "+string(massRange[0],format='(f4.1)')+" - "+string(massRange[1],format='(f4.1)')
+      if k eq 0 then title = "all masses"
+      
+      cgPlot,[0],[0],/nodata,xtitle="Ending Redshift",ytitle="Fraction Lost",$
+        yrange=[0.0,1.1],/ys,xrange=[6,2],/xs,title=title
+    
+      hist = histogram(snapNumToRedshift(snap=mt.hMinSnap[w],sP=sP),binsize=2*binsize,loc=loc)
+      cgPlot,loc+binsize,total(hist,/cum)/float(count),color=cgColor('blue'),/overplot
+    
+      hist = histogram(snapNumToRedshift(snap=end1,sP=sP),binsize=2*binsize,loc=loc)
+      cgPlot,loc+binsize,total(hist,/cum)/float(count),color=cgColor('red'),/overplot    
+    
+      hist = histogram(snapNumToRedshift(snap=end2,sP=sP),binsize=2*binsize,loc=loc)
+      cgPlot,loc+binsize,total(hist,/cum)/float(count),color=cgColor('green'),/overplot        
+    
+      legend,['end track','end Tvir>TIGM','end Tvir>2 TIGM'],textcolors=['blue','red','green'],$
+        box=0,/bottom,/left
+    endforeach
+  end_PS
+  
+  stop
+
 end

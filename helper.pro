@@ -1,8 +1,6 @@
 ; helper.pro
-; helper functions
-; dnelson may.2012
-;
-; NOTE: all my IDL routines loaded at bottom of this file
+; helper functions (NOTE: all my IDL routines loaded at bottom of this file)
+; dnelson nov.2012
 
 ; one line utility functions
 ; --------------------------
@@ -76,6 +74,58 @@ function shuffle, array, seed=seed
   return,array[sort(randomu(iseed,n_elements(array)))]
 end
 
+; general algorithms
+; ------------------
+
+; replicate_var(): given a number of children for each parent, replicate the parent indices for each child
+
+function replicate_var, child_counts
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  parent_inds = ulonarr(total(child_counts,/int))
+  
+  ; loop approach
+  
+  offset = 0UL
+  for i=0UL,n_elements(child_counts)-1 do begin
+    if child_counts[i] gt 0 then $
+      parent_inds[ offset : offset+child_counts[i]-1 ] = replicate(i,child_counts[i])
+    offset += child_counts[i]
+  endfor
+  
+  ; vector approach:
+  
+  ;if n_elements(child_counts) le 1 then message,'error'
+  ;cc = total(child_counts,/int,/cum)
+  ;; remove last element if duplicate
+  ;if cc[n_elements(cc)-1] eq cc[n_elements(cc)-2] then cc = cc[0:n_elements(cc)-2]
+  ;      
+  ;; mark first child of each parent
+  ;parent_inds[cc[0:n_elements(cc)-2]] = 1
+  ;
+  ;; compensate for zero child counts
+  ;w = where(child_counts eq 0,count)
+  ;if count gt 0 then begin
+  ; 
+  ;  ; need to handle multiple zeros on end
+  ;  ; TODO
+  ;  if w[-1] eq n_elements(child_counts)-1 then w = w[0:-2]
+ ; 
+ ;   ; possible multiple zeros sequentially
+ ;   nummod = histogram(cc[w],loc=locmod)
+ ;   parent_inds[locmod] += nummod
+ ;   
+ ; endif
+ ; 
+ ; ; scan sum
+ ; parent_inds = total(parent_inds,/cum,/int)
+ 
+  return,parent_inds
+end
+
+; pSplit(): divide work for embarassingly parallel problems
+
 function pSplit, arr, split=split ; split=[numProcs,curProc] with curProc zero indexed
 
   ; no split, return whole job load to caller
@@ -126,32 +176,199 @@ function gcDist, latlong1, latlong2 ; in radians
   return,d
 end
 
-; partTypeNum(): convert a string description of a particle type to its numeric value
+; flatten_list
 
-function partTypeNum, PT
+function flatten_list, list
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  if (list.Count() eq 0) then return,[0]
+  
+  arr = []
+  for i=0ULL,list.Count()-1 do $
+    arr = [arr,list[i]]
+
+  return,arr
+  
+end
+
+; removeIntersectionFromB(): return a modified version of B with all those elements also found in
+;                            A (the collision/intersection) removed
+
+function removeIntersectionFromB, A, B, union=union
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  partType = PT ; so we don't change the input
-  if not isnumeric(partType) then partType = strlowcase(str(partType))
-
-  if (strcmp(partType,'gas')       or strcmp(partType,'hydro'))      then partType = 0
-  if (strcmp(partType,'dm')        or strcmp(partType,'darkmatter')) then partType = 1
-  if (strcmp(partType,'tracervel') or strcmp(partType,'tracersvel')) then partType = 2
-  if (strcmp(partType,'tracermc')  or strcmp(partType,'tracersmc'))  then partType = 3
-  if (strcmp(partType,'stars')     or strcmp(partType,'star'))       then partType = 4
-  
-  if (strcmp(partType,'tracer') or strcmp(partType,'tracers')) then $
-    message,'ERROR: Please specify which type of tracers!'
-  
-  if not isnumeric(partType) then $
-    message,'ERROR: Unrecognized partType!'
-  
-  if (partType lt 0 or partType gt 4) then $
-    message,'ERROR: partType = ' + str(partType) + ' out of bounds!'
-
-  return, partType
+    match, A, B, A_ind, B_ind, count=count, /sort
+    
+    A_ind = !NULL ;unused
+    
+    if (count gt 0) then begin
+      ; remove B[B_ind] using complement
+      all = bytarr(n_elements(B))
+      if (B_ind[0] ne -1L) then all[B_ind] = 1B
+      w = where(all eq 0B, ncomp)
+    
+      if (ncomp ne n_elements(B)-count) then $
+        message,'removeIntersectionFromB: ERROR!'
+      
+      ; set union return
+      if (keyword_set(union)) then union=B[B_ind]
+      
+      return, B[w]
+    endif else begin
+      print,'Warning: removeIntersectionFromB returning unmodified.'
+      return, B
+    endelse
 end
+
+; getIDIndexMapSparse(): return an array which maps ID->indices within dense, disjoint subsets which are 
+;                        allowed to be sparse in the entire ID range. within each subset i of size binsize
+;                        array[ID-minids[i]+offset[i]] is the index of the original array ids where ID 
+;                        is found (assumes no duplicate IDs)
+
+function getIDIndexMapSparse, ids, map=map
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  minid = min(ids)
+  maxid = max(ids)
+
+  if n_elements(ids) gt 2e9 then message,'Error: Going to overrun arr.'
+
+  ; if map passed in, use it to return the indices of the ids instead of making a new map
+  if keyword_set(map) then begin
+    inds = lonarr(n_elements(ids))
+    totCount = 0ULL
+    
+    for i=0,map.nBlocks-1 do begin
+      ; process ids in this block
+      w = where(ids ge map.blockStarts[i] and ids le map.blockEnds[i],count)
+      
+      if count gt 0 then inds[w] = map.map[ids[w]-map.blockStarts[i]+map.blockOffsets[i]]
+      totCount += count
+    endfor
+    
+    if totCount ne n_elements(ids) then message,'Error: Failed to map all IDs to indices.'
+    return,inds
+  endif
+
+  ; make broad histogram of ids to identify sparsity
+  binsize = round(sqrt(max(ids))/10000.0) * 10000 > 10 < 1000000 ; adjust to range
+  print,binsize
+  hist = histogram(ids,binsize=binsize,min=0,loc=loc)
+  occBlocks = where(hist ne 0,count)
+  
+  if count eq 0 then message,'Error.'
+  
+  nBlocks = 0
+  blockStarts = []
+  blockLens   = []
+  blockEnds   = []
+  prevBlock = ulong64(0)
+  count = 0
+  
+  ; search for contiguous id blocks
+  for i=0,n_elements(occBlocks)-1 do begin
+    count += 1
+    
+    ; jump detected (zero block length ge binsize)
+    if occBlocks[i] ne (prevBlock+1) then begin
+      nBlocks += 1
+      blockStarts = [blockStarts,loc[occBlocks[i]]]
+      blockLens   = [blockLens,count]
+      blockEnds   = [blockEnds,loc[prevBlock]+count*binsize-1]
+      if i ne n_elements(occBlocks)-1 then count = 0
+    endif
+    
+    prevBlock = occBlocks[i]
+  endfor
+  
+  ; remove first (zero) block length and add final
+  if nBlocks gt 1 then begin
+    count += 1
+    blockLens = [blockLens[1:*],count]
+    blockEnds = [blockEnds[1:*],loc[prevBlock]+count*binsize-1]
+  endif
+  
+  if nBlocks le 0 then message,'Error: No dense blocks found.'
+  
+  ; make offset array into mapping
+  blockOffsets = ulonarr(nBlocks)
+  for i=0,nBlocks-2 do begin
+    blockOffsets[i+1] = blockOffsets[i] + blockLens[i]*binsize
+  endfor
+  
+  ; create mapping array inside return structure
+  r = { map          : ulonarr(total(blockLens)*binsize) ,$
+        blockStarts  : blockStarts                       ,$
+        blockLens    : blockLens                         ,$
+        blockEnds    : blockEnds                         ,$
+        blockOffsets : blockOffsets                      ,$
+        nBlocks      : nBlocks                            }
+  
+  ; fill mapping for each subset
+  totCount = 0ULL
+  
+  for i=0,nBlocks-1 do begin
+    ; what ids in this block?
+    w = where(ids ge blockStarts[i] and ids le blockEnds[i],count)
+    if count eq 0 then message,'Error'
+    
+    for j=0ULL,n_elements(w)-1 do r.map[ids[w[j]]-blockStarts[i]+blockOffsets[i]] = w[j] ;j + blockOffsets[i]
+    totCount += count
+  endfor
+  
+  if totCount ne n_elements(ids) then message,'Error: Did not map all IDs.'
+  if nuniq(r.map) ne n_elements(ids) then message,'Error: Non-unique mapping.' ; DEBUG ONLY (slow)
+  
+  ; DEBUG: for a subset, verify mapping
+  nVerify = 100 < n_elements(ids)
+  indVerify = floor(randomu(seed,nVerify)*n_elements(ids))
+  indTest = getIDIndexMap(ids[indVerify],map=r)
+  
+  for i=0,nVerify-1 do begin
+    w = where(ids eq ids[indVerify[i]],count)
+    ;print,i,w[0],indTest[i]
+    if count ne 1 or w[0] ne indTest[i] then message,'Error. Bad mapping.'
+  endfor
+  
+  return,r
+  
+end
+  
+; getIDIndexMap(): return an array of size max(ids)-min(ids) such that array[ID-min(ids)] is the 
+;                     index of the original array ids where ID is found (assumes a one to one mapping, 
+;                     not repeated indices as in the case of parentIDs for tracers)
+
+function getIDIndexMap, ids, minid=minid
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  minid = min(ids)
+  maxid = max(ids)
+
+  if n_elements(ids) gt 2e9 then message,'Error: Going to overrun arr.'
+  
+  ; C-style loop approach (good for sparse IDs)
+  arr = ulonarr(maxid-minid+1)
+  for i=0ULL,n_elements(ids)-1L do arr[ids[i]-minid] = i
+  
+  ; looped where approach (never a good idea)
+  ;arr = l64indgen(maxid-minid+1)
+  ;for i=minid,maxid do begin
+  ;  w = where(ids eq i,count)
+  ;  if (count gt 0) then arr[i] = w[0]
+  ;endfor
+
+  ; reverse histogram approach (good for dense ID sampling, maybe better by factor of ~2)
+  ;arr = l64indgen(maxid-minid+1)
+  ;h = histogram(ids,rev=rev,omin=omin)
+  ;for i=0L,n_elements(h)-1 do if (rev[i+1] gt rev[i]) then arr[i] = rev[rev[i]:rev[i+1]-1]
+
+  return, arr
+end
+
+; basic IO
+; --------
 
 ; loadColorTable(): load a custom or builtin IDL color table into the display
 ;                   if rgb_table specified do not load into display, just return the table
@@ -235,9 +452,6 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
   ; brewer (sequential) (0-16)
 
 end
-
-; basic IO
-; --------
 
 ; loadCSV(): load all the lines of a textfile with column template ptStruct
 ;            skip headerLines at the beginning and put their contents as a string into header
@@ -468,449 +682,22 @@ pro runBridge, res=res
 
 end
 
-; flatten_list
-
-function flatten_list, list
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-  if (list.Count() eq 0) then return,[0]
-  
-  arr = []
-  for i=0ULL,list.Count()-1 do $
-    arr = [arr,list[i]]
-
-  return,arr
-  
-end
-
-; removeIntersectionFromB(): return a modified version of B with all those elements also found in
-;                            A (the collision/intersection) removed
-
-function removeIntersectionFromB, A, B, union=union
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-    match, A, B, A_ind, B_ind, count=count, /sort
-    
-    A_ind = !NULL ;unused
-    
-    if (count gt 0) then begin
-      ; remove B[B_ind] using complement
-      all = bytarr(n_elements(B))
-      if (B_ind[0] ne -1L) then all[B_ind] = 1B
-      w = where(all eq 0B, ncomp)
-    
-      if (ncomp ne n_elements(B)-count) then $
-        message,'removeIntersectionFromB: ERROR!'
-      
-      ; set union return
-      if (keyword_set(union)) then union=B[B_ind]
-      
-      return, B[w]
-    endif else begin
-      print,'Warning: removeIntersectionFromB returning unmodified.'
-      return, B
-    endelse
-end
-
-; getIDIndexMapSparse(): return an array which maps ID->indices within dense, disjoint subsets which are 
-;                        allowed to be sparse in the entire ID range. within each subset i of size binsize
-;                        array[ID-minids[i]+offset[i]] is the index of the original array ids where ID 
-;                        is found (assumes no duplicate IDs)
-
-function getIDIndexMapSparse, ids, map=map
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  minid = min(ids)
-  maxid = max(ids)
-
-  if n_elements(ids) gt 2e9 then message,'Error: Going to overrun arr.'
-
-  ; if map passed in, use it to return the indices of the ids instead of making a new map
-  if keyword_set(map) then begin
-    inds = lonarr(n_elements(ids))
-    totCount = 0ULL
-    
-    for i=0,map.nBlocks-1 do begin
-      ; process ids in this block
-      w = where(ids ge map.blockStarts[i] and ids le map.blockEnds[i],count)
-      
-      if count gt 0 then inds[w] = map.map[ids[w]-map.blockStarts[i]+map.blockOffsets[i]]
-      totCount += count
-    endfor
-    
-    if totCount ne n_elements(ids) then message,'Error: Failed to map all IDs to indices.'
-    return,inds
-  endif
-
-  ; make broad histogram of ids to identify sparsity
-  binsize = round(sqrt(max(ids))/10000.0) * 10000 > 10 < 1000000 ; adjust to range
-  print,binsize
-  hist = histogram(ids,binsize=binsize,min=0,loc=loc)
-  occBlocks = where(hist ne 0,count)
-  
-  if count eq 0 then message,'Error.'
-  
-  nBlocks = 0
-  blockStarts = []
-  blockLens   = []
-  blockEnds   = []
-  prevBlock = ulong64(0)
-  count = 0
-  
-  ; search for contiguous id blocks
-  for i=0,n_elements(occBlocks)-1 do begin
-    count += 1
-    
-    ; jump detected (zero block length ge binsize)
-    if occBlocks[i] ne (prevBlock+1) then begin
-      nBlocks += 1
-      blockStarts = [blockStarts,loc[occBlocks[i]]]
-      blockLens   = [blockLens,count]
-      blockEnds   = [blockEnds,loc[prevBlock]+count*binsize-1]
-      if i ne n_elements(occBlocks)-1 then count = 0
-    endif
-    
-    prevBlock = occBlocks[i]
-  endfor
-  
-  ; remove first (zero) block length and add final
-  if nBlocks gt 1 then begin
-    count += 1
-    blockLens = [blockLens[1:*],count]
-    blockEnds = [blockEnds[1:*],loc[prevBlock]+count*binsize-1]
-  endif
-  
-  if nBlocks le 0 then message,'Error: No dense blocks found.'
-  
-  ; make offset array into mapping
-  blockOffsets = ulonarr(nBlocks)
-  for i=0,nBlocks-2 do begin
-    blockOffsets[i+1] = blockOffsets[i] + blockLens[i]*binsize
-  endfor
-  
-  ; create mapping array inside return structure
-  r = { map          : ulonarr(total(blockLens)*binsize) ,$
-        blockStarts  : blockStarts                       ,$
-        blockLens    : blockLens                         ,$
-        blockEnds    : blockEnds                         ,$
-        blockOffsets : blockOffsets                      ,$
-        nBlocks      : nBlocks                            }
-  
-  ; fill mapping for each subset
-  totCount = 0ULL
-  
-  for i=0,nBlocks-1 do begin
-    ; what ids in this block?
-    w = where(ids ge blockStarts[i] and ids le blockEnds[i],count)
-    if count eq 0 then message,'Error'
-    
-    for j=0ULL,n_elements(w)-1 do r.map[ids[w[j]]-blockStarts[i]+blockOffsets[i]] = w[j] ;j + blockOffsets[i]
-    totCount += count
-  endfor
-  
-  if totCount ne n_elements(ids) then message,'Error: Did not map all IDs.'
-  if nuniq(r.map) ne n_elements(ids) then message,'Error: Non-unique mapping.' ; DEBUG ONLY (slow)
-  
-  ; DEBUG: for a subset, verify mapping
-  nVerify = 100 < n_elements(ids)
-  indVerify = floor(randomu(seed,nVerify)*n_elements(ids))
-  indTest = getIDIndexMap(ids[indVerify],map=r)
-  
-  for i=0,nVerify-1 do begin
-    w = where(ids eq ids[indVerify[i]],count)
-    ;print,i,w[0],indTest[i]
-    if count ne 1 or w[0] ne indTest[i] then message,'Error. Bad mapping.'
-  endfor
-  
-  return,r
-  
-end
-  
-; getIDIndexMap(): return an array of size max(ids)-min(ids) such that array[ID-min(ids)] is the 
-;                     index of the original array ids where ID is found (assumes a one to one mapping, 
-;                     not repeated indices as in the case of parentIDs for tracers)
-
-function getIDIndexMap, ids, minid=minid
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  minid = min(ids)
-  maxid = max(ids)
-
-  if n_elements(ids) gt 2e9 then message,'Error: Going to overrun arr.'
-  
-  ; C-style loop approach (good for sparse IDs)
-  arr = ulonarr(maxid-minid+1)
-  for i=0ULL,n_elements(ids)-1L do arr[ids[i]-minid] = i
-  
-  ; looped where approach (never a good idea)
-  ;arr = l64indgen(maxid-minid+1)
-  ;for i=minid,maxid do begin
-  ;  w = where(ids eq i,count)
-  ;  if (count gt 0) then arr[i] = w[0]
-  ;endfor
-
-  ; reverse histogram approach (good for dense ID sampling, maybe better by factor of ~2)
-  ;arr = l64indgen(maxid-minid+1)
-  ;h = histogram(ids,rev=rev,omin=omin)
-  ;for i=0L,n_elements(h)-1 do if (rev[i+1] gt rev[i]) then arr[i] = rev[rev[i]:rev[i+1]-1]
-
-  return, arr
-end
-
-; external C-routine interfaces
-; -----------------------------
-
-; calcHSML(): use CalcHSML external C-routine for the tree, neighbor searchings, and smoothing lengths
-
-function calcHSML, Pos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  if (ndims ne 1 and ndims ne 2 and ndims ne 3) then stop
-
-  ; prepare inputs
-  npos = (size(pos))[2]
-
-  NumPart = long(npos)
-  Mass    = fltarr(npos)+1.0 ;dummy
-  
-  DesNumNgb    = long(nNGB) ; number of neighbors to use
-  DesNumNgbDev = long(0)
-  boxSize      = float(boxSize)
-  HsmlGuess    = float(1.0)
-  Softening    = float(1.0)
-  
-  hsml_out = fltarr(NumPart)
-  
-  ; call CalcHSML
-  libName = '/n/home07/dnelson/idl/CalcHSML/CalcHSML_'+str(ndims)+'D.so'
-  ret = Call_External(libName, 'CalcHSML', $
-                      NumPart,Pos,Mass,DesNumNgb,DesNumNgbDev,boxSize,HsmlGuess,Softening,hsml_out, $
-                      /CDECL)
-   
-  return, hsml_out
-                     
-end
-
-; calcHSMLds(): use CalcHSMLds external C-routine to calculate the smoothing length needed to locate
-;               a given number of neighbors with positions Pos around each position in SearchPos
-;               where the two are generally different (e.g. the size of a tophat filter)
-
-function calcHSMLds, Pos, SearchPos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  npos = size(Pos)
-  nsrc = size(SearchPos)
-
-  if ndims ne 1 and ndims ne 2 and ndims ne 3 then message,'Error: Need ndims=1,2,3.'
-  if npos[0] ne 2 or npos[1] ne 3 then message,'Error: Point position array shape.'
-  if nsrc[0] ne 2 or nsrc[1] ne 3 then message,'Error: Search position array shape.'
-  if npos[2] lt nNGB then message,'Error: Point count too low for nNGB.'
-
-  ; prepare inputs
-  NumPart   = long(npos[2])
-  NumSearch = long(nsrc[2])
-  
-  DesNumNgb    = long(nNGB)     ; number of neighbors to use
-  DesNumNgbDev = long(0)        ; deviation allowed
-  boxSize      = float(boxSize) ; use zero for non-periodic search
-  
-  hsml_out = fltarr(NumSearch)
-  
-  ; make sure point arrays are float triples since we direct cast now
-  Pos = float(Pos)
-  SearchPos = float(SearchPos)
-  
-  ; call CalcHSMLds
-  libName = '/n/home07/dnelson/idl/CalcHSMLds/CalcHSMLds_'+str(ndims)+'D.so'
-  ret = Call_External(libName, 'CalcHSMLds', $
-                      NumPart,Pos,NumSearch,SearchPos,DesNumNgb,DesNumNgbDev,boxSize,hsml_out, $
-                      /CDECL)
-                      
-  return, hsml_out              
-end
-
-; calcTHVal(): use CalcTHVal external C-routine to calculate the tophat kernel estimated value of a 
-;              function specified for each particle/cell over a given number of neighbors with positions 
-;              Pos around each position in SearchPos, where the two are generally different (as in CalcHSMLds)
-
-function calcTHVal, PosVal, SearchPos, thMode=thMode, ndims=ndims, nNGB=nNGB, boxSize=boxSize, $
-                    weighted=weighted
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  npos = size(PosVal)
-  nsrc = size(SearchPos)
-
-  if ndims ne 1 and ndims ne 2 and ndims ne 3 then message,'Error: Need ndims=1,2,3.'
-  if thMode ne 1 and thMode ne 2 and thMode ne 3 then message,'Error: Need thMode=1,2,3.'
-  if npos[0] ne 2 then message,'Error: Point position array shape.'
-  if nsrc[0] ne 2 or nsrc[1] ne 3 then message,'Error: Search position array shape.'
-  if npos[2] lt nNGB then message,'Error: Point count too low for nNGB.'
-  
-  if ~keyword_set(weighted) and npos[1] ne 4 then message,'Error: Posval should be 4xN.'
-  if keyword_set(weighted) and npos[1] ne 5 then message,'Error: Posval(wt) should be 5xN.'
-
-  ; prepare inputs
-  NumPart   = long(npos[2])
-  NumSearch = long(nsrc[2])
-  
-  DesNumNgb    = long(nNGB)     ; number of neighbors to use
-  boxSize      = float(boxSize) ; use zero for non-periodic search
-  thMode       = fix(thMode)    ; 1=mean, 2=total, 3=total/volume (density)
-  
-  val_out = fltarr(NumSearch)
-  
-  ; make sure point arrays are 32bit float since we direct cast now
-  PosVal    = float(PosVal)
-  SearchPos = float(SearchPos)
-  
-  if ~keyword_set(weighted) then begin
-    ; call CalcTHVal
-    libName = '/n/home07/dnelson/idl/CalcTHVal/CalcTHVal_'+str(ndims)+'D.so'
-    ret = Call_External(libName, 'CalcTHVal', $
-                        NumPart,PosVal,NumSearch,SearchPos,DesNumNgb,thMode,boxSize,val_out, $
-                        /CDECL)
-  endif else begin
-    ; call CalcTHValWt where posval=posvalwt
-    libName = '/n/home07/dnelson/idl/CalcTHValWt/CalcTHValWt_'+str(ndims)+'D.so'
-    ret = Call_External(libName, 'CalcTHValWt', $
-                        NumPart,PosVal,NumSearch,SearchPos,DesNumNgb,thMode,boxSize,val_out, $
-                        /CDECL)
-  endelse
-                      
-  return, val_out              
-end
-
-; calcNN(): use CalcNN external C-routine for the tree and neighbor search
-;           return the index of Pos_SrcTargs closest to each of Pos_SrcOrigs
-
-function calcNN, Pos_SrcTargs, Pos_SrcOrigs, boxSize=boxSize, ndims=ndims
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  ; prepare inputs
-  n_srcTargs = long( n_elements(Pos_SrcTargs[0,*]) )
-  n_srcOrigs = long( n_elements(Pos_SrcOrigs[0,*]) )
-  
-  boxSize = float(boxSize)
-  
-  ; make sure floats for direct cast
-  Pos_SrcTargs = float(Pos_SrcTargs)
-  Pos_SrcOrigs = float(Pos_SrcOrigs)
-  
-  ; prepare return
-  ind_out = lonarr(n_srcOrigs)
-  
-  ; call CalcNN
-  libName = '/n/home07/dnelson/idl/CalcNN/CalcNN_'+str(ndims)+'D.so'
-  ret = Call_External(libName, 'CalcNN', $
-                      n_srcTargs,n_srcOrigs,Pos_SrcTargs,Pos_SrcOrigs,boxSize,ind_out, $
-                      /CDECL)
-    
-  return, ind_out
-end
-
-; calcSphMap(): use CalcSphMap external C-routine to simultaneously calculate a map of projected 
-;               density and some other mass weighted quantity (e.g. temperature) with the sph 
-;               spline kernel (for non-periodic set boxsize=0)
-
-function calcSphMap, pos, hsml, mass, quant, axes=axes, boxSizeImg=boxSizeImg, boxSizeSim=boxSizeSim, $
-                     boxCen=boxCen, nPixels=nPixels, ndims=ndims
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  ; prepare inputs
-  NumPart = (size(pos))[2]
-  
-  boxSizeImg = float(boxSizeImg)
-  boxSizeSim = float(boxSizeSim)
-  boxCen     = float(boxCen)
-  nPixels    = fix(nPixels)
-  axes       = fix(axes)
-  
-  ; check inputs
-  if (n_elements(boxSizeImg) ne 3) then stop
-  if (n_elements(boxSizeSim) ne 1) then stop
-  if (n_elements(boxCen)  ne 3) then stop
-  if (n_elements(nPixels) ne 2) then stop
-  if (n_elements(axes)    ne 2) then stop
-  
-  if (size(pos))[0] ne 2 or (size(pos))[1] ne 3 then stop
-  if (size(hsml))[0] ne 1 then stop
-  if (size(mass))[0] ne 1 then stop
-  if (size(quant))[0] ne 1 then stop
-  
-  if (size(pos))[2] ne (size(hsml))[1] or $
-     (size(pos))[2] ne (size(mass))[1] or $
-     (size(pos))[2] ne (size(quant))[1] then stop
-  
-  if (axes[0] ne 0 and axes[0] ne 1 and axes[0] ne 2) then stop
-  if (axes[1] ne 0 and axes[1] ne 1 and axes[1] ne 2) then stop
-  
-  ; we direct cast so ensure everything is the right size
-  pos   = float(pos)
-  hsml  = float(hsml)
-  mass  = float(hsml)
-  quant = float(quant)
-  
-  ; make return
-  dens_out  = fltarr(nPixels[0],nPixels[1])
-  quant_out = fltarr(nPixels[0],nPixels[1])
-
-  ; call CalcSphMap
-  libName = '/n/home07/dnelson/idl/CalcSphMap/CalcSphMap_'+str(ndims)+'D.so'
-  ret = Call_External(libName, 'CalcSphMap', $
-                      NumPart,pos,hsml,mass,quant,dens_out,quant_out,$
-                      boxSizeImg[0],boxSizeImg[1],boxSizeImg[2],boxSizeSim,$
-                      boxCen[0],boxCen[1],boxCen[2],axes[0],axes[1],nPixels[0],nPixels[1],$
-                      /CDECL)
-
-  return, { dens_out:dens_out, quant_out:quant_out }
-end
-
-; estimateDensityTophat(): spatial density estimator for an input position tuple array and
-;                          CONSTANT mass per particle, by using HSMLs as tophat filter sizes
-; pos_search : if specified, estimate density at this point set not at the positions of the particles
-
-function estimateDensityTophat, pos, pos_search=pos_search, mass=mass, $
-                                ndims=ndims, nNGB=nNGB, boxSize=boxSize
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  if ~keyword_set(nNGB) or ~keyword_set(ndims) then message,'Error: Must specify nNGB and ndims.'
-  if ~keyword_set(mass) or n_elements(mass) ne 1 then message,'Error: Expected one constant mass.'
-  
-  ; calculate smoothing lengths
-  if ~keyword_set(pos_search) then $
-    hsml_out = calcHSML(pos,ndims=ndims,nNGB=nNGB,boxSize=boxSize)
-  if keyword_set(pos_search) then $
-    hsml_out = calcHSMLds(pos,pos_search,ndims=ndims,nNGB=nNGB,boxSize=boxSize)
-  
-  ; convert smoothing lengths to densities
-  if (ndims eq 1) then hsml_out = mass * nNGB / (2.0 * temporary(hsml_out))
-  if (ndims eq 2) then hsml_out = mass * nNGB / (!pi * temporary(hsml_out)^2.0)
-  if (ndims eq 3) then hsml_out = mass * nNGB / (4.0*!pi/3.0 * temporary(hsml_out)^3.0)
-  
-  return,hsml_out
-end
-
 ; load routines for use
 ; ---------------------
+@externalC
 @units
 @simParams
 @cosmoUtil
+@groupCat
 @cosmoLoad
 
 @mergerTree
-@cosmoAnalysis
+@galaxyCat
 @accretionMode
 @accretionTimes
 @accretionVel
 @maxTemps
+@timeScales
 @accretionTraj
 @accretionTrajVis
 @cosmoVis

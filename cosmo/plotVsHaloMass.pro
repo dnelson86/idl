@@ -1,6 +1,6 @@
 ; plotVsHaloMass.pro
 ; gas accretion project - plots as a function of halo mass
-; dnelson sep.2012
+; dnelson nov.2012
 
 ; plotPreBin():
 
@@ -11,23 +11,23 @@ pro plotPreBin
   ; config
   sgSelect   = 'pri'
   redshift   = 2.0
-  res        = 256
+  res        = 128
   
-  timeWindows = list(250.0,500.0,1000.0,'all') ; Myr
+  timeWindows = list(250.0,500.0,1000.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; ; Myr
   
   foreach timeWindow,timeWindows do begin
   
     ; load
-    sPg = simParams(res=res,run='gadget',redshift=redshift)
-    sPa = simParams(res=res,run='tracer',redshift=redshift)
+    ;sPg = simParams(res=res,run='gadget',redshift=redshift)
+    sPa = simParams(res=res,run='feedback',redshift=redshift)
   
-    GA_all      = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='all')
+    ;GA_all      = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='all')
     AR_all      = haloMassBinValues(sP=sPa,sgSelect=sgSelect,timeWindow=timeWindow,accMode='all')
-    GA_smooth   = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='smooth')
+    ;GA_smooth   = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='smooth')
     AR_smooth   = haloMassBinValues(sP=sPa,sgSelect=sgSelect,timeWindow=timeWindow,accMode='smooth')
-    GA_clumpy   = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='clumpy')
+    ;GA_clumpy   = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='clumpy')
     AR_clumpy   = haloMassBinValues(sP=sPa,sgSelect=sgSelect,timeWindow=timeWindow,accMode='clumpy') 
-    GA_stripped = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='stripped')
+    ;GA_stripped = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='stripped')
     AR_stripped = haloMassBinValues(sP=sPa,sgSelect=sgSelect,timeWindow=timeWindow,accMode='stripped')
     
   endforeach
@@ -45,8 +45,9 @@ pro plotByMethod
 
   ; config
   sgSelect   = 'pri'
-  accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
-  timeWindow = 1000.0 ; consider accretion over this past time range (Myr)
+  accMode    = 'all' ; accretion mode: all, smooth, bclumpy, sclumpy
+  timeWindow = "all" ; consider accretion over this past time range (Myr)
+                      ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0 ; plot Tmax/Tvir=1
   res        = 512
   redshift   = 2.0
@@ -66,11 +67,14 @@ pro plotByMethod
   GA = haloMassBinValues(sP=sPg,sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow)
   AR = haloMassBinValues(sP=sPa,sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow)
   
+  if isnumeric(timeWindow) then twStr = str(fix(timeWindow))
+  if ~isnumeric(timeWindow) then twStr = "-"+timeWindow
+  
   ; --- cold fractions ---
   
   ; plot (1) - 2x2 of (both,gmem)x(const,tvir)
   pName = sPg.plotPath + 'coldFracByMethod.both-gmem.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
-          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+str(fix(timeWindow))+'_am-'+accMode+'.eps'
+          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+twStr+'_am-'+accMode+'.eps'
   start_PS, pName, /big
     
     x0 = 0.13 & x1 = 0.53 & x2 = 0.93
@@ -156,7 +160,7 @@ pro plotByMethod
   
   ; plot (1) - 2x2 of (gal,stars)x(const,tvir)
   pName = sPg.plotPath + 'coldFracByMethod.gal-stars.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
-          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+str(fix(timeWindow))+'_am-'+accMode+'.eps'
+          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+twStr+'_am-'+accMode+'.eps'
   start_PS, pName, /big
     
     x0 = 0.13 & x1 = 0.53 & x2 = 0.93
@@ -247,7 +251,7 @@ pro plotByMethod
   
   ; plot (1) - both/gmem, variable*const
   pName = sPg.plotPath + 'accRateByMethod.both-gmem.const.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
-          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+str(fix(timeWindow))+'_am-'+accMode+'.eps'
+          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+twStr+'_am-'+accMode+'.eps'
   start_PS, pName, /big
     
     x0 = 0.13 & x1 = 0.53 & x2 = 0.93
@@ -313,7 +317,7 @@ pro plotByMethod
   
   ; plot (2) - both/gmem, variable*tvir
   pName = sPg.plotPath + 'accRateByMethod.both-gmem.tvir.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
-          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+str(fix(timeWindow))+'_am-'+accMode+'.eps'
+          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+twStr+'_am-'+accMode+'.eps'
   start_PS, pName, /big
     
     x0 = 0.13 & x1 = 0.53 & x2 = 0.93
@@ -378,7 +382,7 @@ pro plotByMethod
   
   ; plot (3) - gal/stars, variable*const
   pName = sPg.plotPath + 'accRateByMethod.gal-stars.const.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
-          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+str(fix(timeWindow))+'_am-'+accMode+'.eps'
+          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+twStr+'_am-'+accMode+'.eps'
   start_PS, pName, /big
     
     x0 = 0.13 & x1 = 0.53 & x2 = 0.93
@@ -444,7 +448,7 @@ pro plotByMethod
   
   ; plot (4) - gal/stars, variable*tvir
   pName = sPg.plotPath + 'accRateByMethod.gal-stars.tvir.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
-          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+str(fix(timeWindow))+'_am-'+accMode+'.eps'
+          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+twStr+'_am-'+accMode+'.eps'
   start_PS, pName, /big
     
     x0 = 0.13 & x1 = 0.53 & x2 = 0.93
@@ -506,99 +510,323 @@ pro plotByMethod
     cgText,x2+0.015,mean([y1,y2]),"Galaxy (Gas Only)",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
     cgText,mean([x0,x1]),y2+0.015,"Hot",alignment=0.5,color=cgColor('dark gray'),/normal
     cgText,mean([x1,x2]),y2+0.015,"Cold",alignment=0.5,color=cgColor('dark gray'),/normal
-  end_PS  
+  end_PS
   
-  ; plot (5) - median lines (gadget vs arepo) both/gmem separated with specific inset
-  if 0 then begin
-  pName = sPg.plotPath + 'accRateByMethod.both-gmem.sp.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
-          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+str(fix(timeWindow))+'_am-'+accMode+'.eps'
-  start_PS, pName, xs = 7.5, ys = 10.0
+  ; --- total mass ---  
+  yrange_gal = [2e7,2e10]
+  yrange_halo = [2e7,2e10]
+  
+  if accMode eq 'all' then yrange_gal *= 3
+  if accMode eq 'all' then yrange_halo *= 3
+  
+  ; plot (1) - both/gmem, variable*const
+  pName = sPg.plotPath + 'totalMassByMethod.both-gmem.const.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
+          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+twStr+'_am-'+accMode+'.eps'
+  start_PS, pName, /big
     
-    x0 = 0.15 & x1 = 0.95
-    y0 = 0.1 & y1 = 0.525 & y2 = 0.95
-    pos = list( [x0,y1,x1,y2] ,$ ; uc
-                [x0,y0,x1,y1]  ) ; lc
-                
-    possub = list( [0.615,0.57,0.895,0.74] ,$ ; upper sub
-                   [0.615,0.14,0.895,0.31]  ) ; lower sub
+    x0 = 0.13 & x1 = 0.53 & x2 = 0.93
+    y0 = 0.15 & y1 = 0.55 & y2 = 0.95
+    pos = list( [x0,y1,x1,y2] ,$ ; ul
+                [x1,y1,x2,y2] ,$ ; ur
+                [x0,y0,x1,y1] ,$ ; ll
+                [x1,y0,x2,y1]  ) ; lr
    
-    ; both
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+    ; ul: hot both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_gal,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",xtickname=replicate(' ',10),pos=pos[0]
     
-    ; gadget (both)
-    cgPlot,GA.logMassBinCen,smooth(GA.coldMedian.both_tViracc[tVirInd,*],sK,/nan),color=sPg.colorsG[cInd],line=lines[0],/overplot
-    cgPlot,GA.logMassBinCen,smooth(GA.hotMedian.both_tViracc[tVirInd,*],sK,/nan),color=sPg.colorsG[cInd],line=lines[2],/overplot
-    cgPlot,GA.logMassBinCen,smooth(GA.totalMedian.both,sK,/nan),color=sPg.colorsG[cInd],line=lines[1],/overplot
-   
-    ; arepo (both)
-    cgPlot,AR.logMassBinCen,smooth(AR.coldMedian.both_tViracc[tVirInd,*],sK,/nan),color=sPa.colorsA[cInd],line=lines[0],/overplot
-    cgPlot,AR.logMassBinCen,smooth(AR.hotMedian.both_tViracc[tVirInd,*],sK,/nan),color=sPa.colorsA[cInd],line=lines[2],/overplot
-    cgPlot,AR.logMassBinCen,smooth(AR.totalMedian.both,sK,/nan),color=sPa.colorsA[cInd],line=lines[1],/overplot
+    for j=0,n_elements(GA.TcutVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.hotTotal.both_const[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TcutVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.hotTotal.both_const[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
     
     ; legend
-    legend,[textoidl("T_{max} < 1.0 T_{vir,acc}"),textoidl("T_{max} > 1.0 T_{vir,acc}"),'total'],$
-      linestyle=[lines[0],lines[2],lines[1]],box=0,linesize=0.25,/top,/left,spacing=!p.charsize+0.5
+    legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,/top,/left
     
-    ; SUBPLOT: specific (both)
-    polyfill,[possub[0,0]-0.03,possub[0,0]-0.03,possub[0,2]+0.002,possub[0,2]+0.002,possub[0,0]-0.03],$
-             [possub[0,1],possub[0,3],possub[0,3],possub[0,1],possub[0,1]],$
-             /normal,color=cgColor('white')
-             
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=[-13.5,-10.0],/xs,/ys,ytitle="",xtitle="",$
-      pos=possub[0],/noerase,charsize=!p.charsize-0.4,ytickv=[-10,-11,-12,-13],yticks=3
+    ; ur: cold both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_gal,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),pos=pos[1],/noerase
+    
+    for j=0,n_elements(GA.TcutVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.coldTotal.both_const[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TcutVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.coldTotal.both_const[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+    
+    ; ll: hot gmem (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_halo,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",pos=pos[2],/noerase
+    
+    for j=0,n_elements(GA.TcutVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.hotTotal.gmem_const[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TcutVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.hotTotal.gmem_const[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
 
-    ; gadget (both)
-    cgPlot,GA.logMassBinCen,smooth(alog10(GA.coldMedian.both_tViracc[tVirInd,*]/10.0^GA.logMassBinCen),sK,/nan),color=sPg.colorsG[cInd],line=lines[0],/overplot
-    cgPlot,GA.logMassBinCen,smooth(alog10(GA.hotMedian.both_tViracc[tVirInd,*]/10.0^GA.logMassBinCen),sK,/nan),color=sPg.colorsG[cInd],line=lines[2],/overplot
-    cgPlot,GA.logMassBinCen,smooth(alog10(GA.totalMedian.both/10.0^GA.logMassBinCen),sK,/nan),color=sPg.colorsG[cInd],line=lines[1],/overplot
+    ; lr: cold gmem (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_halo,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",ytickname=replicate(' ',10),pos=pos[3],xticks=3,xtickv=[10.5,11.0,11.5,12.0],/noerase
+    
+    for j=0,n_elements(GA.TcutVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.coldTotal.gmem_const[j,*],sK,/nan),color=sPg.colorsG[1],line=j,/overplot
+    for j=0,n_elements(AR.TcutVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.coldTotal.gmem_const[j,*],sK,/nan),color=sPa.colorsA[1],line=j,/overplot
+
+    ; legend
+    strings = textoidl("T_{max} < T_{c} = 10^{"+string(GA.TcutVals,format='(f3.1)')+"}")
+    legend,strings,linestyle=indgen(n_elements(GA.TcutVals)),box=0,linesize=0.25,position=[10.05,0.7*yrange_halo[1]]
+
+    ; labels
+    cgText,0.05,y1,"Total Accreted Mass "+textoidl("[_{ }h^{-1} M_{sun }]"),$
+      alignment=0.5,orientation=90.0,/normal
+    cgText,x1,0.05,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),alignment=0.5,/normal
+    
+    cgText,x2+0.015,mean([y0,y1]),"Halo Atmosphere",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
+    cgText,x2+0.015,mean([y1,y2]),"Central Galaxy",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
+    cgText,mean([x0,x1]),y2+0.015,"Hot",alignment=0.5,color=cgColor('dark gray'),/normal
+    cgText,mean([x1,x2]),y2+0.015,"Cold",alignment=0.5,color=cgColor('dark gray'),/normal
+  end_PS
+  
+  ; plot (2) - both/gmem, variable*tvir
+  pName = sPg.plotPath + 'totalMassByMethod.both-gmem.tvir.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
+          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+twStr+'_am-'+accMode+'.eps'
+  start_PS, pName, /big
+    
+    x0 = 0.13 & x1 = 0.53 & x2 = 0.93
+    y0 = 0.15 & y1 = 0.55 & y2 = 0.95
+    pos = list( [x0,y1,x1,y2] ,$ ; ul
+                [x1,y1,x2,y2] ,$ ; ur
+                [x0,y0,x1,y1] ,$ ; ll
+                [x1,y0,x2,y1]  ) ; lr
    
-    ; arepo (both)
-    cgPlot,AR.logMassBinCen,smooth(alog10(AR.coldMedian.both_tViracc[tVirInd,*]/10.0^GA.logMassBinCen),sK,/nan),color=sPa.colorsA[cInd],line=lines[0],/overplot
-    cgPlot,AR.logMassBinCen,smooth(alog10(AR.hotMedian.both_tViracc[tVirInd,*]/10.0^GA.logMassBinCen),sK,/nan),color=sPa.colorsA[cInd],line=lines[2],/overplot
-    cgPlot,AR.logMassBinCen,smooth(alog10(AR.totalMedian.both/10.0^GA.logMassBinCen),sK,/nan),color=sPa.colorsA[cInd],line=lines[1],/overplot
+    ; ul: hot both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_gal,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",xtickname=replicate(' ',10),pos=pos[0]
     
-    ; gmem
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
-      ytitle="",xtitle=textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),pos=pos[1],/noerase
-    
-    ; gadget (gmem)
-    cgPlot,GA.logMassBinCen,smooth(GA.coldMedian.gmem_tViracc[tVirInd,*],sK,/nan),color=sPg.colorsG[cInd],line=lines[0],/overplot
-    cgPlot,GA.logMassBinCen,smooth(GA.hotMedian.gmem_tViracc[tVirInd,*],sK,/nan),color=sPg.colorsG[cInd],line=lines[2],/overplot
-    cgPlot,GA.logMassBinCen,smooth(GA.totalMedian.gmem,sK,/nan),color=sPg.colorsG[cInd],line=lines[1],/overplot
-    
-    ; arepo (gmem)
-    cgPlot,AR.logMassBinCen,smooth(AR.coldMedian.gmem_tViracc[tVirInd,*],sK,/nan),color=sPa.colorsA[cInd],line=lines[0],/overplot
-    cgPlot,AR.logMassBinCen,smooth(AR.hotMedian.gmem_tViracc[tVirInd,*],sK,/nan),color=sPa.colorsA[cInd],line=lines[2],/overplot
-    cgPlot,AR.logMassBinCen,smooth(AR.totalMedian.gmem,sK,/nan),color=sPa.colorsA[cInd],line=lines[1],/overplot
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.hotTotal.both_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.hotTotal.both_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
     
     ; legend
-    legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],$
-      box=0,/top,/left,spacing=!p.charsize+0.5
+    legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,/top,/left
     
-    ; SUBPLOT: specific (gmem)
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=[-12.0,-10.5],/xs,/ys,ytitle="",xtitle="",$
-      pos=possub[1],/noerase,charsize=!p.charsize-0.4,ytickv=[-10,-11,-12],yticks=2
+    ; ur: cold both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_gal,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),pos=pos[1],/noerase
     
-    ; gadget (gmem)
-    cgPlot,GA.logMassBinCen,smooth(alog10(GA.coldMedian.gmem_tViracc[tVirInd,*]/10.0^GA.logMassBinCen),sK,/nan),color=sPg.colorsG[cInd],line=lines[0],/overplot
-    cgPlot,GA.logMassBinCen,smooth(alog10(GA.hotMedian.gmem_tViracc[tVirInd,*]/10.0^GA.logMassBinCen),sK,/nan),color=sPg.colorsG[cInd],line=lines[2],/overplot
-    cgPlot,GA.logMassBinCen,smooth(alog10(GA.totalMedian.gmem/10.0^GA.logMassBinCen),sK,/nan),color=sPg.colorsG[cInd],line=lines[1],/overplot
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.coldTotal.both_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.coldTotal.both_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
     
-    ; arepo (gmem)
-    cgPlot,AR.logMassBinCen,smooth(alog10(AR.coldMedian.gmem_tViracc[tVirInd,*]/10.0^GA.logMassBinCen),sK,/nan),color=sPa.colorsA[cInd],line=lines[0],/overplot
-    cgPlot,AR.logMassBinCen,smooth(alog10(AR.hotMedian.gmem_tViracc[tVirInd,*]/10.0^GA.logMassBinCen),sK,/nan),color=sPa.colorsA[cInd],line=lines[2],/overplot
-    cgPlot,AR.logMassBinCen,smooth(alog10(AR.totalMedian.gmem/10.0^GA.logMassBinCen),sK,/nan),color=sPa.colorsA[cInd],line=lines[1],/overplot
+    ; ll: hot gmem (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_halo,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",pos=pos[2],/noerase
+    
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.hotTotal.gmem_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.hotTotal.gmem_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+      
+    ; lr: cold gmem (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_halo,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",ytickname=replicate(' ',10),pos=pos[3],xticks=3,xtickv=[10.5,11.0,11.5,12.0],/noerase
+    
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.coldTotal.gmem_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.coldTotal.gmem_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+
+    ; legend
+    strings = textoidl("T_{max} / T_{vir,acc} < ")+string(GA.TvirVals,format='(f4.1)')
+    legend,strings,linestyle=indgen(n_elements(GA.TvirVals)),box=0,linesize=0.25,position=[10.05,0.7*yrange_halo[1]],charsize=!p.charsize-0.1
+
+    ; labels
+    cgText,0.05,y1,"Total Accreted Mass "+textoidl("[_{ }h^{-1} M_{sun }]"),$
+      alignment=0.5,orientation=90.0,/normal
+    cgText,x1,0.05,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),alignment=0.5,/normal
+    
+    cgText,x2+0.015,mean([y0,y1]),"Halo Atmosphere",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
+    cgText,x2+0.015,mean([y1,y2]),"Central Galaxy",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
+    cgText,mean([x0,x1]),y2+0.015,"Hot",alignment=0.5,color=cgColor('dark gray'),/normal
+    cgText,mean([x1,x2]),y2+0.015,"Cold",alignment=0.5,color=cgColor('dark gray'),/normal
+  end_PS
+  
+  ; plot (3) - 3x3 grid including totals of hot+cold for both galaxy and gmem
+  pName = sPg.plotPath + 'totalMassByMethod.3x3.tvir.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
+          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+twStr+'_am-'+accMode+'.eps'
+  start_PS, pName, xs=8.0, /big
+  
+    ;massRanges = [10.7,11.5]
+  
+    x0 = 0.13 & x1 = 0.40 & x2 = 0.67 & x3 = 0.94
+    y0 = 0.14 & y1 = 0.54 & y2 = 0.94
+    pos = list( [x0,y1,x1,y2] ,$ ; ul
+                [x1,y1,x2,y2] ,$ ; uc
+                [x2,y1,x3,y2] ,$ ; ur
+                [x0,y0,x1,y1] ,$ ; ll
+                [x1,y0,x2,y1] ,$ ; lc
+                [x2,y0,x3,y1] )  ; lr 
+                
+    ; ul: hot both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_gal,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",xtickname=replicate(' ',10),pos=pos[0]
+    
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.hotTotal.both_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.hotTotal.both_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+    
+    ; legend
+    legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,position=[10.05,0.7*yrange_gal[1]]
+    
+    ; uc: cold both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_gal,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),pos=pos[1],/noerase
+    ;for i=0,1 do cgPlot,[massRanges[i],massRanges[i]],yrange_halo,line=1,/overplot
+    
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.coldTotal.both_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.coldTotal.both_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+    
+    ; ur: total both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_gal,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),pos=pos[2],/noerase
+    ;for i=0,1 do cgPlot,[massRanges[i],massRanges[i]],yrange_halo,line=1,/overplot
+    
+    cgPlot,GA.logMassBinCen,smooth(GA.totalMassHC.both,sK,/nan),color=sPg.colorsG[cInd],line=0,/overplot
+    cgPlot,AR.logMassBinCen,smooth(AR.totalMassHC.both,sK,/nan),color=sPa.colorsA[cInd],line=0,/overplot
+    
+    ; ll: hot gmem (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_halo,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",pos=pos[3],/noerase
+    ;for i=0,1 do cgPlot,[massRanges[i],massRanges[i]],yrange_halo,line=1,/overplot
+    
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.hotTotal.gmem_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.hotTotal.gmem_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+
+    ; lc: cold gmem (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_halo,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",ytickname=replicate(' ',10),pos=pos[4],xticks=3,xtickv=[10.5,11.0,11.5,12.0],/noerase
+    ;for i=0,1 do cgPlot,[massRanges[i],massRanges[i]],yrange_halo,line=1,/overplot
+    
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.coldTotal.gmem_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.coldTotal.gmem_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+
+    ; lr: total gmem (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_halo,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",ytickname=replicate(' ',10),pos=pos[5],xticks=3,xtickv=[10.5,11.0,11.5,12.0],/noerase
+    ;for i=0,1 do cgPlot,[massRanges[i],massRanges[i]],yrange_halo,line=1,/overplot
+    
+    cgPlot,GA.logMassBinCen,smooth(GA.totalMassHC.gmem,sK,/nan),color=sPg.colorsG[cInd],line=0,/overplot
+    cgPlot,AR.logMassBinCen,smooth(AR.totalMassHC.gmem,sK,/nan),color=sPa.colorsA[cInd],line=0,/overplot
+
+    ; legend
+    strings = textoidl("T_{max} / T_{vir,acc} < ")+string(GA.TvirVals,format='(f4.1)')
+    legend,strings,linestyle=indgen(n_elements(GA.TvirVals)),box=0,linesize=0.25,position=[10.25,10*yrange_halo[0]],charsize=!p.charsize-0.2
     
     ; labels
-    cgText,0.05,0.5,"Gas Accretion Rate "+textoidl("[_{ }h^{-1} M_{sun } yr^{-1 }]"),$
+    cgText,0.05,y1,"Total Accreted Mass "+textoidl("[_{ }h^{-1} M_{sun }]"),$
       alignment=0.5,orientation=90.0,/normal
-    cgText,x1+0.02,mean([y0,y1]),"Halo Atmosphere",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
-    cgText,x1+0.02,mean([y1,y2]),"Central Galaxy",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
+    cgText,mean([x0,x3]),0.04,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),alignment=0.5,/normal
     
+    cgText,x3+0.015,mean([y0,y1]),"Halo Atmosphere",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
+    cgText,x3+0.015,mean([y1,y2]),"Central Galaxy",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
+    cgText,mean([x0,x1]),y2+0.015,"Hot",alignment=0.5,color=cgColor('dark gray'),/normal
+    cgText,mean([x1,x2]),y2+0.015,"Cold",alignment=0.5,color=cgColor('dark gray'),/normal
+    cgText,mean([x2,x3]),y2+0.015,"Total",alignment=0.5,color=cgColor('dark gray'),/normal
+            
   end_PS
-  endif ;0  
   
+  ; plot (4) - gal instead of both
+  pName = sPg.plotPath + 'totalMassByMethod.3x3.tvir.galonly.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
+          str(sPg.res)+'_'+str(sPg.snap)+'_tw'+twStr+'_am-'+accMode+'.eps'
+  start_PS, pName, xs=8.0, /big
+  
+    x0 = 0.13 & x1 = 0.40 & x2 = 0.67 & x3 = 0.94
+    y0 = 0.14 & y1 = 0.54 & y2 = 0.94
+    pos = list( [x0,y1,x1,y2] ,$ ; ul
+                [x1,y1,x2,y2] ,$ ; uc
+                [x2,y1,x3,y2] ,$ ; ur
+                [x0,y0,x1,y1] ,$ ; ll
+                [x1,y0,x2,y1] ,$ ; lc
+                [x2,y0,x3,y1] )  ; lr 
+                
+    ; ul: hot both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_gal,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",xtickname=replicate(' ',10),pos=pos[0]
+    
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.hotTotal.gal_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.hotTotal.gal_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+    
+    ; legend
+    legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,position=[10.05,0.7*yrange_gal[1]]
+    
+    ; uc: cold both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_gal,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),pos=pos[1],/noerase
+    
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.coldTotal.gal_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.coldTotal.gal_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+    
+    ; ur: total both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_gal,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),pos=pos[2],/noerase
+    
+    cgPlot,GA.logMassBinCen,smooth(GA.totalMassHC.gal,sK,/nan),color=sPg.colorsG[cInd],line=0,/overplot
+    cgPlot,AR.logMassBinCen,smooth(AR.totalMassHC.gal,sK,/nan),color=sPa.colorsA[cInd],line=0,/overplot
+    
+    ; ll: hot gmem (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_halo,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",pos=pos[3],/noerase
+    
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.hotTotal.gmem_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.hotTotal.gmem_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+      
+    ; lc: cold gmem (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_halo,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",ytickname=replicate(' ',10),pos=pos[4],xticks=3,xtickv=[10.5,11.0,11.5,12.0],/noerase
+    
+    for j=0,n_elements(GA.TvirVals)-1 do $
+      cgPlot,GA.logMassBinCen,smooth(GA.coldTotal.gmem_tviracc[j,*],sK,/nan),color=sPg.colorsG[cInd],line=j,/overplot
+    for j=0,n_elements(AR.TvirVals)-1 do $
+      cgPlot,AR.logMassBinCen,smooth(AR.coldTotal.gmem_tviracc[j,*],sK,/nan),color=sPa.colorsA[cInd],line=j,/overplot
+
+    ; lr: total gmem (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_halo,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",ytickname=replicate(' ',10),pos=pos[5],xticks=3,xtickv=[10.5,11.0,11.5,12.0],/noerase
+    
+    cgPlot,GA.logMassBinCen,smooth(GA.totalMassHC.gmem,sK,/nan),color=sPg.colorsG[cInd],line=0,/overplot
+    cgPlot,AR.logMassBinCen,smooth(AR.totalMassHC.gmem,sK,/nan),color=sPa.colorsA[cInd],line=0,/overplot
+
+    ; legend
+    strings = textoidl("T_{max} / T_{vir,acc} < ")+string(GA.TvirVals,format='(f4.1)')
+    legend,strings,linestyle=indgen(n_elements(GA.TvirVals)),box=0,linesize=0.25,position=[10.25,10*yrange_halo[0]],charsize=!p.charsize-0.2
+    
+    ; labels
+    cgText,0.05,y1,"Total Accreted Gas Mass "+textoidl("[_{ }h^{-1} M_{sun }]"),$
+      alignment=0.5,orientation=90.0,/normal
+    cgText,mean([x0,x3]),0.04,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),alignment=0.5,/normal
+    
+    cgText,x3+0.015,mean([y0,y1]),"Halo Atmosphere",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
+    cgText,x3+0.015,mean([y1,y2]),"Central Galaxy",alignment=0.5,color=cgColor('dark gray'),orientation=-90.0,/normal
+    cgText,mean([x0,x1]),y2+0.015,"Hot",alignment=0.5,color=cgColor('dark gray'),/normal
+    cgText,mean([x1,x2]),y2+0.015,"Cold",alignment=0.5,color=cgColor('dark gray'),/normal
+    cgText,mean([x2,x3]),y2+0.015,"Total",alignment=0.5,color=cgColor('dark gray'),/normal
+            
+  end_PS  
+  
+  stop
 end
 
 ; plotByMode(): plot cold fractions and accretion rates separated out into the four modes and also
@@ -611,7 +839,7 @@ pro plotByMode
   ; config
   sgSelect   = 'pri'
   redshift   = 2.0
-  res        = 512
+  res        = 128
   timeWindow = 1000.0
 
   sK     = 3 ; smoothing kernel size

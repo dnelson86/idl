@@ -1,6 +1,6 @@
 ; plotVsHaloMass.pro
 ; gas accretion project - bin quantities as a function of halo mass
-; dnelson aug.2012
+; dnelson nov.2012
 
 ; haloMassBinValues(): bin accretion rate (in cold/hot) and cold fraction as a function of halo mass
 
@@ -22,7 +22,11 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
   if str(TW) eq 'all' then begin
     timeWindow = curtime - redshiftToAgeFlat(6.0)*1e9 ; go back to z=6 (in yr)
   endif else begin
-    timeWindow = TW * 1e6 ; convert input Myr to yr
+    if isnumeric(TW) then begin
+      timeWindow = TW * 1e6 ; convert input Myr to yr
+    endif else begin
+      timeWindow = TW ; "tVir_tIGM" or "tVir_tIGM_bin"
+    endelse
   endelse
 
   ; config
@@ -96,6 +100,8 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
                   
   hotAccRate = coldAccRate
   coldFrac   = coldAccRate
+  totalColdMass = coldAccRate
+  totalHotMass  = coldAccRate
               
   coldFrac_cur = { gal_const     : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
                    gmem_const    : fltarr(nCuts,n_elements(mt.galcatIDList))   ,$
@@ -121,10 +127,48 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
   
     ; calculate min(timeWindow,length of time this halo was tracked back) to use to normalize rates
     loc_timeWindow = timeWindow
+
+    ; special types of timeWindows
+    if ~isnumeric(loc_timeWindow) then begin
+      temp_IGM     = 4e4 ; K (based on FG11)
+      massRanges   = [10.0,10.7,11.5] ; log Msun
+      massRangeTWs = [500.0,1500.0,2000.0,2500.0]*1e6 ; yr
+      
+      ; 1. special timewindow: until tvir drops below tIGM
+      if loc_timeWindow eq 'tVir_tIGM' then begin
+        temp_ratios = 10.0^mt.hVirTemp[*,i] / temp_IGM
+	ww = where(temp_ratios ge 1.0,count_loc)
+	
+	if count_loc eq 0 then begin
+	  ; low mass
+	  loc_timeWindow = massRangeTWs[0] ; 500Myr
+	endif else begin
+	  ; set snapshot -> timeWindow
+	  endSnapLoc = mt.maxSnap - max(ww)
+	  endAgeLoc = snapNumToAgeFlat(snap=endSnapLoc,sP=sP)
+	  loc_timeWindow = curtime - endAgeLoc*1e9
+	endelse
+      endif else begin
     
+        ; 2. special timewindow: until tvir of mass bin drops below tIGM
+        if loc_timeWindow eq 'tVir_tIGM_bin' then begin
+          codeMassLoc = codeMassToLogMsun(mt.hMass[0,i])
+          if codeMassLoc lt massRanges[0] then $
+	    loc_timeWindow = massRangeTWs[0]
+	  if codeMassLoc ge massRanges[0] and codeMassLoc lt massRanges[1] then $
+	    loc_timeWindow = massRangeTWs[1]
+	  if codeMassLoc ge massRanges[1] and codeMassLoc lt massRanges[2] then $
+	    loc_timeWindow = massRangeTWs[2]
+	  if codeMassLoc ge massRanges[2] then $
+	    loc_timeWindow = massRangeTWs[3]
+        endif ;tVir_tIGM_bin
+      endelse ;tVir_tIGM
+    endif ;isnumeric
+    
+    ; if current halo is tracked less than timewindow, shorten timewindow to tracked period
     if mt.hMinSnap[i] ne -1 then begin
       loc_minSnapTime = snapTimes[mt.hMinSnap[i]]
-      if curtime-loc_minSnapTime lt timeWindow then loc_timeWindow = curtime-loc_minSnapTime
+      if curtime-loc_minSnapTime lt loc_timeWindow then loc_timeWindow = curtime-loc_minSnapTime
     endif
   
     if hist_gal[i] gt 0 then begin
@@ -150,7 +194,7 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
       loc_atime_gal = redshiftToAgeFlat(loc_atime_gal)*1e9 ; yr
       
       ; make a count of those falling in the time window
-      w = where(curtime - loc_atime_gal le timeWindow,nloc)
+      w = where(curtime - loc_atime_gal le loc_timeWindow,nloc)
       
       coldFrac.gal_num[i]    = nloc
       coldAccRate.gal_num[i] = nloc
@@ -225,7 +269,7 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
       loc_atime_gmem = redshiftToAgeFlat(loc_atime_gmem)*1e9 ; yr
       
       ; make a count of those falling in the time window
-      w = where(curtime - loc_atime_gmem le timeWindow,nloc)
+      w = where(curtime - loc_atime_gmem le loc_timeWindow,nloc)
       
       coldFrac.gmem_num[i]    = nloc
       coldAccRate.gmem_num[i] = nloc
@@ -312,7 +356,7 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
       if count gt 0 then loc_atime_stars[w] = -1.0
       
       ; make a count of those falling in the time window
-      w = where(curtime - loc_atime_stars le timeWindow,nloc)
+      w = where(curtime - loc_atime_stars le loc_timeWindow,nloc)
       
       coldFrac.stars_num[i]    = nloc
       coldAccRate.stars_num[i] = nloc
@@ -346,6 +390,27 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
         endfor
       endif ;nloc>0
     endif ; hist_stars[i]
+    
+    ; convert accretion total mass (counts) to msun
+    totalColdMass.gal_const[*,i]     = coldAccRate.gal_const[*,i]     * massPerPart * units.UnitMass_in_Msun
+    totalColdMass.gmem_const[*,i]    = coldAccRate.gmem_const[*,i]    * massPerPart * units.UnitMass_in_Msun
+    totalColdMass.stars_const[*,i]   = coldAccRate.stars_const[*,i]   * massPerPart * units.UnitMass_in_Msun
+    totalColdMass.gal_tvircur[*,i]   = coldAccRate.gal_tvircur[*,i]   * massPerPart * units.UnitMass_in_Msun
+    totalColdMass.gmem_tvircur[*,i]  = coldAccRate.gmem_tvircur[*,i]  * massPerPart * units.UnitMass_in_Msun
+    totalColdMass.stars_tvircur[*,i] = coldAccRate.stars_tvircur[*,i] * massPerPart * units.UnitMass_in_Msun
+    totalColdMass.gal_tviracc[*,i]   = coldAccRate.gal_tviracc[*,i]   * massPerPart * units.UnitMass_in_Msun
+    totalColdMass.gmem_tviracc[*,i]  = coldAccRate.gmem_tviracc[*,i]  * massPerPart * units.UnitMass_in_Msun
+    totalColdMass.stars_tviracc[*,i] = coldAccRate.stars_tviracc[*,i] * massPerPart * units.UnitMass_in_Msun
+    
+    totalHotMass.gal_const[*,i]     = hotAccRate.gal_const[*,i]     * massPerPart * units.UnitMass_in_Msun
+    totalHotMass.gmem_const[*,i]    = hotAccRate.gmem_const[*,i]    * massPerPart * units.UnitMass_in_Msun
+    totalHotMass.stars_const[*,i]   = hotAccRate.stars_const[*,i]   * massPerPart * units.UnitMass_in_Msun
+    totalHotMass.gal_tvircur[*,i]   = hotAccRate.gal_tvircur[*,i]   * massPerPart * units.UnitMass_in_Msun
+    totalHotMass.gmem_tvircur[*,i]  = hotAccRate.gmem_tvircur[*,i]  * massPerPart * units.UnitMass_in_Msun
+    totalHotMass.stars_tvircur[*,i] = hotAccRate.stars_tvircur[*,i] * massPerPart * units.UnitMass_in_Msun
+    totalHotMass.gal_tviracc[*,i]   = hotAccRate.gal_tviracc[*,i]   * massPerPart * units.UnitMass_in_Msun
+    totalHotMass.gmem_tviracc[*,i]  = hotAccRate.gmem_tviracc[*,i]  * massPerPart * units.UnitMass_in_Msun
+    totalHotMass.stars_tviracc[*,i] = hotAccRate.stars_tviracc[*,i] * massPerPart * units.UnitMass_in_Msun
     
     ; convert accretion total(counts) to msun/year
     coldAccRate.gal_const[*,i]     *= massPerPart * units.UnitMass_in_Msun / loc_timeWindow
@@ -382,6 +447,16 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
     hotAccRate.total_tvircur[j,*] = hotAccRate.both_tvircur[j,*] + hotAccRate.gmem_tvircur[j,*]
     hotAccRate.total_tviracc[j,*] = hotAccRate.both_tviracc[j,*] + hotAccRate.gmem_tviracc[j,*]
     
+    totalColdMass.both_tvircur[j,*]  = totalColdMass.gal_tvircur[j,*] + totalColdMass.stars_tvircur[j,*]
+    totalColdMass.both_tviracc[j,*]  = totalColdMass.gal_tviracc[j,*] + totalColdMass.stars_tviracc[j,*]
+    totalColdMass.total_tvircur[j,*] = totalColdMass.both_tvircur[j,*] + totalColdMass.gmem_tvircur[j,*]
+    totalColdMass.total_tviracc[j,*] = totalColdMass.both_tviracc[j,*] + totalColdMass.gmem_tviracc[j,*]
+    
+    totalHotMass.both_tvircur[j,*]  = totalHotMass.gal_tvircur[j,*] + totalHotMass.stars_tvircur[j,*]
+    totalHotMass.both_tviracc[j,*]  = totalHotMass.gal_tviracc[j,*] + totalHotMass.stars_tviracc[j,*]
+    totalHotMass.total_tvircur[j,*] = totalHotMass.both_tvircur[j,*] + totalHotMass.gmem_tvircur[j,*]
+    totalHotMass.total_tviracc[j,*] = totalHotMass.both_tviracc[j,*] + totalHotMass.gmem_tviracc[j,*]
+    
     coldFrac.both_tvircur[j,*]  = (coldFrac.gal_tvircur[j,*] * coldFrac.gal_num + coldFrac.stars_tvircur[j,*] * coldFrac.stars_num) / (coldFrac.gal_num + coldFrac.stars_num)
     coldFrac.total_tvircur[j,*] = (coldFrac.gal_tvircur[j,*] * coldFrac.gal_num + coldFrac.gmem_tvircur[j,*] * coldFrac.gmem_num + coldFrac.stars_tvircur[j,*] * coldFrac.stars_num) / (coldFrac.gal_num + coldFrac.stars_num + coldFrac.gmem_num)                
     coldFrac.both_tviracc[j,*]  = (coldFrac.gal_tviracc[j,*] * coldFrac.gal_num + coldFrac.stars_tviracc[j,*] * coldFrac.stars_num) / (coldFrac.gal_num + coldFrac.stars_num)
@@ -394,8 +469,13 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
   for j=0,nCuts-1 do begin
     coldAccRate.both_const[j,*]  = coldAccRate.gal_const[j,*] + coldAccRate.stars_const[j,*]
     coldAccRate.total_const[j,*] = coldAccRate.both_const[j,*] + coldAccRate.gmem_const[j,*]
-    hotAccRate.both_const[j,*]  = hotAccRate.gal_const[j,*] + hotAccRate.stars_const[j,*]
-    hotAccRate.total_const[j,*] = hotAccRate.both_const[j,*] + hotAccRate.gmem_const[j,*]
+    hotAccRate.both_const[j,*]   = hotAccRate.gal_const[j,*] + hotAccRate.stars_const[j,*]
+    hotAccRate.total_const[j,*]  = hotAccRate.both_const[j,*] + hotAccRate.gmem_const[j,*]
+    
+    totalColdMass.both_const[j,*]  = totalColdMass.gal_const[j,*] + totalColdMass.stars_const[j,*]
+    totalColdMass.total_const[j,*] = totalColdMass.both_const[j,*] + totalColdMass.gmem_const[j,*]
+    totalHotMass.both_const[j,*]   = totalHotMass.gal_const[j,*] + totalHotMass.stars_const[j,*]
+    totalHotMass.total_const[j,*]  = totalHotMass.both_const[j,*] + totalHotMass.gmem_const[j,*]
     
     coldFrac.both_const[j,*]  = (coldFrac.gal_const[j,*] * coldFrac.gal_num + coldFrac.stars_const[j,*] * coldFrac.stars_num) / (coldFrac.gal_num + coldFrac.stars_num)  
     coldFrac.total_const[j,*] = (coldFrac.gal_const[j,*] * coldFrac.gal_num + coldFrac.gmem_const[j,*] * coldFrac.gmem_num + coldFrac.stars_const[j,*] * coldFrac.stars_num) / (coldFrac.gal_num + coldFrac.stars_num + coldFrac.gmem_num)      
@@ -429,13 +509,21 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
   hotMedian      = coldMedian
   fracMedian     = coldMedian
   fracMedian_cur = coldMedian
+  coldTotal      = coldMedian ; total mass (not rates)
+  hotTotal       = coldMedian ; total mass (not rates)
   
   ; total of hot+cold (separated by gal, gmem, stars, both=gal+stars, tot=gal+stars+gmem)
   totalHCMedian = { gal    : fltarr(logMassNbins) + !values.f_nan ,$
                     gmem   : fltarr(logMassNbins) + !values.f_nan ,$
                     stars  : fltarr(logMassNbins) + !values.f_nan ,$
                     both   : fltarr(logMassNbins) + !values.f_nan ,$
-                    tot    : fltarr(logMassNbins) + !values.f_nan  }      
+                    tot    : fltarr(logMassNbins) + !values.f_nan  }
+                    
+  totalMassHC = { gal    : fltarr(logMassNbins) + !values.f_nan ,$
+                  gmem   : fltarr(logMassNbins) + !values.f_nan ,$
+                  stars  : fltarr(logMassNbins) + !values.f_nan ,$
+                  both   : fltarr(logMassNbins) + !values.f_nan ,$
+                  tot    : fltarr(logMassNbins) + !values.f_nan  }
                  
   ; calculate median values in bins of halo mass
   for i=0,logMassNbins-1 do begin
@@ -445,6 +533,7 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
     
     if count gt 0 then begin
       for j=0,nVirs-1 do begin
+        ; accretion rates:
         ; gal (hot+cold)
         coldMedian.gal_tVirCur[j,i]   = median(coldAccRate.gal_tvircur[j,w])
         coldMedian.gal_tVirAcc[j,i]   = median(coldAccRate.gal_tviracc[j,w])
@@ -474,9 +563,41 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
         coldMedian.total_tVirAcc[j,i] = median(coldAccRate.total_tviracc[j,w])
         hotMedian.total_tVirCur[j,i]  = median(hotAccRate.total_tvircur[j,w])
         hotMedian.total_tVirAcc[j,i]  = median(hotAccRate.total_tviracc[j,w])
+        
+        ; total masses:
+        ; gal (hot+cold)
+        coldTotal.gal_tVirCur[j,i]   = median(totalColdMass.gal_tvircur[j,w])
+        coldTotal.gal_tVirAcc[j,i]   = median(totalColdMass.gal_tviracc[j,w])
+        hotTotal.gal_tVirCur[j,i]    = median(totalHotMass.gal_tvircur[j,w])
+        hotTotal.gal_tVirAcc[j,i]    = median(totalHotMass.gal_tviracc[j,w])
+        
+        ; gmem (hot+cold)
+        coldTotal.gmem_tVirCur[j,i]  = median(totalColdMass.gmem_tvircur[j,w])
+        coldTotal.gmem_tVirAcc[j,i]  = median(totalColdMass.gmem_tviracc[j,w])
+        hotTotal.gmem_tVirCur[j,i]   = median(totalHotMass.gmem_tvircur[j,w])
+        hotTotal.gmem_tVirAcc[j,i]   = median(totalHotMass.gmem_tviracc[j,w]) 
+        
+        ; stars (hot+cold)
+        coldTotal.stars_tVirCur[j,i] = median(totalColdMass.stars_tvircur[j,w])
+        coldTotal.stars_tVirAcc[j,i] = median(totalColdMass.stars_tviracc[j,w])
+        hotTotal.stars_tVirCur[j,i]  = median(totalHotMass.stars_tvircur[j,w])
+        hotTotal.stars_tVirAcc[j,i]  = median(totalHotMass.stars_tviracc[j,w]) 
+        
+        ; both=gal+stars (hot+cold)
+        coldTotal.both_tVirCur[j,i]  = median(totalColdMass.both_tvircur[j,w])
+        coldTotal.both_tVirAcc[j,i]  = median(totalColdMass.both_tviracc[j,w])
+        hotTotal.both_tVirCur[j,i]   = median(totalHotMass.both_tvircur[j,w])
+        hotTotal.both_tVirAcc[j,i]   = median(totalHotMass.both_tviracc[j,w])
+        
+        ; total=gal+stars+gmem (hot+cold)
+        coldTotal.total_tVirCur[j,i] = median(totalColdMass.total_tvircur[j,w])
+        coldTotal.total_tVirAcc[j,i] = median(totalColdMass.total_tviracc[j,w])
+        hotTotal.total_tVirCur[j,i]  = median(totalHotMass.total_tvircur[j,w])
+        hotTotal.total_tVirAcc[j,i]  = median(totalHotMass.total_tviracc[j,w])
       endfor
       
       for j=0,nCuts-1 do begin
+        ; rates:
         coldMedian.gal_const[j,i]   = median(coldAccRate.gal_const[j,w])
         hotMedian.gal_const[j,i]    = median(hotAccRate.gal_const[j,w])
         coldMedian.gmem_const[j,i]  = median(coldAccRate.gmem_const[j,w])
@@ -488,14 +609,34 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
         hotMedian.both_const[j,i]   = median(hotAccRate.both_const[j,w])
         coldMedian.total_const[j,i] = median(coldAccRate.total_const[j,w])
         hotMedian.total_const[j,i]  = median(hotAccRate.total_const[j,w])
+        
+        ; total mass:
+        coldTotal.gal_const[j,i]   = median(totalColdMass.gal_const[j,w])
+        hotTotal.gal_const[j,i]    = median(totalHotMass.gal_const[j,w])
+        coldTotal.gmem_const[j,i]  = median(totalColdMass.gmem_const[j,w])
+        hotTotal.gmem_const[j,i]   = median(totalHotMass.gmem_const[j,w])
+        coldTotal.stars_const[j,i] = median(totalColdMass.stars_const[j,w])
+        hotTotal.stars_const[j,i]  = median(totalHotMass.stars_const[j,w])
+        
+        coldTotal.both_const[j,i]  = median(totalColdMass.both_const[j,w])
+        hotTotal.both_const[j,i]   = median(totalHotMass.both_const[j,w])
+        coldTotal.total_const[j,i] = median(totalColdMass.total_const[j,w])
+        hotTotal.total_const[j,i]  = median(totalHotMass.total_const[j,w])
       endfor
       
-      ; totals (same under any cold/hot definition)
+      ; rate totals (same under any cold/hot definition)
       totalHCMedian.gal[i]   = median(coldAccRate.gal_const[0,w]+hotAccRate.gal_const[0,w])
       totalHCMedian.gmem[i]  = median(coldAccRate.gmem_const[0,w]+hotAccRate.gmem_const[0,w])
       totalHCMedian.stars[i] = median(coldAccRate.stars_const[0,w]+hotAccRate.stars_const[0,w])
       totalHCMedian.both[i]  = median(coldAccRate.both_const[0,w]+hotAccRate.both_const[0,w])
       totalHCMedian.tot[i]   = median(coldAccRate.total_const[0,w]+hotAccRate.total_const[0,w])
+      
+      ; total mass totals
+      totalMassHC.gal[i]   = median(totalColdMass.gal_const[0,w]+totalHotMass.gal_const[0,w])
+      totalMassHC.gmem[i]  = median(totalColdMass.gmem_const[0,w]+totalHotMass.gmem_const[0,w])
+      totalMassHC.stars[i] = median(totalColdMass.stars_const[0,w]+totalHotMass.stars_const[0,w])
+      totalMassHC.both[i]  = median(totalColdMass.both_const[0,w]+totalHotMass.both_const[0,w])
+      totalMassHC.tot[i]   = median(totalColdMass.total_const[0,w]+totalHotMass.total_const[0,w])
     endif  
     
     ; --- cold fraction ---
@@ -576,6 +717,7 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
   r = {coldAccRate:coldAccRate,hotAccRate:hotAccRate,coldFrac:coldFrac,coldFrac_cur:coldFrac_cur,$
        fracMedian:fracMedian,fracMedian_cur:fracMedian_cur,$
        coldMedian:coldMedian,hotMedian:hotMedian,totalHCMedian:totalHCMedian,$
+       totalColdMass:totalColdMass,totalHotMass:totalHotMass,coldTotal:coldTotal,hotTotal:hotTotal,totalMassHC:totalMassHC,$
        radIndGalAcc:sP.radIndGalAcc,radIndHaloAcc:sP.radIndHaloAcc,$
        logMassBins:logMassBins,logMassBinCen:logMassBinCen,TcutVals:sP.TcutVals,TvirVals:sP.TvirVals}
 
