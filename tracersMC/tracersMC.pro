@@ -1,36 +1,45 @@
 ; tracersMC.pro
 ; dev for MC tracer particles (spherically symmetric setups)
-; dnelson mar.2012
+; dnelson nov.2012
 
 ; checkSnapshotIntegrity(): check the tracer output in a snapshot makes sense
 
 pro checkSnapshotIntegrity
 
   ; config
-  sP = simParams(res=512,run='tracer',redshift=2.0)
-  sP.simPath = '/n/hernquistfs2/sgenel/'
+  sP = simParams(res=128,run='feedback',redshift=2.0)
   
-  snaps = [11]
+  snaps = [sP.snap]
   subBox = 0 ; subBox snapshot numbering or main snapshot numbering
 
   foreach snap,snaps do begin
     ; load
     sP.snap = snap
-    print,'loading ['+str(sP.snap)+']...
+    print,'loading ['+str(sP.snap)+']...'
     
     h = loadSnapshotHeader(sP=sP,subBox=subBox)
     
+    ; load parent IDs
     gas_ids    = loadSnapshotSubset(sP=sP,partType='gas',field='ids',subBox=subBox)
     
     star_ids = []
     if (h.nPartTot[4] gt 0) then $
       star_ids   = loadSnapshotSubset(sP=sP,partType='stars',field='ids',subBox=subBox)
+      
+    bh_ids = []
+    if (h.nPartTot[5] gt 0) then $
+      bh_ids   = loadSnapshotSubset(sP=sP,partType='bh',field='ids',subBox=subBox)
 
+    ; get tracer children counts
     gas_numtr  = loadSnapshotSubset(sP=sP,partType='gas',field='numtr',subBox=subBox)
-    stop
+    
     star_numtr = [0]
     if (h.nPartTot[4] gt 0) then $
       star_numtr = loadSnapshotSubset(sP=sP,partType='stars',field='numtr',subBox=subBox)
+    
+    bh_numtr = [0]
+    if (h.nPartTot[5] gt 0) then $
+      bh_numtr = loadSnapshotSubset(sP=sP,partType='bh',field='numtr',subBox=subBox)
     
     tr_ids    = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids',subBox=subBox)
     tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids',subBox=subBox)
@@ -49,22 +58,27 @@ pro checkSnapshotIntegrity
     if (nunique ne n_elements(tr_ids)) then stop
     
     ; check sum of num_tr equals total number of tracers output (gas+stars)
-    tot_numtr = total(gas_numtr) + total(star_numtr)
+    tot_numtr = total(gas_numtr) + total(star_numtr) + total(bh_numtr)
     print,tot_numtr,n_elements(tr_ids)
     if (tot_numtr ne n_elements(tr_ids)) then stop
     
     ; check number of gas cells with tracers equals number of matched parent IDs vs gas IDs
     match,gas_ids,tr_parids,ind_gas,ind_tr,count=count_gas
     w = where(gas_numtr gt 0,count_gas_children)
-    print,count_gas,count_gas_children
     if (count_gas ne count_gas_children) then stop
     
     ; check number of stars with tracer children equals number of matched parent IDs vs star IDs
     if (h.nPartTot[4] gt 0) then begin
       match,star_ids,tr_parids,ind_star,ind_tr,count=count_star
       w = where(star_numtr gt 0,count_star_children)
-      print,count_star,count_star_children
       if (count_star ne count_star_children) then stop
+    endif
+    
+    ; bh
+    if (h.nPartTot[5] gt 0) then begin
+      match,bh_ids,tr_parids,ind_bh,ind_tr,count=count_bh
+      w = where(bh_numtr gt 0,count_bh_children)
+      if (count_bh ne count_bh_children) then stop
     endif
     
     ; check gas and star IDs don't intersect
@@ -79,6 +93,19 @@ pro checkSnapshotIntegrity
     if (h.nPartTot[4] gt 0) then begin
       match,star_ids,tr_parids,star_ind,loc_ind_star,count=count_star
       match,loc_ind_gas,loc_ind_star,ind1,ind2,count=count_collide
+      if (count_collide ne 0) then stop
+    endif
+    
+    ; check gas/bh parents don't collide
+    if (h.nPartTot[5] gt 0) then begin
+      match,bh_ids,tr_parids,bh_ind,loc_ind_bh,count=count_bh
+      match,loc_ind_gas,loc_ind_bh,ind1,ind2,count=count_collide
+      if (count_collide ne 0) then stop
+    endif
+    
+    ; check star/bh parents don't collide
+    if (h.nPartTot[4] gt 0 and h.nPartTot[5] gt 0) then begin
+      match,loc_ind_star,loc_ind_bh,ind1,ind2,count=count_collide
       if (count_collide ne 0) then stop
     endif
     
@@ -101,6 +128,17 @@ pro checkSnapshotIntegrity
         star_cur_numtr = star_numtr[star_ind[i]]
         num_children = trhist[star_cur_id]
         if (num_children ne star_cur_numtr) then stop
+      endfor
+    endif
+    
+    ; bh
+    if (h.nPartTot[5] gt 0) then begin    
+      for i=0,count_bh-1 do begin
+        ;if (i mod round(count_star/10.0) eq 0) then print,float(i)/count_star*100.0
+        bh_cur_id = bh_ids[bh_ind[i]]
+        bh_cur_numtr = bh_numtr[bh_ind[i]]
+        num_children = trhist[bh_cur_id]
+        if (num_children ne bh_cur_numtr) then stop
       endfor
     endif
     
@@ -201,6 +239,36 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=ver
     ; return children tracer indices
     return, tr_inds
   endelse
+end
+
+; checkTracerDistInGal()
+
+pro checkTracerDistInGal
+
+  sP = simParams(res=512,run='tracer',redshift=2.0)
+  gc = galaxyCat(sP=sP)
+  
+  ; load gas IDs and numtr
+  ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+  numtr = loadSnapshotSubset(sP=sP,partType='gas',field='numtr')
+  
+  match,ids,gc.galaxyIDs,ids_ind,gc_ind,count=countMatch
+  
+  numtr_gal = numtr[ids_ind]
+  
+  start_PS,'test.eps'
+    plothist,numtr_gal,/auto
+  end_PS
+  
+  hist = histogram(numtr_gal,min=0,max=30,loc=loc)
+  
+  res = gaussfit(loc,hist,A,nterms=3)
+  
+  print,'gaussian center: ',A[1]
+  print,'gaussian width: ',A[2]
+  
+  stop
+
 end
 
 ; tracerMCParentHisto(): number of tracers per gas cell

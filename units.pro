@@ -6,7 +6,7 @@
 
 function getUnits
 
-  Hubble  = 1.0      ;H0 in 100km/s/Mpc
+  Hubble  = 0.7      ;All.HubbleParam H0 in 100km/s/Mpc
   Gravity = 6.673e-8 ;G in cgs, cm^3/g/s^2
 
   units = { units,                   $
@@ -28,8 +28,11 @@ function getUnits
             UnitTime_in_yr      : 0.0D                        ,$
             
             ; constants
-            boltzmann   : double(1.380650e-16)                ,$ ;cgs
-            mass_proton : double(1.672622e-24)                ,$ ;cgs
+            boltzmann         : double(1.380650e-16)          ,$ ; cgs
+            mass_proton       : double(1.672622e-24)          ,$ ; cgs
+            hydrogen_massfrac : 0.76                          ,$ ; XH
+            HubbleParam       : Hubble                        ,$ ; little h
+            Gravity           : Gravity                       ,$ ; cgs
             
             ; derived constants
             H0      : 0.0D                                    ,$
@@ -84,7 +87,7 @@ end
 ; codeMassToVirTemp(): convert halo mass (in code units) to virial temperature at specified redshift
 ; Barkana & Loeb (2001) eqn.26
 
-function codeMassToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt
+function codeMassToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt, log=log
 
   units = getUnits()
   
@@ -111,6 +114,11 @@ function codeMassToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt
   Tvir = 1.98e4 * (meanmolwt/0.6) * (mass_msun/1e8*little_h)^(2.0/3.0) * $
          (omega_m/omega_m_z * Delta_c / 18.0 / !pi^2.0)^(1.0/3.0) * $
          (1.0 + redshift)/10.0 ;K
+         
+  if keyword_set(log) then begin
+    w = where(Tvir ne 0.0,count)
+    if count gt 0 then Tvir[w] = alog10(Tvir[w])
+  endif
 
   return, Tvir
   
@@ -191,7 +199,7 @@ function convertUtoTemp, u, nelec, gamma=gamma, hmassfrac=hmassfrac, log=log
   
   ; adiabatic index and hydrogen mass fraction defaults (valid for ComparisonProject)
   if not keyword_set(gamma)     then gamma = 5.0/3.0
-  if not keyword_set(hmassfrac) then hmassfrac = 0.76
+  if not keyword_set(hmassfrac) then hmassfrac = units.hydrogen_massfrac
   
   ; calculate mean molecular weight
   meanmolwt = 4.0/(1.0 + 3.0 * hmassfrac + 4.0* hmassfrac * nelec) * units.mass_proton
@@ -383,4 +391,3 @@ function redshiftToAgeFlat, z
   return, age * 3.085678e+19 / 3.15567e+7 / 1e9 ;Gyr
 
 end
-

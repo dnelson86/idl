@@ -1,6 +1,6 @@
 ; maxTemps.pro
 ; gas accretion project - past temperature history of gas
-; dnelson aug.2012
+; dnelson nov.2012
 
 ; -----------------------------------------------------------------------------------------------------
 ; maxTemps(): find maximum temperature for gas particles in galaxy/group member catalogs at redshift
@@ -220,6 +220,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
   
     print,'Calculating new maxtemp using ( TracerMC ) res = '+str(sP.res)+$
       ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
+    if maxTempsAllFlag eq 1 then print,'Using ['+maxTempsAllSaveFilename+']'
       
     if ~file_test(resFilename) then begin ; no restart   
       ; load gas ids
@@ -246,6 +247,32 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       galcat_gal_trids   = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
       galcat_gmem_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
       galcat_stars_trids = cosmoTracerChildren(sP=sP, /getInds, starIDs=ids_stars, child_counts=galcat_stars_cc)
+      
+      ; exclude all tracers with nonzero wind counters (automatically excludes tracers currently in winds as well)
+      if sP.gfmWinds ne 0 then begin
+        tr_windcounter = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
+        
+        w = where(tr_windcounter[galcat_gal_trids] eq 0,count)
+        galcat_gal_trids   = galcat_gal_trids[w]
+        galcat_gal_cc      = (replicate_var(galcat_gal_cc))[w]
+        galcat_gal_cc      = histogram(galcat_gal_cc,min=0)
+        if total(galcat_gal_cc,/int) ne count then message,'error1'
+        
+        w = where(tr_windcounter[galcat_gmem_trids] eq 0,count)
+        galcat_gmem_trids  = galcat_gmem_trids[w]
+        galcat_gmem_cc     = (replicate_var(galcat_gmem_cc))[w]
+        galcat_gmem_cc     = histogram(galcat_gmem_cc,min=0)
+        if total(galcat_gmem_cc,/int) ne count then message,'error2'
+        
+        w = where(tr_windcounter[galcat_stars_trids] eq 0,count)
+        galcat_stars_trids = galcat_stars_trids[w]
+        galcat_stars_cc    = (replicate_var(galcat_stars_cc))[w]
+        galcat_stars_cc    = histogram(galcat_stars_cc,min=0)
+        if total(galcat_stars_cc,/int) ne count then message,'error3'
+        
+        tr_windcounter = !NULL
+        w = !NULL
+      endif
       
       ; convert tracer children indices to tracer IDs at this zMin
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
