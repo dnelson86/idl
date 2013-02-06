@@ -108,6 +108,10 @@ pro match, a, b, suba, subb, COUNT = count, SORT = sort;, epsilon=epsilon
         return
  endif
 
+; dnelson debug: check for non-unique elements
+ if nuniq(a) ne n_elements(a) then message,'error: a has non-unique values.'
+ if nuniq(b) ne n_elements(b) then message,'error: b has non-unique values.'
+
  c = [ a, b ]                   ;combined list of a and b
  ind = [ lindgen(na), lindgen(nb) ]       ;combined list of indices
  vec = [ bytarr(na), replicate(1b,nb) ]  ;flag of which vector in  combined

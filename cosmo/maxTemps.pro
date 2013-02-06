@@ -43,7 +43,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       return, r
     endif
     
-    ; load the results for all tracers (galaxy)
+    ; load the results for all MC tracers (galaxy)
     if keyword_set(loadAllTrGal) then begin
       saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.gal.'+sP.savPrefix+str(sP.res)+'.'+$
                      str(minSnap)+'-'+str(maxSnap)+'.sav'
@@ -53,7 +53,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       return, rtr_gal
     endif
     
-    ; load the results for all tracers (groupmem)
+    ; load the results for all MC tracers (groupmem)
     if keyword_set(loadAllTrGmem) then begin
         saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
                         str(minSnap)+'-'+str(maxSnap)+'.sav'
@@ -63,7 +63,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       return, rtr_gmem
     endif
     
-    ; load the results for all tracers (stars)
+    ; load the results for all MC tracers (stars)
     if keyword_set(loadAllTrStars) then begin
         saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.stars.'+sP.savPrefix+str(sP.res)+'.'+$
                         str(minSnap)+'-'+str(maxSnap)+'.sav'
@@ -249,30 +249,33 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       galcat_stars_trids = cosmoTracerChildren(sP=sP, /getInds, starIDs=ids_stars, child_counts=galcat_stars_cc)
       
       ; exclude all tracers with nonzero wind counters (automatically excludes tracers currently in winds as well)
-      if sP.gfmWinds ne 0 then begin
-        tr_windcounter = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
-        
-        w = where(tr_windcounter[galcat_gal_trids] eq 0,count)
-        galcat_gal_trids   = galcat_gal_trids[w]
-        galcat_gal_cc      = (replicate_var(galcat_gal_cc))[w]
-        galcat_gal_cc      = histogram(galcat_gal_cc,min=0)
-        if total(galcat_gal_cc,/int) ne count then message,'error1'
-        
-        w = where(tr_windcounter[galcat_gmem_trids] eq 0,count)
-        galcat_gmem_trids  = galcat_gmem_trids[w]
-        galcat_gmem_cc     = (replicate_var(galcat_gmem_cc))[w]
-        galcat_gmem_cc     = histogram(galcat_gmem_cc,min=0)
-        if total(galcat_gmem_cc,/int) ne count then message,'error2'
-        
-        w = where(tr_windcounter[galcat_stars_trids] eq 0,count)
-        galcat_stars_trids = galcat_stars_trids[w]
-        galcat_stars_cc    = (replicate_var(galcat_stars_cc))[w]
-        galcat_stars_cc    = histogram(galcat_stars_cc,min=0)
-        if total(galcat_stars_cc,/int) ne count then message,'error3'
-        
-        tr_windcounter = !NULL
-        w = !NULL
-      endif
+      ; change this: all galcat parents are non-wind, so search for all their child tracers
+      ; maxtemps for MC tracers are only recorded when they have a gas cell parent (with Utherm field)
+      
+      ;if sP.gfmWinds ne 0 then begin
+      ;  tr_windcounter = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
+      ;  
+      ;  w = where(tr_windcounter[galcat_gal_trids] eq 0,count)
+      ;  galcat_gal_trids   = galcat_gal_trids[w]
+      ;  galcat_gal_cc      = (replicate_var(galcat_gal_cc))[w]
+      ;  galcat_gal_cc      = histogram(galcat_gal_cc,min=0)
+      ;  if total(galcat_gal_cc,/int) ne count then message,'error1'
+      ;  
+      ;  w = where(tr_windcounter[galcat_gmem_trids] eq 0,count)
+      ;  galcat_gmem_trids  = galcat_gmem_trids[w]
+      ;  galcat_gmem_cc     = (replicate_var(galcat_gmem_cc))[w]
+      ;  galcat_gmem_cc     = histogram(galcat_gmem_cc,min=0)
+      ;  if total(galcat_gmem_cc,/int) ne count then message,'error2'
+      ;  
+      ;  w = where(tr_windcounter[galcat_stars_trids] eq 0,count)
+      ;  galcat_stars_trids = galcat_stars_trids[w]
+      ;  galcat_stars_cc    = (replicate_var(galcat_stars_cc))[w]
+      ;  galcat_stars_cc    = histogram(galcat_stars_cc,min=0)
+      ;  if total(galcat_stars_cc,/int) ne count then message,'error3'
+      ;  
+      ;  tr_windcounter = !NULL
+      ;  w = !NULL
+      ;endif
       
       ; convert tracer children indices to tracer IDs at this zMin
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
@@ -433,7 +436,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       ; SAVE?
       if sP.snap eq maxSnap then begin
         ; (1) full tracer information (galaxy members) - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.trMC.gal.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.gal.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
@@ -446,7 +449,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         endelse
         
         ; (2) full tracer information (group members) - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.trMC.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
@@ -459,7 +462,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         endelse
         
         ; (2) full tracer information (group members) - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.trMC.stars.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.stars.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
@@ -472,7 +475,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         endelse
         
         ; (3) values condensed to gas parents - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.trMC.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
                        
         if file_test(saveFilename) then begin

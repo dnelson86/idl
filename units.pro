@@ -1,20 +1,20 @@
 ; units.pro
 ; units and unit conversions (for Kpc, 10^10 Msun, Gyr unit set)
-; dnelson mar.2012
+; dnelson jan.2013
+; note: for cosmological+comoving simulations, all masses and lengths are 1/h
+;       and all lengths are comoving (multiply by scalefac for physical)
+;       and all times derived from Timebase_interval are similar (divide by scalefac for normal)
 
 ; getUnits(): return a structure of useful units
 
-function getUnits
+function getUnits, redshift=redshift
 
-  Hubble  = 0.7      ;All.HubbleParam H0 in 100km/s/Mpc
-  Gravity = 6.673e-8 ;G in cgs, cm^3/g/s^2
-
-  units = { units,                   $
+  units = { units,                                             $
   
             ; units (from parameter file)
-            UnitLength_in_cm         : double(3.085678e21)    ,$;  1.0 kpc
-            UnitMass_in_g            : 1.989*double(10.0)^43  ,$;  1.0e10 solar masses
-            UnitVelocity_in_cm_per_s : double(1.0e5)          ,$;  1 km/sec
+            UnitLength_in_cm         : double(3.085678e21)    ,$ ; 1.0 kpc
+            UnitMass_in_g            : 1.989*double(10.0)^43  ,$ ; 1.0e10 solar masses
+            UnitVelocity_in_cm_per_s : double(1.0e5)          ,$ ; 1 km/sec
             
             ; derived units
             UnitTime_in_s       : 0.0D                        ,$
@@ -28,16 +28,33 @@ function getUnits
             UnitTime_in_yr      : 0.0D                        ,$
             
             ; constants
-            boltzmann         : double(1.380650e-16)          ,$ ; cgs
+            boltzmann         : double(1.380650e-16)          ,$ ; cgs (erg/K)
             mass_proton       : double(1.672622e-24)          ,$ ; cgs
-            hydrogen_massfrac : 0.76                          ,$ ; XH
-            HubbleParam       : Hubble                        ,$ ; little h
-            Gravity           : Gravity                       ,$ ; cgs
+            hydrogen_massfrac : 0.76                          ,$ ; XH (solar)
+            helium_massfrac   : 0.25                          ,$ ; Y (solar)
+            mu                : 0.6                           ,$ ; ionized primordial (e.g. hot halo gas)
+            HubbleParam       : 0.7                           ,$ ; little h (All.HubbleParam), e.g. H0 in 100 km/s/Mpc
+            Gravity           : 6.673e-8                      ,$ ; G in cgs, cm^3/g/s^2
+            H0_kmsMpc         : 70.0                          ,$ ; km/s/Mpc
             
-            ; derived constants
-            H0      : 0.0D                                    ,$
-            G       : 0.0D                                    ,$
-            rhoCrit : 0.0D                                    ,$
+            ; derived constants (in code units)
+            H0      : 0.0                                     ,$ ; km/s/kpc
+            G       : 0.0                                     ,$ ; kpc (km/s)^2 / 1e10 msun
+            rhoCrit : 0.0                                     ,$ ; 1e10 msun / kpc^3
+            
+            ; cosmology parameters (valid for ComparisonProject/Illustris, z=0 values)
+            omega_m : 0.27                                    ,$
+            omega_L : 0.73                                    ,$
+            omega_k : 0.0                                     ,$
+            omega_b : 0.044                                   ,$
+            
+            ; derived cosmology parameters
+            f_b : 0.0                                         ,$
+            
+            ; all previous were z=0, this section for different redshift (if specified) (code units)
+            H2_z_fact : !values.f_nan                         ,$
+            H_z       : !values.f_nan                         ,$
+            rhoCrit_z : !values.f_nan                         ,$
             
             ; color list
             colors : strarr(18)                               ,$
@@ -67,12 +84,22 @@ function getUnits
   units.UnitTime_in_yr      = units.UnitTime_in_s / units.s_in_yr
   
   ; derived constants (in code units)
-  units.H0 = Hubble * 100 * 1e5 / (units.Mpc_in_cm) / $
+  units.H0 = units.HubbleParam * 100 * 1e5 / (units.Mpc_in_cm) / $
              units.UnitVelocity_in_cm_per_s * units.UnitLength_in_cm
-  units.G  = Gravity / units.UnitLength_in_cm^3.0 * units.UnitMass_in_g * units.UnitTime_in_s^2.0
+  units.G  = units.Gravity / units.UnitLength_in_cm^3.0 * units.UnitMass_in_g * units.UnitTime_in_s^2.0
   
   units.rhoCrit = 3.0 * units.H0^2.0 / (8.0*!pi*units.G) ;code, z=0
 
+  ; derived cosmology parameters
+  units.f_b = units.omega_b / units.omega_m
+  
+  ; redshift dependent values (code units)
+  if n_elements(redshift) then begin
+    units.H2_z_fact = ( units.omega_m*(1+redshift)^3.0 + units.omega_L + units.omega_k*(1+redshift)^2.0 )
+    units.H_z       = units.H0 * sqrt(units.H2_z_fact)
+    units.rhoCrit_z = units.rhoCrit * units.H2_z_fact
+  endif
+  
   ; derived unit conversions
   units.kmS_in_kpcYr = units.s_in_Myr / units.kpc_in_km / 1e6 ; Myr->yr
 
@@ -82,6 +109,13 @@ function getUnits
                   'firebrick', 'rosy brown', 'gold', 'forest green', 'slate blue']
 
   return, units
+end
+
+; meanmolwt(): from Monaco+ (2007) eqn 14, for hot halo gas
+
+function meanmolwt, Y=Y, Z=Z ; helium fraction (0.25) and metallicity
+  mu = 4.0 / (8 - 5*Y - 6*Z)
+  return,mu
 end
 
 ; codeMassToVirTemp(): convert halo mass (in code units) to virial temperature at specified redshift
@@ -100,19 +134,15 @@ function codeMassToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt,
   ; mass to msun
   mass_msun = mass * float(units.UnitMass_in_g / units.Msun_in_g)
   
-  ; cosmo
-  omega_m   = 0.27
-  omega_L   = 0.73
-  omega_k   = 0.0
-  little_h  = 1.0 ; do not multiply by h since mass_msun is already over h
+  little_h = 1.0 ; do not multiply by h since mass_msun is already over h
   
-  omega_m_z = omega_m * (1+redshift)^3.0 / $
-              ( omega_m*(1+redshift)^3.0 + omega_L + omega_k*(1+redshift)^2.0 )
+  omega_m_z = units.omega_m * (1+redshift)^3.0 / $
+              ( units.omega_m*(1+redshift)^3.0 + units.omega_L + units.omega_k*(1+redshift)^2.0 )
   
   Delta_c = 18*!pi^2 + 82*(omega_m_z-1.0) - 39*(omega_m_z-1.0)^2.0
 
   Tvir = 1.98e4 * (meanmolwt/0.6) * (mass_msun/1e8*little_h)^(2.0/3.0) * $
-         (omega_m/omega_m_z * Delta_c / 18.0 / !pi^2.0)^(1.0/3.0) * $
+         (units.omega_m/omega_m_z * Delta_c / 18.0 / !pi^2.0)^(1.0/3.0) * $
          (1.0 + redshift)/10.0 ;K
          
   if keyword_set(log) then begin
@@ -141,18 +171,15 @@ function logMsunToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt
   mass_msun = 10.0^mass
   
   ; cosmo
-  omega_m   = 0.27
-  omega_L   = 0.73
-  omega_k   = 0.0
   little_h  = 0.7
   
-  omega_m_z = omega_m * (1+redshift)^3.0 / $
-              ( omega_m*(1+redshift)^3.0 + omega_L + omega_k*(1+redshift)^2.0 )
+  omega_m_z = units.omega_m * (1+redshift)^3.0 / $
+              ( units.omega_m*(1+redshift)^3.0 + units.omega_L + units.omega_k*(1+redshift)^2.0 )
   
   Delta_c = 18*!pi^2 + 82*(omega_m_z-1.0) - 39*(omega_m_z-1.0)^2.0
 
   Tvir = 1.98e4 * (meanmolwt/0.6) * (mass_msun/1e8*little_h)^(2.0/3.0) * $
-         (omega_m/omega_m_z * Delta_c / 18.0 / !pi^2.0)^(1.0/3.0) * $
+         (units.omega_m/omega_m_z * Delta_c / 18.0 / !pi^2.0)^(1.0/3.0) * $
          (1.0 + redshift)/10.0 ;K
          
   return, Tvir
@@ -162,7 +189,7 @@ end
 ; codeMassToLogMsun(): convert mass in code units to log(msun)
 
 function codeMassToLogMsun, mass
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   mass_msun = mass * float(units.UnitMass_in_g / units.Msun_in_g)
@@ -178,7 +205,7 @@ end
 ; codeTempToLogK(): convert temperature in code units (e.g. tracer temp output) to log(kelvin)
 
 function codeTempToLogK, temp
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   temp_k = temp * float(units.UnitTemp_in_cgs)
@@ -191,10 +218,28 @@ function codeTempToLogK, temp
   return,alog10(temp_k)
 end
 
+; codeDensToPhys(): convert comoving->Physical and add little_h factors
+
+function codeDensToPhys, dens, scalefac=scalefac, cgs=cgs
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
+  if n_elements(scalefac) eq 0 and n_elements(sP) eq 0 then message,'error'
+  if n_elements(scalefac) gt 0 and n_elements(sP) gt 0 then message,'error'
+  if n_elements(sP) gt 0 then scalefac = 1.0/(1 + sP.redshift)
+
+  dens_phys = dens * units.HubbleParam * units.HubbleParam / scalefac^3.0
+
+  if keyword_set(cgs) then dens_phys *= units.UnitDensity_in_cgs
+  
+  return, dens_phys
+  
+end
+
 ; convertUtoTemp(): convert u,nelec pair in code units to temperature in Kelvin or log(Kelvin)
 
 function convertUtoTemp, u, nelec, gamma=gamma, hmassfrac=hmassfrac, log=log
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   ; adiabatic index and hydrogen mass fraction defaults (valid for ComparisonProject)
@@ -220,7 +265,7 @@ end
 ; convertCoolingRatetoCGS():
 
 function convertCoolingRatetoCGS, coolrate, h=h
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   ; default little h
@@ -294,27 +339,27 @@ end
 
 ; rhoRatioToCrit(): normalize density by the critical -baryon- density at some redshift
 
-function rhoRatioToCrit, rho, omega_b=omega_b, redshift=redshift
+function rhoRatioToCrit, rho, redshift=redshift
 
-  units = getUnits()
+  units = getUnits(redshift=redshift)
+  if n_elements(redshift) eq 0 then message,'specify redshift'
   
-  ; cosmo
-  omega_m   = 0.27
-  omega_L   = 0.73
-  omega_k   = 0.0
-  
-  ; default omega_b (valid for ComparisonProject)
-  if not keyword_set(omega_b) then omega_b = 0.044
-  
-  rho_b = omega_b * units.rhoCrit
-  
-  ; scale for redshift other than zero
-  if keyword_set(redshift) then begin
-    H_z_fact = ( omega_m*(1+redshift)^3.0 + omega_L + omega_k*(1+redshift)^2.0 )
-    rho_b *= H_z_fact
-  endif
+  rho_b = units.omega_b * units.rhoCrit_z
   
   return, rho/rho_b
+
+end
+
+; critRatioToCode(): convert a ratio of the critical density at some redshift to a code density
+
+function critRatioToCode, ratioToCrit, redshift=redshift
+
+  units = getUnits(redshift=redshift)
+  if n_elements(redshift) eq 0 then message,'specify redshift'
+
+  codeRho = ratioToCrit * units.rhoCrit_z
+  
+  return,codeRho
 
 end
 
@@ -322,21 +367,10 @@ end
 
 function critBaryonRatioToCode, ratioToCritB, redshift=redshift
 
-  units = getUnits()
+  units = getUnits(redshift=redshift)
+  if n_elements(redshift) eq 0 then message,'specify redshift'
 
-  ; cosmo
-  omega_m   = 0.27
-  omega_L   = 0.73
-  omega_k   = 0.0
-  omega_b   = 0.044
-  
-  codeRho = ratioToCritB * omega_b * units.rhoCrit
-  
-  ; scale for redshift other than zero
-  if keyword_set(redshift) then begin
-    H_z_fact = ( omega_m*(1+redshift)^3.0 + omega_L + omega_k*(1+redshift)^2.0 )
-    codeRho *= H_z_fact
-  endif
+  codeRho = ratioToCritB * units.omega_b * units.rhoCrit_z
   
   return,codeRho
 
@@ -381,12 +415,10 @@ end
 
 function redshiftToAgeFlat, z
 
-  ; config
-  H0 = 70.0 ;km/s/Mpc
-  Omega_m = 0.27
+  units = getUnits()
   
-  age = 2*asinh(sqrt( (1-Omega_m)/Omega_m ) * (1+z)^(-3.0/2.0)) / $
-             (H0 * 3 * sqrt(1-Omega_m))
+  age = 2*asinh(sqrt( (1-units.omega_m)/units.omega_m ) * (1+z)^(-3.0/2.0)) / $
+             (units.H0_kmsMpc * 3 * sqrt(1-units.omega_m))
   
   return, age * 3.085678e+19 / 3.15567e+7 / 1e9 ;Gyr
 

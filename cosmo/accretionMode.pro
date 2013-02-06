@@ -1,6 +1,6 @@
 ; accretionMode.pro
 ; gas accretion project - past substructure history of gas elements
-; dnelson aug.2012
+; dnelson dec.2012
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionMode(): for eaching gas particle/tracer with a recorded accretion time, starting at some 
@@ -14,6 +14,9 @@
 ;  3. bclumpy  = in any subgroup other than the (primary) parent halo that is a primary subgroup ("big")
 ;  4. stripped = in the (primary) parent of the original halo or not in any subgroup, but in some
 ;                non-parent subgroup at some earlier time back to
+;  >10. recycled = for GFM_WINDS runs, in a wind at any previous time (in which case 10-accMode gives the 
+;                  additional information of the accMode at the time of the -first- rvir crossing, e.g.
+;                  accMode=11 indicates recycled but smooth at its first entrance to the halo
 ; -----------------------------------------------------------------------------------------------------
 
 function accretionMode, sP=sP
@@ -39,6 +42,8 @@ function accretionMode, sP=sP
   gal_w_at   = where(at.AccTime_gal[0,*] ne -1,count_gal)
   gmem_w_at  = where(at.AccTime_gmem[0,*] ne -1,count_gmem)
   stars_w_at = where(at.AccTime_stars[0,*] ne -1,count_stars)
+  
+  nTotSearch = n_elements(gal_w_at) + n_elements(gmem_w_at) + n_elements(stars_w_at)
   
   ; load galaxy/group member catalogs at zMin for gas ids to search for
   galcat = galaxyCat(sP=sP)
@@ -88,6 +93,10 @@ function accretionMode, sP=sP
     gasMinSnap = { gal   : mt.hMinSnap[mt.gcIndOrig.gal[gal_w_at]]     ,$
                    gmem  : mt.hMinSnap[mt.gcIndOrig.gmem[gmem_w_at]]   ,$
                    stars : mt.hMinSnap[mt.gcIndOrig.stars[stars_w_at]]  }     
+    
+    gal_w_at   = !NULL
+    gmem_w_at  = !NULL
+    stars_w_at = !NULL
     
     ; store the main arrays as a structure so we can write them directly
     r = {accMode_gal       : intarr(n_elements(galcatSub.gal))-1  ,$
@@ -532,7 +541,7 @@ function accretionMode, sP=sP
       fracClumpyStars  = float(totClumpyStars) / (totSmoothStars+totStrippedStars+totClumpyStars)
       
       count_bracketed += count_gal + count_gmem + count_stars
-      cur_frac_found = float(count_bracketed) / (n_elements(gal_w_at)+n_elements(gmem_w_at)+n_elements(stars_w_at))
+      cur_frac_found = float(count_bracketed) / nTotSearch
       
       print,' ['+string(m,format='(i3)')+'] counts'+$
         ' smooth: ' +string(count_smooth.gal,format='(i5)')   +'.'+string(count_smooth.gmem,format='(i5)')+'.'+string(count_smooth.stars,format='(i5)')+$
@@ -572,8 +581,6 @@ function accretionMode, sP=sP
     gcIndOrigTr = mergerTreeRepParentIDs(mt=mt,galcat=galcat,sP=sP,$
                     trids_gal=galcat_gal_trids, trids_gmem=galcat_gmem_trids, trids_stars=galcat_stars_trids)
     
-    galcat = !NULL
-    
     origParIDs = { gal   : gcIndOrigTr.gal[gal_w_at]    ,$
                    gmem  : gcIndOrigTr.gmem[gmem_w_at]  ,$
                    stars : gcIndOrigTr.stars[stars_w_at] }
@@ -602,7 +609,7 @@ function accretionMode, sP=sP
     galcat_gal_trids   = !NULL
     galcat_gmem_trids  = !NULL
     galcat_stars_trids = !NULL
-      
+                  
     ; convert the accretion time (scale factor) into the outer bracketing snapshot number for each member
     bracketSnap = { gal   : intarr(n_elements(galcatSub.gal))   ,$
                     gmem  : intarr(n_elements(galcatSub.gmem))  ,$
@@ -615,6 +622,54 @@ function accretionMode, sP=sP
     bracketSnap.gmem  = value_locate(snapTimes,at.accTime_gmem[0,gmem_w_at])
     bracketSnap.stars = value_locate(snapTimes,at.accTime_stars[0,stars_w_at])
     
+    ; store the main arrays as a structure so we can write them directly
+    r = {accMode_gal       : intarr(n_elements(galcatSub.gal))  ,$
+         accMode_gmem      : intarr(n_elements(galcatSub.gmem)) ,$
+         accMode_stars     : intarr(n_elements(galcatSub.stars)) }
+         
+    ; debugging
+    rMask = { gal   : intarr(n_elements(galcatSub.gal))   ,$
+              gmem  : intarr(n_elements(galcatSub.gmem))  ,$
+              stars : intarr(n_elements(galcatSub.stars))  }
+              
+    ; for recycled mode, we can decide immediately based on the tracer windcounter
+    if sP.gfmWinds ne 0 then begin
+      ; load wind counters
+      tr_windcounter = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
+      
+      ; gal: find recycled and override bracketSnap using earliest rvir crossing
+      galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, gasIDs=galcat.galaxyIDs[mt.galcatSub.gal])
+      w = where(tr_windcounter[galcat_trinds[gal_w_at]] gt 0,count1)
+      if count1 gt 0 then begin
+        r.accMode_gal[w] = 10
+        bracketSnap.gal[w] = value_locate(snapTimes,at.accTime_gal[-1,gal_w_at[w]])
+      endif
+      
+      ; gmem
+      galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, gasIDs=galcat.groupmemIDs[mt.galcatSub.gmem])
+      w = where(tr_windcounter[galcat_trinds[gmem_w_at]] gt 0,count2)
+      if count2 gt 0 then begin
+        r.accMode_gmem[w] = 10
+        bracketSnap.gmem[w] = value_locate(snapTimes,at.accTime_gmem[-1,gmem_w_at[w]])
+      endif
+      
+      ; stars
+      galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, starIDs=galcat.stellarIDs[mt.galcatSub.stars])
+      w = where(tr_windcounter[galcat_trinds[stars_w_at]] gt 0,count3)
+      if count3 gt 0 then begin
+        r.accMode_stars[w] = 10
+        bracketSnap.stars[w] = value_locate(snapTimes,at.accTime_stars[-1,stars_w_at[w]])
+      endif
+      
+      galcat_trinds = !NULL
+      tr_windcounter = !NULL
+      print,'Found recycled: ['+str(count1)+'] gal, ['+str(count2)+'] gmem, ['+str(count3)+'] stars ('+$
+        string(float(count1)/count_gal*100,format='(f4.1)')+'% '+$
+        string(float(count2)/count_gmem*100,format='(f4.1)')+'% '+$
+        string(float(count3)/count_stars*100,format='(f4.1)')+'%)'
+    endif
+    
+    ; verify accretion time -> snapshot mapping
     w = where(bracketSnap.gal eq -1 or bracketSnap.gal eq n_elements(snapTimes)-1,count)
     if count then message,'Error: Bad gal bracketing.'
     w = where(bracketSnap.gmem eq -1 or bracketSnap.gmem eq n_elements(snapTimes)-1,count)
@@ -622,15 +677,10 @@ function accretionMode, sP=sP
     w = where(bracketSnap.stars eq -1 or bracketSnap.stars eq n_elements(snapTimes)-1,count)
     if count then message,'Error: Bad stars bracketing.'
     
-    ; store the main arrays as a structure so we can write them directly
-    r = {accMode_gal       : intarr(n_elements(galcatSub.gal))-1  ,$
-         accMode_gmem      : intarr(n_elements(galcatSub.gmem))-1 ,$
-         accMode_stars     : intarr(n_elements(galcatSub.stars))-1 }
-         
-    ; debugging
-    rMask = { gal   : intarr(n_elements(galcatSub.gal))   ,$
-              gmem  : intarr(n_elements(galcatSub.gmem))  ,$
-              stars : intarr(n_elements(galcatSub.stars))  }
+    gal_w_at   = !NULL
+    gmem_w_at  = !NULL
+    stars_w_at = !NULL
+    galcat = !NULL
     
     for m=mt.maxSnap,mt.minSnap,-1 do begin
       sP.snap = m
@@ -672,314 +722,66 @@ function accretionMode, sP=sP
       if countFM gt 0 then message,'Error: Failed creating new offset array.'
       mask = !NULL
       
-      ; select those gas particles whose accretion modes are determined at this snapshot
-      w_gal   = where(bracketSnap.gal eq sP.snap,count_gal)
-      w_gmem  = where(bracketSnap.gmem eq sP.snap,count_gmem)
-      w_stars = where(bracketSnap.stars eq sP.snap,count_stars)
-      
-      ; debug: make sure we aren't searching for a tracer that is now untracked
-      if count_gal   gt 0 and max(trMinSnap.gal[w_gal])     gt sP.snap then message,'Error: gal2'
-      if count_gmem  gt 0 and max(trMinSnap.gmem[w_gmem])   gt sP.snap then message,'Error: gmem2'
-      if count_stars gt 0 and max(trMinSnap.stars[w_stars]) gt sP.snap then message,'Error: stars2'
-      
+      ; keep track of how many of each accretion mode we find at this snapshot
       count_smooth   = { gal: 0UL, gmem: 0UL, stars: 0UL }
       count_sclumpy  = { gal: 0UL, gmem: 0UL, stars: 0UL }
       count_bclumpy  = { gal: 0UL, gmem: 0UL, stars: 0UL }
       count_stripped = { gal: 0UL, gmem: 0UL, stars: 0UL }
       
-      if count_gal gt 0 then begin
-        ; global match against subgroup tracers ID list (this includes -only- bound gas)
-        match,galcatSub.gal[w_gal],groupcat_trIDs,galcat_ind,gc_gal_ind,count=countGal,/sort
-        
-        ; those that don't match, assign to category 1. smooth
-        if countGal lt count_gal then begin
-          ; if none matched, assign all the bracketed particles to smooth
-          if countGal eq 0 then begin
-            r.accMode_gal[w_gal] = 1
-            rMask.gal[w_gal] += 1
-            count_smooth.gal += count_gal
-          endif else begin
-            ; if some matched, assign the complement of those to smooth
-            all = bytarr(count_gal)
-            all[galcat_ind] = 1B
-            wNotInSG = where(all eq 0B, ncomp)
-            
-            r.accMode_gal[w_gal[wNotInSG]] = 1
-            rMask.gal[w_gal[wNotInSG]] += 1 ;debug
-            count_smooth.gal += ncomp
-          endelse
-        endif
-        
-        ; those that match, calculate subgroup ID they belong to
-        if countGal gt 0 then begin
-          ; calculate parent subgroup ID each gas particle belongs to
-          parIDs = value_locate(subgroupOffsetTr,gc_gal_ind)
-          
-          ; exclude those that aren't actually within the offsetLenType range
-          diff = gc_gal_ind - subgroupOffsetTr[parIDs]
-          wInSG = where(diff lt subgroupLenTr[parIDs],countInSG,comp=wc,ncomp=ncomp)
-          
-          ; those failing the subgroup bound are smooth
-          if ncomp gt 0 then begin
-            message,'This should not happen for tracerMC (gal).'
-            ;rInds = w_gal[galcat_ind[wc]]
-            ;r.accMode_gal[rInds] = 1
-            ;rMask.gal[rInds] += 1 ;debug
-            ;count_smooth.gal += ncomp
-          endif
-          
-          if countInSG gt 0 then begin
-            ; if their subgroup ID is the traced parent, assign to category 1. smooth
-            rInds = w_gal[galcat_ind[wInSG]]
-            w0 = where(parIDs[wInSG] eq origParIDs.gal[galcat_ind[wInSG]],count,comp=wc,ncomp=ncomp)
-            if count gt 0 then begin
-              r.accMode_gal[rInds[w0]] = 1
-              count_smooth.gal += count
-              rMask.gal[rInds[w0]] += 1 ;debug
-            endif
-            
-            ; only separate into sclumpy/bclumpy for the non-smooth remainder
-            if ncomp gt 0 then begin
-              wInSG = wInSG[wc]
-              rInds = rInds[wc]
-            
-              ; make ID lists of primary,secondary subgroups
-              priSGids = gcIDList(gc=gc,select='pri')
-              secSGids = gcIDList(gc=gc,select='sec')
-              
-              ; if their subgroup ID is not the parent but is a primary sg, assign to category 3. bclumpy
-              qInds = value_locate(priSGids,parIDs[wInSG])
-              w1 = where(priSGids[qInds] eq parIDs[wInSG],count,comp=wc,ncomp=ncomp)
-              if count gt 0 then begin
-                r.accMode_gal[rInds[w1]] = 3
-                count_bclumpy.gal += count
-                rMask.gal[rInds[w1]] += 1 ; debug
-              endif
-              
-              ; only search for secondary parents for the non-primary remainder (this is mainly a doublecheck
-              ; since we have already excluded every other possibility)
-              wInSG = wInSG[wc]
-              rInds = rInds[wc]
-            
-              qInds = value_locate(secSGids,parIDs[wInSG])
-              w2 = where(secSGids[qInds] eq parIDs[wInSG],count)
-              if count gt 0 then begin
-                r.accMode_gal[rInds[w2]] = 2
-                count_sclumpy.gal += count
-                rMask.gal[rInds[w2]] += 1 ; debug
-              endif
-            endif ; ncomp
-          endif ; countInSG
-        endif ; countGal
-        
-        ; check that all bracketed gal particles found accretion modes
-        if min(r.accMode_gal[w_gal]) eq 0 then message,'Error: Not all gal done.'
-        if (count_smooth.gal+count_sclumpy.gal+count_bclumpy.gal) ne count_gal then message,'Error: Gal totals.'
-        if max(rMask.gal) gt 1 then message,'Error: gal mask.'
-        
-        ; any gas previously marked smooth, categorize as stripped if it is now in a non-parent halo
-        wSmooth = where(r.accMode_gal eq 1 and trMinSnap.gal le sP.snap,countSmooth)
-        
-        if countSmooth gt 0 then begin
-          ; global match against subgroup ID list (this includes fuzz and unbound gas)
-          match,galcatSub.gal[wSmooth],groupcat_trIDs,galcat_ind,gc_gal_ind,count=countGal,/sort
-          
-          ; those that match, calculate subgroup ID they belong to
-          if countGal gt 0 then begin
-            ; calculate parent subgroup ID each gas particle belongs to
-            parIDs = value_locate(subgroupOffsetTr,gc_gal_ind)
-          
-            ; exclude those that aren't actually within the offsetLenType range
-            diff = gc_gal_ind - subgroupOffsetTr[parIDs]
-            wInSG = where(diff lt subgroupLenTr[parIDs],countInSG)
-
-            if countInSG ne countGal then message,'Error: Should not happen (gal).'
-
-            ;if countInSG gt 0 then begin
-              ; if their subgroup ID is -not- the traced parent, assign to category 4. stripped
-              rInds = wSmooth[galcat_ind[wInSG]]
-              w0 = where(parIDs[wInSG] ne origParIDs.gal[galcat_ind[wInSG]],count)
-              if count gt 0 then begin
-                r.accMode_gal[rInds[w0]] = 4
-                count_stripped.gal += count
-              endif
-            ;endif ; countInSG
-          endif ; countGal
-        endif ; countSmooth
-        
-      endif ; count_gal
-        
-      if count_gmem gt 0 then begin
-        ; global match against subgroup ID list (this includes fuzz and unbound gas)
-        match,galcatSub.gmem[w_gmem],groupcat_trIDs,galcat_ind,gc_gmem_ind,count=countGmem,/sort
-        
-        ; those that don't match, assign to category 1. smooth
-        if countGmem lt count_gmem then begin
-          ; if none matched, assign all the bracketed particles to smooth
-          if countGmem eq 0 then begin
-            r.accMode_gmem[w_gmem] = 1
-            rMask.gmem[w_gmem] += 1
-            count_smooth.gmem += count_gmem
-          endif else begin
-            ; if some matched, assign the complement of those to smooth
-            all = bytarr(count_gmem)
-            all[galcat_ind] = 1B
-            wNotInSG = where(all eq 0B, ncomp)
-    
-            r.accMode_gmem[w_gmem[wNotInSG]] = 1
-            rMask.gmem[w_gmem[wNotInSG]] += 1 ;debug
-            count_smooth.gmem += ncomp
-          endelse
-        endif
-        
-        ; those that match, calculate subgroup ID they belong to
-        if countGmem gt 0 then begin
-          ; calculate parent subgroup ID each gas particle belongs to
-          parIDs = value_locate(subgroupOffsetTr,gc_gmem_ind)
-          
-          ; exclude those that aren't actually within the offsetLenType range
-          diff = gc_gmem_ind - subgroupOffsetTr[parIDs]
-          wInSG = where(diff lt subgroupLenTr[parIDs],countInSG,comp=wc,ncomp=ncomp)
-
-          ; those failing the subgroup bound are smooth
-          if ncomp gt 0 then begin
-            message,'This should not happen for tracerMC (gmem).'
-            ;rInds = w_gmem[galcat_ind[wc]]
-            ;r.accMode_gmem[rInds] = 1
-            ;rMask.gmem[rInds] += 1 ;debug
-            ;count_smooth.gmem += ncomp
-          endif
-          
-          if countInSG gt 0 then begin
-            ; if their subgroup ID is the traced parent, assign to category 1. smooth
-            rInds = w_gmem[galcat_ind[wInSG]]
-            w0 = where(parIDs[wInSG] eq origParIDs.gmem[galcat_ind[wInSG]],count,comp=wc,ncomp=ncomp)
-            if count gt 0 then begin
-              r.accMode_gmem[rInds[w0]] = 1
-              count_smooth.gmem += count
-              rMask.gmem[rInds[w0]] += 1 ;debug
-            endif
-            
-            ; only separate into sclumpy/bclumpy for the non-smooth remainder
-            if ncomp gt 0 then begin
-              wInSG = wInSG[wc]
-              rInds = rInds[wc]
-            
-              ; make ID lists of primary,secondary subgroups
-              priSGids = gcIDList(gc=gc,select='pri')
-              secSGids = gcIDList(gc=gc,select='sec')
-              
-              ; if their subgroup ID is not the parent but is a primary sg, assign to category 3. bclumpy
-              qInds = value_locate(priSGids,parIDs[wInSG])
-              w1 = where(priSGids[qInds] eq parIDs[wInSG],count,comp=wc,ncomp=ncomp)
-              if count gt 0 then begin
-                r.accMode_gmem[rInds[w1]] = 3
-                count_bclumpy.gmem += count
-                rMask.gmem[rInds[w1]] += 1 ; debug
-              endif
-              
-              ; only search for secondary parents for the non-primary remainder (this is mainly a doublecheck
-              ; since we have already excluded every other possibility)
-              wInSG = wInSG[wc]
-              rInds = rInds[wc]
-  
-              qInds = value_locate(secSGids,parIDs[wInSG])
-              w2 = where(secSGids[qInds] eq parIDs[wInSG],count)
-              if count gt 0 then begin
-                r.accMode_gmem[rInds[w2]] = 2
-                count_sclumpy.gmem += count
-                rMask.gmem[rInds[w2]] += 1 ; debug
-              endif
-            endif ; ncomp
-          endif ; countInSG
-        endif ; countGmem
-        
-        ; check that all bracketed gmem particles found accretion modes
-        if min(r.accMode_gmem[w_gmem]) eq 0 then message,'Error: Not all gmem done.'
-        if (count_smooth.gmem+count_sclumpy.gmem+count_bclumpy.gmem) ne count_gmem then message,'Error: Gmem totals.'
-        if max(rMask.gmem) gt 1 then message,'Error: gmem mask.'
-        
-        ; any gas previously marked smooth, categorize as stripped if it is now in a non-parent halo
-        wSmooth = where(r.accMode_gmem eq 1 and trMinSnap.gmem le sP.snap,countSmooth)
-        
-        if countSmooth gt 0 then begin
-          ; global match against subgroup ID list (this includes fuzz and unbound gas)
-          match,galcatSub.gmem[wSmooth],groupcat_trIDs,galcat_ind,gc_gmem_ind,count=countGmem,/sort
-          
-          ; those that match, calculate subgroup ID they belong to
-          if countGmem gt 0 then begin
-            ; calculate parent subgroup ID each gas particle belongs to
-            parIDs = value_locate(subgroupOffsetTr,gc_gmem_ind)
-          
-            ; exclude those that aren't actually within the offsetLenType range
-            diff = gc_gmem_ind - subgroupOffsetTr[parIDs]
-            wInSG = where(diff lt subgroupLenTr[parIDs],countInSG)
-
-            if countInSG ne countGmem then message,'Error: Should not happen (gmem).'
-
-            ;if countInSG gt 0 then begin
-              ; if their subgroup ID is -not- the traced parent, assign to category 4. stripped
-              rInds = wSmooth[galcat_ind[wInSG]]
-              w0 = where(parIDs[wInSG] ne origParIDs.gmem[galcat_ind[wInSG]],count)
-              if count gt 0 then begin
-                r.accMode_gmem[rInds[w0]] = 4
-                count_stripped.gmem += count
-              endif
-            ;endif ; countInSG
-          endif ; countGmem
-        endif ; countSmooth
-        
-      endif ; count_gmem
+      ; loop over tracer parent types (gal,gmem,stars)
+      ; ----------------------------------------------
+      for k=0,n_tags(bracketSnap)-1 do begin
       
-      if count_stars gt 0 then begin
-        ; global match against subgroup ID list (this includes fuzz and unbound gas)
-        match,galcatSub.stars[w_stars],groupcat_trIDs,galcat_ind,gc_stars_ind,count=countStars,/sort
+        ; select those gas particles whose accretion modes are determined at this snapshot
+        w_now   = where(bracketSnap.(k) eq sP.snap,count_now)
+      
+        ; debug: make sure we aren't searching for a tracer that is now untracked
+        if count_now gt 0 and max(trMinSnap.(k)[w_now]) gt sP.snap+1 then message,'Error: Searching for untracked'
+      
+        if count_now eq 0 then continue
+        
+        ; global match against subgroup tracers ID list (this includes -only- bound gas)
+        match,galcatSub.(k)[w_now],groupcat_trIDs,galcat_ind,gc_ind,count=countNow,/sort
         
         ; those that don't match, assign to category 1. smooth
-        if countStars lt count_stars then begin
+        if countNow lt count_now then begin
           ; if none matched, assign all the bracketed particles to smooth
-          if countStars eq 0 then begin
-            r.accMode_stars[w_stars] = 1
-            rMask.stars[w_stars] += 1
-            count_smooth.stars += count_stars
+          if countNow eq 0 then begin
+            r.(k)[w_now] += 1
+            rMask.(k)[w_now] += 1
+            count_smooth.(k) += count_now
           endif else begin
             ; if some matched, assign the complement of those to smooth
-            all = bytarr(count_stars)
+            all = bytarr(count_now)
             all[galcat_ind] = 1B
             wNotInSG = where(all eq 0B, ncomp)
-    
-            r.accMode_stars[w_stars[wNotInSG]] = 1
-            rMask.stars[w_stars[wNotInSG]] += 1 ;debug
-            count_smooth.stars += ncomp
+            
+            r.(k)[w_now[wNotInSG]] += 1
+            rMask.(k)[w_now[wNotInSG]] += 1 ;debug
+            count_smooth.(k) += ncomp
           endelse
         endif
         
         ; those that match, calculate subgroup ID they belong to
-        if countStars gt 0 then begin
+        if countNow gt 0 then begin
           ; calculate parent subgroup ID each gas particle belongs to
-          parIDs = value_locate(subgroupOffsetTr,gc_stars_ind)
+          parIDs = value_locate(subgroupOffsetTr,gc_ind)
           
           ; exclude those that aren't actually within the offsetLenType range
-          diff = gc_stars_ind - subgroupOffsetTr[parIDs]
+          diff = gc_ind - subgroupOffsetTr[parIDs]
           wInSG = where(diff lt subgroupLenTr[parIDs],countInSG,comp=wc,ncomp=ncomp)
-
+          
           ; those failing the subgroup bound are smooth
-          if ncomp gt 0 then begin
-            message,'This should not happen for tracerMC (stars).'
-            ;rInds = w_stars[galcat_ind[wc]]
-            ;r.accMode_stars[rInds] = 1
-            ;rMask.stars[rInds] += 1 ;debug
-            ;count_smooth.stars += ncomp
-          endif
+          if ncomp gt 0 then message,'This should not happen for tracerMC.'
           
           if countInSG gt 0 then begin
             ; if their subgroup ID is the traced parent, assign to category 1. smooth
-            rInds = w_stars[galcat_ind[wInSG]]
-            w0 = where(parIDs[wInSG] eq origParIDs.stars[galcat_ind[wInSG]],count,comp=wc,ncomp=ncomp)
+            rInds = w_now[galcat_ind[wInSG]]
+            w0 = where(parIDs[wInSG] eq origParIDs.(k)[galcat_ind[wInSG]],count,comp=wc,ncomp=ncomp)
             if count gt 0 then begin
-              r.accMode_stars[rInds[w0]] = 1
-              count_smooth.stars += count
-              rMask.stars[rInds[w0]] += 1 ;debug
+              r.(k)[rInds[w0]] += 1
+              count_smooth.(k) += count
+              rMask.(k)[rInds[w0]] += 1 ;debug
             endif
             
             ; only separate into sclumpy/bclumpy for the non-smooth remainder
@@ -995,84 +797,80 @@ function accretionMode, sP=sP
               qInds = value_locate(priSGids,parIDs[wInSG])
               w1 = where(priSGids[qInds] eq parIDs[wInSG],count,comp=wc,ncomp=ncomp)
               if count gt 0 then begin
-                r.accMode_stars[rInds[w1]] = 3
-                count_bclumpy.stars += count
-                rMask.stars[rInds[w1]] += 1 ; debug
+                r.(k)[rInds[w1]] += 3
+                count_bclumpy.(k) += count
+                rMask.(k)[rInds[w1]] += 1 ; debug
               endif
               
               ; only search for secondary parents for the non-primary remainder (this is mainly a doublecheck
               ; since we have already excluded every other possibility)
               wInSG = wInSG[wc]
               rInds = rInds[wc]
-  
+            
               qInds = value_locate(secSGids,parIDs[wInSG])
               w2 = where(secSGids[qInds] eq parIDs[wInSG],count)
               if count gt 0 then begin
-                r.accMode_stars[rInds[w2]] = 2
-                count_sclumpy.stars += count
-                rMask.stars[rInds[w2]] += 1 ; debug
+                r.(k)[rInds[w2]] += 2
+                count_sclumpy.(k) += count
+                rMask.(k)[rInds[w2]] += 1 ; debug
               endif
             endif ; ncomp
           endif ; countInSG
-        endif ; countStars
+        endif ; countNow
         
-        ; check that all bracketed stars particles found accretion modes
-        if min(r.accMode_stars[w_stars]) eq 0 then message,'Error: Not all stars done.'
-        if (count_smooth.stars+count_sclumpy.stars+count_bclumpy.stars) ne count_stars then message,'Error: Stars totals.'
-        if max(rMask.stars) gt 1 then message,'Error: stars mask.'
+        ; check that all bracketed particles found accretion modes
+        if min(r.(k)[w_now]) eq 0 then message,'Error: Not all done.'
+        if (count_smooth.(k)+count_sclumpy.(k)+count_bclumpy.(k)) ne count_now then message,'Error: Totals fail to add up.'
+        if max(rMask.(k)) gt 1 then message,'Error: Mask exceeds one.'
         
         ; any gas previously marked smooth, categorize as stripped if it is now in a non-parent halo
-        wSmooth = where(r.accMode_stars eq 1 and trMinSnap.stars le sP.snap,countSmooth)
+        smoothAccModes = [1,11]
         
-        if countSmooth gt 0 then begin
+        foreach smoothAccMode,smoothAccModes do begin       
+          ; find either smooth only or smooth+recycled
+          wSmooth = where(r.(k) eq smoothAccMode and trMinSnap.(k) le sP.snap,countSmooth)
+        
+          if countSmooth eq 0 then continue
+          
           ; global match against subgroup ID list (this includes fuzz and unbound gas)
-          match,galcatSub.stars[wSmooth],groupcat_trIDs,galcat_ind,gc_stars_ind,count=countStars,/sort
+          match,galcatSub.(k)[wSmooth],groupcat_trIDs,galcat_ind,gc_ind,count=countNow,/sort
           
-          ; those that match, calculate subgroup ID they belong to
-          if countStars gt 0 then begin
-            ; calculate parent subgroup ID each gas particle belongs to
-            parIDs = value_locate(subgroupOffsetTr,gc_stars_ind)
+          if countNow eq 0 then continue
           
-            ; exclude those that aren't actually within the offsetLenType range
-            diff = gc_stars_ind - subgroupOffsetTr[parIDs]
-            wInSG = where(diff lt subgroupLenTr[parIDs],countInSG)
+          ; calculate parent subgroup ID each gas particle belongs to
+          parIDs = value_locate(subgroupOffsetTr,gc_ind)
+          
+          ; exclude those that aren't actually within the offsetLenType range
+          diff = gc_ind - subgroupOffsetTr[parIDs]
+          wInSG = where(diff lt subgroupLenTr[parIDs],countInSG)
 
-            if countInSG ne countStars then message,'Error: Should not happen (gal).'
-
-            ;if countInSG gt 0 then begin
-              ; if their subgroup ID is -not- the traced parent, assign to category 4. stripped
-              rInds = wSmooth[galcat_ind[wInSG]]
-              w0 = where(parIDs[wInSG] ne origParIDs.stars[galcat_ind[wInSG]],count)
-              if count gt 0 then begin
-                r.accMode_stars[rInds[w0]] = 4
-                count_stripped.stars += count
-              endif
-            ;endif ; countInSG
-          endif ; countStars
-        endif ; countSmooth
+          if countInSG ne countNow then message,'Error: Should not happen (gal).'
+          
+          ; if their subgroup ID is -not- the traced parent, assign to category 4. stripped
+          rInds = wSmooth[galcat_ind[wInSG]]
+          w0 = where(parIDs[wInSG] ne origParIDs.(k)[galcat_ind[wInSG]],count)
+          if count gt 0 then begin
+            r.(k)[rInds[w0]] = 4 + (smoothAccMode-1) ; addition is zero for accMode=1, 10 for recycled
+            count_stripped.(k) += count
+          endif
+          
+        endforeach ; smoothAccModes
         
-      endif ; count_stars
+      endfor ; k
           
       if m ne mt.minSnap then begin
         ; load mergerTree and move to Parent
         Parent = mergerTree(sP=sP)
         
-        w = where(origParIDs.gal ne -1,count)
-        if count eq 0 then message,'error gal'
-        origParIDs.gal[w] = Parent[origParIDs.gal[w]] ; change to parent IDs
-        
-        w = where(origParIDs.gmem ne -1,count)
-        if count eq 0 then message,'error gmem'
-        origParIDs.gmem[w] = Parent[origParIDs.gmem[w]]
-        
-        w = where(origParIDs.stars ne -1,count)
-        if count eq 0 then message,'error stars'
-        origParIDs.stars[w] = Parent[origParIDs.stars[w]]
-        
-        ; sanity check no IDs are -1 (we should only be processing the mergerTreeAdaptiveSubset)
-        if min(origParIDs.gal[where(trMinSnap.gal lt m-1)])     lt 0 then message,'Error: Bad gal parent.'
-        if min(origParIDs.gmem[where(trMinSnap.gmem lt m-1)])   lt 0 then message,'Error: Bad gmem parent.'
-        if min(origParIDs.stars[where(trMinSnap.stars lt m-1)]) lt 0 then message,'Error: Bad stars parent.'
+        for k=0,n_tags(bracketSnap)-1 do begin
+          ; change to parent IDs for the next snapshot
+          w = where(origParIDs.(k) ne -1,count)
+          if count eq 0 then message,'error'
+          origParIDs.(k)[w] = Parent[origParIDs.(k)[w]]
+          
+          ; sanity check no IDs are -1 (we should only be processing the mergerTreeAdaptiveSubset)
+          if min(origParIDs.(k)[where(trMinSnap.(k) lt m-1)])     lt 0 then message,'Error: Bad parent.'
+        endfor
       endif
       
       ; count stripped/(smooth+stipped) and clumpy/total fraction
@@ -1097,16 +895,39 @@ function accretionMode, sP=sP
       fracClumpyStars  = float(totClumpyStars) / (totSmoothStars+totStrippedStars+totClumpyStars)
       
       count_bracketed += count_gal + count_gmem + count_stars
-      cur_frac_found = float(count_bracketed) / (n_elements(gal_w_at)+n_elements(gmem_w_at)+n_elements(stars_w_at))
+      cur_frac_found = float(count_bracketed) / nTotSearch
+      
+      ; count fractions again for recycled
+      w = where(r.accMode_gal eq 11,totSmoothGal)
+      w = where(r.accMode_gal eq 14,totStrippedGal)
+      w = where(r.accMode_gal eq 12 or r.accMode_gal eq 13,totClumpyGal)
+      
+      w = where(r.accMode_gmem eq 11,totSmoothGmem)
+      w = where(r.accMode_gmem eq 14,totStrippedGmem)
+      w = where(r.accMode_gmem eq 12 or r.accMode_gmem eq 13,totClumpyGmem)
+      
+      w = where(r.accMode_stars eq 11,totSmoothStars)
+      w = where(r.accMode_stars eq 14,totStrippedStars)
+      w = where(r.accMode_stars eq 12 or r.accMode_stars eq 13,totClumpyStars) 
+      
+      fracStrippedGal2   = float(totStrippedGal)   / (totSmoothGal+totStrippedGal)
+      fracStrippedGmem2  = float(totStrippedGmem)  / (totSmoothGmem+totStrippedGmem)
+      fracStrippedStars2 = float(totStrippedStars) / (totSmoothStars+totStrippedStars)
+      
+      fracClumpyGal2    = float(totClumpyGal)   / (totSmoothGal+totStrippedGal+totClumpyGal)
+      fracClumpyGmem2   = float(totClumpyGmem)  / (totSmoothGmem+totStrippedGmem+totClumpyGmem)
+      fracClumpyStars2  = float(totClumpyStars) / (totSmoothStars+totStrippedStars+totClumpyStars)
       
       print,' ['+string(m,format='(i3)')+'] counts'+$
         ' smooth: ' +string(count_smooth.gal,format='(i5)')   +'.'+string(count_smooth.gmem,format='(i5)')+'.'+string(count_smooth.stars,format='(i5)')+$
         ' sclumpy: '+string(count_sclumpy.gal,format='(i5)')  +'.'+string(count_sclumpy.gmem,format='(i5)')+'.'+string(count_sclumpy.stars,format='(i5)')+$
         ' bclumpy: '+ string(count_bclumpy.gal,format='(i5)') +'.'+string(count_bclumpy.gmem,format='(i5)')+'.'+string(count_bclumpy.stars,format='(i5)')+$
-        ' stripped: '+string(count_stripped.gal,format='(i5)')+'.'+string(count_stripped.gmem,format='(i5)')+'.'+string(count_stripped.stars,format='(i5)')+$
-        '  ('+string(cur_frac_found*100,format='(f4.1)')+'%)'+$
-        ' ('+string(fracStrippedGal*100,format='(f4.1)')+'% '+string(fracStrippedGmem*100,format='(f4.1)')+'% '+string(fracStrippedStars*100,format='(f4.1)')+'%)'+$
-        ' ('+string(fracClumpyGal*100,format='(f4.1)')+'% '+string(fracClumpyGmem*100,format='(f4.1)')+'% '+string(fracClumpyStars*100,format='(f4.1)')+'%)'
+        ' stripped: '+string(count_stripped.gal,format='(i5)')+'.'+string(count_stripped.gmem,format='(i5)')+'.'+string(count_stripped.stars,format='(i5)')
+      print,' ['+string(m,format='(i3)')+'] fractions tot ('+string(cur_frac_found*100,format='(f4.1)')+'%)'+$
+        ' stripped ('+string(fracStrippedGal*100,format='(f4.1)')+'% '+string(fracStrippedGmem*100,format='(f4.1)')+'% '+string(fracStrippedStars*100,format='(f4.1)')+'%)'+$
+        ' clumpy ('+string(fracClumpyGal*100,format='(f4.1)')+'% '+string(fracClumpyGmem*100,format='(f4.1)')+'% '+string(fracClumpyStars*100,format='(f4.1)')+'%)'+$
+        ' strippedRec ('+string(fracStrippedGal2*100,format='(f4.1)')+'% '+string(fracStrippedGmem2*100,format='(f4.1)')+'% '+string(fracStrippedStars2*100,format='(f4.1)')+'%)'+$
+        ' clumpyRec ('+string(fracClumpyGal2*100,format='(f4.1)')+'% '+string(fracClumpyGmem2*100,format='(f4.1)')+'% '+string(fracClumpyStars2*100,format='(f4.1)')+'%)'
       
       ; free some memory for next load
       Parent  = !NULL
@@ -1116,10 +937,15 @@ function accretionMode, sP=sP
       w_stars = !NULL
     endfor ;m
     
-    ; verify we found an accretion mode for every gas particle
-    if min(rMask.gal)   lt 1 then message,'Error: Not all gal found.'
-    if min(rMask.gmem)  lt 1 then message,'Error: Not all gmem found.'
-    if min(rMask.stars) lt 1 then message,'Error: Not all stars found.'
+    for k=0,n_tags(bracketSnap)-1 do begin
+      ; verify we found an accretion mode for every gas particle
+      if min(rMask.(k))   lt 1 then message,'Error: Not all found.'
+      if min(r.(k))   lt 1 then message,'Error: Not all accMode set.'
+    
+      ; verify no strange accMode numbers
+      w = where((r.(k) gt 4 and r.(k) lt 10) or r.(k) gt 14,count)
+      if count gt 0 then message,'Error: Bad accMode.'
+    endfor
     
     ; save
     save,r,filename=saveFilename
@@ -1174,6 +1000,11 @@ function accModeInds, at=at, sP=sP, accMode=accMode, mask=mask
       gal_w   = gal_w[where(am.accMode_gal eq 4,count_gal)]
       gmem_w  = gmem_w[where(am.accMode_gmem eq 4,count_gmem)]
       stars_w = stars_w[where(am.accMode_stars eq 4,count_stars)]
+    endif
+    if accMode eq 'recycled' then begin
+      gal_w   = gal_w[where(am.accMode_gal ge 10,count_gal)]
+      gmem_w  = gmem_w[where(am.accMode_gmem ge 10,count_gmem)]
+      stars_w = stars_w[where(am.accMode_stars ge 10,count_stars)]
     endif
     
     am = !NULL
