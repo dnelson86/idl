@@ -438,8 +438,9 @@ pro plotTmaxHistos
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  sPg = simParams(res=512,run='gadget',redshift=3.0)
-  sPa = simParams(res=512,run='tracer',redshift=3.0) ; f=-1 use velocity tracers
+  sPg = simParams(res=256,run='feedback',redshift=2.0)
+  sPa = simParams(res=256,run='tracer',redshift=2.0) ; f=-1 use velocity tracers
+  simLabels = ['feedback','no feedback']
 
   sgSelect   = 'pri'
   timeWindow = 1000.0 ; Myr
@@ -505,7 +506,7 @@ pro plotTmaxHistos
         cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.0,alignment=0.5
             
         if j eq 0 then $
-          legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
+          legend,simLabels,textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
             position=[-2.0,0.1],charsize=!p.charsize-0.1,spacing=!p.charsize+0.5
       
       endfor
@@ -570,7 +571,7 @@ pro plotTmaxHistos
         cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.0,alignment=0.5
             
         if j eq 0 then $
-          legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
+          legend,simLabels,textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
             position=[-2.0,0.1],charsize=!p.charsize-0.1,spacing=!p.charsize+0.5
       
       endfor
@@ -627,7 +628,7 @@ pro plotTmaxHistos
         cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.0,alignment=0.5
             
         if j eq 0 then $
-          legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
+          legend,simLabels,textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
             position=[-2.0,0.1],charsize=!p.charsize-0.1,spacing=!p.charsize+0.5
       
       endfor
@@ -668,7 +669,7 @@ pro plotTmaxHistos
       hist = thA.hGmemGlobalTmaxTviracc[*]
       cgPlot,thA.binLocRatio,float(hist)*sPa.trMassConst,line=lines[0],color=sPa.colorsA[cInd],/overplot
     
-      legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
+      legend,simLabels,textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
         /top,/right,spacing=!p.charsize+0.5
       
       legend,['central galaxy','halo atmosphere'],linestyle=[0,1],$
@@ -704,7 +705,7 @@ pro plotTmaxHistos
       hist = thA.hGmemGlobalTmax[*]
       cgPlot,thA.binLocRatio,float(hist)*sPa.trMassConst,line=lines[0],color=sPa.colorsA[cInd],/overplot
     
-      legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
+      legend,simLabels,textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,$
         /top,/right,spacing=!p.charsize+0.5
       
       legend,['central galaxy','halo atmosphere'],linestyle=[0,1],$
@@ -727,8 +728,9 @@ pro plotTmaxHisto2D
   units = getUnits()
   
   ; config
-  sPg = simParams(res=512,run='gadget',redshift=3.0)
-  sPa = simParams(res=512,run='tracer',redshift=3.0) ; f=-1 use velocity tracers
+  sPg = simParams(res=256,run='feedback',redshift=2.0)
+  sPa = simParams(res=256,run='tracer',redshift=2.0) ; f=-1 use velocity tracers
+  simLabels = ['feedback','no feedback']
 
   sgSelect   = 'pri'
   timeWindow = 1000.0 ; Myr
@@ -768,7 +770,7 @@ pro plotTmaxHisto2D
       
       cgPlot,h2A.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
       cgPlot,h2A.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
-      cgText,h2A.mmMass[0]+0.3,Tc_val+0.2,"arepo",color=cgColor(sPa.colorsA[cInd])
+      cgText,h2A.mmMass[0]+0.3,Tc_val+0.2,simLabels[1],color=cgColor(sPa.colorsA[cInd])
            
       legend,textoidl(['T_c = 5.5','T_{vir }(z='+str(fix(sPa.redshift))+')']),linestyle=lines,$;textcolor=colors,$
         linesize=0.3,position=[9.05,6.85],box=0,spacing=!p.charsize+0.5
@@ -797,7 +799,7 @@ pro plotTmaxHisto2D
       
       cgPlot,h2G.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
       cgPlot,h2G.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
-      cgText,h2G.mmMass[0]+0.3,Tc_val+0.2,"gadget",color=cgColor(sPg.colorsG[cInd])
+      cgText,h2G.mmMass[0]+0.3,Tc_val+0.2,simLabels[0],color=cgColor(sPg.colorsG[cInd])
            
       ; labels
       cgText,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),(0.1+0.8)/2,0.04,alignment=0.5,/normal
@@ -825,7 +827,7 @@ pro plotTmaxHisto2D
       tvir_vals = alog10(10.0^Tc_val / codeMassToVirTemp(10.0^h2A.mmMass/units.UnitMass_in_Msun,sP=sPa))
       
       cgPlot,h2A.mmMass,tvir_vals,line=lines[0],color=cgColor(colors[1]),/overplot
-      cgText,h2A.mmMass[0]+0.3,yrange[0]+0.3,"arepo",color=cgColor(sPa.colorsA[cInd])
+      cgText,h2A.mmMass[0]+0.3,yrange[0]+0.3,simLabels[1],color=cgColor(sPa.colorsA[cInd])
            
       ; gadget histogram
       h2mt = h2G.h2_tvircur_gal
@@ -848,7 +850,7 @@ pro plotTmaxHisto2D
            
       ; temp lines
       cgPlot,h2G.mmMass,tvir_vals,line=lines[0],color=cgColor(colors[1]),/overplot
-      cgText,h2G.mmMass[0]+0.3,yrange[0]+0.3,"gadget",color=cgColor(sPg.colorsG[cInd])
+      cgText,h2G.mmMass[0]+0.3,yrange[0]+0.3,simLabels[0],color=cgColor(sPg.colorsG[cInd])
            
       ; labels
       cgText,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),(0.1+0.8)/2,0.04,alignment=0.5,/normal
@@ -876,7 +878,7 @@ pro plotTmaxHisto2D
       tvir_vals = alog10(10.0^Tc_val / codeMassToVirTemp(10.0^h2A.mmMass/units.UnitMass_in_Msun,sP=sPa))
       
       cgPlot,h2A.mmMass,tvir_vals,line=lines[0],color=cgColor(colors[1]),/overplot
-      cgText,h2A.mmMass[0]+0.3,yrange[0]+0.3,"arepo",color=cgColor(sPa.colorsA[cInd])
+      cgText,h2A.mmMass[0]+0.3,yrange[0]+0.3,simLabels[1],color=cgColor(sPa.colorsA[cInd])
            
       ; gadget histogram
       h2mt = h2G.h2_tviracc_gal
@@ -899,7 +901,7 @@ pro plotTmaxHisto2D
            
       ; temp lines
       cgPlot,h2G.mmMass,tvir_vals,line=lines[0],color=cgColor(colors[1]),/overplot
-      cgText,h2G.mmMass[0]+0.3,yrange[0]+0.3,"gadget",color=cgColor(sPg.colorsG[cInd])
+      cgText,h2G.mmMass[0]+0.3,yrange[0]+0.3,simLabels[0],color=cgColor(sPg.colorsG[cInd])
            
       ; labels
       cgText,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),(0.1+0.8)/2,0.04,alignment=0.5,/normal
@@ -932,7 +934,7 @@ pro plotTmaxHisto2D
       
       cgPlot,h2A.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
       cgPlot,h2A.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
-      cgText,h2A.mmMass[0]+0.3,Tc_val+0.2,"arepo",color=cgColor(sPa.colorsA[cInd])
+      cgText,h2A.mmMass[0]+0.3,Tc_val+0.2,simLabels[1],color=cgColor(sPa.colorsA[cInd])
            
       legend,textoidl(['T_c = 5.5','T_{vir }(z='+str(fix(sPa.redshift))+')']),linestyle=lines,$;textcolor=colors,$
         linesize=0.3,position=[9.05,6.85],box=0,spacing=!p.charsize+0.5
@@ -953,7 +955,7 @@ pro plotTmaxHisto2D
       
       cgPlot,h2G.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
       cgPlot,h2G.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
-      cgText,h2G.mmMass[0]+0.3,Tc_val+0.2,"gadget",color=cgColor(sPg.colorsG[cInd])
+      cgText,h2G.mmMass[0]+0.3,Tc_val+0.2,simLabels[0],color=cgColor(sPg.colorsG[cInd])
       
       ; colorbar
       barvals = findgen(ndivs+1)/ndivs*(max(h2mt^exp)-min(h2mt^exp)) + min(h2mt^exp)
@@ -977,7 +979,7 @@ pro plotTmaxHisto2D
       
       cgPlot,h2A.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
       cgPlot,h2A.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
-      cgText,h2A.mmMass[0]+0.3,Tc_val+0.2,"arepo",color=cgColor(sPa.colorsA[cInd])
+      cgText,h2A.mmMass[0]+0.3,Tc_val+0.2,simLabels[1],color=cgColor(sPa.colorsA[cInd])
            
       legend,textoidl(['T_c = 5.5','T_{vir }(z='+str(fix(sPa.redshift))+')']),linestyle=lines,$;textcolor=colors,$
         linesize=0.3,position=[9.05,6.85],box=0,spacing=!p.charsize+0.5
@@ -998,7 +1000,7 @@ pro plotTmaxHisto2D
       
       cgPlot,h2G.mmMass,[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
       cgPlot,h2G.mmMass,tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
-      cgText,h2G.mmMass[0]+0.3,Tc_val+0.2,"gadget",color=cgColor(sPg.colorsG[cInd])
+      cgText,h2G.mmMass[0]+0.3,Tc_val+0.2,simLabels[0],color=cgColor(sPg.colorsG[cInd])
 
       ; colorbar
       barvals = findgen(ndivs+1)/ndivs*(max(h2mt^exp)-min(h2mt^exp)) + min(h2mt^exp)

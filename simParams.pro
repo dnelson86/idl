@@ -105,6 +105,41 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     
     return,r
   endif
+  
+  ; DEBORA TEST
+  if (run eq 'debora_test') then begin
+    r.minNumGasPart  = -1 ; no additional cut
+    r.trMCPerCell    = 1
+    r.gfmNumElements = 9
+    r.gfmWinds       = 1
+    
+    if res eq 256 then begin 
+      r.boxSize       = 25000.0
+      r.snapRange     = [0,3]
+      r.groupCatRange = [0,3]
+    endif else begin
+      message,'res error'
+    endelse
+    
+    r.targetGasMass = 0.0011632
+    r.trMassConst = r.targetGasMass / r.trMCPerCell
+    r.gravSoft = 2.0
+  
+    r.simPath    = '/n/hernquistfs1/dsijacki/runs/CosmoBubble/TestMCTracers/output/'
+    r.arepoPath  = '/n/hernquistfs1/dsijacki/runs/CosmoBubble/TestMCTracers/Arepo/'
+    r.savPrefix  = 'D'
+    r.saveTag    = 'dt'
+    r.plotPrefix = 'dt'
+    r.plotPath   = '/n/home07/dnelson/'
+    r.derivPath  = '/n/home07/dnelson/'
+    
+    if keyword_set(f) then message,'Error.' ; if f=-1 use velocity tracers
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return,r
+  endif
  
   ; ComparisonProject GADGET 128,256,512 @ 20Mpc, 320,640 @ 40Mpc
   if (run eq 'gadget') or (run eq 'gadget_rad') then begin

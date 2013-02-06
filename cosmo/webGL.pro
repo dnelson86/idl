@@ -1,6 +1,203 @@
 ; webGL.pro
 ; cosmological boxes - exporters, etc for webgl demos
-; dnelson nov.2012
+; dnelson dec.2012
+
+; vorMeshExport(): export the VORONOI_MESHOUTPUT data files
+
+pro vorMeshExport
+
+  ; config
+  fileNameOut = "vorMesh_diego.dat"
+  fileBaseIn = "voronoi_mesh_0_"
+  
+  bboxSize = 1000.0 ; written directly
+  
+  ;xyz_minmax = [0.0,2000.0] ; make spatial subset
+  ;xyz_minmax = [0.0,1.0] ; make spatial subset
+  x_minmax = [1005,1030]
+  y_minmax = [1005,1030]
+  z_minmax = [990,1010]
+  ; x 990-1030 y 1000-1040 z 980-1020
+  
+  fname = { coords  : fileBaseIn + "coordinates.dat" ,$
+            inds    : fileBaseIn + "indices.dat"     ,$
+	      normals : fileBaseIn + "normals.dat"      }
+	    
+  ; load vertices (coordinates)
+  openr,lun,fname.coords,/get_lun
+    nVertsTot = 0L
+    readU, lun, nVertsTot ; header
+    pts = fltarr(3,nVertsTot) ; replicate
+    readU, lun, pts ; fill
+  close,lun
+  free_lun,lun
+  
+  print,'Loaded ['+str(nVertsTot)+'] total vertices (min='+str(min(pts))+' max='+str(max(pts))+').'
+  
+  ; arrays for face info
+  nFacesRead   = 0L
+  nEntriesRead = 0L
+  nIndsRead    = 0L
+  
+  maxNumFaces = 30000000L
+  faceIDs     = lonarr(maxNumFaces)
+  faceLengths = intarr(maxNumFaces) - 1
+  faceInds    = lonarr(50*maxNumFaces)
+  
+  ; load inds (faces)
+  openr,lun,fname.inds,/get_lun
+    nEntriesTot = 0L
+    readU, lun, nEntriesTot ; header
+    
+    ; loop over faces one by one
+    facesLeftToRead = 1L
+    while nEntriesRead lt nEntriesTot do begin
+      ; read the length (number of verts) for this face
+      face_id = 0L
+      face_len = 0L
+      readU, lun, face_id
+      readU, lun, face_len
+      if face_len lt 3 then message,'Error: Face has less than 3 vertices.'
+      
+      ; read the indices (into the vertex array) and store
+      face_inds = lonarr(face_len)
+      readU, lun, face_inds
+      
+      ; read the 3 normals (in other file)
+      ;face_normals = fltarr(3)
+      ;readU, lun, face_normals
+      
+      ; store face data
+      faceIDs[nFacesRead] = face_id
+      faceLengths[nFacesRead] = face_len
+      faceInds[nIndsRead : nIndsRead + face_len - 1] = face_inds
+      
+      nFacesRead += 1
+      nEntriesRead += face_len + 2
+      nIndsRead += face_len
+      
+      if nFacesRead mod 100000L eq 0 then print,face_id,face_len,nFacesRead,nEntriesRead
+      if nFacesRead ge maxNumFaces then message,'Error: Too many faces.'
+    endwhile
+  close,lun
+  free_lun,lun
+  
+  ; verify counts
+  if nEntriesTot ne nEntriesRead then message,'Error: Failed to read correct number of total face entries.'
+  print,'Loaded ['+str(nFacesRead)+'] total faces, ['+str(nEntriesRead)+'] total entries.'
+  
+  ; take subset of valid faces
+  faceIDs     = faceIDs[0:nFacesRead-1]
+  faceLengths = faceLengths[0:nFacesRead-1]
+  faceInds    = faceInds[0:nIndsRead-1]
+  
+  ; make offset table
+  faceOffsets = [0,total(faceLengths,/cum,/int)]
+  
+  ; load normals (skip)
+  
+  ; compute face centroids
+  offset = 0L
+  faceCentroids = fltarr(3,nFacesRead)
+  
+  for i=0L,nFacesRead-1 do begin
+    vert_inds = faceInds[offset : offset + faceLengths[i] - 1]
+    
+    faceCentroids[0,i] = mean(pts[0,vert_inds])
+    faceCentroids[1,i] = mean(pts[1,vert_inds])
+    faceCentroids[2,i] = mean(pts[2,vert_inds])
+    
+    offset += faceLengths[i]
+  endfor
+            
+  ; make a spatial subset?
+  ;w = where(faceCentroids[0,*] ge xyz_minmax[0] and faceCentroids[0,*] le xyz_minmax[1] and $
+  ;          faceCentroids[1,*] ge xyz_minmax[0] and faceCentroids[1,*] le xyz_minmax[1] and $
+  ;          faceCentroids[2,*] ge xyz_minmax[0] and faceCentroids[2,*] le xyz_minmax[1],count)
+  w = where(faceCentroids[0,*] ge x_minmax[0] and faceCentroids[0,*] le x_minmax[1] and $
+            faceCentroids[1,*] ge y_minmax[0] and faceCentroids[1,*] le y_minmax[1] and $
+            faceCentroids[2,*] ge z_minmax[0] and faceCentroids[2,*] le z_minmax[1],count)   
+            
+  print,'Found ['+str(count)+'] faces in spatial subset.'
+            
+  faceCentroids = faceCentroids[*,w]
+  faceLengths   = faceLengths[w]
+  faceOffsets   = faceOffsets[w]
+  
+  ; MOVE PTS
+  print,'warning'
+  pts[0,*] = (pts[0,*] - 1000.0)*40
+  pts[1,*] = (pts[1,*] - 1000.0)*40
+  pts[2,*] = (pts[2,*] - 990.0)*40
+  faceCentroids[0,*] = (faceCentroids[0,*] - 1000.0)*40
+  faceCentroids[1,*] = (faceCentroids[1,*] - 1000.0)*40
+  faceCentroids[2,*] = (faceCentroids[2,*] - 990.0)*40
+  
+  ; construct dataout1 array
+  dataout1 = fix(faceLengths)
+  
+  if min(faceLengths) lt 0 or max(faceLengths) gt 20 then message,'Error: Strange face lengths.'
+  if min(faceInds) lt 5 then print,'WARNING: A face references an infinity tetra point.'
+  
+  ; construct dataout2 array
+  dataout2 = fltarr( (total(faceLengths,/int)) * 3 + n_elements(faceCentroids) )
+  offset = 0L
+  
+  for i=0,count-1 do begin
+    ; for this face, first send centroid x,y,z
+    dataout2[offset+0] = faceCentroids[0,i]
+    dataout2[offset+1] = faceCentroids[1,i]
+    dataout2[offset+2] = faceCentroids[2,i]
+    offset += 3
+    
+    ; get indices of vertices
+    vert_inds = faceInds[faceOffsets[i] : faceOffsets[i] + faceLengths[i] - 1]
+    
+    ; then send each vertex x,y,z
+    for j=0,faceLengths[i]-1 do begin
+      dataout2[offset+0] = pts[0,vert_inds[j]]
+      dataout2[offset+1] = pts[1,vert_inds[j]]
+      dataout2[offset+2] = pts[2,vert_inds[j]]
+      offset += 3
+    endfor
+  endfor
+  
+  if n_elements(dataout2) ne offset then message,'Error: Failed to fill dataout2 completely.'
+
+  ; header information
+  simType  = 2
+  
+  ; compress points
+  ;dataout2 -= 10000.0 ; [-10000,10000]
+  ;dataout2 /= 10.0 ; [-1000,1000]
+  ;print,'COMPRESSING COSMO'
+  
+  ;dataout2 -= 0.5 ; [-0.5,0.5]
+  ;dataout2 *= 2000.0 ; [-1000,1000]
+  ;print,'COMPRESSING TESTBOX'
+  
+  dataout2 -= 1000.0 ; [-2000,2000]
+  print,'COMPRESSING DIEGO'
+  
+  ; write binary file
+  outStruct = { fileType  : fix(1)              ,$ ; 0=debug, 1=no normals
+                simType   : fix(simType)        ,$ ; 1=gadget, 2=arepo
+                bboxSize  : float(bboxSize)     ,$
+                nFaces    : long(count)         ,$
+                hVertices : long(nVertsTot)     ,$ ; not actually used for anything as vertices are send explicitly
+                data1     : dataout1            ,$
+                data2     : dataout2             $
+              }
+		
+  ; write file
+  openw,lun,fileNameOut,/get_lun
+  writeu,lun,outStruct
+  close,lun
+  free_lun,lun
+  
+  stop
+
+end
 
 ; trTrajExport(): export velocity tracer tracks with time relative to tracked halo position
 

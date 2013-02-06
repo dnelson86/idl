@@ -7,9 +7,9 @@
 pro checkSnapshotIntegrity
 
   ; config
-  sP = simParams(res=128,run='feedback',redshift=2.0)
+  sP = simParams(res=256,run='debora_test',redshift=2.0)
   
-  snaps = [sP.snap]
+  snaps = lindgen(28)
   subBox = 0 ; subBox snapshot numbering or main snapshot numbering
 
   foreach snap,snaps do begin
@@ -63,20 +63,22 @@ pro checkSnapshotIntegrity
     if (tot_numtr ne n_elements(tr_ids)) then stop
     
     ; check number of gas cells with tracers equals number of matched parent IDs vs gas IDs
-    match,gas_ids,tr_parids,ind_gas,ind_tr,count=count_gas
+    tr_parids_uniq = tr_parids[uniq(tr_parids,sort(tr_parids))]
+    
+    match,gas_ids,tr_parids_uniq,ind_gas,ind_tr,count=count_gas
     w = where(gas_numtr gt 0,count_gas_children)
     if (count_gas ne count_gas_children) then stop
     
     ; check number of stars with tracer children equals number of matched parent IDs vs star IDs
     if (h.nPartTot[4] gt 0) then begin
-      match,star_ids,tr_parids,ind_star,ind_tr,count=count_star
+      match,star_ids,tr_parids_uniq,ind_star,ind_tr,count=count_star
       w = where(star_numtr gt 0,count_star_children)
       if (count_star ne count_star_children) then stop
     endif
     
     ; bh
     if (h.nPartTot[5] gt 0) then begin
-      match,bh_ids,tr_parids,ind_bh,ind_tr,count=count_bh
+      match,bh_ids,tr_parids_uniq,ind_bh,ind_tr,count=count_bh
       w = where(bh_numtr gt 0,count_bh_children)
       if (count_bh ne count_bh_children) then stop
     endif
@@ -88,17 +90,17 @@ pro checkSnapshotIntegrity
     endif  
     
     ; check gas/star parents don't collide
-    match,gas_ids, tr_parids,gas_ind, loc_ind_gas, count=count_gas
+    match,gas_ids, tr_parids_uniq,gas_ind, loc_ind_gas, count=count_gas
     
     if (h.nPartTot[4] gt 0) then begin
-      match,star_ids,tr_parids,star_ind,loc_ind_star,count=count_star
+      match,star_ids,tr_parids_uniq,star_ind,loc_ind_star,count=count_star
       match,loc_ind_gas,loc_ind_star,ind1,ind2,count=count_collide
       if (count_collide ne 0) then stop
     endif
     
     ; check gas/bh parents don't collide
     if (h.nPartTot[5] gt 0) then begin
-      match,bh_ids,tr_parids,bh_ind,loc_ind_bh,count=count_bh
+      match,bh_ids,tr_parids_uniq,bh_ind,loc_ind_bh,count=count_bh
       match,loc_ind_gas,loc_ind_bh,ind1,ind2,count=count_collide
       if (count_collide ne 0) then stop
     endif
@@ -185,8 +187,11 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=ver
   if min(child_inds) lt 0 then message,'Error: Corrupt RI.'
   if max(tr_parids) ne prevMax then message,'Error: Corrupted histo input.'
   
-  ; find gas cells with at least one child tracer
+  ; number of child tracers for each requested parent
   child_counts = child_counts[gasIDs]
+  
+  ; reduce memory usage if possible
+  if max(child_counts) lt 32767 then child_counts = uint(child_counts)
 
   ; DEBUG: sanity check on child counts
   gas_ids = loadSnapshotSubset(sP=sP,partType=pt,field='ids')
@@ -198,6 +203,7 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=ver
   placeMap = !NULL
   if not array_equal(child_counts,num_tr) then message,'Error: Tracer child count mismatch.'
 
+  ; find gas cells with at least one child tracer
   w = where(child_counts gt 0,count)
   if (count eq 0) then return, []
   
@@ -213,9 +219,6 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=ver
   
   ; check for 32 bit long overflow
   if (min(tr_inds) lt 0) then stop
-  
-  ; reduce memory of return
-  if max(child_counts) lt 32767 then child_counts = uint(child_counts)
   
   ; DEBUG: sanity check (slower loop with concat)
   ;tr_inds2 = []

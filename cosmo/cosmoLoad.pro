@@ -1142,10 +1142,11 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   
   ; parse for new GFM related fields
   hdf5s = h5_parse(fileList[0]) ;structure only
-  GFMExistsFlag  = tag_exist(hdf5s,'GroupGasMetalFractions')
+  GFMExistsFlag  = tag_exist(hdf5s,'GFM_Metallicity')
   if GFMExistsFlag then begin
-    gfmNumElements = hdf5s.Group.GroupGasMetalFractions._DIMENSIONS[0]
-    gfmNumPhotometrics = hdf5s.Subhalo.SubhaloStellarPhotometrics._DIMENSIONS[0]
+    gfmNumElements = hdf5s.PartType0.GFM_Metals._DIMENSIONS[0]
+    if PT eq 'star' or PT eq 'stars' and hdf5s.header.numPart_Total._DATA[partType] gt 0 then $
+      gfmNumPhotometrics = hdf5s.PartType4.GFM_StellarPhotometrics._DIMENSIONS[0]
   endif
   
   if (nSplits ne nFiles) then $
@@ -1308,7 +1309,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   if (field eq 'gfm_metals') then begin
     rType = 'float'
     rDims = gfmNumElements
-    fieldName = 'GFM_CoolingRate'
+    fieldName = 'GFM_Metals'
     if (partType ne 0 and partType ne 4) then message,'Error: GFM_Metals is gas/stars only!'
     if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
   endif
@@ -1402,16 +1403,24 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   ; tracers (common)
   ; ----------------
   if (field eq 'properties' or field eq 'quants' or field eq 'quantities' or $
-      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxdens' or $
-      field eq 'tracer_maxmachnum' or field eq 'tracer_maxtemp_maxdens' or field eq 'tracer_maxentropy' or $
-      field eq 'tracer_laststartime' or field eq 'tracer_windcounter' or field eq 'tracer_exchcounter') then begin
+      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxtemp_dens' or $
+      field eq 'tracer_maxdens' or field eq 'tracer_maxdens_time' or field eq 'tracer_maxmachnum' or $
+      field eq 'tracer_maxent' or field eq 'tracer_maxent_time' or $
+      field eq 'tracer_laststartime' or field eq 'tracer_exchdist' or field eq 'tracer_exchdisterr') then begin
     fieldName = 'FluidQuantities'
-    rDims = 5 ; WARNING: must match to setup in Arepo run
+    rDims = 5 ; must match to setup in Arepo run if loading all at once (fine to take a slice of one quantity)
     rType = 'float'
     if (partType ne 3 and partType ne 2) then message,'Error: Fluid quantities are tracerMC/Vel only!'
   endif
   
-  if field eq 'tracer_maxentropy' then print,'WARNING: a3inv factor!' ; temp warning
+  if (field eq 'tracer_windcounter' or field eq 'tracer_exchcounter') then begin
+    fieldName = 'FluidQuantities'
+    rDims = 5
+    rType = 'int'
+    if (partType ne 3 and partType ne 2) then message,'Error: Fluid quantities are tracerMC/Vel only!'
+  endif
+  
+  if field eq 'tracer_maxent' then print,'WARNING: a3inv factor!' ; temp warning
   
   if (fieldName eq '') then begin
     print,'ERROR: Requested field -- ' + strlowcase(field) + ' -- not recognized!'
@@ -1423,9 +1432,11 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   if (field eq 'x' or field eq 'y' or field eq 'z' or $
       field eq 'velx' or field eq 'vely' or field eq 'velz' or $
       field eq 'cmx' or field eq 'cmy' or field eq 'cmz' or $
-      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxdens' or $
-      field eq 'tracer_maxmachnum' or field eq 'tracer_maxtemp_maxdens' or field eq 'tracer_maxentropy' or $
-      field eq 'tracer_laststartime' or field eq 'tracer_windcounter' or field eq 'tracer_exchcounter') then begin
+      field eq 'tracer_maxtemp' or field eq 'tracer_maxtemp_time' or field eq 'tracer_maxtemp_dens' or $
+      field eq 'tracer_maxdens' or field eq 'tracer_maxdens_time' or field eq 'tracer_maxmachnum' or $
+      field eq 'tracer_maxent' or field eq 'tracer_maxent_time' or field eq 'tracer_laststartime' or $
+      field eq 'tracer_windcounter' or field eq 'tracer_exchcounter' or field eq 'tracer_exchdist' or $
+      field eq 'tracer_exchdisterr') then begin
     multiDimSliceFlag = 1
     
     ; override rDims to one
@@ -1501,13 +1512,17 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
           
           'tracer_maxtemp'         : fN = 0
           'tracer_maxtemp_time'    : fN = 1
-          'tracer_maxdens'         : fN = 2
-          'tracer_maxmachnum'      : fN = 3
-          'tracer_maxtemp_maxdens' : fN = 4
-          'tracer_maxentropy'      : fN = 5
-          'tracer_laststartime'    : fN = 6
-          'tracer_windcounter'     : fN = 7
-          'tracer_exchcounter'     : fN = 8
+          'tracer_maxtemp_dens'    : fN = 2
+          'tracer_maxdens'         : fN = 3
+          'tracer_maxdens_time'    : fN = 4
+          'tracer_maxmachnum'      : fN = 5
+          'tracer_maxent'          : fN = 6
+          'tracer_maxent_time'     : fN = 7
+          'tracer_laststartime'    : fN = 8
+          'tracer_windcounter'     : fN = 9
+          'tracer_exchcounter'     : fN = 10
+          'tracer_exchdist'        : fN = 11
+          'tracer_exchdisterr'     : fN = 12
         endcase
         
         ; start at this column with length equal to the dataset size

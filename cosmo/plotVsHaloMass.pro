@@ -4,35 +4,106 @@
 
 ; plotPreBin():
 
-pro plotPreBin
+pro plotPreBin, res=res
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
   sgSelect   = 'pri'
   redshift   = 2.0
-  res        = 128
+  ;res        = 128
   
-  timeWindows = list(250.0,500.0,1000.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; ; Myr
+  timeWindows = list(250.0,500.0,1000.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
+  accModes = list('all','smooth','clumpy','stripped','recycled')
+  runs = list('feedback')
   
   foreach timeWindow,timeWindows do begin
-  
-    ; load
-    ;sPg = simParams(res=res,run='gadget',redshift=redshift)
-    sPa = simParams(res=res,run='feedback',redshift=redshift)
-  
-    ;GA_all      = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='all')
-    AR_all      = haloMassBinValues(sP=sPa,sgSelect=sgSelect,timeWindow=timeWindow,accMode='all')
-    ;GA_smooth   = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='smooth')
-    AR_smooth   = haloMassBinValues(sP=sPa,sgSelect=sgSelect,timeWindow=timeWindow,accMode='smooth')
-    ;GA_clumpy   = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='clumpy')
-    AR_clumpy   = haloMassBinValues(sP=sPa,sgSelect=sgSelect,timeWindow=timeWindow,accMode='clumpy') 
-    ;GA_stripped = haloMassBinValues(sP=sPg,sgSelect=sgSelect,timeWindow=timeWindow,accMode='stripped')
-    AR_stripped = haloMassBinValues(sP=sPa,sgSelect=sgSelect,timeWindow=timeWindow,accMode='stripped')
-    
+    foreach run,runs do begin
+      foreach accMode,accModes do begin
+        sP = simParams(res=res,run=run,redshift=redshift)
+        binv = haloMassBinValues(sP=sP,sgSelect=sgSelect,timeWindow=timeWindow,accMode=accMode)
+      endforeach
+    endforeach
   endforeach
   
   print,'Done.'
+  
+end
+
+; markPlots():
+
+pro markPlots
+
+  sgSelect   = 'pri'
+  accMode    = 'smooth'
+  timeWindow = 1000.0 ; Myr
+  tVirInd    = 0 ; plot Tmax/Tvir=1
+  res        = 512
+  redshift   = 2.0
+
+  sK      = 3 ; smoothing kernel size  
+  cInd    = 1 ; color index
+  
+  xrange = [10.0,12.0]
+  yrange = [0.0,1.0] 
+  
+  ; load
+  sPg = simParams(res=res,run='gadget',redshift=redshift)
+  sPa = simParams(res=res,run='tracer',redshift=redshift) ; f=-1 use velocity tracers
+
+  GA = haloMassBinValues(sP=sPg,sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow)
+  AR = haloMassBinValues(sP=sPa,sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow)
+
+  start_PS, 'plot_coldfrac.eps'
+  
+    !p.thick += 2
+  
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xs=1,ys=1,$
+      ytitle="Cold Fraction",xtitle=textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),$
+      ytickv=[0.0,0.2,0.4,0.6,0.8,1.0],yticks=5
+    
+    cgPlot,GA.logMassBinCen,smooth(GA.fracMedian.both_tViracc[tVirInd,*],sK,/nan),color='blue',line=0,/overplot
+    cgPlot,AR.logMassBinCen,smooth(AR.fracMedian.both_tViracc[tVirInd,*],sK,/nan),color='red',line=0,/overplot  
+  
+    legend,['gadget','arepo'],textcolors=['blue','red'],box=0,/top,/left
+  
+  end_PS
+  
+  yrange = [0.01,20.0]
+  
+  start_PS, 'plot_accrates.eps', xs=10.0, ys=5.0
+  
+    x0 = 0.13 & x1 = 0.53 & x2 = 0.93
+    y0 = 0.15 & y1 = 0.55 & y2 = 0.95
+    pos = list( [x0,y0,x1,y2] ,$ ;left
+                [x1,y0,x2,y2]  ) ;right
+                
+    !p.thick += 2
+   
+    ; left: hot both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+      ytitle="Gas Accretion Rate "+textoidl("[_{ }h^{-1} M_{sun } yr^{-1 }]"),xtitle="",xticks=4,xtickv=[10.0,10.5,11.0,11.5,12.0],pos=pos[0]
+    
+    cgPlot,GA.logMassBinCen,smooth(GA.hotMedian.both_tviracc[tVirInd,*],sK,/nan),color='blue',line=0,/overplot
+    cgPlot,AR.logMassBinCen,smooth(AR.hotMedian.both_tviracc[tVirInd,*],sK,/nan),color='red',line=0,/overplot
+    
+    legend,['gadget','arepo'],textcolors=['blue','red'],box=0,/top,/left
+    
+    ; right: cold both (gadget/arepo)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+      ytitle="",xtitle="",xticks=3,xtickv=[10.5,11.0,11.5,12.0],ytickname=replicate(' ',10),pos=pos[1],/noerase
+    
+    cgPlot,GA.logMassBinCen,smooth(GA.coldMedian.both_tviracc[tVirInd,*],sK,/nan),color='blue',line=0,/overplot
+    cgPlot,AR.logMassBinCen,smooth(AR.coldMedian.both_tviracc[tVirInd,*],sK,/nan),color='red',line=0,/overplot
+    
+    ; labels
+    cgText,x1,0.03,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),alignment=0.5,/normal
+    cgText,mean([x0,x1]),y2+0.015,"Hot",alignment=0.5,color=cgColor('dark gray'),/normal
+    cgText,mean([x1,x2]),y2+0.015,"Cold",alignment=0.5,color=cgColor('dark gray'),/normal
+    
+  end_PS
+  
+  stop
   
 end
 

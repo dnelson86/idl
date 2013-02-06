@@ -509,29 +509,7 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
   endif
 
   if sP.trMCPerCell gt 0 then begin
-  ; note: all this ID loading seems unnecessary, since ids_gal=galcat.galaxyIDs[mt.galcatSub.gal] etc
-  ;  ; load gas ids
-  ;  gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-
-  ;  ; match galcat IDs to gas_ids
-  ;  match,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
-  ;  ids_gal = gas_ids[ids_gal_ind[sort(galcat_ind)]]
-
-  ;  match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-  ;  ids_gmem = gas_ids[ids_gmem_ind[sort(galcat_ind)]]
-    
-  ;  gas_ids = !NULL
-    
-  ;  ; load star ids and match
-  ;  star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
-    
-  ;  match,galcat.stellarIDs[mt.galcatSub.stars],star_ids,galcat_ind,ids_stars_ind,count=countStars,/sort
-  ;  ids_stars = star_ids[ids_stars_ind[sort(galcat_ind)]]
-    
-  ;  star_ids = !NULL
- ;   if countGal ne n_elements(mt.galcatSub.gal) or countGmem ne n_elements(mt.galcatSub.gmem) then $
- ;     message,'Error: Check.'
- 
+    ; note: do not need to load and match to gas/star IDs, since ids_gal=galcat.galaxyIDs[mt.galcatSub.gal] etc
     ids_gal   = galcat.galaxyIDs[mt.galcatSub.gal] ; new
     ids_gmem  = galcat.groupmemIDs[mt.galcatSub.gmem]
     ids_stars = galcat.stellarIDs[mt.galcatSub.stars]
@@ -545,31 +523,32 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
     ids_gmem  = !NULL
     ids_stars = !NULL
     
+    ; OLD REMOVE:
     ; exclude all tracers with nonzero wind counters (automatically excludes tracers currently in winds as well)
-    if sP.gfmWinds ne 0 then begin
-      tr_windcounter = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
-        
-      w = where(tr_windcounter[galcat_gal_trids] eq 0,count)
-      galcat_gal_trids   = galcat_gal_trids[w]
-      galcat_gal_cc      = (replicate_var(galcat_gal_cc))[w]
-      galcat_gal_cc      = histogram(galcat_gal_cc,min=0)
-      if total(galcat_gal_cc,/int) ne count then message,'error1b'
-        
-      w = where(tr_windcounter[galcat_gmem_trids] eq 0,count)
-      galcat_gmem_trids  = galcat_gmem_trids[w]
-      galcat_gmem_cc     = (replicate_var(galcat_gmem_cc))[w]
-      galcat_gmem_cc     = histogram(galcat_gmem_cc,min=0)
-      if total(galcat_gmem_cc,/int) ne count then message,'error2b'
-        
-      w = where(tr_windcounter[galcat_stars_trids] eq 0,count)
-      galcat_stars_trids = galcat_stars_trids[w]
-      galcat_stars_cc    = (replicate_var(galcat_stars_cc))[w]
-      galcat_stars_cc    = histogram(galcat_stars_cc,min=0)
-      if total(galcat_stars_cc,/int) ne count then message,'error3b'
-        
-      tr_windcounter = !NULL
-      w = !NULL
-    endif
+    ;if sP.gfmWinds ne 0 then begin
+    ;  tr_windcounter = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
+    ;    
+    ;  w = where(tr_windcounter[galcat_gal_trids] eq 0,count)
+    ;  galcat_gal_trids   = galcat_gal_trids[w]
+    ;  galcat_gal_cc      = (replicate_var(galcat_gal_cc))[w]
+    ;  galcat_gal_cc      = histogram(galcat_gal_cc,min=0)
+    ;  if total(galcat_gal_cc,/int) ne count then message,'error1b'
+    ;    
+    ;  w = where(tr_windcounter[galcat_gmem_trids] eq 0,count)
+    ;  galcat_gmem_trids  = galcat_gmem_trids[w]
+    ;  galcat_gmem_cc     = (replicate_var(galcat_gmem_cc))[w]
+    ;  galcat_gmem_cc     = histogram(galcat_gmem_cc,min=0)
+    ;  if total(galcat_gmem_cc,/int) ne count then message,'error2b'
+    ;    
+    ;  w = where(tr_windcounter[galcat_stars_trids] eq 0,count)
+    ;  galcat_stars_trids = galcat_stars_trids[w]
+    ;  galcat_stars_cc    = (replicate_var(galcat_stars_cc))[w]
+    ;  galcat_stars_cc    = histogram(galcat_stars_cc,min=0)
+    ;  if total(galcat_stars_cc,/int) ne count then message,'error3b'
+    ;    
+    ;  tr_windcounter = !NULL
+    ;  w = !NULL
+    ;endif
     
     ; convert tracer children indices to tracer IDs at this zMin if we are returning them
     if keyword_set(galcat_gal_trids) then begin

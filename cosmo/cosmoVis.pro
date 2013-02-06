@@ -250,11 +250,14 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         if ~keyword_set(top) then begin
         
         ; choose center colorbar label
-        if config.colorField eq 'vrad'     then labelText = "v_{rad} [km/s]"
-        if config.colorField eq 'vradnorm' then labelText = "v_{rad} / v_{200}"
-        if config.colorField eq 'temp'     then labelText = "log T_{gas} [K]"
-        if config.colorField eq 'entropy'  then labelText = "log (S) [cgs]"
-        if config.colorField eq 'overdens' then labelText = "log \rho_{DM} / <\rho_{DM}>"
+        if config.colorField eq 'vrad'      then labelText = "v_{rad} [km/s]"
+        if config.colorField eq 'vradnorm'  then labelText = "v_{rad} / v_{200}"
+        if config.colorField eq 'temp'      then labelText = "log T_{gas} [K]"
+        if config.colorField eq 'entropy'   then labelText = "log (S) [cgs]"
+        if config.colorField eq 'overdens'  then labelText = "log \rho_{DM} / <\rho_{DM}>"
+        if config.colorField eq 'coolTime'  then labelText = "t_{cool} [Gyr]"
+        if config.colorField eq 'dynTime'   then labelText = "t_{dyn} [Gyr]"
+        if config.colorField eq 'timeRatio' then labelText = "t_{cool} / t_{dyn}"
                   
         if config.barType eq '2tempvdisp' then begin
           ; temp and veldisp separate colorbars

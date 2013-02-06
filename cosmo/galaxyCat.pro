@@ -1,6 +1,6 @@
 ; galaxyCat.pro
 ; gas accretion project - gas selections of interest (galaxy/halo catalogs)
-; dnelson nov.2012
+; dnelson dec.2012
 
 ; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
 ;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)
@@ -69,9 +69,24 @@ function galaxyCat, sP=sP
     match,gcPIDs_stars,ids_stars,gc_ind,ids_ind_stars,count=countMatch,/sort
     ids_ind_stars = ids_ind_stars[sort(gc_ind)] ; IMPORTANT! rearrange ids_ind_stars
 
-    if countMatch ne n_elements(gcPIDs_stars) then message,'Error: Failed to locate all star gcPIDs in gas ids.'
+    if countMatch ne n_elements(gcPIDs_stars) then message,'Error: Failed to locate all star gcPIDs in star ids.'
 
+    ; if GFM_WINDS, remove any wind particles from these stars
+    if sP.gfmWinds ne 0 then begin
+        btime_stars = loadSnapshotSubset(sP=sP,partType='stars',field='gfm_sftime')
+        
+        w_nonwind = where(btime_stars[ids_ind_stars] ge 0.0,count_nonwind,ncomp=count_wind)
+        
+        if count_nonwind eq 0 then message,'Error'
+        print,'Excluding ['+str(count_wind)+'] wind particles ('+$
+          string(float(count_wind)/countMatch,format='(f5.2)')+'%).'
+        
+        ; take subset
+        ids_ind_stars = ids_ind_stars[w_nonwind]
+    endif
+    
     gcPIDs = !NULL
+    gcPIDs_stars = !NULL
     gc_ind = !NULL
     ids_stars = ids_stars[ids_ind_stars]
 
@@ -141,6 +156,12 @@ function galaxyCat, sP=sP
           offset.stars += gc.subgroupLenType[ptNum.stars,sgID]
         endif
       endfor
+      
+      ; if GFM_WINDS, restrict sgParIDs_stars to non-wind particles
+      if sP.gfmWinds ne 0 then begin
+        sgParIDs_stars = sgParIDs_stars[w_nonwind]
+        offset.stars -= count_wind
+      endif
       
       if offset.gas ne n_elements(sgParIDs_gas) then message,'Error: Bad parent ID replication.'
       if offset.stars ne n_elements(sgParIDs_stars) then message,'Error: Bad parent ID star rep.'

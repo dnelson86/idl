@@ -131,13 +131,13 @@ function gcIDList, sP=sP, gc=gc, select=select
   forward_function loadGroupCat
 
   if (not keyword_set(select)) then begin
-    print,'Error: Must specify select.' & stop
+    message,'Error: Must specify select.'
   endif
     
   ; load galaxy cat if necessary
   if not keyword_set(gc) then begin
     if not keyword_set(sP) then begin
-      print,'Error: Must specify gc or sP.' & stop
+      message,'Error: Must specify gc or sP.'
     endif
     gc = loadGroupCat(sP=sP,/skipIDs)
   endif
