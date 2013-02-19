@@ -966,6 +966,7 @@ end
 function accModeInds, at=at, sP=sP, accMode=accMode, mask=mask
 
   if n_elements(at) eq 0 or n_elements(accMode) eq 0 then message,'Error: Inputs'
+  if ~sP.gfmWinds and accMode eq 'recycled' then message,'Error: Request recycled on non-winds run.'
   
   gal_w   = where(at.AccTime_gal[0,*] ne -1,count_gal)
   gmem_w  = where(at.AccTime_gmem[0,*] ne -1,count_gmem)

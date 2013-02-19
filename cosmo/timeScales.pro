@@ -1,6 +1,6 @@
 ; timeScales.pro
 ; cooling times of halo gas vs. dynamical/hubble timescales
-; dnelson jan.2013
+; dnelson feb.2013
 
 ; coolingTime(): calculate primordial network cooling times for all halo gas
 
@@ -48,15 +48,13 @@ function coolingTime, sP=sP
   
   ; convert code units -> (physical) cgs units
   dens = codeDensToPhys(dens, scalefac=h.time, /cgs)
-  u *= units.UnitPressure_in_cgs / units.UnitDensity_in_cgs
+  u *= units.UnitPressure_in_cgs / units.UnitDensity_in_cgs ; same as UnitEnergy/UnitMass (e.g. km^2/s^2)
   
   ; calculate cooling rates using primordial network
-  r.cooltime = CalcCoolTime(u,dens,nelec,scalefac=h.time)
+  r.cooltime = CalcCoolTime(u,dens,nelec,scalefac=h.time) ;scalefac=h.time
   
-  ; note that in cooling code, this is modified as *= units.HubbleParam/units.UnitTime_in_s
-  ; since a dtime derived from Timebase_interval has a little_h factor and coolTime is compared to that
-  ; e.g. same reason that dtime is divided by little_h before being passed to DoCooling
-  r.cooltime *= 1.0 / units.UnitTime_in_s ; convert cgs -> code units (Gyr)
+  ; little h factor is because u is per mass
+  r.cooltime *= units.HubbleParam / units.UnitTime_in_s ; convert cgs -> code units (Gyr)
   
   ; save
   save,r,filename=saveFilename
@@ -180,12 +178,7 @@ function enclosedMass, sP=sP
   ; save
   save,massEnc,filename=saveFilename
   print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
-  
-  ; cum mass plot
-  start_PS, sP.plotPath + 'cumMass.'+sP.plotPrefix+'.'+str(sP.res) + '.' + str(sP.snap)+'.eps'
-    cgPlot,galcatRadii.gmem_sec,massEnc,psym=3,xtitle="Radius [ckpc]",ytitle="Enclosed Mass [ Code ]"
-  end_PS
-  
+
   return, massEnc
   
 end
@@ -216,6 +209,178 @@ function fitRadProfile, radii=radii, vals=vals, range=range, radBins=radBins
 
 end
 
+; binHisto2D()
+
+function binHisto2D, xx=xx, yy=yy, wt=wt, xmm=xmm, ymm=ymm, xbs=xbs, ybs=ybs
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  if ~keyword_set(xx) or ~keyword_set(yy) or ~keyword_set(xmm) or ~keyword_set(ymm) or $
+     ~keyword_set(xbs) or ~keyword_set(ybs) then message,'error'
+     
+  if ~keyword_set(wt) then wt = replicate(1.0,n_elements(xx))
+  
+  nXBins = ceil((xmm[1]-xmm[0])/xbs)
+  nYBins = ceil((ymm[1]-ymm[0])/ybs)
+  
+  binCenX = linspace(xmm[0],xmm[1]-xbs,nXBins) + xbs/2
+  binCenY = linspace(ymm[0],ymm[1]-ybs,nYBins) + ybs/2
+  
+  ; return array
+  r = { nXBins:nXBins, nYBins:nYBins, binCenX:binCenX, binCenY:binCenY, $
+        binSizeX:xbs, binSizeY:ybs, $
+        h2:fltarr(nXBins,nYBins)  }
+        
+  ; bin manually for mass weighting
+  for i=0,nXBins-1 do begin
+    xBin = [binCenX[i]-xbs/2,binCenX[i]+xbs/2]
+  
+    for j=0,nYBins-1 do begin
+      yBin = [binCenY[j]-ybs/2,binCenY[j]+ybs/2]
+      
+      w = where(xx ge xBin[0] and xx lt xBin[1] and yy ge yBin[0] and yy lt yBin[1],count)
+      if count gt 0 then r.h2[i,j] = total(wt[w])
+    
+    endfor
+  endfor
+
+  return, r
+
+end
+
+; loadFitTimescales(): load gas properties->timescales for a list of halos and also make best model fits
+
+function loadFitTimescales, sP=sP, gcIDList=gcIDList
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  if ~keyword_set(sP) or ~n_elements(gcIDList) then message,'error'
+  
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  h  = loadSnapshotHeader(sP=sP)
+  
+  ; get indices for gas in halo(s)
+  galcat = galaxyCat(sP=sP)
+  inds = galcatINDList(sP=sP, galcat=galcat, gcIDList=gcIDList)
+
+  ; load cooling time (Gyr) and radius (ckpc) for each gas cell
+  ct = coolingTime(sP=sP)
+
+  coolTime = ct.coolTime[inds.gmem]
+  
+  curTemp = ct.temp[inds.gmem]
+  curDens = ct.dens[inds.gmem]
+  
+  gasRadii = galaxyCatRadii(sP=sP)
+  gasRadii = gasRadii.gmem_sec[inds.gmem]
+  
+  gasRvir  = galcatParentProperties(sP=sP,/rVir,parNorm='pri')
+  gasRvir  = gasRvir.gmem[inds.gmem]
+  
+  ; estimate dynamical timescale using total enclosed mass at each gas cell
+  encMass = enclosedMass(sP=sP)
+  encMass = encMass[inds.gmem] ; code units
+  
+  meanDensEnc = codeDensToPhys( 3*encMass / (4 * !pi * gasRadii^3.0), scalefac=h.time ) ; code units (physical)
+  
+  dynTime = sqrt( 3*!pi / (32 * float(units.G) * meanDensEnc) ) ; code units (Gyr)
+  
+  ; age of universe
+  hubbleTime = snapNumToAgeFlat(sP=sP)
+  
+  ; cooling and dynamical timescales for the halo as a whole (Tvir,subgroup Mtot at rvir)
+  grNr = gc.subgroupGrNr[gcIDList[0]]
+  
+  virTemp_halo = codeMassToVirTemp(gc.subgroupMass[gcIDList[0]],sP=sP,/log)
+  meanDensEnc_halo = 3*gc.subgroupMassType[partTypeNum('gas'),gcIDList[0]] / (4*!pi*gc.group_r_crit200[grNr]^3.0)
+  meanDensEnc_halo = codeDensToPhys( meanDensEnc_halo, scalefac=h.time )
+    
+  meanDens_cgs = meanDensEnc_halo * units.UnitDensity_in_cgs * units.HubbleParam * units.HubbleParam
+  coolTime_halo = CalcCoolTime(virTemp_halo,meanDens_cgs,1.0,scalefac=h.time,flag=1)
+  coolTime_halo *= units.HubbleParam / units.UnitTime_in_s
+  
+  meanDensEnc_halo = 3*gc.subgroupMass[gcIDList[0]] / (4*!pi*gc.group_r_crit200[grNr]^3.0) ; gas+DM+stars
+  meanDensEnc_halo = codeDensToPhys( meanDensEnc_halo, scalefac=h.time )
+  dynTime_halo = sqrt( 3*!pi / (32 * float(units.G) * meanDensEnc_halo) )
+
+  ; alternative definitions for dynamical time
+  dynTime_halo2 = gc.group_r_crit200[grNr] / sqrt(units.G * gc.subgroupMass[gcIDList[0]] / gc.group_r_crit200[grNr] )
+  dynTime_halo2 *= units.hubbleParam * h.time
+  
+  dynTime2 = (gasRadii * units.HubbleParam * h.time) / sqrt(units.G*encMass/gasRadii/h.time)
+  
+  ; radial fitting
+  radFitRange = [0.15,1.5]
+  
+  radCt = fitRadProfile(radii=gasRadii/gasRvir,vals=coolTime,range=radFitRange,radBins=15)
+  radDt = fitRadProfile(radii=gasRadii/gasRvir,vals=dynTime,range=radFitRange,radBins=40)
+  radDens = fitRadProfile(radii=gasRadii/gasRvir,vals=curDens,range=radFitRange,radBins=15)
+  radTemp = fitRadProfile(radii=gasRadii/gasRvir,vals=curTemp,range=radFitRange,radBins=15)
+  
+  ; calculate average hot halo gas mass
+  if sP.trMCPerCell eq 0 then begin
+    ; SPH case: all particles have constant mass
+    massPerPart = sP.targetGasMass
+    masses = replicate(massPerPart,h.nPartTot[partTypeNum('gas')])
+  endif else begin
+    ids_gmem = galcat.groupmemIDs[inds.gmem]
+  
+    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    match,ids,ids_gmem,ids_ind,ids_gmem_ind,count=countMatch
+    if countMatch ne n_elements(inds.gmem) then message,'error'
+    ids = !NULL
+    ids_ind = ids_ind[sort(ids_gmem_ind)]
+  
+    masses = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
+    masses = masses[ids_ind]
+  endelse
+  
+    ; load gas ids to match to gmem ids
+    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    match,ids,galcat.groupmemIDs,ids_ind,galcat_ind,count=countGmem
+    if countGmem ne n_elements(galcat.groupmemIDs) then message,'Error: Failed to find all gmem ids.'
+    
+    ids_ind = ids_ind[sort(galcat_ind)]
+    ids = !NULL
+    galcat_ind = !NULL
+    
+    ; load gas masses and take gmem subset
+    mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
+    mass = mass[ids_ind]
+    ids_ind = !NULL
+  
+  mass_hot = total(masses) / n_elements(gcIDList) * units.HubbleParam
+
+  ; profile fitting
+  x = linspace(0.13,1.53,50)
+  meanHaloDMMass  = mean(gc.subgroupMassType[partTypeNum('dm'),gcIDList]) * units.HubbleParam
+  meanHaloGasMass = mean(gc.subgroupMassType[partTypeNum('gas'),gcIDList]) * units.HubbleParam
+  
+  ; SIS
+  sis_dm  = sis_profile(x, mass=meanHaloDMMass, redshift=sP.redshift)
+  sis_gas = sis_gas_profile(mass_hot=mass_hot, sis_dm=sis_dm, tables=tables)
+  sis_fit = sis_gas_fit(rad_frac=gasRadii/gasRvir, dens=curDens, temp=curTemp, x=x)
+  
+  ; NFW
+  nfw_dm  = nfw_profile(x, mass=meanHaloDMMass, redshift=sP.redshift)
+  nfw_gas = nfw_gas_suto(mass_hot=mass_hot, nfw_dm=nfw_dm, tables=tables)
+  nfw_fit = nfw_gas_fit(rad_frac=gasRadii/gasRvir, dens=curDens, temp=curTemp, x=x, nfw_dm=nfw_dm, tables=tables)
+
+  ; convert to same units as simulation (comoving/h)
+  sis_gas.rho_gas *= (h.time)^3.0/units.HubbleParam
+  nfw_gas.rho_gas *= (h.time)^3.0/units.HubbleParam
+  nfw_gas.rho_gas_iso *= (h.time)^3.0/units.HubbleParam
+
+  r = {coolTime:coolTime, dynTime:dynTime, hubbleTime:hubbleTime, $
+       gasRadii:gasRadii, gasRvir:gasRvir, curTemp:curTemp, curDens:curDens, $
+       virTemp_halo:virTemp_halo, coolTime_halo:coolTime_halo, dynTime_halo:dynTime_halo, $
+       radCt:radCt, radDt:radDt, radDens:radDens, radTemp:radTemp, $
+       mass_hot:mass_hot, masses:masses, x:x, $
+       sis_dm:sis_dm, sis_gas:sis_gas, sis_fit:sis_fit, $
+       nfw_dm:nfw_dm, nfw_gas:nfw_gas, nfw_fit:nfw_fit}
+  
+  return, r
+end
+
 ; timescaleFracsVsHaloMass(): gas mass fractions with tcool<tdyn, tcool<tage as a function of halo mass
 
 function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
@@ -240,11 +405,13 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
   
   ; load catalogs
   gc = loadGroupCat(sP=sP,/skipIDs)
+  gcIDList = gcIDList(gc=gc,select=sgSelect)
   h  = loadSnapshotHeader(sP=sP)
   
   galcat = galaxyCat(sP=sP)
-  galcatIndList = gcIDList(gc=gc,select=sgSelect)
-  gcMasses = codeMassToLogMsun(gc.subgroupMass[galcatIndList])
+  gcMasses = codeMassToLogMsun(gc.subgroupMass[gcIDList])
+  
+  gmem_hotmasses = fltarr(n_elements(gcIDList))                     
   
   ; gas mass
   if sP.trMCPerCell eq 0 then begin
@@ -290,29 +457,33 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
   logMassBinCen = logMassBinCen[0:-2]
   
   ; save arrays (per halo)
-  tsFracs = { gmem_tcool_tdyn    : fltarr(nCuts,n_elements(galcatIndList)) + !values.f_nan  ,$
-              gmem_tcool_tage    : fltarr(nCuts,n_elements(galcatIndList)) + !values.f_nan   }
+  tsFracs = { gmem_tcool_tdyn    : fltarr(nCuts,n_elements(gcIDList)) + !values.f_nan  ,$
+              gmem_tcool_tage    : fltarr(nCuts,n_elements(gcIDList)) + !values.f_nan   }
                   
   ; save arrays (binned in halo mass)
   tsMedian = { gmem_tcool_tdyn    : fltarr(nCuts,logMassNBins) + !values.f_nan  ,$
                gmem_tcool_tage    : fltarr(nCuts,logMassNBins) + !values.f_nan   }
   
   ; loop over each halo
-  for i=0L,n_elements(galcatIndList)-1 do begin
+  for i=0L,n_elements(gcIDList)-1 do begin
     ; indices for this halo
-    gcInd = galcatIndList[i]
+    gcInd = gcIDList[i]
     if galcat.groupmemLen[gcInd] eq 0 then continue
-    
-    ; enforce a minimum number of gas elements in gmem (leave as NaN, skip in median)
-    if galcat.groupmemLen[gcInd] lt minNumGasInHalo then continue
-    
+       
     inds = lindgen(galcat.groupmemLen[gcInd]) + galcat.groupmemOff[gcInd]
     
+    ; get gas in this halo
     loc_coolTime = coolTime[inds]
     loc_dynTime  = dynTime[inds]
     loc_mass     = mass[inds]
     
     loc_massTot  = total(loc_mass)
+    
+    ; record total "hot mass" (halo mass)
+    gmem_hotmasses[i] = loc_massTot
+    
+    ; enforce a minimum number of gas elements in gmem (leave as NaN, skip in median)
+    if galcat.groupmemLen[gcInd] lt minNumGasInHalo then continue
     
     ; count
     for j=0,nCuts-1 do begin
@@ -342,7 +513,8 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
   endfor
   
   r = { tsFracs:tsFracs, tsMedian:tsMedian, tsRatioVals:tsRatioVals, gcMasses:gcMasses, $
-        logMassBins:logMassBins, logMassBinCen:logMassBinCen, sP:sP, sgSelect:sgSelect, minNumGasInHalo:minNumGasInHalo }
+        logMassBins:logMassBins, logMassBinCen:logMassBinCen, sP:sP, sgSelect:sgSelect, $
+        minNumGasInHalo:minNumGasInHalo, gmem_hotmasses:gmem_hotmasses }
   
   ; save
   save,r,filename=saveFilename
@@ -350,6 +522,156 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
   
   return, r
 
+end
+
+; modelMassFracs(): calculate timescale related gas mass fractions for many SIS/NFW models
+
+function modelMassFracs, sP=sP, ts=ts
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  tables = interpLambdaSD93()  
+
+  ; config
+  modelMassRange = [10.8,12.2]
+  modelMassRes   = 150
+  
+  modelRadRange = [0.04,1.0]
+  modelRadRes   = 400
+  
+  modelMasses = [1.0,2.0,5.0,$
+                 10.0^linspace(modelMassRange[0],modelMassRange[1],modelMassRes)/1e10] ; code units
+
+  ; check if save exists
+  saveFilename = 'temp.mmf.sav'
+  
+  ; results exist, return
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,r
+  endif 
+  
+  r = { modelMassFrac_SIS1     : fltarr(modelMassRes)                            ,$
+        modelMassFrac_SIS2     : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+        modelMassFrac_NFW_iso  : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+        modelMassFrac_NFW_poly : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+        modelMasses            : modelMasses    ,$
+        modelMassRange         : modelMassRange ,$
+        modelRadRes            : modelRadRes    ,$
+        modelRadRange          : modelRadRange   }
+  
+  x = linspace(modelRadRange[0],modelRadRange[1],modelRadRes)
+  
+  for i=0,modelMassRes-1 do begin
+    m_gas0 = modelMasses[i] * units.f_b
+    
+    ; MODEL 1: SIS uniform halo
+    sis_dm  = sis_profile(1.0, mass=modelMasses[i], redshift=sP.redshift)
+    sis_gas = sis_gas_profile(mass_hot=m_gas0, sis_dm=sis_dm, tables=tables)
+    
+    if sis_gas.coolTime lt sis_gas.dynTime then r.modelMassFrac_SIS1[i] = 1.0 ; all halo gas has tcool<tdyn
+    if sis_gas.coolTime ge sis_gas.dynTime then r.modelMassFrac_SIS1[i] = 0.0 ; all halo gas has tcool>tdyn
+    
+    ; MODEL 2: SIS with tcool(r)
+    sis_dm  = sis_profile(x, mass=modelMasses[i], redshift=sP.redshift)
+    sis_gas = sis_gas_profile(mass_hot=m_gas0, sis_dm=sis_dm, tables=tables)
+
+    foreach tsRatio,ts.tsRatioVals,j do begin
+    
+      if max(sis_gas.coolTime) lt tsRatio * sis_gas.dynTime then begin
+        ; all halo gas has tcool<tdyn
+        r.modelMassFrac_SIS2[j,i] = 1.0
+      endif else begin
+        if min(sis_gas.coolTime) gt tsRatio * sis_gas.dynTime then begin
+          ; all halo gas has tcool>tdyn
+          r.modelMassFrac_SIS2[j,i] = 0.0
+        endif else begin
+          ; find the radius where tcool=frac*tdyn
+          w = where(sis_gas.coolTime ge tsRatio * sis_gas.dynTime,count)
+          if count eq 0 then message,'error'
+          w = min(w)
+          e_rad = sis_dm.rad[w]
+        
+          ; calculate gas mass inside e_rad and take ratio
+          r.modelMassFrac_SIS2[j,i] = (e_rad/sis_dm.r200)
+        endelse
+      endelse
+    
+    endforeach
+    
+    ; MODEL 3: NFW
+    nfw_dm  = nfw_profile(x, mass=modelMasses[i], redshift=sP.redshift)
+    nfw_gas = nfw_gas_suto(mass_hot=m_gas0, nfw_dm=nfw_dm, tables=tables)
+    
+    foreach tsRatio,ts.tsRatioVals,j do begin
+    
+      ; ISO
+      zz = nfw_gas.coolTime_iso ge tsRatio * nfw_gas.dynTime
+      zz_tot = total(zz)
+      
+      if zz_tot eq 0 then begin
+        ; tcool is nowhere greater than tsRatio*tdyn (all halo gas has tcool<tdyn)
+        r.modelMassFrac_NFW_iso[j,i] = 1.0
+      endif else begin
+        if zz_tot eq n_elements(modelRadRes) then begin
+          ; all halo gas has tcool > tsRatio*tdyn
+          r.modelMassFrac_NFW_iso[j,i] = 0.0
+        endif else begin
+          ; find the radius where tcool = tsRatio*tdyn
+          w = where(nfw_gas.coolTime_iso ge tsRatio * nfw_gas.dynTime,count)
+          if count eq 0 then message,'error'
+          w = min(w)
+          
+          if w eq 0 then continue
+        
+          ; calculate gas mass inside e_rad and take ratio
+          e_mass   = int_tabulated(nfw_dm.rad[0:w],4*!pi*nfw_dm.rad[0:w]^2.0*nfw_gas.rho_gas_iso[0:w])
+          tot_mass = int_tabulated(nfw_dm.rad,4*!pi*nfw_dm.rad^2.0*nfw_gas.rho_gas_iso) ; equals m_gas0 only for poly
+
+          r.modelMassFrac_NFW_iso[j,i] = (e_mass/tot_mass)
+        endelse
+      endelse
+      
+      ; POLY
+      zz = nfw_gas.coolTime ge tsRatio * nfw_gas.dynTime
+      zz_tot = total(zz)
+      
+      if zz_tot eq 0 then begin
+        ; tcool is nowhere greater than tsRatio*tdyn (all halo gas has tcool<tdyn)
+        r.modelMassFrac_NFW_poly[j,i] = 1.0
+      endif else begin
+        if zz_tot eq n_elements(modelRadRes) then begin
+          ; all halo gas has tcool > tsRatio*tdyn
+          r.modelMassFrac_NFW_poly[j,i] = 0.0
+        endif else begin
+          ; find the radius where tcool = tsRatio*tdyn
+          w = where(nfw_gas.coolTime ge tsRatio * nfw_gas.dynTime,count)
+          if count eq 0 then message,'error'
+          w = min(w)
+        
+          ; calculate gas mass inside e_rad and take ratio
+          e_mass   = int_tabulated(nfw_dm.rad[0:w],4*!pi*nfw_dm.rad[0:w]^2.0*nfw_gas.rho_gas[0:w])
+          tot_mass = int_tabulated(nfw_dm.rad,4*!pi*nfw_dm.rad^2.0*nfw_gas.rho_gas_iso) ; equals m_gas0
+
+          r.modelMassFrac_NFW_poly[j,i] = (e_mass/tot_mass)
+        endelse
+      endelse
+      
+    endforeach
+    
+  endfor ; modelMassRes
+  
+  ; make extremely low values not plot
+  w = where(r.modelMassFrac_NFW_poly lt 0.0001,count)
+  if count gt 0 then r.modelMassFrac_NFW_poly[w] = !values.f_nan
+  w = where(r.modelMassFrac_NFW_iso lt 0.0001,count)
+  if count gt 0 then r.modelMassFrac_NFW_iso[w] = !values.f_nan
+  
+  ; save
+  ;save,r,filename=saveFilename
+  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
+  
+  return,r
+  
 end
 
 ; verifyGadgetCoolingTimes(): check calculated cooling times vs. output in snapshots (where available)

@@ -1,6 +1,6 @@
 ; helper.pro
 ; helper functions (NOTE: all my IDL routines loaded at bottom of this file)
-; dnelson nov.2012
+; dnelson feb.2013
 
 ; one line utility functions
 ; --------------------------
