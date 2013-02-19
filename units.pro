@@ -220,7 +220,7 @@ end
 
 ; codeDensToPhys(): convert comoving->Physical and add little_h factors
 
-function codeDensToPhys, dens, scalefac=scalefac, cgs=cgs
+function codeDensToPhys, dens, sP=sP, scalefac=scalefac, cgs=cgs
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   

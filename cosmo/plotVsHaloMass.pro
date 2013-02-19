@@ -20,6 +20,7 @@ pro plotPreBin, res=res
   foreach timeWindow,timeWindows do begin
     foreach run,runs do begin
       foreach accMode,accModes do begin
+        print,run,res,timeWindow,accMode
         sP = simParams(res=res,run=run,redshift=redshift)
         binv = haloMassBinValues(sP=sP,sgSelect=sgSelect,timeWindow=timeWindow,accMode=accMode)
       endforeach

@@ -7,6 +7,7 @@
 function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
+  if ~sP.gfmWinds and accMode eq 'recycled' then message,'Error: Request recycled on non-winds run.'
   units = getUnits()
   
   ; current time

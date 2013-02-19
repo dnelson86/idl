@@ -7,17 +7,19 @@
 pro vorMeshExport
 
   ; config
-  fileNameOut = "vorMesh_diego.dat"
+  fileNameOut = "vorMesh_diego_b.dat"
   fileBaseIn = "voronoi_mesh_0_"
+  bboxSize = 1000.0
   
-  bboxSize = 1000.0 ; written directly
+  ; DIEGO
+  x_minmax = [990,1020]
+  y_minmax = [990,1020]
+  z_minmax = [990,1020]
   
-  ;xyz_minmax = [0.0,2000.0] ; make spatial subset
-  ;xyz_minmax = [0.0,1.0] ; make spatial subset
-  x_minmax = [1005,1030]
-  y_minmax = [1005,1030]
-  z_minmax = [990,1010]
-  ; x 990-1030 y 1000-1040 z 980-1020
+  ; 512z2h304
+  ;x_minmax = [16465,17120]
+  ;y_minmax = [00545,01200]
+  ;z_minmax = [14580,15230]
   
   fname = { coords  : fileBaseIn + "coordinates.dat" ,$
             inds    : fileBaseIn + "indices.dat"     ,$
@@ -111,9 +113,6 @@ pro vorMeshExport
   endfor
             
   ; make a spatial subset?
-  ;w = where(faceCentroids[0,*] ge xyz_minmax[0] and faceCentroids[0,*] le xyz_minmax[1] and $
-  ;          faceCentroids[1,*] ge xyz_minmax[0] and faceCentroids[1,*] le xyz_minmax[1] and $
-  ;          faceCentroids[2,*] ge xyz_minmax[0] and faceCentroids[2,*] le xyz_minmax[1],count)
   w = where(faceCentroids[0,*] ge x_minmax[0] and faceCentroids[0,*] le x_minmax[1] and $
             faceCentroids[1,*] ge y_minmax[0] and faceCentroids[1,*] le y_minmax[1] and $
             faceCentroids[2,*] ge z_minmax[0] and faceCentroids[2,*] le z_minmax[1],count)   
@@ -124,20 +123,23 @@ pro vorMeshExport
   faceLengths   = faceLengths[w]
   faceOffsets   = faceOffsets[w]
   
-  ; MOVE PTS
-  print,'warning'
-  pts[0,*] = (pts[0,*] - 1000.0)*40
-  pts[1,*] = (pts[1,*] - 1000.0)*40
-  pts[2,*] = (pts[2,*] - 990.0)*40
-  faceCentroids[0,*] = (faceCentroids[0,*] - 1000.0)*40
-  faceCentroids[1,*] = (faceCentroids[1,*] - 1000.0)*40
-  faceCentroids[2,*] = (faceCentroids[2,*] - 990.0)*40
-  
   ; construct dataout1 array
   dataout1 = fix(faceLengths)
   
   if min(faceLengths) lt 0 or max(faceLengths) gt 20 then message,'Error: Strange face lengths.'
   if min(faceInds) lt 5 then print,'WARNING: A face references an infinity tetra point.'
+  
+  ; compress points into [-1000,1000] range (maintain aspect ratio if not cube)
+  xyzr = float([x_minmax[1]-x_minmax[0], y_minmax[1]-y_minmax[0], z_minmax[1]-z_minmax[0]])
+  largest = max(xyzr,largest_ind)
+  aspect_mod = xyzr / xyzr[largest_ind]
+  
+  xyzmin = [x_minmax[0],y_minmax[0],z_minmax[0]]
+  
+  for j=0,2 do begin
+    pts[j,*] = (pts[j,*] - xyzmin[j]) / xyzr[j] * aspect_mod[j] * bboxSize*2 - bboxSize
+    faceCentroids[j,*] = (faceCentroids[j,*] - xyzmin[j]) / xyzr[j] * aspect_mod[j] * bboxSize*2 - bboxSize
+  endfor
   
   ; construct dataout2 array
   dataout2 = fltarr( (total(faceLengths,/int)) * 3 + n_elements(faceCentroids) )
@@ -166,18 +168,10 @@ pro vorMeshExport
 
   ; header information
   simType  = 2
-  
-  ; compress points
+
   ;dataout2 -= 10000.0 ; [-10000,10000]
   ;dataout2 /= 10.0 ; [-1000,1000]
   ;print,'COMPRESSING COSMO'
-  
-  ;dataout2 -= 0.5 ; [-0.5,0.5]
-  ;dataout2 *= 2000.0 ; [-1000,1000]
-  ;print,'COMPRESSING TESTBOX'
-  
-  dataout2 -= 1000.0 ; [-2000,2000]
-  print,'COMPRESSING DIEGO'
   
   ; write binary file
   outStruct = { fileType  : fix(1)              ,$ ; 0=debug, 1=no normals

@@ -1,10 +1,10 @@
 ; haloModels.pro
 ; theoretical models for DM halos (e.g. NFW, SIS) including their gas
-; dnelson jan.2013
+; dnelson feb.2013
 
 ; interpolate Sutherland and Dopita (1993) primordial/metal line radiative cooling tables
 
-function interpLambdaSD93, Z=Z, logT=logT, tables=tables
+function interpLambdaSD93, Z=Z, logT=logT, tables=tables, norm=norm
 
   ; if no input tables, then load them now and return
   if ~keyword_set(tables) then begin
@@ -21,7 +21,10 @@ function interpLambdaSD93, Z=Z, logT=logT, tables=tables
   if Z ne 0.0 then message,'Error: Primordial only for now.'
   
   ; interpolate in temperature
-  logLambdaNetInterp = interpol(tables.logLambdaNet,tables.logT,logT,/spline)
+  if ~keyword_set(norm) then $
+    logLambdaNetInterp = interpol(tables.logLambdaNet,tables.logT,logT,/spline) ; lambda_net
+  if keyword_set(norm) then $
+    logLambdaNetInterp = interpol(tables.logLambdaNorm,tables.logT,logT,/spline) ; lambda_N
   
   if n_elements(logLambdaNetInterp) eq 1 then return, logLambdaNetInterp[0]
   return,logLambdaNetInterp
@@ -180,17 +183,8 @@ function nfw_profile, rad_frac, mass=mass_codeunits, redshift=redshift
   ; binding energy
   bindEnergy = units.G * mass_codeunits^2.0 * delta_c^2.0 / r200 * $
                ( (alog(1+c))^2.0 - c*c/(1+c) )
-
-  ; mass by shell
-  Mshell_DM = fltarr(n_elements(rad))
-  Mshell_DM[0] = (4.0/3.0) * !pi * rad[0]^3.0 * rho_DM[0]
   
-  for i=1,n_elements(rad)-1 do begin
-    shell_vol = (4.0/3.0) * !pi * ( rad[i]^3.0 - rad[i-1]^3.0 ) ; kpc^3
-    Mshell_DM[i] = shell_vol * rho_DM[i]
-  endfor
-  
-  return, {rad:rad, rho_DM:rho_DM, Mshell_DM:Mshell_DM, $
+  return, {rad:rad, rho_DM:rho_DM, $
            Menc_DM:Menc_DM,   Menc_rvir:Menc_rvir,   Menc_rs:Menc_rs,   $
            Vcirc_DM:Vcirc_DM, Vcirc_rvir:Vcirc_rvir, Vcirc_rs:Vcirc_rs, $
            Tvir_DM:Tvir_DM,   Tvir_rvir:Tvir_rvir,   Tvir_rs:Tvir_rs,   $
@@ -199,70 +193,9 @@ function nfw_profile, rad_frac, mass=mass_codeunits, redshift=redshift
   
 end
 
-; nfw hydrostatic equilibrium profile for gas (isothermal)
-; Capelo+ (2010) which references Makino+ (1998, iso) and Suto+ (1998, polytropic)
+; nfw equilibrium hydrostatic profile, following Suto+ (1998) both iso and polytropic solutions
 
-function nfw_b_makino, r, r_s=r_s
-  gamma = 1.0 ; 1.2,1.5
-  return, (2.0/9/gamma) * (r/r_s) / ( alog(1+r/r_s) - r/(r+r_s) )
-end
-
-function nfw_gas_profile, mass_hot=mass_hot_codeunits, nfw_dm=nfw_dm, tables=tables
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-  if ~keyword_set(nfw_dm) or ~keyword_set(mass_hot_codeunits) then message,'error'
-  units = getUnits(redshift=nfw_dm.redshift)
- 
-  ; Makino+ (1998) isothermal solution:
-  f_gas = 1.0
-  mass_hot_codeunits *= f_gas
-  
-  ; two, constant options T(r) = T_vir(r_s) or T(r) = T_vir(r_vir)
-  ;b_rs   = nfw_b_makino(nfw_dm.r_s,r_s=nfw_dm.r_s)
-  b_r200 = nfw_b_makino(nfw_dm.r200,r_s=nfw_dm.r_s)
-  
-  ; central density constants
-  ;int_rs   = qpint1d('x*x*(1+x)^(27.0*P(0)/(2*x))',0.0,nfw_dm.c,b_rs,/expr)
-  int_r200 = qpint1d('x*x*(1+x)^(27.0*P(0)/(2*x))',0.0,nfw_dm.c,b_r200,/expr)
-  
-  ;rho0_rs   = (mass_hot_codeunits/nfw_dm.Menc_rVir) * nfw_dm.rho_s * exp(27*b_rs/2)   * $
-  ;            ( alog(1+nfw_dm.c) - nfw_dm.c/(1+nfw_dm.c) ) / int_rs
-  rho0_r200 = (mass_hot_codeunits/nfw_dm.Menc_rVir) * nfw_dm.rho_s * exp(27*b_r200/2) * $
-              ( alog(1+nfw_dm.c) - nfw_dm.c/(1+nfw_dm.c) ) / int_r200
-  
-  ; density and temperature profiles
-  ;rho_gas_rs   = rho0_rs   * exp( -27*b_rs/2   * (1 - alog(1+nfw_dm.rad/nfw_dm.r_s) / (nfw_dm.rad/nfw_dm.r_s) ) )
-  rho_gas_r200 = rho0_r200 * exp( -27*b_r200/2 * (1 - alog(1+nfw_dm.rad/nfw_dm.r_s) / (nfw_dm.rad/nfw_dm.r_s) ) )
-  
-  ;temp_gas_rs   = replicate(nfw_dm.Tvir_rs,n_elements(nfw_dm.rad))
-  temp_gas_r200 = replicate(nfw_dm.Tvir_rvir,n_elements(nfw_dm.rad))
-  
-  ; get cooling rate for T(r) (constant) in cgs (erg/s/cm^3)
-  lambdaNet = 10.0^(interpLambdaSD93(Z=0.0,logT=alog10(temp_gas_r200),tables=tables))  
-  
-  ; timescales in Gyr
-  rho_gas_cgs = rho_gas_r200 * units.UnitMass_in_g / units.UnitLength_in_cm^3.0
-  
-  coolTime = 3 * units.mu * units.mass_proton * units.boltzmann * temp_gas_r200 / $
-             (2 * rho_gas_cgs * lambdaNet)
-  coolTime = float(coolTime / units.s_in_Gyr)
-
-  dynTime = nfw_dm.r200 / (nfw_dm.Vcirc_DM * units.kmS_in_kpcYr) / 1e9  
-  
-  ; rcool (where coolTime=dynTime), vector root "finder"
-  w = where(abs(coolTime-dynTime) eq min(abs(coolTime-dynTime)),count)
-  if count gt 0 then w = w[0]
-  r_cool = nfw_dm.rad[w]
-  
-  if w le 1 or w ge n_elements(coolTime)-2 then r_cool = !values.f_nan ; safety for bad root
-  
-  return, {rho_gas:rho_gas_r200,rho0_r200:rho0_r200,temp_gas:temp_gas_r200,$
-           coolTime:coolTime,dynTime:dynTime,r_cool:r_cool}
-end
-
-; nfw equilibrium hydrostatic profile (polytropic)
-; following Suto+ (1998) both iso and polytropic gas profile solutions
-; iteratively solved using total mass and binding energy constraints to fix parameters
+; suto_model(): calculate profiles given (T0,rho0,n) parameters
 
 function suto_model, T_0, rho_0, n, nfw_dm
 
@@ -290,6 +223,8 @@ function suto_model, T_0, rho_0, n, nfw_dm
            T_0:T_0, rho_0:rho_0, n:n}
 end
 
+; nfw_rcool_func(): helper function for root finding for r_cool
+
 function nfw_rcool_func, X, params=params
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
@@ -308,8 +243,8 @@ function nfw_rcool_func, X, params=params
   dynTime = X / (Vcirc * units.kmS_in_kpcYr) / 1e9
   
   ; coolTime
-  ;alpha = 3 * units.mu / 2
-  alpha = 3.56 ; LU
+  alpha = 3 * units.mu / 2
+  ;alpha = 3.56 ; LU
   
   xx = X / params.nfw_dm.r200
   eps_xx = 1 - params.B_p * ( 1 - alog(1 + xx) / xx )
@@ -327,70 +262,18 @@ function nfw_rcool_func, X, params=params
   return, y  
 end
 
-function nfw_gas_suto, mass_hot=mass_hot_codeunits, nfw_dm=nfw_dm, tables=tables
-
+; nfw_timescales_suto(): calculate timescales vs radius and interesting radii for NFW gas model
+  
+function nfw_timescales_suto, suto=suto, nfw_dm=nfw_dm, tables=tables
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  if ~keyword_set(nfw_dm) or ~keyword_set(mass_hot_codeunits) then message,'error'
+  if ~keyword_set(nfw_dm) or ~keyword_set(suto) or ~keyword_set(tables) then message,'error'
   units = getUnits(redshift=nfw_dm.redshift)
-
-  iterFac = 0.05
-  maxIter = 1000
-  errTol  = 1e-5 ; relative
-  
-  ; parameters
-  f_shock = 1e-7 ; multiplier
-  r_cool  = 0.0 ; inner radius for hot halo gas
-  n = 20.0 ;3/2,7
-  
-  ; initial guess
-  T_0   = 2.0 * nfw_dm.Tvir_rs
-  rho_0 = 100 * nfw_dm.mass_codeunits / (4/3*!pi*nfw_dm.r200^3.0)
-  
-  ; iterate to find central temp
-  for i=0,maxIter do begin
-    suto = suto_model(T_0,rho_0,n,nfw_dm)
-    
-    ; upper limit of B_p<1 assuming gas extends quite far
-    if suto.B_p ge 1.0 then print,'Warning: B_p>1'
-    
-    ;print,i,B_p,rho_0,T_0
-  
-    ; cal(I) integrals
-    int_rho = qpint1d('x*x*(1-P(0)*(1-alog(1+x)/x))^(P(1))', $
-                      r_cool/nfw_dm.r_s, nfw_dm.r200/nfw_dm.r_s, [suto.B_p,n],/expr )
-    int_ene = qpint1d('x*x*(1-P(0)*(1-alog(1+x)/x))^(P(1))', $
-                      r_cool/nfw_dm.r_s, nfw_dm.r200/nfw_dm.r_s, [suto.B_p,n+1],/expr )
-
-    ; enforce mass and energy constraints -> new rho0,T0
-    rho_0_new = mass_hot_codeunits / (4*!pi*nfw_dm.r_s^3.0 * int_rho)
-    
-    Eh_H = f_shock * (-0.5) * nfw_dm.bindEnergy * (mass_hot_codeunits/nfw_dm.mass_codeunits)
-    
-    ;T_0_new = units.mu * units.mass_proton * (Eh_H*units.UnitEnergy_in_cgs) / $
-    ;  (int_ene * 6 * !pi * units.boltzmann * rho_0_new * nfw_dm.r_s^3.0 * units.UnitMass_in_g)
-    
-    T_0_new = T_0
-    
-    ; check convergence and update
-    cur_err1 = abs((T_0_new-T_0)/T_0)
-    cur_err2 = abs((rho_0_new-rho_0)/rho_0)
-    if cur_err1 lt errTol and cur_err2 lt errTol then break
-    
-    rho_0 = float( rho_0 + (rho_0_new-rho_0) * iterFac )
-    T_0   = float( T_0   + (T_0_new-T_0)     * iterFac )
-  
-  endfor
-
-  ;print,'final2',alog10(T_0),alog10(rho_0),suto.B_p
-  
-  ; construct final density/temperature profiles
-  suto = suto_model(T_0,rho_0,n,nfw_dm)
   
   ; timescales: poly
   dynTime = nfw_dm.rad / (nfw_dm.Vcirc_DM * units.kmS_in_kpcYr) / 1e9
   
-  ;alpha = 3 * units.mu / 2
-  alpha = 3.56 ; LU
+  alpha = 3 * units.mu / 2
+  ;alpha = 3.56 ; LU
   
   lambdaNet = 10.0^(interpLambdaSD93(Z=0.0,logT=alog10(suto.temp_gas),tables=tables))
   COF_cgs   = float( alpha * units.mass_proton * units.boltzmann * suto.temp_gas / lambdaNet )
@@ -423,14 +306,84 @@ function nfw_gas_suto, mass_hot=mass_hot_codeunits, nfw_dm=nfw_dm, tables=tables
   
   r_cool_iso = 0
   
-  return, {B:suto.B, B_p:suto.B_p, temp_gas:suto.temp_gas, rho_gas:suto.rho_gas, rho_gas_iso:suto.rho_gas_iso, $
-           T_0:suto.T_0, rho_0:suto.rho_0, n:suto.n ,$
-           dynTime:dynTime, coolTime:coolTime, hubbleTime:hubbleTime, r_cool:r_cool, r_cool_h:r_cool_h}
+  return, {dynTime:dynTime, coolTime:coolTime, hubbleTime:hubbleTime, r_cool:r_cool, r_cool_h:r_cool_h, $
+           coolTime_iso:coolTime_iso, r_cool_iso:r_cool_iso}
            
 end
 
-; fit NFW (suto) to radially binned gas density profile from the simulations
-; input/output: code units as in simulation (comoving/h)
+; nfw_gas_suto(): iteratively solve using total mass and binding energy constraints to fix parameters
+
+function nfw_gas_suto, mass_hot=mass_hot_codeunits, nfw_dm=nfw_dm, tables=tables
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  if ~keyword_set(nfw_dm) or ~keyword_set(mass_hot_codeunits) then message,'error'
+  units = getUnits(redshift=nfw_dm.redshift)
+
+  iterFac = 0.05
+  maxIter = 1000
+  errTol  = 1e-5 ; relative
+  
+  ; parameters
+  ;f_shock = 1e-7 ; multiplier
+  r_cool  = 0.0 ; inner radius for hot halo gas
+  n = 20.0 ;3/2,7
+  
+  ; initial guess
+  T_0   = 2.0 * nfw_dm.Tvir_rs
+  rho_0 = 100 * nfw_dm.mass_codeunits / (4/3*!pi*nfw_dm.r200^3.0)
+  
+  ; iterate to find central temp
+  for i=0,maxIter do begin
+    suto = suto_model(T_0,rho_0,n,nfw_dm)
+    
+    ; upper limit of B_p<1 assuming gas extends quite far
+    if suto.B_p ge 1.0 then print,'Warning: B_p>1'
+    
+    ;print,i,B_p,rho_0,T_0
+  
+    ; cal(I) integrals
+    int_rho = qpint1d('x*x*(1-P(0)*(1-alog(1+x)/x))^(P(1))', $
+                      r_cool/nfw_dm.r_s, nfw_dm.r200/nfw_dm.r_s, [suto.B_p,n],/expr )
+    int_ene = qpint1d('x*x*(1-P(0)*(1-alog(1+x)/x))^(P(1))', $
+                      r_cool/nfw_dm.r_s, nfw_dm.r200/nfw_dm.r_s, [suto.B_p,n+1],/expr )
+
+    ; enforce mass constraint -> new rho0
+    rho_0_new = mass_hot_codeunits / (4*!pi*nfw_dm.r_s^3.0 * int_rho)
+    
+    ; enforce energy constraint -> new T0
+    ;Eh_H = f_shock * (-0.5) * nfw_dm.bindEnergy * (mass_hot_codeunits/nfw_dm.mass_codeunits)
+    ;T_0_new = units.mu * units.mass_proton * (Eh_H*units.UnitEnergy_in_cgs) / $
+    ;  (int_ene * 6 * !pi * units.boltzmann * rho_0_new * nfw_dm.r_s^3.0 * units.UnitMass_in_g)
+    
+    ; or: central temperature is fixed
+    T_0_new = T_0
+    
+    ; check convergence and update
+    cur_err1 = abs((T_0_new-T_0)/T_0)
+    cur_err2 = abs((rho_0_new-rho_0)/rho_0)
+    if cur_err1 lt errTol and cur_err2 lt errTol then break
+    
+    rho_0 = float( rho_0 + (rho_0_new-rho_0) * iterFac )
+    T_0   = float( T_0   + (T_0_new-T_0)     * iterFac )
+  
+  endfor
+
+  ;print,'final2',alog10(T_0),alog10(rho_0),suto.B_p
+  
+  ; construct final density/temperature profiles
+  suto = suto_model(T_0,rho_0,n,nfw_dm)
+  
+  ; timescales
+  ts = nfw_timescales_suto(suto=suto, nfw_dm=nfw_dm, tables=tables)
+  
+  return, {B:suto.B, B_p:suto.B_p, temp_gas:suto.temp_gas, rho_gas:suto.rho_gas, $
+           T_0:suto.T_0, rho_0:suto.rho_0, n:suto.n ,$
+           dynTime:ts.dynTime, coolTime:ts.coolTime, hubbleTime:ts.hubbleTime, r_cool:ts.r_cool, r_cool_h:ts.r_cool_h, $
+           coolTime_iso:ts.coolTime_iso, rho_gas_iso:suto.rho_gas_iso }  
+  
+end
+  
+; nfw_gas_fit_func(): fitting from simulations helper
 
 function nfw_gas_fit_func, X, P, B_in=B_in
   compile_opt idl2, hidden, strictarr, strictarrsubs
@@ -456,10 +409,12 @@ function nfw_gas_fit_func, X, P, B_in=B_in
   return, Y
 end
 
+; nfw_gas_fit(): fit NFW (poly) to radially binned gas density profile from the simulations
+; input/output: code units as in simulation (comoving/h)
 ; note: n->inf is isothermal, and halos (dens,temp) cannot be simultaneously fit well by nfw_poly
 ;       de-weighting the temperature results in a correct density fit but the temperature is too low
 
-function nfw_gas_fit, rad_frac=rad_frac, dens=dens, temp=temp, x=x, nfw_dm=nfw_dm
+function nfw_gas_fit, rad_frac=rad_frac, dens=dens, temp=temp, x=x, nfw_dm=nfw_dm, tables=tables
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits(redshift=nfw_dm.redshift)
@@ -469,12 +424,12 @@ function nfw_gas_fit, rad_frac=rad_frac, dens=dens, temp=temp, x=x, nfw_dm=nfw_d
   ; fit density/temperature: prepare inputs
   xx    = [rad_frac,rad_frac]
   y     = [dens*1e10,10.0^temp]
-  err_y = [err_y/1e3,err_y] ; weight density more?
+  err_y = [err_y/1e2,err_y] ; weight density more?
 
   ; params: (T_0,rho_0,n)
   p0 = [3*nfw_dm.Tvir_rVir            ,$ ; T_0
         0.1*nfw_dm.rho_dm[0]*1e10     ,$ ; rho_0
-        30.0                            ] ; n
+        20.0                            ] ; n
   
   parinfo = replicate({limited:[1,1], limits:[0.0,0.0], fixed:0, step:0.0}, 3)
 
@@ -486,7 +441,7 @@ function nfw_gas_fit, rad_frac=rad_frac, dens=dens, temp=temp, x=x, nfw_dm=nfw_d
   ; fixed at initial guess?
   parinfo[0].fixed = 0
   parinfo[1].fixed = 0
-  parinfo[2].fixed = 0
+  parinfo[2].fixed = 1
   
   ; stepsizes
   ;parinfo[0].step = 100.0 ; K
@@ -505,7 +460,11 @@ function nfw_gas_fit, rad_frac=rad_frac, dens=dens, temp=temp, x=x, nfw_dm=nfw_d
   f_dens = f_poly[0:n_elements(f_poly)/2-1] / 1e10
   f_temp = alog10( f_poly[n_elements(f_poly)/2:n_elements(f_poly)-1] )
   
-  return, { p_poly:p_poly, f_dens:f_dens, f_temp:f_temp }
+  ; add in timescales etc
+  suto = suto_model(p_poly[0],p_poly[1],p_poly[2],nfw_dm)
+  ts = nfw_timescales_suto(suto=suto, nfw_dm=nfw_dm, tables=tables)
+
+  return, { p_poly:p_poly, f_dens:f_dens, f_temp:f_temp, ts:ts }
 
 end
 
@@ -574,8 +533,8 @@ function sis_gas_profile, mass_hot=mass_hot_codeunits, sis_dm=sis_dm, tables=tab
   temp_gas = replicate(sis_dm.Tvir_rVir,n_elements(sis_dm.rad))
   
   ; timescales in Gyr
-  ;alpha = 3 * units.mu / 2
-  alpha = 3.56 ; LU
+  alpha = 3 * units.mu / 2
+  ;alpha = 3.56 ; LU
   
   COF_cgs  = float(alpha * units.mass_proton * units.boltzmann * sis_dm.Tvir_rVir / lambdaNet)
   

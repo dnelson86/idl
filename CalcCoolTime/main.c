@@ -30,14 +30,15 @@ static int NheattabUVB;       /**< length of UVB photo table */
  *  ne  = float(ne)
  *  scalefac = float(time) ; Header.Time
  *  coolrate_out = fltarr(npts)
+ *  flag = 0 ; 0=normal, 1=u actually logT, 2=return lambdaNet instead, 3=both 1 and 2
  *
  *  ret = Call_External('/n/home07/dnelson/idl/CalcCoolTime/CalcCoolTime.so', 'CalcCoolTime', $
-                        npts,u,rho,ne,cooltime_out,scalefac,/CDECL)
+                        npts,u,rho,ne,cooltime_out,scalefac,flag,/CDECL)
  */
 
 int CalcCoolTime(int argc, void* argv[])
 {
-  int npts;
+  int npts, flag;
   float *u, *rho, *ne;
   float *cooltime_out;
   float scalefac;
@@ -45,7 +46,7 @@ int CalcCoolTime(int argc, void* argv[])
   
   /* --- IDL glue --- */
   
-  if (argc != 6)
+  if (argc != 7)
   {
     sprintf(buf,"Wrong number of arguments (%d)!\n",argc);
     IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,buf);
@@ -61,16 +62,9 @@ int CalcCoolTime(int argc, void* argv[])
   
   cooltime_out = (float *)argv[4];
   scalefac     = *(float *)argv[5];
+  flag         = *(int *)argv[6];
   
-  /* --- init --- */
-  
-  // if scalefac>1, this is a flag that u actually contains log10(temp) already
-  int flag = 0;
-  if(scalefac > 1.0) {
-    flag = 1;
-    scalefac -= 1; // true scalefac is scalefac-1
-    //IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"Using direct log10(temp).");
-  }
+  /* --- init --- */  
   
   gs.XH = HYDROGEN_MASSFRAC; /* set default hydrogen mass fraction */
 
@@ -87,7 +81,7 @@ int CalcCoolTime(int argc, void* argv[])
   /* --- cooling rate --- */
   
   double temp = 0.0;
-  double ratefact, LambdaNet;
+  double ratefact, LambdaNet, u_temp;
   int i;
   
   for ( i = 0; i < npts; i++)
@@ -98,23 +92,34 @@ int CalcCoolTime(int argc, void* argv[])
     gs.nHcgs = gs.XH * rho[i] / PROTONMASS;	/* hydrogen number dens in cgs units */
     ratefact = gs.nHcgs * gs.nHcgs / rho[i];
 
-    if(flag)
+    if(flag == 1 || flag == 3)
     {
       // convert u to temp (if scalefac>1 this a flag that u is actually already in log10(temp))
       temp = u[i];
       // calculate thermal energy for u/udot
-      u[i] = pow(10.0,temp) * (1 + ne[i] + gs.yhelium) / (1 + 4 * gs.yhelium) / gs.mhboltz / GAMMA_MINUS1;
+      u_temp = pow(10.0,temp) * (1 + ne[i] + gs.yhelium) / (1 + 4 * gs.yhelium) / gs.mhboltz / GAMMA_MINUS1;
     }
     else
+    {
       temp = log10(GAMMA_MINUS1 * u[i] * gs.mhboltz * (1 + 4 * gs.yhelium) / (1 + ne[i] + gs.yhelium));
+      u_temp = u[i];
+    }
   
     // calculate lambda
     LambdaNet = CoolingRate(temp, rho[i], ne[i], scalefac);
 
-    if(LambdaNet >= 0)		/* ups, we have actually heating due to UV background */
-      cooltime_out[i] = 0;
-    else 
-      cooltime_out[i] = u[i] / (-ratefact * LambdaNet);
+    // return either lambdaNet or coolTime
+    if(flag == 2 || flag == 3)
+    {
+      cooltime_out[i] = LambdaNet;
+    }
+    else
+    {
+      if(LambdaNet >= 0)		/* ups, we have actually heating due to UV background */
+        cooltime_out[i] = 0;
+      else 
+        cooltime_out[i] = u_temp / (-ratefact * LambdaNet);
+    }
     
     //cooltime_out[i] *= HUBBLE_PARAM / All.UnitTime_in_s; // handle in IDL
   }
@@ -439,7 +444,7 @@ void IonizeParamsUVB(double scalefac)
     {
       memset(&pc, 0, sizeof(PhotoCurrent)); // SetZeroIonization
       return;
-    }
+   }
 
   logz = log10(redshift + 1.0);
   ilow = 0;

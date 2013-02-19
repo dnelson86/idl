@@ -214,32 +214,35 @@ end
 
 ; calcCoolTime(): use the primordial cooling network (KWH) to calculate the cooling times of gas
 
-function calcCoolTime, u, rho, nelec, scalefac=scalefac
+function calcCoolTime, u, rho, nelec, flag=flag, scalefac=scalefac
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   if keyword_set(scalefac) then begin
-    if scalefac lt 0.0 or scalefac gt 2.0 then message,'error scalefac'
+    if scalefac lt 0.0 or scalefac gt 1.0 then message,'error scalefac'
     scalefac = float(scalefac)
   endif else begin
     print,'Warning: Using no scalefactor (comoving integration effectively disabled).'
     scalefac = float(0.0)
   endelse
   
+  if n_elements(flag) eq 0 then flag = 0
+  
   if n_elements(u) ne n_elements(rho) or n_elements(u) ne n_elements(nelec) or n_elements(u) eq 0 then $
     message,'Error: Bad input array sizes.'
 
   ; prepare inputs
-  npts = long(n_elements(u))
-  u = float(u)
-  rho = float(rho)
+  npts  = long(n_elements(u))
+  u     = float(u)
+  rho   = float(rho)
   nelec = float(nelec)
+  flag  = long(flag)
 
   cooltime_out = fltarr(npts)
   
   ; call CalcCoolTime
   libName = '/n/home07/dnelson/idl/CalcCoolTime/CalcCoolTime.so'
-  ret = Call_External(libName, 'CalcCoolTime',npts,u,rho,nelec,cooltime_out,scalefac,/CDECL)
+  ret = Call_External(libName, 'CalcCoolTime',npts,u,rho,nelec,cooltime_out,scalefac,flag,/CDECL)
    
   return, cooltime_out
                      
