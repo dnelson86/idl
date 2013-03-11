@@ -1,6 +1,6 @@
 ; cosmoVis.pro
 ; cosmological boxes - 2d visualization
-; dnelson sep.2012
+; dnelson mar.2013
 
 ; cosmoVisCutout(): make a spatial cutout around a halo
 ;                   call with multiple gcInd's for one load and save cutouts
@@ -106,16 +106,13 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
     
     ; calculate norm of radial velocity vector
     rad = reform(loc_pos[0,*]^2.0 + loc_pos[1,*]^2.0 + loc_pos[2,*]^2.0)
-    const_vrad = (loc_vel[0,*] * loc_pos[0,*] + $
-                  loc_vel[1,*] * loc_pos[1,*] + $
-                  loc_vel[2,*] * loc_pos[2,*]) / rad
-                
-    vrad = fltarr(3,nCutout)
-    for i=0,2 do vrad[i,*] = const_vrad * loc_pos[i,*]
-    const_vrad = !NULL
+
+    sgcen_vel = gc.subgroupVel[*,gcIndCur]
+    loc_vrad = reform( (loc_vel[0,*]-sgcen_vel[0]) * loc_pos[0,*] + $
+                       (loc_vel[1,*]-sgcen_vel[1]) * loc_pos[1,*] + $
+                       (loc_vel[2,*]-sgcen_vel[2]) * loc_pos[2,*]) / sqrt(rad)
+                       
     rad = !NULL
-    
-    loc_vrad = sqrt(vrad[0,*]^2.0 + vrad[1,*]^2.0 + vrad[2,*]^2.0)
     
     ; create endpoint for each position point for the velocity vector line
     loc_pos2 = fltarr(3,nCutout)
@@ -172,37 +169,31 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
       
         !p.thick = 3.0
         !p.charsize = 0.8
-        print,'using thick=2'
       
         ; fill with black background
         if ~keyword_set(bottom) then $
           cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('black')
       
         ; color table and establish temperature -> color mapping
-        loadColorTable,'helix';,/reverse
+        loadColorTable,config.ctName
         
-        TVLCT, rr, gg, bb, /GET
-
-        newcolors_left = getColor24([[rr[cinds_left]], [gg[cinds_left]], [bb[cinds_left]]])
-
-        ; all gas (left panel)
+        ; (left panel)
+        ; ------------
         cgPlot, /nodata, xMinMax, yMinMax, pos=posLeft, xs=5, ys=5, /noerase
         
         ; circle at virial radius
         tvcircle,config.haloVirRad,0,0,cgColor('light gray'),thick=0.6,/data
-        
+
         ; particle loop for velocity vector plotting
         nCutoutLeft = n_elements(pos_left[0,*])
         for i=0L,nCutoutLeft-1 do $
           oplot,[pos_left[config.axisPair[0],i],pos2_left[config.axisPair[0],i]],$
                  [pos_left[config.axisPair[1],i],pos2_left[config.axisPair[1],i]],$
-                 line=0,color=newcolors_left[i]
-                 
-        newcolors_left = !NULL
+                 line=0,color=cinds_left[i]
         
         ; scale bar
         if ~keyword_set(bottom) then begin
-          len = 250.0 ;ckpc
+          len = 100.0 ;ckpc
           cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.3,$
                  string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('light gray')
           cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
@@ -213,21 +204,20 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         if keyword_set(bottom) then $
           cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('dark gray'),/overplot
                
-        ; cold gas / dark matter (right panel)
+        ; (right panel)
+        ; -------------
+        loadColorTable,config.ctName
+        
         cgPlot, /nodata, xMinMax, yMinMax, pos=posRight, xs=5, ys=5, /noerase
 
         tvcircle,config.haloVirRad,0,0,cgColor('light gray'),thick=0.6,/data
-        
-        newcolors_right = getColor24([[rr[cinds_right]], [gg[cinds_right]], [bb[cinds_right]]])
         
         ; particle loop for velocity vector plotting (cold gas only)
         nCutoutRight = n_elements(pos_right[0,*])
         for i=0L,nCutoutRight-1 do $
           oplot,[pos_right[config.axisPair[0],i],pos2_right[config.axisPair[0],i]],$
                  [pos_right[config.axisPair[1],i],pos2_right[config.axisPair[1],i]],$
-                 line=0,color=newcolors_right[i]
-                 
-        newcolors_right = !NULL
+                 line=0,color=cinds_right[i]
         
         ; redshift and halo mass
         if ~keyword_set(bottom) then begin
@@ -240,10 +230,12 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         ; dividing line
         cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('dark gray'),/overplot
         
-        if keyword_set(bottom) then $
+        if keyword_set(bottom) then $ ; horizontal dividing line
           cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('dark gray'),/overplot
         
         ; colorbar(s) on bottom
+        loadColorTable,config.ctName
+        
         !x.thick = 1.0
         !y.thick = 1.0
         
@@ -258,55 +250,68 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         if config.colorField eq 'coolTime'  then labelText = "t_{cool} [Gyr]"
         if config.colorField eq 'dynTime'   then labelText = "t_{dyn} [Gyr]"
         if config.colorField eq 'timeRatio' then labelText = "t_{cool} / t_{dyn}"
-                  
-        if config.barType eq '2tempvdisp' then begin
-          ; temp and veldisp separate colorbars
-          colorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
-          cgText,0.25,0.0375,textoidl("log T_{gas} [K]"),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.115,0.036,'4',alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.385,0.036,'7',alignment=0.5,color=cgColor('black'),/normal
-          
-          colorbar,position=[0.02,0.6,0.076,0.9],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
-          cgText,0.75,0.0375,textoidl("\sigma_{vel} [km/s]"),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.615,0.036,'0',alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.875,0.036,string(config.barMM_right[1],format='(i3)'),$
-            alignment=0.5,color=cgColor('black'),/normal
-        endif
+
+        ; first text: integer or has a decimal?
+        if round(config.fieldMinMax[1]) eq config.fieldMinMax[1] then begin
+          firstText = str(fix(config.fieldMinMax))
+          extraPad = 0.0
+            
+          ; more than one digit?
+          if alog10(abs(config.fieldMinMax[1])) ge 1.0 then $
+            extraPad += floor(alog10(abs(config.fieldMinMax[1]))) * 0.006
+        endif else begin
+          firstText = string(config.fieldMinMax,format='(f3.1)')
+          extraPad = 0.006
+        endelse
         
         if config.barType eq '1bar' then begin
           ; one colorbar (centered)
-          pos = [0.02,0.35,0.076,0.65]
-          fac = 1.0
-          if keyword_set(bottom) then fac = 0.5
-          pos *= [fac,1,fac,1]
-          colorbar,position=pos,divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+          pos = [0.35,0.02,0.65,0.078]
+          if keyword_set(bottom) then pos *= [1.0,0.5,1.0,0.5]
+          cgColorbar,position=pos,divisions=0,charsize=0.000001,ticklen=0.00001,$
+            bottom=config.nbottom,ncolors=(255-3-config.nbottom) ; 3 to remove white band at rightside
           
           ; colorbar labels
-          ;cbLabels = str([fix(config.fieldMinMax[0]),fix(config.fieldMinMax[1])]
-          cbLabels = str(string([fix(10*config.fieldMinMax[0])/10,fix(10*config.fieldMinMax[1])/10],format='(f3.1)'))
-          rAdjust = 0.01*(strlen(cbLabels[1])-1)
-          print,strlen(cbLabels[1])
-          
-          cgText,0.5,0.0375*fac,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.365,0.036*fac,cbLabels[0],alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.635-rAdjust,0.036*fac,cbLabels[1],alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.5,0.021,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
+          cgText,pos[0]+0.015+extraPad,0.0195,firstText[0],alignment=0.5,color=cgColor('black'),/normal
+          cgText,pos[2]-0.015-extraPad,0.0195,firstText[1],alignment=0.5,color=cgColor('black'),/normal
         endif
         
         if config.barType eq '2bar' then begin
           ; two colorsbars (separate ranges)
-          colorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
-          cgText,0.25,0.0375,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.115,0.036,str(fix(config.fieldMinMax[0])),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.385,0.036,str(fix(config.fieldMinMax[1])),alignment=0.5,color=cgColor('black'),/normal
+          cgColorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,$
+            bottom=0,ncolor=250,ticklen=0.00001
           
           ; second (right panel)
           loc_mm = [config.fieldMinMax[0],config.secondCutVal]
           if config.secondGt then loc_mm = [config.secondCutVal,config.fieldMinMax[1]]
           
-          colorbar,position=[0.02,0.6,0.076,0.9],divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+          loadColorTable,config.ctName
+          
+          cgColorbar,position=[0.02,0.6,0.076,0.9],divisions=0,charsize=0.000001,$
+            bottom=5,ticklen=0.00001
+          
+          ; first text
+          cgText,0.25,0.0375,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.115+extraPad,0.036,firstText[0],alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.385-extraPad,0.036,firstText[1],alignment=0.5,color=cgColor('black'),/normal
+          
+          ; second text: integer or has a decimal?
+          if round(loc_mm[1]) eq loc_mm[1] then begin
+            secondText = str(fix(loc_mm))
+            extraPad = 0.0
+            
+            ; more than one digit?
+            if alog10(abs(loc_mm[1])) ge 1.0 then $
+              extraPad += floor(alog10(abs(loc_mm[1]))) * 0.006
+          endif else begin
+            secondText = string(loc_mm,format='(f3.1)')
+            extraPad = 0.006
+          endelse
+            
           cgText,0.75,0.0375,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.615,0.036,str(fix(loc_mm[0])),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.885,0.036,str(fix(loc_mm[1])),alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.615+extraPad,0.036,secondText[0],alignment=0.5,color=cgColor('black'),/normal
+          cgText,0.885-extraPad,0.036,secondText[1],alignment=0.5,color=cgColor('black'),/normal
         endif
         
         endif ;top
@@ -326,216 +331,7 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         endif
         
       if ~keyword_set(top) and ~keyword_set(bottom) then $        
-        end_PS, pngResize=60, /deletePS;, im_options='-negate'
-end
-
-; scatterMapHalos: plot temperature colored scatter plots with velocity vectors on boxes centered on halos
-
-pro scatterMapHalos;, sP=sP, gcIDs=gcIDs
-
-  sP = simParams(res=512,run='tracer',redshift=2.0)
-  units = getUnits()
-
-  haloID = 304 ;z2.304 z2.301 z2.130 z2.64
-  gcID = getMatchedIDs(sPa=sP,sPg=sP,haloID=haloID)
-  gcIDs = [gcID.a]
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
-
-  ; config
-  sizeFac          = 1.5  ; times rvir
-  singleColorScale = 0    ; 1=use same color scale for right panel, 0=rescale
-  secondGt         = 1 ; 1=show greater than cut, 0=show less than cut
-  
-  ; use which field and cut value for right panel?
-  ;secondField = 'temp'     & secondCutVal = 5.0
-  ;secondField = 'entropy'  & secondCutVal = 7.5
-  ;secondField = 'vrad'     & secondCutVal = 200.0
-  secondField = 'vradnorm' & secondCutVal = 2.0
-  
-  ; use which field and minmax for color mapping?
-  ;colorField = 'temp'     & fieldMinMax  = [4.0,7.0]
-  ;colorField = 'entropy'  & fieldMinMax  = [6.5,8.5] ; log(CGS)
-  ;colorField = 'vrad'     & fieldMinMax = [0.0,400.0] ; km/s
-  colorField = 'vradnorm' & fieldMinMax  = [0.0,4.0] ; vrad/v200
-  
-  axes = list([0,1],[0,2],[1,2]) ;xy,xz,yz
-  
-  ; make cutouts (multiple or single)
-  cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,sizeFac=sizeFac)
-
-  ; target list
-  gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
-  sgcen = subgroupPosByMostBoundID(sP=sP) 
-  
-  print,'rendering...'
-  ; loop over all requested halos and image
-  foreach gcID, gcIDs do begin
-  
-    ; load cutout
-    cutout = cosmoVisCutout(sP=sP,gcInd=gcID,sizeFac=sizeFac)
-
-    v200 = sqrt(units.G * (10.0^cutout.haloMass / units.UnitMass_in_Msun) / cutout.haloVirRad )
-
-    ; create color index mapping
-    if colorField eq 'temp'     then fieldVal = cutout.loc_temp
-    if colorField eq 'entropy'  then fieldVal = cutout.loc_ent
-    if colorField eq 'vrad'     then fieldVal = reform(cutout.loc_vrad)
-    if colorField eq 'vradnorm' then fieldVal = reform(cutout.loc_vrad)/v200
-    
-    colorinds = (fieldVal-fieldMinMax[0])*205.0 / (fieldMinMax[1]-fieldMinMax[0]) ;0-205
-    colorinds = fix(colorinds + 50.0) > 0 < 255 ;50-255  
-  
-    ; second/right panel cutout
-    wSecond = where(fieldVal le secondCutVal,nCutoutSecond,comp=wComp)
-      
-    ; show gas above this cut value (instead of below)?
-    if secondGt then wSecond = wComp
-    
-    loc_pos_second   = cutout.loc_pos[*,wSecond]
-    loc_pos2_second  = cutout.loc_pos2[*,wSecond]
-    colorinds_second = colorinds[wSecond]
-    
-    ; use instead a differently scaled color mapping for the second panel?
-    if singleColorScale eq 0 then begin
-      if secondGt eq 1 then $
-        colorinds_second = (fieldVal-secondCutVal)*205.0 / (fieldMinMax[1]-secondCutVal)
-      if secondGt eq 0 then $
-        colorinds_second = (fieldVal-fieldMinMax[0])*205.0 / (secondCutVal-fieldMinMax[0])
-      
-      colorinds_second = colorinds_second[wSecond]
-    endif
-
-    ; make a plot for each requested projection direction
-    foreach axisPair, axes do begin
-           
-      ; get box center (in terms of specified axes)
-      boxCenImg  = [sgcen[axisPair[0],gcID],sgcen[axisPair[1],gcID],sgcen[3-axisPair[0]-axisPair[1],gcID]]
-      
-      print,'['+string(gcID,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
-            str(axisPair[1])+'] with '+str(cutout.boxSizeImg[0])+$
-            ' kpc box around subhalo center ['+str(boxCenImg[0])+' '+str(boxCenImg[1])+' '+str(boxCenImg[2])+']'
-
-      plotFilename = 'scatter.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
-                     '.axes'+str(axisPair[0])+str(axisPair[1])+'-'+$
-                     colorField+'-'+secondField+'-'+str(secondGt)+'sCS'+str(singleColorScale)+'.eps'
-
-      config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
-                haloMass:cutout.haloMass,axisPair:axisPair,sP:sP,$
-                colorField:colorField,fieldMinMax:fieldMinMax,secondCutVal:secondCutVal,secondGt:secondGt,$
-                barMM:fieldMinMax,barType:'2bar'}
-      
-      ; plot
-      plotScatterComp,cutout.loc_pos,cutout.loc_pos2,loc_pos_second,loc_pos2_second,$
-        colorinds,colorinds_second,config=config            
-
-    endforeach ;axisPair
-
-  endforeach ;gcIDs
-
-end
-
-; scatterMapTemp4Panels(): four slices of temperature for one halo
-
-pro scatterMapTemp4Panels
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  sPg = simParams(res=512,run='gadget',redshift=2.0)
-  sPa = simParams(res=512,run='tracer',redshift=2.0)
-  
-  haloID = 304 ;z2.304 z2.301 z2.130 z2.64
-  gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)
-
-  ; config
-  sizeFac     = 3.5       ; times rvir
-  tempMinMax  = [4.0,7.0] ; log(K)
-  tempRanges  = list([4.0,4.5],[4.5,5.0],[5.0,5.5],[5.5,7.0])       ; log(K)
-  singleColorScale = 1
-  
-  ; select gadget or arepo
-  gcInd = gcID.a
-  sP = sPa
-  
-  ; load
-  gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
-  sgcen = subgroupPosByMostBoundID(sP=sP)
-
-  cutout = cosmoVisCutout(sP=sP,gcInd=gcInd,sizeFac=sizeFac)
-
-  ; get box center (in terms of specified axes)
-  boxCenImg  = [sgcen[gcID.axes[0],gcInd],$
-                sgcen[gcID.axes[1],gcInd],$
-                sgcen[3-gcID.axes[0]-gcID.axes[1],gcInd]]
-
-  plotFilename = 'scatter4temp.'+sP.savPrefix+str(sP.res)+'.h'+str(gcInd)+$
-                 '.'+str(sP.snap)+'.axes'+str(gcID.axes[0])+str(gcID.axes[1])+'.eps'
-
-  config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
-            haloMass:cutout.haloMass,axisPair:gcID.axes,sP:sP,barMM:tempMinMax,barType:'1temp'}
-
-  ; temperature range cutouts and plot (top)
-  wCutout = where(cutout.loc_temp ge tempRanges[0,0] and cutout.loc_temp lt tempRanges[0,1],nCutout)
-    
-  loc_pos_left = cutout.loc_pos[*,wCutout]
-  loc_pos2_left = cutout.loc_pos2[*,wCutout]
-  
-  if singleColorScale then $
-    colorinds = (cutout.loc_temp[wCutout]-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
-  if ~singleColorScale then $
-    colorinds = (cutout.loc_temp[wCutout]-tempRanges[0,0])*205.0 / (tempRanges[0,1]-tempRanges[0,0]) ;0-205
-    
-  colorinds_left = fix(colorinds + 50.0) > 0 < 255 ;50-255  
-  
-  wCutout = where(cutout.loc_temp ge tempRanges[1,0] and cutout.loc_temp lt tempRanges[1,1],nCutout)
-    
-  loc_pos_right = cutout.loc_pos[*,wCutout]
-  loc_pos2_right = cutout.loc_pos2[*,wCutout]
-  
-  if singleColorScale then $
-    colorinds = (cutout.loc_temp[wCutout]-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
-  if ~singleColorScale then $
-    colorinds = (cutout.loc_temp[wCutout]-tempRanges[1,0])*205.0 / (tempRanges[1,1]-tempRanges[1,0]) ;0-205
-    
-  colorinds_right = fix(colorinds + 50.0) > 0 < 255 ;50-255  
-  
-  start_PS, sP.plotPath + config.plotFilename, xs=8, ys=8
-  
-  plotScatterComp,loc_pos_left,loc_pos2_left,loc_pos_right,loc_pos2_right,$
-    colorinds_left,colorinds_right,config=config,/top,subtitle=['4.0 - 4.5','4.5 - 5.0']           
-  
-  ; temperature range cutouts and plot (bottom)
-  wCutout = where(cutout.loc_temp ge tempRanges[2,0] and cutout.loc_temp lt tempRanges[2,1],nCutout)
-    
-  loc_pos_left = cutout.loc_pos[*,wCutout]
-  loc_pos2_left = cutout.loc_pos2[*,wCutout]
-  
-  if singleColorScale then $
-    colorinds = (cutout.loc_temp[wCutout]-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
-  if ~singleColorScale then $
-    colorinds = (cutout.loc_temp[wCutout]-tempRanges[2,0])*205.0 / (tempRanges[2,1]-tempRanges[2,0]) ;0-205
-    
-  colorinds_left = fix(colorinds + 50.0) > 0 < 255 ;50-255  
-  
-  wCutout = where(cutout.loc_temp ge tempRanges[3,0] and cutout.loc_temp lt tempRanges[3,1],nCutout)
-    
-  loc_pos_right = cutout.loc_pos[*,wCutout]
-  loc_pos2_right = cutout.loc_pos2[*,wCutout]
-  
-  if singleColorScale then $
-    colorinds = (cutout.loc_temp[wCutout]-tempMinMax[0])*205.0 / (tempMinMax[1]-tempMinMax[0]) ;0-205
-  if ~singleColorScale then $
-    colorinds = (cutout.loc_temp[wCutout]-tempRanges[3,0])*205.0 / (tempRanges[3,1]-tempRanges[3,0]) ;0-205
-    
-  colorinds_right = fix(colorinds + 50.0) > 0 < 255 ;50-255  
-  
-  plotScatterComp,loc_pos_left,loc_pos2_left,loc_pos_right,loc_pos2_right,$
-    colorinds_left,colorinds_right,config=config,/bottom,subtitle=['5.0 - 5.5','5.5 - 7.0'] 
-  
-  end_PS, pngResize=60  
-  
+        end_PS, pngResize=60;, /deletePS
 end
 
 ; scatterMapHalosComp(): same as above but compare arepo/gadget top/bottom
@@ -636,8 +432,8 @@ pro scatterMapPastPosComp
 
   sPg = simParams(res=512,run='gadget',redshift=2.0)
   sPa = simParams(res=128,run='tracer',redshift=2.0)
-  print,'change tracer 256 to 512'
-  print,'128!'
+  print,'change tracer 128 to 512'
+  message,'better test this all, maybe never finished it'
   
   ; OLD512 z2.304 g2342 a2132 -- z2.301 g2289 a2034 -- z2.130 g6369 a5966 axes02 -- z2.64 g5498 a5097
   ; NEW512 z2.304 g2342 a2004 -- 
@@ -1171,7 +967,7 @@ pro mosaicHalosComp
   pos = [0.02,0.35,0.076,0.65]
   fac = 0.5
   pos *= [fac,1,fac,1]
-  colorbar,position=pos,divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+  cgColorbar,position=pos,divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
   cgText,0.5,0.0375*fac,textoidl("log T_{gas} [K]"),alignment=0.5,color=cgColor('black'),/normal
   
   ; left/right colorbar labels

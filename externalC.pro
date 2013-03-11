@@ -212,6 +212,85 @@ function calcSphMap, pos, hsml, mass, quant, axes=axes, boxSizeImg=boxSizeImg, b
   return, { dens_out:dens_out, quant_out:quant_out }
 end
 
+; calcGridData(): given points on a plane with coordinates (xx,yy) interpolate to a regular grid
+; using the sph kernel (optional weights mm and quantities to be weighted qq)
+
+function calcGridData, xx=xx, yy=yy, mm=mm, qq=qq, nPixels=nPixels, $
+                       xMinMax=xMinMax, yMinMax=ymm, logY=logY, colNorm=colNorm
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  ; take log(y)?
+  yyy = yy
+  yMinMax = ymm
+  
+  if keyword_set(logY) then begin
+    w = where(finite(alog10(yy)))
+    xx = xx[w]
+    yyy = alog10(yy[w])
+    yMinMax = alog10(ymm)
+  endif
+  
+  ; prepare inputs
+  NumPart = n_elements(xx)
+  
+  boxSizeImg = [xMinMax[1]-xMinMax[0], yMinMax[1]-yMinMax[0], 1.0]
+  boxSizeSim = 0.0
+  boxCen     = [mean(xMinMax), mean(yMinMax), 0.0]
+  nPixels    = fix(nPixels)
+  axes       = fix([0,1])
+  
+  ; get hsml
+  zPts = replicate(0.0, NumPart)
+  pos = float(transpose([[xx],[yyy],[zPts]]))
+  
+  hsml = fltarr(NumPart)
+  hsml = calcHSML(pos,ndims=2,nNGB=32,boxSize=0.0)
+  
+  ; optional weights and quantity to take weighted average of (otherwise just density)  
+  if keyword_set(mm) then begin
+    mass = float(mm)
+  endif else begin
+    mass  = replicate(1.0, NumPart)
+  endelse
+  
+  if keyword_set(qq) then begin
+    quant = float(qq)
+  endif else begin
+    quant = replicate(1.0, NumPart)
+  endelse
+  
+  ; make return
+  dens_out  = fltarr(nPixels[0],nPixels[1])
+  quant_out = fltarr(nPixels[0],nPixels[1])
+
+  ; call CalcSphMap
+  libName = '/n/home07/dnelson/idl/CalcSphMap/CalcSphMap_2D.so'
+  ret = Call_External(libName, 'CalcSphMap', $
+                      NumPart,pos,hsml,mass,quant,dens_out,quant_out,$
+                      boxSizeImg[0],boxSizeImg[1],boxSizeImg[2],boxSizeSim,$
+                      boxCen[0],boxCen[1],boxCen[2],axes[0],axes[1],nPixels[0],nPixels[1],$
+                      /CDECL)
+
+  ; normalize column by column?
+  if keyword_set(colNorm) then begin
+    for i=0,nPixels[0]-1 do begin
+      dens_out[i,*] /= max(dens_out[i,*],/nan)
+      quant_out[i,*] /= max(quant_out[i,*],/nan)
+    endfor
+  endif
+                      
+  ; return
+  xPts = linspace(xMinMax[0],xMinMax[1],nPixels[0])
+  yPts = linspace(yMinMax[0],yMinMax[1],nPixels[1])
+  
+  xxPts = cmreplicate(xPts,nPixels[1])
+  yyPts = transpose(cmreplicate(yPts,nPixels[0]))
+  
+  return, { dens_out:dens_out, quant_out:quant_out, xPts:xPts, yPts:yPts, xxPts:xxPts, yyPts:yyPts }
+
+end
+
 ; calcCoolTime(): use the primordial cooling network (KWH) to calculate the cooling times of gas
 
 function calcCoolTime, u, rho, nelec, flag=flag, scalefac=scalefac

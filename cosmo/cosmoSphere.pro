@@ -1637,15 +1637,11 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       correctPeriodicDistVecs, rnorm1, sP=sP
       correctPeriodicDistVecs, rnorm2, sP=sP
       
-      ; denominator and do divide
+      ; denominator
       rnorm = sqrt(rnorm0*rnorm0 + rnorm1*rnorm1 + rnorm2*rnorm2)
-  
-      rnorm0 /= rnorm
-      rnorm1 /= rnorm
-      rnorm2 /= rnorm
       
       ; dot(vel,rnorm) gives the magnitude of the projection of vel onto vec(r)
-      value = loc_vel[0,*]*rnorm0 + loc_vel[1,*]*rnorm1 + loc_vel[2,*]*rnorm2 ; 1xN
+      value = (loc_vel[0,*]*rnorm0 + loc_vel[1,*]*rnorm1 + loc_vel[2,*]*rnorm2) / rnorm; 1xN
       
       posval = [loc_pos,value]
       thMode = 1 ; mean

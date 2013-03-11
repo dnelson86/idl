@@ -434,7 +434,7 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
   if ctName eq 'plasma'             then loadct,32,bottom=bottom,/silent
   if ctName eq 'blue-red2'          then loadct,33,bottom=bottom,/silent
   
-  ; brewer (nice diverging options) (17-26)
+  ; brewer (nice diverging options, both ends dark, light in middle) (17-26)
   if ctName eq 'brewer-brownpurple' then cgLoadct,18,ncolors=255,bottom=bottom,/brewer
   if ctName eq 'brewer-browngreen'  then cgLoadct,19,ncolors=255,bottom=bottom,/brewer
   if ctName eq 'brewer-purplegreen' then cgLoadct,20,ncolors=255,bottom=bottom,/brewer
@@ -442,6 +442,16 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
   if ctName eq 'brewer-redblue'     then cgLoadct,22,ncolors=255,bottom=bottom,/brewer
   if ctName eq 'brewer-redpurple'   then cgLoadct,25,ncolors=255,bottom=bottom,/brewer
   if ctName eq 'brewer-redgreen'    then cgLoadct,26,ncolors=255,bottom=bottom,/brewer
+ 
+ ; brewer (convergent, light->dark)
+ if ctName eq 'brewerc-yellowblue'      then cgLoadct,1,ncolors=255,bottom=bottom,/brewer
+ if ctName eq 'brewerc-whitegreen'      then cgLoadct,3,ncolors=255,bottom=bottom,/brewer
+ if ctName eq 'brewerc-purplebluegreen' then cgLoadct,4,ncolors=255,bottom=bottom,/brewer
+ if ctName eq 'brewerc-redpurple'       then cgLoadct,7,ncolors=255,bottom=bottom,/brewer
+ if ctName eq 'brewerc-orangered'       then cgLoadct,9,ncolors=255,bottom=bottom,/brewer
+ if ctName eq 'brewerc-blues'           then cgLoadct,13,ncolors=255,bottom=bottom,/brewer
+ if ctName eq 'brewerc-greens'          then cgLoadct,14,ncolors=255,bottom=bottom,/brewer
+ if ctName eq 'brewerc-reds'            then cgLoadct,16,ncolors=255,bottom=bottom,/brewer
  
   ; reverse normal/brewer if requested
   if keyword_set(reverse) then begin
@@ -570,7 +580,7 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig
   endif
 
   PS_Start, FILENAME=filename, /nomatch, /quiet, bits_per_pixel=8, color=1, $
-            encapsulated=eps, decomposed=0, xs=xs, ys=ys, /inches, font=0
+            encapsulated=eps, decomposed=0, xs=xs, ys=ys, /inches, font=0;, $
             ;/dejavusans ;requires idl8.2 
             ;font=1,tt_font='Helvetica'
  
@@ -603,7 +613,7 @@ pro end_PS, pngResize=pngResize, deletePS=deletePS, im_options=im_options
     PS_End
     
   if keyword_set(pngResize) then $
-    PS_End, /PNG, Delete_PS=deletePS, im_options=im_options, Resize=pngResize, /showcmd
+    PS_End, /PNG, Delete_PS=deletePS, im_options=im_options, Resize=pngResize, /nofix;, /showcmd
 
 end
 

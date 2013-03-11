@@ -202,6 +202,10 @@ function codeMassToLogMsun, mass
   return,alog10(mass_msun)
 end
 
+function logMsunToCodeMass, mass
+  return,10.0^mass / 1e10
+end
+
 ; codeTempToLogK(): convert temperature in code units (e.g. tracer temp output) to log(kelvin)
 
 function codeTempToLogK, temp
@@ -339,10 +343,15 @@ end
 
 ; rhoRatioToCrit(): normalize density by the critical -baryon- density at some redshift
 
-function rhoRatioToCrit, rho, redshift=redshift
+function rhoRatioToCrit, rho, sP=sP, redshift=redshift
 
-  units = getUnits(redshift=redshift)
-  if n_elements(redshift) eq 0 then message,'specify redshift'
+  if n_elements(redshift) eq 0 and n_elements(sP) eq 0 then message,'error'
+  if n_elements(redshift) eq 1 and n_elements(sP) eq 1 then message,'error'
+  
+  if n_elements(redshift) gt 0 then zzz = redshift
+  if n_elements(sP) gt 0 then zzz = sP.redshift
+  
+  units = getUnits(redshift=zzz)
   
   rho_b = units.omega_b * units.rhoCrit_z
   

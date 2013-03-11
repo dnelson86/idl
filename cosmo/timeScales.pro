@@ -271,10 +271,18 @@ function loadFitTimescales, sP=sP, gcIDList=gcIDList
   curDens = ct.dens[inds.gmem]
   
   gasRadii = galaxyCatRadii(sP=sP)
-  gasRadii = gasRadii.gmem_sec[inds.gmem]
   
+  gasVRad  = gasRadii.gmem_vrad_pri[inds.gmem]
+  gasRadii = gasRadii.gmem_sec[inds.gmem]
+
+  ct = !NULL
+  
+  ; for normalizing radii and vel
   gasRvir  = galcatParentProperties(sP=sP,/rVir,parNorm='pri')
   gasRvir  = gasRvir.gmem[inds.gmem]
+  
+  gasVcirc = galcatParentProperties(sP=sP,/vCirc,parNorm='pri')
+  gasVcirc = gasVcirc.gmem[inds.gmem]
   
   ; estimate dynamical timescale using total enclosed mass at each gas cell
   encMass = enclosedMass(sP=sP)
@@ -315,6 +323,7 @@ function loadFitTimescales, sP=sP, gcIDList=gcIDList
   radDt = fitRadProfile(radii=gasRadii/gasRvir,vals=dynTime,range=radFitRange,radBins=40)
   radDens = fitRadProfile(radii=gasRadii/gasRvir,vals=curDens,range=radFitRange,radBins=15)
   radTemp = fitRadProfile(radii=gasRadii/gasRvir,vals=curTemp,range=radFitRange,radBins=15)
+  radVrad = fitRadProfile(radii=gasRadii/gasRvir,vals=gasVRad,range=radFitRange,radBins=15)
   
   ; calculate average hot halo gas mass
   if sP.trMCPerCell eq 0 then begin
@@ -371,14 +380,180 @@ function loadFitTimescales, sP=sP, gcIDList=gcIDList
   nfw_gas.rho_gas_iso *= (h.time)^3.0/units.HubbleParam
 
   r = {coolTime:coolTime, dynTime:dynTime, hubbleTime:hubbleTime, $
-       gasRadii:gasRadii, gasRvir:gasRvir, curTemp:curTemp, curDens:curDens, $
+       gasRadii:gasRadii, gasVRad:gasVRad, gasRvir:gasRvir, gasVcirc:gasVcirc, $
+       curTemp:curTemp, curDens:curDens, $
        virTemp_halo:virTemp_halo, coolTime_halo:coolTime_halo, dynTime_halo:dynTime_halo, $
-       radCt:radCt, radDt:radDt, radDens:radDens, radTemp:radTemp, $
+       radCt:radCt, radDt:radDt, radDens:radDens, radTemp:radTemp, radVRad:radVRad, $
        mass_hot:mass_hot, masses:masses, x:x, $
        sis_dm:sis_dm, sis_gas:sis_gas, sis_fit:sis_fit, $
        nfw_dm:nfw_dm, nfw_gas:nfw_gas, nfw_fit:nfw_fit}
   
   return, r
+end
+
+; subsetIsotropy(): measure the isotropy of the particle distribution using a healpix powerspectrum 
+;  for different subsets of the particle population
+
+function subsetIsotropy, sP=sP
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+
+  ; config
+  sgSelect        = 'pri'
+  minNumGasInHalo = 400 ; in any case this must be >>nNGB to make any sense
+  subsetProp      = 'vradnorm'
+  subsetRanges    = list([-5.0,5.0],[-5.0,-3.0],[-0.5,0.5],[1.0,5.0])
+  
+  nSide   = 64 ; for healpix map
+  nNGB    = 20 ; in ThVal search
+  l_split = 10 ; take isotropy as ratio of power below to power above this wavenumber
+  
+  nSubsets = n_elements(subsetRanges)
+  nSphPx   = nSide2nPix(nSide) ; number of healpix pixels per map
+  l_max    = fix(2.0 * nSide) ; maximum spherical harmonic order
+  l_vals   = findgen(l_max+1)
+  
+  ; check if save exists
+  saveFilename = sP.derivPath + 'binnedVals/binIso.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.' + subsetProp + '_' + str(n_elements(subsetRanges)) + '.' + sgSelect + '.sav'
+  
+  ; results exist, return
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,r
+  endif 
+  
+  ; halo list and centers
+  gc     = loadGroupCat(sP=sP,/skipIDs,/verbose)
+  sgcen  = subgroupPosByMostBoundID(sP=sP)
+  
+  gcIDs  = gcIDList(gc=gc,select=sgSelect)
+  
+  ; restrict to reasonable sized halos
+  ww = where(gc.subgroupLenType[partTypeNum('gas'),gcIDs] ge minNumGasInHalo,count)
+  
+  gcIDs = gcIDs[ww]
+  print,n_elements(ww)
+  
+  haloMasses = codeMassToLogMsun(gc.subgroupMass[gcIDs])
+
+  ; return array
+  r = { powerSpecs   : fltarr(l_max+1,n_elements(gcIDs),nSubsets) ,$
+        isoIndex     : fltarr(n_elements(gcIDs),nSubsets) + !values.f_nan ,$
+        sgSelect     : sgSelect      ,$
+        subsetProp   : subsetProp    ,$
+        subsetRanges : subsetRanges  ,$
+        nSide        : nSide         ,$
+        nNGB         : nNGB          ,$
+        l_vals       : l_vals        ,$
+        l_split      : l_split       ,$
+        minNumGasInHalo : minNumGasInHalo ,$
+        haloMasses      : haloMasses      ,$
+        gcIDs           : gcIDs            }
+  
+  ; load gas ids, positions, velocities and masses
+  ids  = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+  pos  = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+  vel  = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
+  mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
+  
+  ; now restrict all these quantities to gmem only
+  galcat = galaxyCat(sP=sP)
+  match,ids,galcat.groupmemIDs,ids_ind,gmem_ind,count=countGmem
+  ids = !NULL
+  if countGmem ne n_elements(galcat.groupmemIDs) then message,'Error: Failed to find all gmem in gas ids.'
+  ids_ind = ids_ind[sort(gmem_ind)]
+  
+  mass = mass[ids_ind]
+  pos  = pos[*,ids_ind]
+  vel  = vel[*,ids_ind]
+  
+  ; loop over each halo
+  foreach gcIndCur,gcIDs,k do begin
+    print,k
+    if (k mod 50) eq 0 then print,'['+str(k)+'] ' + string(float(k)/n_elements(gcIDs),format='(f4.1)')+'%'
+    
+    ; halo properties
+    haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcIndCur]] ;ckpc
+    haloV200   = sqrt(units.G * gc.subgroupMass[gcIndCur] / haloVirRad )
+    
+    ; get indices into gmem array for this halo
+    loc_inds = galcatINDList(sP=sP, galcat=galcat, gcIDList=[gcIndCur])
+    loc_inds = loc_inds.gmem
+    
+    ; make positions relative
+    loc_pos  = fltarr(3,n_elements(loc_inds))
+    
+    for i=0,2 do begin
+      cDist = pos[i,loc_inds] - sgcen[i,gcIndCur]
+      correctPeriodicDistVecs, cDist, sP=sP
+      loc_pos[i,*] = cDist
+    endfor
+    
+    cDist = !NULL
+    rad = sqrt(reform(loc_pos[0,*]^2.0 + loc_pos[1,*]^2.0 + loc_pos[2,*]^2.0))
+    
+    ; take subsets of other gmem arrays
+    loc_mass = mass[loc_inds]
+    
+    if subsetProp eq 'vradnorm' then begin
+      loc_vel  = vel[*,loc_inds]
+      
+      loc_subProp = reform( (loc_vel[0,*]-gc.subgroupVel[0,gcIndCur]) * loc_pos[0,*] + $
+                            (loc_vel[1,*]-gc.subgroupVel[1,gcIndCur]) * loc_pos[1,*] + $
+                            (loc_vel[2,*]-gc.subgroupVel[2,gcIndCur]) * loc_pos[2,*])
+      loc_subProp /= rad ; vrad [km/s]
+      loc_subProp /= haloV200 ; vradnorm
+    endif
+    
+    ; move all points to surface of virial radius sphere
+    for i=0,2 do loc_pos[i,*] *= (haloVirRad/rad)
+
+    rad = !NULL
+    
+    ; loop over subsets
+    foreach subsetRange,subsetRanges,j do begin
+      ; take subset
+      wSubsetCut = where(loc_subProp ge subsetRange[0] and loc_subProp le subsetRange[1],count)
+      
+      if count le nNGB then continue ; CalcTHVal requires nNGB points or more
+      
+      ; ThVal config (from valName eq 'density' in haloShellValue)
+      loc_subset_value = reform(loc_mass[wSubsetCut],[1,n_elements(wSubsetCut)]) ; 1xN
+      loc_subset_pos   = loc_pos[*,wSubsetCut]
+      
+      posval = [loc_subset_pos,loc_subset_value]
+      thMode = 3 ; total/volume
+      
+      ; calculate healpix
+      sphereXYZ = sphereXYZCoords(Nside=nSide,radius=haloVirRad,center=[0,0,0])
+      
+      if sP.trMCPerCell eq 0 then begin
+        healpix_data = CalcTHVal(posval,sphereXYZ,ndims=3,nNGB=nNGB,thMode=thMode,boxSize=sP.boxSize)
+      endif else begin
+        ; if this is an Arepo run, make the mass subset for weighting and do tophat estimate
+        weights = reform(loc_mass[wSubsetCut],[1,n_elements(wSubsetCut)])
+        posvalwt = [posval,weights]
+        healpix_data = CalcTHVal(posvalwt,sphereXYZ,ndims=3,nNGB=nNGB,thMode=thMode,boxSize=sP.boxSize,/weighted)
+      endelse
+      
+      ; calculate powerspectrum
+      healpix_data -= mean(healpix_data)
+      healpix_data /= (max(healpix_data)-min(healpix_data))
+      ianafast,healpix_data,cl_gas,nlmax=l_max,/cxx,/nested,tmpdir='/n/home07/dnelson/',$
+        /silent;,/won,iter_order=2
+          
+      ; save power spectrum and isotropy index
+      pSpec    = l_vals*(l_vals+1)*cl_gas/2/!pi
+      isoIndex = total(pSpec[0:l_split]) / total(pSpec[l_split+1:*])
+      
+      r.powerSpecs[*,k,j] = pSpec
+      r.isoIndex[k,j] = isoIndex
+    endforeach
+    
+  endforeach
+
 end
 
 ; timescaleFracsVsHaloMass(): gas mass fractions with tcool<tdyn, tcool<tage as a function of halo mass
@@ -414,7 +589,7 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
   gmem_hotmasses = fltarr(n_elements(gcIDList))                     
   
   ; gas mass
-  if sP.trMCPerCell eq 0 then begin
+  if sP.trMCPerCell ne 0 then begin
     ; SPH case: all particles have constant mass
     massPerPart = sP.targetGasMass
     mass = replicate(massPerPart,h.nPartTot[partTypeNum('gas')])
@@ -450,8 +625,7 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
   hubbleTime = snapNumToAgeFlat(sP=sP)
   
   ; bin fractions into halo mass bins and make median lines
-  logMassBins   = [9.5,10.0,10.1,10.2,10.3,10.4,10.5,10.6,10.7,10.8,10.9,11.0,$
-                   11.1,11.25,11.5,11.75,11.9,13.1]
+  logMassBins   = [8.5,linspace(9.0,10.0,21),linspace(10.1,11.0,10),11.1,11.25,11.5,11.75,11.9,13.1]
   logMassNBins  = n_elements(logMassBins)-1
   logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
   logMassBinCen = logMassBinCen[0:-2]
@@ -525,149 +699,186 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
 end
 
 ; modelMassFracs(): calculate timescale related gas mass fractions for many SIS/NFW models
+; ts: return of timescaleFracsVsHaloMass(sP=sP,sgSelect=sgSelect)
+; simHotMasses: 0=analytical (f_b*halo_mass), 1=derive hot halo masses from sim
 
-function modelMassFracs, sP=sP, ts=ts
+; calcMMF(): helper (timescale is either t_dyn or t_H)
+
+function calcMMF, coolTime, timescale, tsRatio=tsRatio, sis_dm=sis_dm, $
+  nfw_dm=nfw_dm, nfw_gas=nfw_gas, nfwPoly=nfwPoly, nfwIso=nfwIso
+
+  if keyword_set(nfw_dm) and keyword_set(sis_dm) then message,'error'
+  if keyword_set(nfw_dm) and ~keyword_set(nfw_gas) then message,'error'
+  if keyword_set(nfw_dm) and (~keyword_set(nfwPoly) and ~keyword_set(nfwIso)) then message,'error'
+  
+  if keyword_set(sis_dm) then begin
+    zz = coolTime ge tsRatio * timescale
+    modelRadRes = n_elements(sis_dm.rad)
+  endif
+  if keyword_set(nfw_dm) then begin
+    zz = coolTime ge tsRatio * timescale
+    modelRadRes = n_elements(nfw_dm.rad)
+  endif
+  
+  zz_tot = total(zz)
+  
+  ; tcool is nowhere greater than tsRatio*tdyn (all halo gas has tcool<tdyn)
+  if zz_tot eq 0 then return, 1.0
+    
+  ; all halo gas has tcool > tsRatio*tdyn
+  if zz_tot eq n_elements(modelRadRes) then return, !values.f_nan
+      
+  ; otherwise, find the radius where tcool = tsRatio*tdyn
+  w = where(zz eq 1,count)
+  if count eq 0 then message,'error'
+  w = min(w)
+    
+  if w eq 0 then return, !values.f_nan ; left (smallest radius) boundary
+    
+  if keyword_set(nfwIso) then begin
+    ; calculate gas mass inside e_rad and take ratio
+    e_mass   = int_tabulated(nfw_dm.rad[0:w],4*!pi*nfw_dm.rad[0:w]^2.0*nfw_gas.rho_gas_iso[0:w])
+    ; slight inconsistency for ISO total mass: equals hotHaloMasses[i] only for poly
+    tot_mass = int_tabulated(nfw_dm.rad,4*!pi*nfw_dm.rad^2.0*nfw_gas.rho_gas_iso) 
+
+    mmf = (e_mass/tot_mass)
+  endif
+      
+  if keyword_set(nfwPoly) then begin
+    e_mass   = int_tabulated(nfw_dm.rad[0:w],4*!pi*nfw_dm.rad[0:w]^2.0*nfw_gas.rho_gas[0:w])
+    tot_mass = int_tabulated(nfw_dm.rad,4*!pi*nfw_dm.rad^2.0*nfw_gas.rho_gas) ; equals hotHaloMasses[i]
+          
+    mmf = (e_mass/tot_mass)
+  endif
+    
+  if keyword_set(sis_dm) then begin
+    e_rad = sis_dm.rad[w]
+    mmf = (e_rad/sis_dm.r200)
+  endif
+
+  return, mmf
+end
+
+function modelMassFracs, sP=sP, ts=ts, simHotMasses=simHotMasses
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   tables = interpLambdaSD93()  
 
   ; config
-  modelMassRange = [10.8,12.2]
-  modelMassRes   = 150
+  modelMassRange = [8.8,12.2]
+  modelMassRes   = 250
   
-  modelRadRange = [0.04,1.0]
-  modelRadRes   = 400
+  modelRadRange = [0.02,1.0]
+  modelRadRes   = 1000
   
-  modelMasses = [1.0,2.0,5.0,$
-                 10.0^linspace(modelMassRange[0],modelMassRange[1],modelMassRes)/1e10] ; code units
+  modelMasses = [10.0^linspace(modelMassRange[0],modelMassRange[1],modelMassRes)/1e10] ; code units
 
   ; check if save exists
-  saveFilename = 'temp.mmf.sav'
+  simHotMassesTag = '.mAna' ; analytical (f_b * M_halo)
+  if keyword_set(simHotMasses) then simHotMassesTag = '.mSim' ; derive hot halo mass from sim
+  
+  saveFilename = sP.derivPath + 'binnedVals/binMMF.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.res' + str(modelMassRes) + '.rad' + str(modelRadRes) + simHotMassesTag + '.sav'
   
   ; results exist, return
   if file_test(saveFilename) then begin
     restore,saveFilename
     return,r
-  endif 
+  endif
   
-  r = { modelMassFrac_SIS1     : fltarr(modelMassRes)                            ,$
-        modelMassFrac_SIS2     : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
-        modelMassFrac_NFW_iso  : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
-        modelMassFrac_NFW_poly : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+  ; hubble time
+  t_H = redshiftToAgeFlat(sP.redshift)
+  
+  ; derive hot halo masses from simulation?
+  if keyword_set(simHotMasses) then begin
+    polyDeg = 2
+    radBins = 6
+    
+    ; coarse median binning
+    x_fit = ts.gcMasses
+    y_fit = ts.gmem_hotMasses / logMsunToCodeMass(ts.gcMasses)
+    fit = fitRadProfile(radii=x_fit, vals=y_fit, range=[10.0,modelMassRange[1]], radBins=radBins)
+    
+    w = where(fit.radMedian eq 0,count)
+    if count gt 0 then message,'Error: Cut out the zeros first.'
+    
+    ; spline interp the median binned points
+    fracs = interpol(fit.radMedian,fit.binCen,codeMassToLogMsun(modelMasses),/spline)
+    hotHaloMasses = fracs * modelMasses
+    
+    if min(hotHaloMasses) lt 0.0 then message,'Error: Gone negative interpolating the fraction.'
+
+  endif else begin
+    hotHaloMasses = modelMasses * units.f_b
+    print,'Warning: Analytical is overestimate since we neglect what has already entered the galaxy.'
+  endelse
+  
+  r = { SIS1_tDyn     : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+        SIS2_tDyn     : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+        NFW_iso_tDyn  : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+        NFW_poly_tDyn : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+        SIS1_tH       : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+        SIS2_tH       : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+        NFW_iso_tH    : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
+        NFW_poly_tH   : fltarr(n_elements(ts.tsRatioVals),modelMassRes) ,$
         modelMasses            : modelMasses    ,$
         modelMassRange         : modelMassRange ,$
         modelRadRes            : modelRadRes    ,$
-        modelRadRange          : modelRadRange   }
+        modelRadRange          : modelRadRange  ,$
+        hotHaloMasses          : hotHaloMasses   }
   
   x = linspace(modelRadRange[0],modelRadRange[1],modelRadRes)
   
   for i=0,modelMassRes-1 do begin
-    m_gas0 = modelMasses[i] * units.f_b
-    
     ; MODEL 1: SIS uniform halo
-    sis_dm  = sis_profile(1.0, mass=modelMasses[i], redshift=sP.redshift)
-    sis_gas = sis_gas_profile(mass_hot=m_gas0, sis_dm=sis_dm, tables=tables)
-    
-    if sis_gas.coolTime lt sis_gas.dynTime then r.modelMassFrac_SIS1[i] = 1.0 ; all halo gas has tcool<tdyn
-    if sis_gas.coolTime ge sis_gas.dynTime then r.modelMassFrac_SIS1[i] = 0.0 ; all halo gas has tcool>tdyn
+    sis_dm_rVir  = sis_profile(1.0, mass=modelMasses[i], redshift=sP.redshift)
+    sis_gas_rVir = sis_gas_profile(mass_hot=hotHaloMasses[i], sis_dm=sis_dm_rVir, tables=tables)
     
     ; MODEL 2: SIS with tcool(r)
     sis_dm  = sis_profile(x, mass=modelMasses[i], redshift=sP.redshift)
-    sis_gas = sis_gas_profile(mass_hot=m_gas0, sis_dm=sis_dm, tables=tables)
-
-    foreach tsRatio,ts.tsRatioVals,j do begin
-    
-      if max(sis_gas.coolTime) lt tsRatio * sis_gas.dynTime then begin
-        ; all halo gas has tcool<tdyn
-        r.modelMassFrac_SIS2[j,i] = 1.0
-      endif else begin
-        if min(sis_gas.coolTime) gt tsRatio * sis_gas.dynTime then begin
-          ; all halo gas has tcool>tdyn
-          r.modelMassFrac_SIS2[j,i] = 0.0
-        endif else begin
-          ; find the radius where tcool=frac*tdyn
-          w = where(sis_gas.coolTime ge tsRatio * sis_gas.dynTime,count)
-          if count eq 0 then message,'error'
-          w = min(w)
-          e_rad = sis_dm.rad[w]
-        
-          ; calculate gas mass inside e_rad and take ratio
-          r.modelMassFrac_SIS2[j,i] = (e_rad/sis_dm.r200)
-        endelse
-      endelse
-    
-    endforeach
+    sis_gas = sis_gas_profile(mass_hot=hotHaloMasses[i], sis_dm=sis_dm, tables=tables)
     
     ; MODEL 3: NFW
     nfw_dm  = nfw_profile(x, mass=modelMasses[i], redshift=sP.redshift)
-    nfw_gas = nfw_gas_suto(mass_hot=m_gas0, nfw_dm=nfw_dm, tables=tables)
+    nfw_gas = nfw_gas_suto(mass_hot=hotHaloMasses[i], nfw_dm=nfw_dm, tables=tables)    
     
     foreach tsRatio,ts.tsRatioVals,j do begin
     
-      ; ISO
-      zz = nfw_gas.coolTime_iso ge tsRatio * nfw_gas.dynTime
-      zz_tot = total(zz)
+      ; MODEL 1: SIS uniform halo (all halo gas either has tcool<ts or tcool>ts)
+      if sis_gas_rVir.coolTime lt tsRatio * sis_gas_rVir.dynTime then r.SIS1_tDyn[j,i] = 1.0
+      if sis_gas_rVir.coolTime ge tsRatio * sis_gas_rVir.dynTime then r.SIS1_tDyn[j,i] = 0.0
       
-      if zz_tot eq 0 then begin
-        ; tcool is nowhere greater than tsRatio*tdyn (all halo gas has tcool<tdyn)
-        r.modelMassFrac_NFW_iso[j,i] = 1.0
-      endif else begin
-        if zz_tot eq n_elements(modelRadRes) then begin
-          ; all halo gas has tcool > tsRatio*tdyn
-          r.modelMassFrac_NFW_iso[j,i] = 0.0
-        endif else begin
-          ; find the radius where tcool = tsRatio*tdyn
-          w = where(nfw_gas.coolTime_iso ge tsRatio * nfw_gas.dynTime,count)
-          if count eq 0 then message,'error'
-          w = min(w)
-          
-          if w eq 0 then continue
-        
-          ; calculate gas mass inside e_rad and take ratio
-          e_mass   = int_tabulated(nfw_dm.rad[0:w],4*!pi*nfw_dm.rad[0:w]^2.0*nfw_gas.rho_gas_iso[0:w])
-          tot_mass = int_tabulated(nfw_dm.rad,4*!pi*nfw_dm.rad^2.0*nfw_gas.rho_gas_iso) ; equals m_gas0 only for poly
+      if sis_gas_rVir.coolTime lt tsRatio * t_H then r.SIS1_tH[j,i] = 1.0
+      if sis_gas_rVir.coolTime ge tsRatio * t_H then r.SIS1_tH[j,i] = 0.0
+    
+      ; MODEL 2: SIS with tcool(r)
+      r.SIS2_tDyn[j,i] = calcMMF(sis_gas.coolTime, sis_gas.dynTime, tsRatio=tsRatio, sis_dm=sis_dm)
+      r.SIS2_tH[j,i]   = calcMMF(sis_gas.coolTime, t_H, tsRatio=tsRatio, sis_dm=sis_dm)
+    
+      ; MODEL 3: NFW ISO
+      r.NFW_iso_tDyn[j,i] = calcMMF(nfw_gas.coolTime_iso, nfw_gas.dynTime, $
+                                    tsRatio=tsRatio, nfw_dm=nfw_dm, nfw_gas=nfw_gas, /nfwIso)
+      r.NFW_iso_tH[j,i]   = calcMMF(nfw_gas.coolTime_iso, t_H, $
+                                    tsRatio=tsRatio, nfw_dm=nfw_dm, nfw_gas=nfw_gas, /nfwIso)
 
-          r.modelMassFrac_NFW_iso[j,i] = (e_mass/tot_mass)
-        endelse
-      endelse
-      
-      ; POLY
-      zz = nfw_gas.coolTime ge tsRatio * nfw_gas.dynTime
-      zz_tot = total(zz)
-      
-      if zz_tot eq 0 then begin
-        ; tcool is nowhere greater than tsRatio*tdyn (all halo gas has tcool<tdyn)
-        r.modelMassFrac_NFW_poly[j,i] = 1.0
-      endif else begin
-        if zz_tot eq n_elements(modelRadRes) then begin
-          ; all halo gas has tcool > tsRatio*tdyn
-          r.modelMassFrac_NFW_poly[j,i] = 0.0
-        endif else begin
-          ; find the radius where tcool = tsRatio*tdyn
-          w = where(nfw_gas.coolTime ge tsRatio * nfw_gas.dynTime,count)
-          if count eq 0 then message,'error'
-          w = min(w)
-        
-          ; calculate gas mass inside e_rad and take ratio
-          e_mass   = int_tabulated(nfw_dm.rad[0:w],4*!pi*nfw_dm.rad[0:w]^2.0*nfw_gas.rho_gas[0:w])
-          tot_mass = int_tabulated(nfw_dm.rad,4*!pi*nfw_dm.rad^2.0*nfw_gas.rho_gas_iso) ; equals m_gas0
-
-          r.modelMassFrac_NFW_poly[j,i] = (e_mass/tot_mass)
-        endelse
-      endelse
+      ; MODEL 3: NFW POLY
+      r.NFW_poly_tDyn[j,i] = calcMMF(nfw_gas.coolTime, nfw_gas.dynTime, $
+                                     tsRatio=tsRatio, nfw_dm=nfw_dm, nfw_gas=nfw_gas, /nfwPoly)
+      r.NFW_poly_tH[j,i]   = calcMMF(nfw_gas.coolTime, t_H, $
+                                     tsRatio=tsRatio, nfw_dm=nfw_dm, nfw_gas=nfw_gas, /nfwPoly)
       
     endforeach
     
   endfor ; modelMassRes
   
   ; make extremely low values not plot
-  w = where(r.modelMassFrac_NFW_poly lt 0.0001,count)
-  if count gt 0 then r.modelMassFrac_NFW_poly[w] = !values.f_nan
-  w = where(r.modelMassFrac_NFW_iso lt 0.0001,count)
-  if count gt 0 then r.modelMassFrac_NFW_iso[w] = !values.f_nan
+  w = where(r.NFW_poly_tDyn lt 0.0001,count)
+  if count gt 0 then r.NFW_poly_tDyn[w] = !values.f_nan
+  w = where(r.NFW_iso_tDyn lt 0.0001,count)
+  if count gt 0 then r.NFW_iso_tDyn[w] = !values.f_nan
   
   ; save
-  ;save,r,filename=saveFilename
+  save,r,filename=saveFilename
   print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
   
   return,r
@@ -799,34 +1010,10 @@ pro crotonTest
       if M_hot[i] gt 0.0 then begin
       
         sis_gas = sis_gas_profile(mass_hot=M_hot[i], sis_dm=sis_dm, tables=tables)
-        r_cool[i] = sis_gas.r_cool
+        r_cool[i] = sis_gas.r_cool_croton
     
         ; compare rcool to rvir, "rapid mode" if rcool>rvir
-        if sis_gas.r_cool ge sis_dm.r200 then rapid_mode[i] = 1B
-      
-        ; LU CODE
-        lu_Hubble_h = 0.7
-        lu_H0kpc = 0.1
-        
-        lu_rvir = sis_dm.r200
-        lu_mvir = M_DM[i]
-        lu_vvir = sqrt(4.30071e-6 * lu_mvir / lu_rvir)
-        lu_tgas = 35.9 * lu_vvir^2.0
-        
-        lu_rho_0 = M_hot[i] / 4 / !pi / lu_rvir
-        
-        lu_cof = 1.0/0.28086 * units.mass_proton * units.boltzmann * lu_tgas / sis_gas.lambdaNet $ 
-                 / units.UnitMass_in_g * units.UnitLength_in_cm^3.0
-        lu_cof *= lu_H0kpc * lu_Hubble_h * units.UnitVelocity_in_cm_per_s / units.UnitLength_in_cm
-        
-        lu_dyn_time = lu_H0kpc * lu_rvir / lu_vvir
-        lu_cool_time = lu_dyn_time
-        lu_rcool = lu_rho_0 * lu_cool_time / lu_cof
-        lu_rcool = sqrt(lu_rcool) * lu_Hubble_h
-        ; END LU CODE
-        
-        ;print,lu_dyn_time/1e4,sis_gas.dynTime
-        ;print,lu_rcool/sis_gas.r_cool
+        if sis_gas.r_cool_croton ge sis_dm.r200 then rapid_mode[i] = 1B
       
         ; set cold gas accretion rate based on mode (1e10 Msun/yr)
         if rapid_mode[i] then begin
@@ -834,12 +1021,11 @@ pro crotonTest
           dM_cool[i] = M_hot[i] / delta_t ;(sis_gas.dynTime*1e9)
         endif else begin
           ; slow mode
-          ;dM_cool[i] = 0.5 * M_hot[i] * sis_gas.r_cool * (sis_dm.Vcirc_DM*units.s_in_yr/units.kpc_in_km) / sis_dm.r200^2.0 ;equivalent
-          dM_cool[i] = 0.5 * M_hot[i] * sis_gas.r_cool / (sis_dm.r200 * sis_gas.dynTime*1e9)
+          dM_cool[i] = 0.5 * M_hot[i] * sis_gas.r_cool_croton / (sis_dm.r200 * sis_gas.dynTime_halo*1e9)
         endelse
       
         if dM_cool[i] * delta_t gt M_hot[i] then begin
-          print,'warning',i
+          print,'dM_cool * dt > M_hot',i
           dM_cool[i] = M_hot[i] / delta_t
         endif
       
@@ -857,10 +1043,10 @@ pro crotonTest
       if M_hot_kang[i] le 0.0 then message,'error'
       
       sis_gas = sis_gas_profile(mass_hot=M_hot_kang[i], sis_dm=sis_dm, tables=tables)
-      r_cool_kang[i] = sis_gas.r_cool_h
+      r_cool_kang[i] = sis_gas.r_cool_hubble
       
       ; compare rcool_h to rvir, "rapid mode" if rcool_h>rvir
-      if sis_gas.r_cool_h ge sis_dm.r200 then rapid_mode_kang[i] = 1B
+      if sis_gas.r_cool_hubble ge sis_dm.r200 then rapid_mode_kang[i] = 1B
       
       ; set cold gas accretion rate based on mode
       kang_timenorm = times[i] ;sis_gas.hubbleTime*1e9 ;
@@ -868,7 +1054,7 @@ pro crotonTest
       if rapid_mode_kang[i] then begin
         dM_cool_kang[i] = M_hot_kang[i] / kang_timenorm
       endif else begin
-        dM_cool_kang[i] = 0.5 * M_hot_kang[i] * sis_gas.r_cool_h / (sis_dm.r200 * kang_timenorm)
+        dM_cool_kang[i] = 0.5 * M_hot_kang[i] * sis_gas.r_cool_hubble / (sis_dm.r200 * kang_timenorm)
       endelse
       
       if dM_cool_kang[i] * delta_t gt M_hot_kang[i] then message,'error'
@@ -879,11 +1065,13 @@ pro crotonTest
   endfor
   
   ; plot
-  start_PS,'test_dMdt_vs_redshift.eps'
+  xrange = [1,7]
+  
+  start_PS,'halo_SAM_vs_redshift.eps', ys=8, xs=6
     ; halo baryons
-    cgPlot,1+redshifts,dM_b*1e10,xtitle='1+z',ytitle='dM/dt [Msun/year]',$
-      /xlog,xrange=[1,7],/xs,xminor=0,/ylog,yrange=[0.06,60.0],/ys,yminor=0,$
-      xtickv=[1,2,3,4,5,6,7],xtickname=['1','2','3','4','5','6','7'],xticks=6,color=cgColor('black')
+    cgPlot,1+redshifts,dM_b*1e10,xtitle='',ytitle=textoidl('dM/dt [M_{sun}/year]'),$
+      /xlog,xrange=xrange,/xs,xminor=0,/ylog,yrange=[0.06,60.0],/ys,yminor=0,$
+      xtickv=[1,2,3,4,5,6,7],xtickname=replicate(' ',10),xticks=6,position=(sP.pos_3x1)[0]
       
     ; croton model, dM/dt cold split into rapid and slow
     cgPlot,1+redshifts,dM_cool*1e10,/overplot,color=cgColor('red')
@@ -896,15 +1084,11 @@ pro crotonTest
     
     w_rapid = where(rapid_mode_kang eq 1B,count)
     cgPlot,1+redshifts[w_rapid],dM_cool_kang[w_rapid]*1e10,psym=4,/overplot,color=cgColor('blue')
-    
-    legend,['croton','kang'],textcolors=['red','blue'],box=0,/top,/right
-  end_PS
-  
-  start_PS,'test_Mcold_vs_redshift.eps'
+
     ; halo baryons
-    cgPlot,1+redshifts,M_b*1e10,xtitle='1+z',ytitle='Mcold [Msun]',$
+    cgPlot,1+redshifts,M_b*1e10,xtitle='',ytitle=textoidl('M_{cold} [M_{sun}]'),$
       /xlog,xrange=[1,7],/xs,xminor=0,/ylog,yrange=[1.5e8,2e11],/ys,yminor=0,$
-      xtickv=[1,2,3,4,5,6,7],xtickname=['1','2','3','4','5','6','7'],xticks=6,color=cgColor('black')
+      xtickv=[1,2,3,4,5,6,7],xtickname=replicate(' ',10),xticks=6,/noerase,position=(sP.pos_3x1)[1]
       
     ; croton model, dM/dt cold split into rapid and slow
     cgPlot,1+redshifts,M_cold*1e10,/overplot,color=cgColor('red')
@@ -919,18 +1103,18 @@ pro crotonTest
     cgPlot,1+redshifts[w_rapid],M_cold_kang[w_rapid]*1e10,psym=4,/overplot,color=cgColor('blue')
     
     legend,['croton','kang'],textcolors=['red','blue'],box=0,/top,/right
+
+    cgPlot,[0],[0],/nodata,xtitle='1+z',ytitle='Radius [kpc]',$
+      /xlog,xrange=[1,7],/xs,xminor=0,yrange=[0,150],/ys,$
+      xtickv=[1,2,3,4,5,6,7],xtickname=['1','2','3','4','5','6','7'],xticks=6,/noerase,position=(sP.pos_3x1)[2]
+      
+    cgPlot,1+redshifts,R_vir,/overplot,color=cgColor('black')
+    cgPlot,1+redshifts,R_cool,/overplot,color=cgColor('red')
+    cgPlot,1+redshifts,r_cool_kang,/overplot,color=cgColor('blue')
+    legend,textoidl(['R_{vir}','R_{cool,croton}','R_{cool,kang}']),textcolors=['black','red','blue'],box=0,$
+      position=[2.5,140]
   end_PS
   
-  start_PS,'test_rads_vs_redshift.eps'
-    cgPlot,[0],[0],/nodata,xtitle='1+z',ytitle='Radius [kpc]',$
-      /xlog,xrange=[1,7],/xs,xminor=0,yrange=[0,200],/ys,$
-      xtickv=[1,2,3,4,5,6,7],xtickname=['1','2','3','4','5','6','7'],xticks=6
-      
-    cgPlot,1+redshifts,R_vir,/overplot,color=cgColor('red')
-    cgPlot,1+redshifts,R_cool,/overplot,color=cgColor('blue')
-    legend,['$R_{vir}$','$R_{cool}$'],textcolors=['red','blue'],box=0,/top,/right
-  end_PS    
-  stop
 end
   
 ; compVsMass(): at one redshift, compute models as a function of halo mass
@@ -943,10 +1127,12 @@ pro compVsMass
   
   ; config
   redshift = 2.0
-  M0_range = [9.0,13.0] ; log(msun) at z=0
+  M0_range = [10.0,13.0] ; log(msun) at z=0
   
   hRes = 200
   hMasses = 10.0^(linspace(M0_range[0],M0_range[1],hRes))/1e10
+  
+  rPts = linspace(0.01,10.0,5000)
   
   ; load Sutherland & Dopita (1993) cooling tables
   tables = interpLambdaSD93()
@@ -958,29 +1144,32 @@ pro compVsMass
   
   sis_coolRad = fltarr(hRes)
   nfw_coolRad = fltarr(hRes)
+  nfw_coolRad_iso = fltarr(hRes)
   
   for i=0,hRes-1 do begin
     ; calculate halo masses / hot gas mass, at target redshift
     hMass_z[i] = haloMAH(redshift,M0=hMasses[i],z0=0.0)
     m_gas0 = hMass_z[i] * units.f_b
+    print,codeMassToLogMsun(hMass_z[i])
     
     ; SIS DM halo and gas profiles
-    sis_dm  = sis_profile(1.0, mass=hMass_z[i], redshift=redshift)
+    sis_dm  = sis_profile(rPts, mass=hMass_z[i], redshift=redshift)
     sis_gas = sis_gas_profile(mass_hot=m_gas0, sis_dm=sis_dm, tables=tables)
 
-    nfw_dm  = nfw_profile(linspace(0.01,10.0,1000), mass=hMass_z[i], redshift=redshift)
-    nfw_gas = nfw_gas_profile(mass_hot=m_gas0, nfw_dm=nfw_dm, tables=tables)
+    nfw_dm  = nfw_profile(rPts, mass=hMass_z[i], redshift=redshift)
+    nfw_gas = nfw_gas_suto(mass_hot=m_gas0, nfw_dm=nfw_dm, tables=tables)
     
     ; radii, code units (kpc)
     virRad[i]  = sis_dm.r200
-    virTemp[i] = sis_dm.Tvir_DM
+    virTemp[i] = sis_dm.Tvir_rVir
     
     sis_coolRad[i] = sis_gas.r_cool
     nfw_coolRad[i] = nfw_gas.r_cool
+    nfw_coolRad_iso[i] = nfw_gas.r_cool_iso
   endfor
   
   ; plot
-  start_PS,'test_rads_vs_mass.eps'
+  start_PS,'halo_rads_vs_mass.eps'
     cgPlot,[0],[0],/nodata,xtitle='Halo Mass at z=2',ytitle='Radius [kpc]',$
       xrange=[8.5,12],/xs,yrange=[0,220],/ys
       
@@ -991,12 +1180,15 @@ pro compVsMass
     ; rvir and rcool
     cgPlot,codeMassToLogMsun(hMass_z),virRad,/overplot,color=cgColor('black'),line=2
     
-    cgPlot,codeMassToLogMsun(hMass_z),sis_coolRad,/overplot,color=cgColor('red'),line=0
-    cgPlot,codeMassToLogMsun(hMass_z),nfw_coolRad,/overplot,color=cgColor('blue'),line=0
+    cgPlot,codeMassToLogMsun(hMass_z),sis_coolRad,/overplot,color=cgColor('orange'),line=0
+    cgPlot,codeMassToLogMsun(hMass_z),nfw_coolRad,/overplot,color=cgColor('red'),line=0
+    cgPlot,codeMassToLogMsun(hMass_z),nfw_coolRad_iso,/overplot,color=cgColor('blue'),line=0
     
-    legend,textoidl(['R_{vir}','SIS R_{cool}','NFW R_{cool}']),$
-      textcolors=['black','red','blue'],linestyle=[2,0,0],box=0,/top,/right,linesize=0.25
+    legend,textoidl(['R_{vir}','SIS R_{cool}','NFW poly R_{cool}','NFW iso R_{cool}']),$
+      textcolors=['black','orange','red','blue'],linestyle=[2,0,0,0],box=0,/top,/right,linesize=0.25
   end_PS
+  
+  stop
   
 end
   
@@ -1010,78 +1202,74 @@ pro compProfiles
   
   ; config
   redshift = 2.0
-  hMass    = 100.0 ; code units at redshift
+  hMass    = 10.0 ; code units at redshift
   
   ; load Sutherland & Dopita (1993) cooling tables
   tables = interpLambdaSD93()
   
   ; arrays
-  rRes = 200
-  rPts = linspace(0.01,1.5,rRes) ; r/rvir
+  rRes = 2000
+  rPts = linspace(0.01,5.0,rRes) ; r/rvir
   
   ; DM and gas profiles
   sis_dm  = sis_profile(rPts, mass=hMass, redshift=redshift)
   sis_gas = sis_gas_profile(mass_hot=hMass*units.f_b, sis_dm=sis_dm, tables=tables)
   
   nfw_dm  = nfw_profile(rPts, mass=hMass, redshift=redshift)
-  nfw_gas = nfw_gas_profile(mass_hot=hMass*units.f_b, nfw_dm=nfw_dm, tables=tables)
-  
-  nfw_gas_poly = nfw_gas_poly(mass_hot=hMass*units.f_b, nfw_dm=nfw_dm, tables=tables)
-  
-  ; suto model
-  nfw_gas_suto2 = nfw_gas_suto(mass_hot=hMass*units.f_b, nfw_dm=nfw_dm, tables=tables)
-  
-  T_0   = 1.2 * nfw_dm.Tvir_rs
-  rho_0 = 150 * nfw_dm.mass_codeunits / (4/3*!pi*nfw_dm.r200^3.0)
-  n     = 20.0
-  
-  nfw_gas_suto = suto_model(T_0,rho_0,n,nfw_dm)
-  
-  print,'final',alog10(T_0),alog10(rho_0),nfw_gas_suto.B_p
-  
+  nfw_gas = nfw_gas_suto(mass_hot=hMass*units.f_b, nfw_dm=nfw_dm, tables=tables)
+
   ; plot
-  start_PS,'halo_ts_vs_rad.eps'
-    cgPlot,[0],[0],/nodata,xtitle=textoidl(' r / r_{vir} '),ytitle='Timescale [Gyr]',$
-      xrange=[0.0,1.5],/xs,yrange=[0,5],/ys
-      
-    cgPlot,rPts,sis_gas.coolTime,/overplot,color=cgColor('red'),line=0
-    cgPlot,rPts,sis_gas.dynTime,/overplot,color=cgColor('red'),line=2
-    cgPlot,rPts,nfw_gas.coolTime,/overplot,color=cgColor('blue'),line=0
-    cgPlot,rPts,nfw_gas.dynTime,/overplot,color=cgColor('blue'),line=2
-    
-    legend,textoidl(['SIS \tau_{cool}','SIS \tau_{dyn}','NFW \tau_{cool}','NFW \tau_{dyn}']),$
-      textcolors=['red','red','blue','blue'],linestyle=[0,2,0,2],box=0,/top,/left,linesize=0.25
-  end_PS
+  xrange = [0.01,1.5]
+  pos = list([0.18,0.67,0.95,0.95] ,$
+             [0.18,0.39,0.95,0.67] ,$
+             [0.18,0.11,0.95,0.39])
   
-  ; plot density/temp profiles
-  start_PS,'halo_denstemp_vs_rad.eps', ys=8, xs=6
-    cgPlot,[0],[0],/nodata,xtitle='',ytitle='Density (ratioToCrit)',$
-      xrange=[0.01,1.5],/xs,/xlog,xminor=0,yrange=[1.1,8],/ys,$
-      position = [0.15,0.55,0.95,0.95],xtickname=replicate(' ',10)
+  start_PS,'halo_denstempts_vs_rad.eps', ys=8, xs=6
+    cgPlot,[0],[0],/nodata,xtitle='',ytitle=textoidl('\rho(r) / \rho_{crit,z=2}'),$
+      xrange=xrange,/xs,/xlog,xminor=0,yrange=10.0^[1.1,8],/ys,/ylog,yminor=0,position = pos[0],xtickname=replicate(' ',10)
       
     ; DM profile
-    cgPlot,rPts,alog10(rhoRatioToCrit(sis_dm.rho_DM,redshift=redshift)),/overplot,color=cgColor('red')
-    cgPlot,rPts,alog10(rhoRatioToCrit(nfw_dm.rho_DM,redshift=redshift)),/overplot,color=cgColor('black')
+    cgPlot,rPts,rhoRatioToCrit(sis_dm.rho_DM,redshift=redshift),/overplot,color=cgColor('gray')
+    cgPlot,rPts,rhoRatioToCrit(nfw_dm.rho_DM,redshift=redshift),/overplot,color=cgColor('black')
     
     ; r_s line for NFW
     cgPlot,[nfw_dm.r_s/nfw_dm.r200,nfw_dm.r_s/nfw_dm.r200],[1.5,3],line=2,/overplot
     
     ; gas profile
-    cgPlot,rPts,alog10(rhoRatioToCrit(sis_gas.rho_gas,redshift=redshift)),/overplot,line=2,color=cgColor('red')
-    cgPlot,rPts,alog10(rhoRatioToCrit(nfw_gas.rho_gas,redshift=redshift)),/overplot,line=2,color=cgColor('blue')
-    cgPlot,rPts,alog10(rhoRatioToCrit(nfw_gas_suto.rho_gas,redshift=redshift)),/overplot,line=2,color=cgColor('orange')
-    cgPlot,rPts,alog10(rhoRatioToCrit(nfw_gas_suto.rho_gas_iso,redshift=redshift)),/overplot,line=2,color=cgColor('magenta')
-    cgPlot,rPts,alog10(rhoRatioToCrit(nfw_gas_suto2.rho_gas,redshift=redshift)),/overplot,line=2,color=cgColor('green')
+    cgPlot,rPts,rhoRatioToCrit(sis_gas.rho_gas,redshift=redshift),/overplot,line=2,color=cgColor('orange')
+    cgPlot,rPts,rhoRatioToCrit(nfw_gas.rho_gas,redshift=redshift),/overplot,line=2,color=cgColor('red')
+    cgPlot,rPts,rhoRatioToCrit(nfw_gas.rho_gas_iso,redshift=redshift),/overplot,line=2,color=cgColor('blue')
     
-    legend,['SIS','NFW iso','suto poly','suto iso','autoPoly'],textcolors=['red','blue','orange','magenta','green'],box=0,/right,/top
+    legend,['SIS DM','NFW DM'],textcolors=['gray','black'],box=0,/right,/top
     
-    cgPlot,[0],[0],/nodata,xtitle=textoidl('r / r_{vir}'),ytitle='Temp (logK)',$
-       xrange=[0.01,1.5],/xs,/xlog,xminor=0,yrange=[5,7],/ys,/noerase,position = [0.15,0.15,0.95,0.55]
+    ; temp
+    cgPlot,[0],[0],/nodata,xtitle="",xtickname=replicate(' ',10),ytitle=textoidl('T_{gas} [log K]'),$
+       xrange=xrange,/xs,/xlog,xminor=0,yrange=[5,7],/ys,/noerase,position = pos[1]
       
-    cgPlot,rPts,alog10(sis_gas.temp_gas),/overplot,color=cgColor('red')
-    cgPlot,rPts,alog10(nfw_gas.temp_gas),/overplot,color=cgColor('blue')
-    cgPlot,rPts,alog10(nfw_gas_suto.temp_gas),/overplot,color=cgColor('orange')
-    cgPlot,rPts,alog10(nfw_gas_suto2.temp_gas),/overplot,color=cgColor('green')
+    cgPlot,rPts,alog10(sis_gas.temp_gas),/overplot,color=cgColor('orange')
+    cgPlot,rPts,alog10(nfw_gas.temp_gas),/overplot,color=cgColor('red')
+    cgPlot,rPts,alog10(replicate(nfw_gas.T_0,n_elements(rPts))),/overplot,color=cgColor('blue')
+    
+    legend,['SIS','NFW poly','NFW iso'],textcolors=['orange','red','blue'],box=0,/right,/top
+    
+    ; timescales
+    cgPlot,[0],[0],/nodata,xtitle=textoidl(' r / r_{vir} '),ytitle='Timescale [Gyr]',$
+      xrange=xrange,/xs,yrange=[0.001,5.0],/ys,/ylog,/xlog,xminor=0,yminor=0,/noerase,position = pos[2]
+      
+    cgPlot,rPts,sis_gas.coolTime,/overplot,color=cgColor('orange'),line=0
+    cgPlot,rPts,sis_gas.dynTime,/overplot,color=cgColor('orange'),line=2
+    cgPlot,rPts,nfw_gas.coolTime,/overplot,color=cgColor('red'),line=0
+    cgPlot,rPts,nfw_gas.dynTime,/overplot,color=cgColor('red'),line=2
+    cgPlot,rPts,nfw_gas.coolTime_iso,/overplot,color=cgColor('blue'),line=0
+    cgPlot,rPts,nfw_gas.dynTime*0.97,/overplot,color=cgColor('blue'),line=2 ; visual offset
+    
+    ; verify r_cool
+    y_rcool = [0.003,0.03]
+    cgPlot,[sis_gas.r_cool,sis_gas.r_cool]/nfw_dm.r200,y_rcool,line=1,color=cgColor('orange'),/overplot
+    cgPlot,[nfw_gas.r_cool,nfw_gas.r_cool]/nfw_dm.r200,y_rcool,line=1,color=cgColor('red'),/overplot
+    cgPlot,[nfw_gas.r_cool_iso,nfw_gas.r_cool_iso]/nfw_dm.r200,y_rcool,line=1,color=cgColor('blue'),/overplot
+    
+    legend,textoidl(['\tau_{cool}','\tau_{dyn}']),linestyle=[0,2],box=0,/top,/left,linesize=0.25
     
   end_PS
   

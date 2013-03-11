@@ -18,35 +18,18 @@ int CalcHSML_natural(int NumPart, float* data_pos, float* data_mass, int DesNumN
                      float BoxSize, float HsmlGuess, float Softening, float* hsml_out)
 {
   int i;
-	int nNodes;
+  int nNodes;
   float hsml = HsmlGuess;
-
-	// initialize memory (not needed)
-  //memset(hsml_out, 0, NumPart * sizeof (float));
 
   P = (struct particle_data *) malloc (NumPart * sizeof (struct particle_data));
 	
-	// manual strides in bytes
-	//int pos_stride0  = NumPart*STRIDE_BYTES_PER_ELEM; //pos->strides[0];
-	//int pos_stride1  = STRIDE_BYTES_PER_ELEM; //pos->strides[1];
-	//int mass_stride0 = STRIDE_BYTES_PER_ELEM; //mass->strides[0];
-
-	// copy data into P
+  // copy data into P
   for (i=0; i < NumPart; i++)
   {
-		/*P[i].Pos[0] = (float) *data_pos;
-		data_pos = (float *) ((char *) data_pos + pos_stride1);
-		P[i].Pos[1] = (float) *data_pos;
-		data_pos = (float *) ((char *) data_pos + pos_stride1);
-		P[i].Pos[2] = (float) *data_pos;
-		data_pos = (float *) ((char *) data_pos - 2 * pos_stride1 + pos_stride0);
-		P[i].Mass = (float) *data_mass;
-		data_mass = (float *) ((char *) data_mass + mass_stride0);
-		*/
-		P[i].Pos[0] = data_pos[3*i+0];
-		P[i].Pos[1] = data_pos[3*i+1];
-		P[i].Pos[2] = data_pos[3*i+2];
-		P[i].Mass   = data_mass[i];
+	P[i].Pos[0] = data_pos[3*i+0];
+	P[i].Pos[1] = data_pos[3*i+1];
+	P[i].Pos[2] = data_pos[3*i+2];
+	P[i].Mass   = data_mass[i];
   }
 
   // allocate and build tree
@@ -56,10 +39,10 @@ int CalcHSML_natural(int NumPart, float* data_pos, float* data_mass, int DesNumN
 #ifdef VERBOSE
   printf("Built tree, nodes = %d\n", nNodes);
 
-	// use tree for neighbor searches
+  // use tree for neighbor searches
   printf("finding neighbours...\n [");
   
-	int signal = 0;
+  int signal = 0;
 #endif
 	
   for (i=0; i < NumPart; i++)

@@ -229,11 +229,9 @@ function nfw_rcool_func, X, params=params
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
-  nfw_dm_out = params.nfw_dm
-  nfw_dm_out.rad = X
-  nfw_dm_out.r_s = 1.0
-  suto = suto_model(params.T_0,params.rho_0,params.n,nfw_dm_out)
-  
+  ;nfw_dm_out = mod_struct(params.nfw_dm,"rad",X) ; replace radii with X
+  ;suto = suto_model(params.T_0,params.rho_0,params.n,nfw_dm_out)
+
   ; dynTime
   xx = X / params.nfw_dm.r_s
   
@@ -243,10 +241,9 @@ function nfw_rcool_func, X, params=params
   dynTime = X / (Vcirc * units.kmS_in_kpcYr) / 1e9
   
   ; coolTime
-  alpha = 3 * units.mu / 2
-  ;alpha = 3.56 ; LU
+  ;alpha = 3 * units.mu / 2
+  alpha = 3.56 ; LU
   
-  xx = X / params.nfw_dm.r200
   eps_xx = 1 - params.B_p * ( 1 - alog(1 + xx) / xx )
   temp_gas = params.T_0   * eps_xx
   rho_gas  = params.rho_0 * eps_xx^params.n
@@ -256,10 +253,27 @@ function nfw_rcool_func, X, params=params
   
   coolTime  = float( COF_cgs / (rho_gas*units.UnitDensity_in_cgs) / units.s_in_Gyr )
 
-  ; find root of difference
+  ; find minimum of abs(difference)
   y = coolTime - dynTime
 
   return, y  
+end
+
+; vector "root finder"
+
+function rootFindVector, y1, y2, xx=xx
+
+  w = where(abs(y1-y2) eq min(abs(y1-y2)),count)
+  if count gt 0 then w = w[0]
+  if count eq 0 or w eq 0 then begin
+    x = !values.f_nan
+  endif else begin
+    x = xx[w]
+  endelse
+  
+  if max(y1) lt min(y2) or min(y1) gt max(y2) then x = !values.f_nan
+  
+  return,x
 end
 
 ; nfw_timescales_suto(): calculate timescales vs radius and interesting radii for NFW gas model
@@ -272,8 +286,8 @@ function nfw_timescales_suto, suto=suto, nfw_dm=nfw_dm, tables=tables
   ; timescales: poly
   dynTime = nfw_dm.rad / (nfw_dm.Vcirc_DM * units.kmS_in_kpcYr) / 1e9
   
-  alpha = 3 * units.mu / 2
-  ;alpha = 3.56 ; LU
+  ;alpha = 3 * units.mu / 2
+  alpha = 3.56 ; LU
   
   lambdaNet = 10.0^(interpLambdaSD93(Z=0.0,logT=alog10(suto.temp_gas),tables=tables))
   COF_cgs   = float( alpha * units.mass_proton * units.boltzmann * suto.temp_gas / lambdaNet )
@@ -284,19 +298,13 @@ function nfw_timescales_suto, suto=suto, nfw_dm=nfw_dm, tables=tables
   hubbleTime = redshiftToAgeFlat(nfw_dm.redshift)
   
   ; rcool (where coolTime=dynTime) and rcool (where coolTime=hubbleTime)
-  ; vector root "finder", pretty bad
-  w = where(abs(coolTime-dynTime) eq min(abs(coolTime-dynTime)),count)
-  if count gt 0 then w = w[0]
-  r_cool = nfw_dm.rad[w]
-  
-  w = where(abs(coolTime-hubbleTime) eq min(abs(coolTime-hubbleTime)),count)
-  if count gt 0 then w = w[0]
-  r_cool_h = nfw_dm.rad[w]
+  r_cool   = rootFindVector(coolTime, dynTime, xx=nfw_dm.rad)
+  r_cool_h = rootFindVector(coolTime, hubbleTime, xx=nfw_dm.rad)
   
   ; try actual root find
-  ;params = { T_0:suto.T_0, rho_0:suto.rho_0, n:suto.n, B_p:suto.B_p, nfw_dm:nfw_dm, tables:tables }
-  ;r_zero = zbrent(1e-4,nfw_dm.r200*10,func_name="nfw_rcool_func",_EXTRA={params:params})
-  ;stop
+  params = { T_0:suto.T_0, rho_0:suto.rho_0, n:suto.n, B_p:suto.B_p, nfw_dm:nfw_dm, tables:tables }
+  ;r_zero = zbrent(1.0,1000.0,func_name="nfw_rcool_func",_EXTRA={params:params}) ; kpc
+  ;r_zero2 = tnmin("nfw_rcool_func",[nfw_dm.r_s],functargs={params:params},/autoderivative,/quiet)
   
   ; timescales: iso
   lambdaNet = 10.0^(interpLambdaSD93(Z=0.0,logT=alog10(suto.T_0),tables=tables))
@@ -304,7 +312,7 @@ function nfw_timescales_suto, suto=suto, nfw_dm=nfw_dm, tables=tables
   
   coolTime_iso = COF_cgs / (suto.rho_gas_iso*units.UnitDensity_in_cgs) / units.s_in_Gyr
   
-  r_cool_iso = 0
+  r_cool_iso = rootFindVector(coolTime_iso, dynTime, xx=nfw_dm.rad)
   
   return, {dynTime:dynTime, coolTime:coolTime, hubbleTime:hubbleTime, r_cool:r_cool, r_cool_h:r_cool_h, $
            coolTime_iso:coolTime_iso, r_cool_iso:r_cool_iso}
@@ -378,8 +386,9 @@ function nfw_gas_suto, mass_hot=mass_hot_codeunits, nfw_dm=nfw_dm, tables=tables
   
   return, {B:suto.B, B_p:suto.B_p, temp_gas:suto.temp_gas, rho_gas:suto.rho_gas, $
            T_0:suto.T_0, rho_0:suto.rho_0, n:suto.n ,$
-           dynTime:ts.dynTime, coolTime:ts.coolTime, hubbleTime:ts.hubbleTime, r_cool:ts.r_cool, r_cool_h:ts.r_cool_h, $
-           coolTime_iso:ts.coolTime_iso, rho_gas_iso:suto.rho_gas_iso }  
+           dynTime:ts.dynTime, coolTime:ts.coolTime, hubbleTime:ts.hubbleTime, $
+           r_cool:ts.r_cool, r_cool_h:ts.r_cool_h, r_cool_iso:ts.r_cool_iso, $
+           coolTime_iso:ts.coolTime_iso, rho_gas_iso:suto.rho_gas_iso}  
   
 end
   
@@ -533,22 +542,31 @@ function sis_gas_profile, mass_hot=mass_hot_codeunits, sis_dm=sis_dm, tables=tab
   temp_gas = replicate(sis_dm.Tvir_rVir,n_elements(sis_dm.rad))
   
   ; timescales in Gyr
-  alpha = 3 * units.mu / 2
-  ;alpha = 3.56 ; LU
+  ;alpha = 3 * units.mu / 2
+  alpha = 3.56 ; LU
   
   COF_cgs  = float(alpha * units.mass_proton * units.boltzmann * sis_dm.Tvir_rVir / lambdaNet)
   
   coolTime   = COF_cgs / (rho_gas*units.UnitDensity_in_cgs) / units.s_in_Gyr
-  dynTime    = sis_dm.r200 / (sis_dm.Vcirc_rVir * units.kmS_in_kpcYr) / 1e9
+  
+  dynTime      = sis_dm.rad / (sis_dm.Vcirc_DM * units.kmS_in_kpcYr) / 1e9
+  dynTime_halo = sis_dm.r200 / (sis_dm.Vcirc_rVir * units.kmS_in_kpcYr) / 1e9
+  
   hubbleTime = 1/units.H_z ; Gyr
   hubbleTime = redshiftToAgeFlat(sis_dm.redshift)
   
-  ; rcool (where coolTime=dynTime) and rcool (where coolTime=hubbleTime)
-  r_cool   = sqrt(rho_0 * units.UnitDensity_in_cgs * dynTime * units.s_in_Gyr / COF_cgs);
-  r_cool_h = sqrt(rho_0 * units.UnitDensity_in_cgs * hubbleTime * units.s_in_Gyr / COF_cgs);
+  ; rcool_croton (where coolTime=dynTime_halo)
+  r_cool_croton = sqrt(rho_0 * units.UnitDensity_in_cgs * dynTime_halo * units.s_in_Gyr / COF_cgs)
+  
+  ; rcool_hubble (where coolTime=hubbleTime), used for Kang model
+  r_cool_hubble = sqrt(rho_0 * units.UnitDensity_in_cgs * hubbleTime * units.s_in_Gyr / COF_cgs)
+  
+  ; rcool (where coolTime=dynTime)
+  r_cool = rootFindVector(coolTime,dynTime,xx=sis_dm.rad)
     
   return, {rho_gas:rho_gas, temp_gas:temp_gas, coolTime:coolTime, dynTime:dynTime, hubbleTime:hubbleTime, $
-           r_cool:r_cool, r_cool_h:r_cool_h, lambdaNet:lambdaNet}
+           r_cool_croton:r_cool_croton, dynTime_halo:dynTime_halo, $ ; used for Croton model
+           r_cool:r_cool, r_cool_hubble:r_cool_hubble, lambdaNet:lambdaNet}
     
 end
 

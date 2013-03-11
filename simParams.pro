@@ -41,8 +41,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        $ ; plotting/vis parameters:
        colorsA:       [getColor24(['00'x,'eb'x,'00'x]),getColor24(['00'x,'bd'x,'00'x]),getColor24(['00'x,'90'x,'00'x])],$ ; green 128,256,512
        colorsG:       [getColor24(['e6'x,'7a'x,'22'x]),getColor24(['b3'x,'5f'x,'1b'x]),getColor24(['80'x,'44'x,'13'x])],$ ; brown 128,256,512
-       $ ;colorsA:       [getColor24([255,200,200]),getColor24([255,100,100]),getColor24([255,0,0])],$ ; red 128,256,512 (alternative)
-       $ ;colorsG:       [getColor24([200,200,255]),getColor24([100,100,255]),getColor24([0,0,255])],$ ; blue 128,256,512 (alternative)
+       pos_3x1:       list([0.18,0.67,0.95,0.95],[0.18,0.39,0.95,0.67],[0.18,0.11,0.95,0.39]) ,$
+       pos_2x1:       list([0.15,0.55,0.95,0.95], [0.15,0.15,0.95,0.55])                      ,$
        radIndHaloAcc: 0,$     ; 1.0 rvir crossing for halo accretion
        radIndGalAcc:  4,$     ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
        gfmElements:   ['H','He','C','N','O','Ne','Mg','Si','Fe'] ,$
