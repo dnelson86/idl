@@ -335,8 +335,8 @@ function galaxyCat, sP=sP
   
 end
 
-; galaxyCatRadii(): find radial distance of all group member particles wrt the group they belong to
-;                   as well as the rad to the primary group if this is a secondary group
+; galaxyCatRadii(): find radial distance and radial velocities of all group member particles wrt 
+;  the group they belong to as well as the rad to the primary group if this is a secondary group
 
 function galaxyCatRadii, sP=sP
 
@@ -349,8 +349,6 @@ function galaxyCatRadii, sP=sP
     ; results exist, return
     if (file_test(saveFilename)) then begin
       restore,saveFilename
-      r = {gal_pri:gal_pri,gal_sec:gal_sec,gmem_pri:gmem_pri,gmem_sec:gmem_sec,$
-           stars_pri:stars_pri,stars_sec:stars_sec}
       return,r
     endif
     
@@ -418,27 +416,78 @@ function galaxyCatRadii, sP=sP
     ; replicate parent IDs (of SECONDARY/direct)
     gcIDs = galCatRepParentIDs(galcat=galcat)
     
+    ; allocate save structure
+    r = { gal_pri   : fltarr(n_elements(gcIDs.gal))   ,$
+          gal_sec   : fltarr(n_elements(gcIDs.gal))   ,$
+          gmem_pri  : fltarr(n_elements(gcIDs.gmem))  ,$
+          gmem_sec  : fltarr(n_elements(gcIDs.gmem))  ,$
+          stars_pri : fltarr(n_elements(gcIDs.stars)) ,$
+          stars_sec : fltarr(n_elements(gcIDs.stars)) ,$
+          gal_vrad_pri   : fltarr(n_elements(gcIDs.gal))  ,$
+          gmem_vrad_pri  : fltarr(n_elements(gcIDs.gmem)) ,$
+          stars_vrad_pri : fltarr(n_elements(gcIDs.stars)) }
+    
     ; calulate radial vector of gas from group center (SEC)
-    gal_sec   = periodicDists(subgroupCen[*,gcIDs.gal],pos_gal,sP=sP)
-    gmem_sec  = periodicDists(subgroupCen[*,gcIDs.gmem],pos_gmem,sP=sP)
-    stars_sec = periodicDists(subgroupCen[*,gcIDs.stars],pos_stars,sP=sP)
+    r.gal_sec   = periodicDists(subgroupCen[*,gcIDs.gal],pos_gal,sP=sP)
+    r.gmem_sec  = periodicDists(subgroupCen[*,gcIDs.gmem],pos_gmem,sP=sP)
+    r.stars_sec = periodicDists(subgroupCen[*,gcIDs.stars],pos_stars,sP=sP)
     
     ; replicate parent IDs (of PRIMARY/parent)
     priParentIDs = gcIDList(gc=gc,select='pri')
-    gc = !NULL
-    
+
     gcIDs = galCatRepParentIDs(galcat=galcat,priParentIDs=priParentIDs)
+    priParentIDs = !NULL
+    galcat = !NULL
     
     ; calulate radial vector of gas from group center (PRI)
-    gal_pri   = periodicDists(subgroupCen[*,gcIDs.gal],pos_gal,sP=sP)
-    gmem_pri  = periodicDists(subgroupCen[*,gcIDs.gmem],pos_gmem,sP=sP)
-    stars_pri = periodicDists(subgroupCen[*,gcIDs.stars],pos_stars,sP=sP)
+    r.gal_pri   = periodicDists(subgroupCen[*,gcIDs.gal],pos_gal,sP=sP)
+    r.gmem_pri  = periodicDists(subgroupCen[*,gcIDs.gmem],pos_gmem,sP=sP)
+    r.stars_pri = periodicDists(subgroupCen[*,gcIDs.stars],pos_stars,sP=sP)
+    
+    ; replace coordinates by relative coordinates (radial vectors)
+    for i=0,2 do begin
+      pos_rel = reform(pos_gal[i,*] - subgroupCen[i,gcIDs.gal])
+      correctPeriodicDistVecs, pos_rel, sP=sP
+      pos_gal[i,*] = pos_rel
+      
+      pos_rel = reform(pos_gmem[i,*] - subgroupCen[i,gcIDs.gmem])
+      correctPeriodicDistVecs, pos_rel, sP=sP
+      pos_gmem[i,*] = pos_rel
+      
+      pos_rel = reform(pos_stars[i,*] - subgroupCen[i,gcIDs.stars])
+      correctPeriodicDistVecs, pos_rel, sP=sP
+      pos_stars[i,*] = pos_rel
+    endfor
+    
+    ; load velocities
+    vel = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
+    vel_gal   = vel[*,ids_gal_ind]
+    vel_gmem  = vel[*,ids_gmem_ind]
+    vel_stars = vel[*,ids_stars_ind]
+    vel = !NULL
+    
+    r.gal_vrad_pri = ((vel_gal[0,*] - gc.subgroupVel[0,gcIDs.gal]) * pos_gal[0,*] + $
+                      (vel_gal[1,*] - gc.subgroupVel[1,gcIDs.gal]) * pos_gal[1,*] + $
+                      (vel_gal[2,*] - gc.subgroupVel[2,gcIDs.gal]) * pos_gal[2,*]) $
+                      / r.gal_pri
+                  
+    r.gmem_vrad_pri = ((vel_gmem[0,*] - gc.subgroupVel[0,gcIDs.gmem]) * pos_gmem[0,*] + $
+                       (vel_gmem[1,*] - gc.subgroupVel[1,gcIDs.gmem]) * pos_gmem[1,*] + $
+                       (vel_gmem[2,*] - gc.subgroupVel[2,gcIDs.gmem]) * pos_gmem[2,*]) $
+                       / r.gmem_pri      
 
+    r.stars_vrad_pri = ((vel_stars[0,*] - gc.subgroupVel[0,gcIDs.stars]) * pos_stars[0,*] + $
+                        (vel_stars[1,*] - gc.subgroupVel[1,gcIDs.stars]) * pos_stars[1,*] + $
+                        (vel_stars[2,*] - gc.subgroupVel[2,gcIDs.stars]) * pos_stars[2,*]) $
+                        / r.stars_pri
+    
     ; save radial distances (and group centers)
-    save,gal_pri,gal_sec,gmem_pri,gmem_sec,stars_pri,stars_sec,filename=saveFilename
+    save,r,filename=saveFilename
     print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
 
   endfor
+  
+  if snapRange[0] eq snapRange[1] then return,r
   
 end
 
@@ -544,7 +593,8 @@ end
 ; parNorm   : 'pri' or 'sec' (if pri then return properties of primary parent even for gas elements
 ;             in secondary/"satelitte" subgroups) (if sec effectively ignored, this is default behavior)
 
-function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir, parNorm=parNorm
+function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir, vCirc=vCirc, $
+                                 parNorm=parNorm
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function galaxyCat, snapNumToRedshift, codeMassToLogMsun
@@ -610,6 +660,17 @@ function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir, p
     r.gal   = gc.group_r_crit200[r.gal]
     r.gmem  = gc.group_r_crit200[r.gmem]
     r.stars = gc.group_r_crit200[r.stars]
+  endif
+  
+  if keyword_set(vCirc) then begin
+    units = getUnits()
+    r.gal   = gc.subgroupGrnr[gcInd.gal]
+    r.gmem  = gc.subgroupGrnr[gcInd.gmem]
+    r.stars = gc.subgroupGrnr[gcInd.stars]
+    
+    r.gal   = sqrt(units.G * gc.group_m_crit200[r.gal] / gc.group_r_crit200[r.gal])
+    r.gmem  = sqrt(units.G * gc.group_m_crit200[r.gmem] / gc.group_r_crit200[r.gmem])
+    r.stars = sqrt(units.G * gc.group_m_crit200[r.stars] / gc.group_r_crit200[r.stars])
   endif
 
   return,r
