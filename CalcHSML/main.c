@@ -109,6 +109,7 @@ int CalcHSML(int argc, void* argv[])
     IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,buf);
     return 0;
   } else {
+#ifdef VERBOSE
 #ifdef   ONEDIMS
 IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSML Loaded (ONEDIMS!).");
 #else
@@ -118,7 +119,7 @@ IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSML Loaded (NDIMS=3!).");
 IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcHSML Loaded (TWODIMS!).");
 #endif
 #endif /* ONEDIMS */
-
+#endif
   }
 
   // should check: pos has 2 dims, first dim is 3

@@ -78,23 +78,55 @@ end
 ; ------------------
 
 ; replicate_var(): given a number of children for each parent, replicate the parent indices for each child
+; subset_inds=1 : still need to walk the full child_counts, but only want the parent indices of a subset
 
-function replicate_var, child_counts
+function replicate_var, child_counts, subset_inds=subset_inds
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
-  parent_inds = ulonarr(total(child_counts,/int))
-  
   ; loop approach
-  
   offset = 0UL
-  for i=0UL,n_elements(child_counts)-1 do begin
-    if child_counts[i] gt 0 then $
-      parent_inds[ offset : offset+child_counts[i]-1 ] = replicate(i,child_counts[i])
-    offset += child_counts[i]
-  endfor
   
-  ; vector approach:
+  if ~keyword_set(subset_inds) then begin
+    ; full
+    parent_inds = ulonarr(total(child_counts,/int))
+    
+    for i=0UL,n_elements(child_counts)-1 do begin
+      if child_counts[i] gt 0 then $
+        parent_inds[ offset : offset+child_counts[i]-1 ] = replicate(i,child_counts[i])
+      offset += child_counts[i]
+    endfor
+    
+    return,parent_inds
+    
+  endif
+  
+  if keyword_set(subset_inds) then begin
+    ;subset
+    totChildren = total(child_counts[subset_inds],/int)
+    
+    ; we also return the child index array (i.e. which children belong to the subset_inds parents)
+    r = { parent_inds : ulonarr(totChildren) ,$
+          child_inds  : ulonarr(totChildren)  }
+    
+    offset_sub = 0UL
+    subset_mask = bytarr(n_elements(child_counts))
+    subset_mask[subset_inds] = 1B
+    
+    for i=0UL,n_elements(child_counts)-1 do begin
+      if subset_mask[i] eq 1B and child_counts[i] gt 0 then begin
+        r.parent_inds[ offset_sub : offset_sub+child_counts[i]-1 ] = replicate(i,child_counts[i])
+        r.child_inds[ offset_sub : offset_sub+child_counts[i]-1 ] = lindgen(child_counts[i]) + offset
+        offset_sub += child_counts[i]
+      endif
+      offset += child_counts[i]
+    endfor
+    
+    return, r
+    
+  endif
+  
+  ; vector approach (full, uncomplete):
   
   ;if n_elements(child_counts) le 1 then message,'error'
   ;cc = total(child_counts,/int,/cum)
@@ -109,7 +141,7 @@ function replicate_var, child_counts
   ;if count gt 0 then begin
   ; 
   ;  ; need to handle multiple zeros on end
-  ;  ; TODO
+  ;  message,'TODO'
   ;  if w[-1] eq n_elements(child_counts)-1 then w = w[0:-2]
  ; 
  ;   ; possible multiple zeros sequentially
@@ -120,8 +152,6 @@ function replicate_var, child_counts
  ; 
  ; ; scan sum
  ; parent_inds = total(parent_inds,/cum,/int)
- 
-  return,parent_inds
 end
 
 ; pSplit(): divide work for embarassingly parallel problems
@@ -365,6 +395,142 @@ function getIDIndexMap, ids, minid=minid
   ;for i=0L,n_elements(h)-1 do if (rev[i+1] gt rev[i]) then arr[i] = rev[rev[i]:rev[i+1]-1]
 
   return, arr
+end
+
+; plotting related
+; ----------------
+
+; fitRadProfile(): helper function to fit median radial profile
+
+function fitRadProfile, radii=radii, vals=vals, range=range, radBins=radBins
+
+  r = { binSize    : (range[1]-range[0])/radBins          ,$
+        binCen     : linspace(range[0],range[1],radBins)  ,$
+        radMean    : fltarr(radBins)                      ,$
+        radMedian  : fltarr(radBins)                      ,$
+        radStddev  : fltarr(radBins)                      ,$
+        radNum     : lonarr(radBins)                       }
+        
+  for i=0,radBins-1 do begin
+    binEdges = range[0] + [i,i+1]*r.binSize
+    w = where(radii ge binEdges[0] and radii lt binEdges[1],count)
+    if count gt 0 then begin
+      r.radMean[i]   = mean(vals[w])
+      r.radMedian[i] = median(vals[w])
+      r.radStddev[i] = stddev(vals[w])
+      r.radNum[i]    = count
+    endif
+  endfor
+         
+  return,r
+
+end
+
+; binHisto2D()
+
+function binHisto2D, xx=xx, yy=yy, wt=wt, xmm=xmm, ymm=ymm, xbs=xbs, ybs=ybs
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  if ~keyword_set(xx) or ~keyword_set(yy) or ~keyword_set(xmm) or ~keyword_set(ymm) or $
+     ~keyword_set(xbs) or ~keyword_set(ybs) then message,'error'
+     
+  if ~keyword_set(wt) then wt = replicate(1.0,n_elements(xx))
+  
+  nXBins = ceil((xmm[1]-xmm[0])/xbs)
+  nYBins = ceil((ymm[1]-ymm[0])/ybs)
+  
+  binCenX = linspace(xmm[0],xmm[1]-xbs,nXBins) + xbs/2
+  binCenY = linspace(ymm[0],ymm[1]-ybs,nYBins) + ybs/2
+  
+  ; return array
+  r = { nXBins:nXBins, nYBins:nYBins, binCenX:binCenX, binCenY:binCenY, $
+        binSizeX:xbs, binSizeY:ybs, $
+        h2:fltarr(nXBins,nYBins)  }
+        
+  ; bin manually for mass weighting
+  for i=0,nXBins-1 do begin
+    xBin = [binCenX[i]-xbs/2,binCenX[i]+xbs/2]
+  
+    for j=0,nYBins-1 do begin
+      yBin = [binCenY[j]-ybs/2,binCenY[j]+ybs/2]
+      
+      w = where(xx ge xBin[0] and xx lt xBin[1] and yy ge yBin[0] and yy lt yBin[1],count)
+      if count gt 0 then r.h2[i,j] = total(wt[w])
+    
+    endfor
+  endfor
+
+  return, r
+
+end
+
+; oplot2DHistoSq(): plot a 2d histogram in the separated squares style
+; hsp: 2d array, gap size (in data units) along x and y directions
+; nc: highest number of the color table to use (e.g. for 0-255 normally white-dark, exclude the darkest colors)
+; nonZero=1: replace all zero counts by lowest nonzero value
+; logX/Y=1: indicates the y-axis of the plot is log
+; colNorm=1: normalize each column independently (i.e. for xaxis=halo mass to offset mass function)
+    
+pro oplot2DHistoSq, ct2d, hsp=hsp, nc=nc, xRange=xRange, yRange=yRange, $
+  nonZero=nonZero, logY=logY, logX=logX, colNorm=colNorm, gray=gray, blue=blue, green=green
+
+  if ~keyword_set(hsp) or ~keyword_set(nc) then message,'error'
+
+  ; store current table and load for 2d histo
+  tvlct, rr, gg, bb, /get
+  
+  if keyword_set(gray)  then loadColorTable,'bw linear', /reverse
+  if keyword_set(green) then loadColorTable,'green-white linear', /reverse
+  if keyword_set(blue)  then loadColorTable,'brewerc-blues'
+    
+  ; process data (stretching data values)
+  w = where(ct2d.h2 eq 0.0,count,comp=wc)
+    
+  if keyword_set(nonZero) then begin
+    ct2d.h2 = ct2d.h2*1e10
+    if count gt 0 then ct2d.h2[w] = min(ct2d.h2,/nan)
+  endif
+  
+  ; normalize column by column
+  if keyword_set(colNorm) then begin
+    for i=0,ct2d.nXBins-1 do begin
+      colTot = max(ct2d.h2[i,*],/nan)
+      ct2d.h2[i,*] /= colTot
+    endfor
+  endif
+    
+  ; colorscale range
+  fieldMinMax = [min(ct2d.h2[wc],/nan),max(ct2d.h2,/nan)]
+    
+  for i=0,ct2d.nXBins-1 do begin
+    x = [ct2d.binCenX[i]-ct2d.binSizeX/2+hsp[0], ct2d.binCenX[i]+ct2d.binSizeX/2-hsp[0], $ ; ll, lr
+         ct2d.binCenX[i]+ct2d.binSizeX/2-hsp[0], ct2d.binCenX[i]-ct2d.binSizeX/2+hsp[0]]   ; ur, ul
+           
+    if keyword_set(logX) then x = 10.0^x
+           
+    if min(x) lt xRange[0] or max(x) gt xRange[1] then continue
+             
+    for j=0,ct2d.nYBins-1 do begin
+      y = [ct2d.binCenY[j]-ct2d.binSizeY/2+hsp[1], ct2d.binCenY[j]-ct2d.binSizeY/2+hsp[1], $ ; ll, lr
+           ct2d.binCenY[j]+ct2d.binSizeY/2-hsp[1], ct2d.binCenY[j]+ct2d.binSizeY/2-hsp[1]]   ; ur, ul
+             
+      if keyword_set(logY) then y = 10.0^y
+             
+      if min(y) lt yRange[0] or max(y) gt yRange[1] then continue
+             
+      ; determine color and make polygon
+      colorind = (ct2d.h2[i,j]-fieldMinMax[0])*nc / (fieldMinMax[1]-fieldMinMax[0]) ;0-nc
+      colorind = fix(colorind + 0.0) > 0 < 255 ;0-nc
+      
+      if colorind lt ceil(0.01*nc) then continue ; skip marginal bins
+        
+      cgPolygon,x,y,color=colorind,/fill
+    endfor
+  endfor
+  
+  ; restore original CT
+  tvlct, rr, gg, bb
+  
 end
 
 ; basic IO
@@ -698,11 +864,13 @@ end
 ; ---------------------
 @externalC
 @units
-@haloModels
 @simParams
 @cosmoUtil
 @groupCat
 @cosmoLoad
+
+@haloModels
+@haloModelsPlot
 
 @mergerTree
 @galaxyCat
@@ -713,18 +881,23 @@ end
 @timeScales
 @timeScalesPlot
 
+@accretionRates
 @accretionTraj
 @accretionTrajVis
 @cosmoVis
 @cosmoVisMap
-@cosmoSphere
 @cosmoOverDens
 @haloCompProj
 @galaxyCatVis
 
+@sphere
+@spherePlot
+@spherePowerSpec
+@filamentSearch
+@filamentSearchPlot
+
 @plotGalCat
 @plotMaxTemps
-@plotSphere
 @binVsHaloMass
 @plotVsHaloMass
 @plotRadProfiles

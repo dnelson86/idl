@@ -7,7 +7,7 @@
 pro makeArepoFoFBsub
 
   ; config
-  res = 512
+  res = 256
   run = 'tracer'
   ;f = '10'
   
@@ -17,14 +17,14 @@ pro makeArepoFoFBsub
   print,snapZ
 
   ;snapRange = [290,314,1]
-  snaps = [311]
+  snaps = [310]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 128 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
+  nProcs    = 32 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
                  ;               256^3=4 (n32tile4 PartAllocFactor=2.5 MaxMemSize=7900)
                  ;               512^3=16 (n64tile4 PartAllocFactor=1.5 though n32tile4 ok until z=2)
-  ptile     = 8 ; span[ptile=X]
+  ptile     = 4 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
   excludeHosts = ['hero0103','hero2205','hero0410','hero2413','hero1004'] ;leave empty otherwise

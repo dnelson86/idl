@@ -7,8 +7,9 @@
 ;              if snap is specified, create only for one snapshot number or return previously saved
 ;              results for that snapshot
 ; Note: the gal/gmem catalogs have the same size (and indexing) as the subgroups
+; galaxyOnly=1 : calculate on the fly and return for galaxy only (don't save)
 
-function galaxyCat, sP=sP
+function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -116,8 +117,6 @@ function galaxyCat, sP=sP
 
     ; calculate radial distances of gas elements to primary parents
     if sP.radcut_rvir ne 0.0 then begin
-      print,'GALCAT: ENFORCING RADIAL CUT (AND STARS)!'
-      
       pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
       pos = pos[*,ids_ind]
       
@@ -209,49 +208,6 @@ function galaxyCat, sP=sP
     ids          = ids[wGal]
     ids_stars    = ids_stars[wStars]
 
-    ; construct group member catalog
-    if (not file_test(saveFilename2)) then begin
-    
-      groupmemLen = lonarr(gc.nSubgroupsTot)
-      groupmemOff = lonarr(gc.nSubgroupsTot)
-      groupmemIDs = lon64arr(n_elements(ids_groupmem))
-      
-      nextOff = 0UL
-      
-      ; match indices between gas ids and group member ids
-      match,ids_groupmem,gc.IDs,ids_ind,gcIDs_ind,count=countID,/sort
-      
-      for gcID=0L,gc.nSubgroupsTot-1 do begin
-        ; select ids in group
-        groupStart = gc.subGroupOffset[gcID]
-        groupEnd   = groupStart + gc.subGroupLen[gcID]
-        
-        w = where(gcIDs_ind ge groupStart and gcIDs_ind lt groupEnd,count)
-        
-        ; save in similar 1D offset format
-        groupmemLen[gcID] = count
-        groupmemOff[gcID] = nextOff
-        if (count gt 0) then begin
-          nextOff = groupmemOff[gcID] + groupmemLen[gcID]
-          groupmemIDs[groupmemOff[gcID]:nextOff-1] = ids_groupmem[ids_ind[w]]
-        endif      
-        
-      end
-  
-      ; make sure all gas particles were found in the group catalog
-      match,ids_groupmem,groupmemIDs,ind1,ind2,count=countCheck
-      if countCheck ne n_elements(ids_groupmem) then message,'Error: Failed to locate all gmem.'
-
-      ; save group membership catalog
-      save,groupmemLen,groupmemOff,groupmemIDs,filename=saveFilename2    
-      print,'Saved: '+strmid(saveFilename2,strlen(sP.derivPath))+' ['+str(countGmem)+'/'+str(countMatch)+']'    
-    
-      groupmemLen = !NULL
-      groupmemOff = !NULL
-      groupmemIDs = !NULL
-    
-    endif
-
     ; construct galaxy catalog
     if (not file_test(saveFilename1)) then begin
       galaxyLen = lonarr(gc.nSubgroupsTot)
@@ -284,6 +240,12 @@ function galaxyCat, sP=sP
       match,ids,galaxyIDs,ind1,ind2,count=countCheck
       if countCheck ne n_elements(ids) then message,'Error: Failed to locate all gal.'
 
+      ; immediate return for galaxy only (accretionRates)?
+      if keyword_set(galaxyOnly) then begin
+        r = {galaxyLen:galaxyLen, galaxyOff:galaxyOff, galaxyIDs:galaxyIDs}
+        return, r
+      endif
+      
       ; save galaxy catalog
       save,galaxyLen,galaxyOff,galaxyIDs,filename=saveFilename1
       print,'Saved: '+strmid(saveFilename1,strlen(sP.derivPath))+' ['+str(countGal)+'/'+str(countMatch)+']'
@@ -292,6 +254,49 @@ function galaxyCat, sP=sP
       galaxyOff = !NULL
       galaxyIDs = !NULL
       
+    endif
+    
+    ; construct group member catalog
+    if (not file_test(saveFilename2)) then begin
+    
+      groupmemLen = lonarr(gc.nSubgroupsTot)
+      groupmemOff = lonarr(gc.nSubgroupsTot)
+      groupmemIDs = lon64arr(n_elements(ids_groupmem))
+      
+      nextOff = 0UL
+      
+      ; match indices between gas ids and group member ids
+      match,ids_groupmem,gc.IDs,ids_ind,gcIDs_ind,count=countID,/sort
+      
+      for gcID=0L,gc.nSubgroupsTot-1 do begin
+        ; select ids in group
+        groupStart = gc.subGroupOffset[gcID]
+        groupEnd   = groupStart + gc.subGroupLen[gcID]
+        
+        w = where(gcIDs_ind ge groupStart and gcIDs_ind lt groupEnd,count)
+        
+        ; save in similar 1D offset format
+        groupmemLen[gcID] = count
+        groupmemOff[gcID] = nextOff
+        if (count gt 0) then begin
+          nextOff = groupmemOff[gcID] + groupmemLen[gcID]
+          groupmemIDs[groupmemOff[gcID]:nextOff-1] = ids_groupmem[ids_ind[w]]
+        endif      
+        
+      end
+  
+      ; make sure all gas particles were found in the group catalog
+      match,ids_groupmem,groupmemIDs,ind1,ind2,count=countCheck
+      if countCheck ne n_elements(ids_groupmem) then message,'Error: Failed to locate all gmem.'
+      
+      ; save group membership catalog
+      save,groupmemLen,groupmemOff,groupmemIDs,filename=saveFilename2    
+      print,'Saved: '+strmid(saveFilename2,strlen(sP.derivPath))+' ['+str(countGmem)+'/'+str(countMatch)+']'    
+    
+      groupmemLen = !NULL
+      groupmemOff = !NULL
+      groupmemIDs = !NULL
+    
     endif
     
     ; construct stellar catalog
@@ -702,7 +707,10 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, child_counts=ch
   ; make mask for requested indices
   gcIDMask = bytarr(n_elements(galcat.galaxyLen))
   if keyword_set(gcIDList) then gcIDMask[gcIDList] = 1B  
-  if ~keyword_set(gcIDList) then gcIDMask[*] = 1B
+  if ~keyword_set(gcIDList) then begin
+    gcIDMask[*] = 1B
+    gcIDList = lindgen(n_elements(galcat.galaxyLen))
+  endif
   
   ; normal indices return
   r = {gal   : ulonarr(total(galcat.galaxyLen[gcIDList],/int))   ,$

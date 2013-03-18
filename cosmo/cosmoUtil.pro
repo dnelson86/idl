@@ -269,7 +269,8 @@ function partTypeNum, PT
   if (strcmp(partType,'tracermc')   or strcmp(partType,'tracersmc'))  then partType = 3
   if (strcmp(partType,'stars')      or strcmp(partType,'star'))       then partType = 4 ;StellarFormationTime>0
   if (strcmp(partType,'wind')       or strcmp(partType,'windstars'))  then partType = 4 ;StellarFormationTime<0
-  if (strcmp(partType,'blackholes') or strcmp(partType,'bh'))         then partType = 5
+  if (strcmp(partType,'blackholes') or strcmp(partType,'bh') $
+                                    or strcmp(partType,'bhs'))        then partType = 5
   
   if (strcmp(partType,'tracer') or strcmp(partType,'tracers')) then $
     message,'ERROR: Please specify which type of tracers!'

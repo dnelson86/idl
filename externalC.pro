@@ -216,23 +216,36 @@ end
 ; using the sph kernel (optional weights mm and quantities to be weighted qq)
 
 function calcGridData, xx=xx, yy=yy, mm=mm, qq=qq, nPixels=nPixels, $
-                       xMinMax=xMinMax, yMinMax=ymm, logY=logY, colNorm=colNorm
+                       xMinMax=xmm, yMinMax=ymm, logY=logY, logX=logX, colNorm=colNorm
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  ; take log(y)?
+  nNGB = 64
+  
+  ; copy to not override inputs
+  xxx = xx
   yyy = yy
+  xMinMax = xmm
   yMinMax = ymm
   
+  ; take log(x)?
+  if keyword_set(logX) then begin
+    w = where(finite(alog10(xx)))
+    yy = yy[w]
+    xxx = alog10(xx[w])
+    xMinMax = alog10(xmm)
+  endif
+  
+  ; take log(y)?
   if keyword_set(logY) then begin
     w = where(finite(alog10(yy)))
-    xx = xx[w]
+    xxx = xxx[w]
     yyy = alog10(yy[w])
     yMinMax = alog10(ymm)
   endif
   
   ; prepare inputs
-  NumPart = n_elements(xx)
+  NumPart = n_elements(xxx)
   
   boxSizeImg = [xMinMax[1]-xMinMax[0], yMinMax[1]-yMinMax[0], 1.0]
   boxSizeSim = 0.0
@@ -242,10 +255,10 @@ function calcGridData, xx=xx, yy=yy, mm=mm, qq=qq, nPixels=nPixels, $
   
   ; get hsml
   zPts = replicate(0.0, NumPart)
-  pos = float(transpose([[xx],[yyy],[zPts]]))
+  pos = float(transpose([[xxx],[yyy],[zPts]]))
   
   hsml = fltarr(NumPart)
-  hsml = calcHSML(pos,ndims=2,nNGB=32,boxSize=0.0)
+  hsml = calcHSML(pos,ndims=2,nNGB=nNGB,boxSize=0.0)
   
   ; optional weights and quantity to take weighted average of (otherwise just density)  
   if keyword_set(mm) then begin

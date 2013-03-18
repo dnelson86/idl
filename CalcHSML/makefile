@@ -3,9 +3,9 @@
 # export C_INCLUDE_PATH=$C_INCLUDE_PATH:/n/sw/idl-8.1/idl/idl81/external/include
 # comment out TWODIMS OPT for 3D version
 
-#OPT = -DTWODIMS
-OPT = -DONEDIMS
-EXEC = CalcHSML_1D.so
+OPT = -DTWODIMS
+#OPT = -DONEDIMS
+EXEC = CalcHSML_2D.so
 
 SRCS   = main.c tree.c
 

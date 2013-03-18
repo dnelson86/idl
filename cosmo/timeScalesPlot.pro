@@ -2,73 +2,6 @@
 ; plotting: cooling times of halo gas vs. dynamical/hubble timescales
 ; dnelson feb.2013
 
-; oplot2DHistoSq(): plot a 2d histogram in the separated squares style
-; hsp: 2d array, gap size (in data units) along x and y directions
-; nc: highest number of the color table to use (e.g. for 0-255 normally white-dark, exclude the darkest colors)
-; nonZero=1: replace all zero counts by lowest nonzero value
-; logY=1: indicates the y-axis of the plot is log
-; colNorm=1: normalize each column independently (i.e. for xaxis=halo mass to offset mass function)
-    
-pro oplot2DHistoSq, ct2d, hsp=hsp, nc=nc, xRange=xRange, yRange=yRange, $
-  nonZero=nonZero, logY=logY, colNorm=colNorm, gray=gray, blue=blue, green=green
-
-  if ~keyword_set(hsp) or ~keyword_set(nc) then message,'error'
-
-  ; store current table and load for 2d histo
-  tvlct, rr, gg, bb, /get
-  
-  if keyword_set(gray)  then loadColorTable,'bw linear', /reverse
-  if keyword_set(green) then loadColorTable,'green-white linear', /reverse
-  if keyword_set(blue)  then loadColorTable,'brewerc-blues'
-    
-  ; process data (stretching data values)
-  w = where(ct2d.h2 eq 0.0,count,comp=wc)
-    
-  if keyword_set(nonZero) then begin
-    ct2d.h2 = ct2d.h2*1e10
-    if count gt 0 then ct2d.h2[w] = min(ct2d.h2,/nan)
-  endif
-  
-  ; normalize column by column
-  if keyword_set(colNorm) then begin
-    for i=0,ct2d.nXBins-1 do begin
-      colTot = max(ct2d.h2[i,*],/nan)
-      ct2d.h2[i,*] /= colTot
-    endfor
-  endif
-    
-  ; colorscale range
-  fieldMinMax = [min(ct2d.h2[wc],/nan),max(ct2d.h2,/nan)]
-    
-  for i=0,ct2d.nXBins-1 do begin
-    x = [ct2d.binCenX[i]-ct2d.binSizeX/2+hsp[0], ct2d.binCenX[i]+ct2d.binSizeX/2-hsp[0], $ ; ll, lr
-         ct2d.binCenX[i]+ct2d.binSizeX/2-hsp[0], ct2d.binCenX[i]-ct2d.binSizeX/2+hsp[0]]   ; ur, ul
-           
-    if min(x) lt xRange[0] or max(x) gt xRange[1] then continue
-             
-    for j=0,ct2d.nYBins-1 do begin
-      y = [ct2d.binCenY[j]-ct2d.binSizeY/2+hsp[1], ct2d.binCenY[j]-ct2d.binSizeY/2+hsp[1], $ ; ll, lr
-           ct2d.binCenY[j]+ct2d.binSizeY/2-hsp[1], ct2d.binCenY[j]+ct2d.binSizeY/2-hsp[1]]   ; ur, ul
-             
-      if keyword_set(logY) then y = 10.0^y
-             
-      if min(y) lt yRange[0] or max(y) gt yRange[1] then continue
-             
-      ; determine color and make polygon
-      colorind = (ct2d.h2[i,j]-fieldMinMax[0])*nc / (fieldMinMax[1]-fieldMinMax[0]) ;0-nc
-      colorind = fix(colorind + 0.0) > 0 < 255 ;0-nc
-      
-      if colorind lt ceil(0.01*nc) then continue ; skip marginal bins
-        
-      cgPolygon,x,y,color=colorind,/fill
-    endfor
-  endfor
-  
-  ; restore original CT
-  tvlct, rr, gg, bb
-  
-end
-
 ; plotTSFracsVsHaloMass(): plot gas mass fractions for timescale ratios vs halo mass
 
 pro plotTSFracsVsHaloMass
@@ -269,10 +202,9 @@ pro timescaleRadStack
       
   foreach massRange,massRanges,k do begin
     ; make list of halos
-    gcIDList = where(codeMassToLogMsun(gc.subgroupMass) ge massRange[0] and $
-                     codeMassToLogMsun(gc.subgroupMass) lt massRange[1],count)
+    gcIDList = gcIDList(gc=gc,select='pri',massRange=massRange)
                     
-    print,k,count
+    print,k,n_elements(gcIDList)
     
     ; start plot
     if k eq 0 then $
@@ -378,10 +310,9 @@ pro timescaleVRadStack
       
   foreach massRange,massRanges,k do begin
     ; make list of halos
-    gcIDList = where(codeMassToLogMsun(gc.subgroupMass) ge massRange[0] and $
-                     codeMassToLogMsun(gc.subgroupMass) lt massRange[1],count)
+    gcIDList = gcIDList(gc=gc,select='pri',massRange=massRange)
                     
-    print,k,count
+    print,k,n_elements(gcIDList)
     
     ; start plot
     if k eq 0 then $
@@ -439,6 +370,279 @@ pro timescaleVRadStack
   
   end_PS
 
+end
+
+; timescaleAccTimeStack(): 2d bin cooling and dynamical times vs. acc times in mass bins
+
+pro timescaleAccTimeStack
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
+  ; config
+  sP = simParams(res=256,run='tracer',redshift=2.0)
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  h  = loadSnapshotHeader(sP=sP)
+  massRanges = list([10.5,10.7], [10.9,11.1], [11.3,11.5], [11.7,11.9])
+    
+  ; median line
+  fitRange  = [0.05,1.75]
+  fitNBins  = 10
+  fitSK     = 3
+  
+  ; calcGridData
+  cgdRes = 40 ; NxN 2d sph mapping
+  cgdSK  = 3  ; NxN post-smoothing
+  
+  ; plot config
+  accTimeRange  = [0.03,2.0]
+  dynTimeRange  = [0.03,2.0]
+  coolTimeRange = [0.03,20.0]
+  ratioRange    = [0.1,80.0]
+  
+  ; 2x2 layout
+  x0 = 0.14 & x1 = 0.55 & x2 = 0.95
+  y0 = 0.14 & y1 = 0.54 & y2 = 0.94
+    
+  pos = list( [x0,y1,x1,y2] ,$ ; upper left
+              [x1,y1,x2,y2] ,$ ; upper right
+              [x0,y0,x1,y1] ,$ ; lower left
+              [x1,y0,x2,y1]  ) ; lower right
+  
+  ; start plot (1)
+  start_PS, sP.plotPath + 'tacc_tcool_2x2.' + str(sP.res) + '.' + sP.plotPrefix+'.'+str(sP.snap)+'.eps', /big
+      
+  foreach massRange,massRanges,k do begin
+    ; make list of halos
+    gcIDList = gcIDList(gc=gc,select='pri',massRange=massRange)
+
+    ; start plot
+    if k eq 0 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=coolTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),/noerase
+    if k eq 1 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=coolTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),$
+      ytickname=replicate(' ',10),/noerase
+    if k eq 2 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=coolTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],/noerase
+    if k eq 3 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=coolTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],ytickname=replicate(' ',10),/noerase
+    
+    ; load gas timescales and best model fits
+    ts = loadFitTimescales(sP=sP,gcIDList=gcIDList,/accTimesRepTR)
+         
+    print,'['+str(k)+'] nHalos = '+string(n_elements(gcIDList),format='(i4)')+' with avg nGas = '+$
+      string(ts.nGas/n_elements(gcIDList),format='(i7)')
+         
+    ; set a contour palette
+    loadColorTable,'brewerc-blues'
+    tvlct, rr, gg, bb, /get
+    palette = [[rr],[gg],[bb]]
+    
+    ; contour
+    cgd = calcGridData(xx=ts.accTime,yy=ts.coolTime,$
+                       xMinMax=accTimeRange*[0.8,1.1],yMinMax=coolTimeRange*[0.8,1.1],$
+                       nPixels=[cgdRes,cgdRes],/logY,/logX)
+    
+    hh = smooth(cgd.dens_out,[cgdSK,cgdSK])
+    hh = hh/max(hh) > 0.049
+    cgContour, hh, 10.0^cgd.xPts, 10.0^cgd.yPts, $
+      /overplot, /fill, palette=palette, levels=[0.05,0.1,0.2,0.4,0.6,0.8,0.9],c_colors=(indgen(7)*20+50)
+                
+    ; mass label
+    cgText,accTimeRange[1]*0.5,coolTimeRange[0]*1.7,$
+      "M = "+string(mean(massRange),format='(f4.1)'),alignment=0.5,/data
+           
+    ; median fit
+    radFit = fitRadProfile(radii=alog10(ts.accTime),vals=ts.coolTime,$
+      range=alog10(fitRange),radBins=fitNBins)
+    cgPlot,10.0^radFit.binCen,smooth(radFit.radMedian,fitSK),psym=-16,/overplot ; filled circle
+    
+    cgPlot,[0.04,1.78],[0.04,1.78],line=2,color=cgColor('black'),/overplot ; 1-to-1 line
+           
+    ; redo clean plot lines
+    loadct,0,/silent
+    
+    if k eq 0 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=coolTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),/noerase
+    if k eq 1 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=coolTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),$
+      ytickname=replicate(' ',10),/noerase
+    if k eq 2 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=coolTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],/noerase
+    if k eq 3 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=coolTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],ytickname=replicate(' ',10),/noerase
+    
+  endforeach
+  
+  ; labels
+  cgText,mean([x0,x2]),0.03,textoidl("\tau_{acc} [Gyr]"),/normal,alignment=0.5
+  cgText,0.04,mean([y0,y2]),textoidl("\tau_{cool} [Gyr]"),/normal,alignment=0.5,orientation=90.0
+  
+  end_PS
+  
+  ; start plot (2)
+  start_PS, sP.plotPath + 'tacc_tdyn_2x2.' + str(sP.res) + '.' + sP.plotPrefix+'.'+str(sP.snap)+'.eps', /big
+      
+  foreach massRange,massRanges,k do begin
+    ; make list of halos
+    gcIDList = gcIDList(gc=gc,select='pri',massRange=massRange)
+    
+    ; start plot
+    if k eq 0 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=dynTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),/noerase
+    if k eq 1 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=dynTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),$
+      ytickname=replicate(' ',10),/noerase
+    if k eq 2 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=dynTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],/noerase
+    if k eq 3 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=dynTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],ytickname=replicate(' ',10),/noerase
+    
+    ; load gas timescales and best model fits
+    ts = loadFitTimescales(sP=sP,gcIDList=gcIDList,/accTimesRepTR)
+         
+    print,'['+str(k)+'] nHalos = '+string(n_elements(gcIDList),format='(i4)')+' with avg nGas = '+$
+      string(ts.nGas/n_elements(gcIDList),format='(i7)')
+         
+    ; set a contour palette
+    loadColorTable,'brewerc-blues'
+    tvlct, rr, gg, bb, /get
+    palette = [[rr],[gg],[bb]]
+    
+    ; contour
+    cgd = calcGridData(xx=ts.accTime,yy=ts.dynTime,$
+                       xMinMax=accTimeRange*[0.8,1.1],yMinMax=dynTimeRange*[0.8,1.1],$
+                       nPixels=[cgdRes,cgdRes],/logY,/logX)
+    
+    hh = smooth(cgd.dens_out,[cgdSK,cgdSK])
+    cgContour, hh/max(hh) > 0, 10.0^cgd.xPts, 10.0^cgd.yPts, $
+      /overplot, /fill, palette=palette, levels=[0.05,0.1,0.2,0.4,0.6,0.8,0.9],c_colors=(indgen(7)*20+50)
+                
+    ; mass label
+    cgText,accTimeRange[1]*0.5,dynTimeRange[0]*1.7,$
+      "M = "+string(mean(massRange),format='(f4.1)'),alignment=0.5,/data
+           
+    ; median fit
+    radFit = fitRadProfile(radii=alog10(ts.accTime),vals=ts.dynTime,$
+      range=alog10(fitRange),radBins=fitNBins)
+    cgPlot,10.0^radFit.binCen,smooth(radFit.radMedian,fitSK),psym=-16,/overplot ; filled circle
+    
+    cgPlot,[0.04,1.78],[0.04,1.78],line=2,color=cgColor('black'),/overplot ; 1-to-1 line
+           
+    ; redo clean plot lines
+    loadct,0,/silent
+    
+    if k eq 0 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=dynTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),/noerase
+    if k eq 1 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=dynTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),$
+      ytickname=replicate(' ',10),/noerase
+    if k eq 2 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=dynTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],/noerase
+    if k eq 3 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=dynTimeRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],ytickname=replicate(' ',10),/noerase
+    
+  endforeach
+  
+  ; labels
+  cgText,mean([x0,x2]),0.03,textoidl("\tau_{acc} [Gyr]"),/normal,alignment=0.5
+  cgText,0.04,mean([y0,y2]),textoidl("\tau_{dyn} [Gyr]"),/normal,alignment=0.5,orientation=90.0
+  
+  end_PS  
+  
+  ; start plot (3)
+  start_PS, sP.plotPath + 'tacc_tsratio_2x2.' + str(sP.res) + '.' + sP.plotPrefix+'.'+str(sP.snap)+'.eps', /big
+      
+  foreach massRange,massRanges,k do begin
+    ; make list of halos
+    gcIDList = gcIDList(gc=gc,select='pri',massRange=massRange)
+                    
+    ; start plot
+    if k eq 0 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=ratioRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),/noerase
+    if k eq 1 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=ratioRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),$
+      ytickname=replicate(' ',10),/noerase
+    if k eq 2 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=ratioRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],/noerase
+    if k eq 3 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=ratioRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],ytickname=replicate(' ',10),/noerase
+    
+    ; load gas timescales and best model fits
+    ts = loadFitTimescales(sP=sP,gcIDList=gcIDList,/accTimesRepTR)
+         
+    print,'['+str(k)+'] nHalos = '+string(n_elements(gcIDList),format='(i4)')+' with avg nGas = '+$
+      string(ts.nGas/n_elements(gcIDList),format='(i7)')
+         
+    ; set a contour palette
+    loadColorTable,'brewerc-blues'
+    tvlct, rr, gg, bb, /get
+    palette = [[rr],[gg],[bb]]
+    
+    ; contour
+    cgd = calcGridData(xx=ts.accTime,yy=ts.coolTime/ts.dynTime,$
+                       xMinMax=accTimeRange*[0.8,1.1],yMinMax=ratioRange*[0.8,1.1],$
+                       nPixels=[cgdRes,cgdRes],/logY,/logX)
+    
+    hh = smooth(cgd.dens_out,[cgdSK,cgdSK])
+    cgContour, hh/max(hh) > 0, 10.0^cgd.xPts, 10.0^cgd.yPts, $
+      /overplot, /fill, palette=palette, levels=[0.05,0.1,0.2,0.4,0.6,0.8,0.9],c_colors=(indgen(7)*20+50)
+                
+    ; mass label
+    cgText,accTimeRange[1]*0.5,ratioRange[0]*1.7,$
+      "M = "+string(mean(massRange),format='(f4.1)'),alignment=0.5,/data
+           
+    ; median fit
+    radFit = fitRadProfile(radii=alog10(ts.accTime),vals=ts.coolTime/ts.dynTime,$
+      range=alog10(fitRange),radBins=fitNBins)
+    cgPlot,10.0^radFit.binCen,smooth(radFit.radMedian,fitSK),psym=-16,/overplot ; filled circle
+    
+    cgPlot,[0.04,1.78],[1.0,1.0],line=2,color=cgColor('black'),/overplot ; 1-to-1 line
+           
+    ; redo clean plot lines
+    loadct,0,/silent
+    
+    if k eq 0 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=ratioRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),/noerase
+    if k eq 1 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=ratioRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],xtickname=replicate(' ',10),$
+      ytickname=replicate(' ',10),/noerase
+    if k eq 2 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=ratioRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],/noerase
+    if k eq 3 then $
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle="",xrange=accTimeRange,yrange=ratioRange,/xs,/ys,$
+      /ylog,yminor=0,/xlog,xminor=0,pos=pos[k],ytickname=replicate(' ',10),/noerase
+    
+  endforeach
+  
+  ; labels
+  cgText,mean([x0,x2]),0.03,textoidl("\tau_{acc} [Gyr]"),/normal,alignment=0.5
+  cgText,0.04,mean([y0,y2]),textoidl("\tau_{cool} / \tau_{dyn}"),/normal,alignment=0.5,orientation=90.0
+  
+  end_PS  
+stop
 end
 
 @akde ; required below
@@ -576,24 +780,31 @@ pro compareTimescalesHalo
   units = getUnits()
   
   ; config
-  sP = simParams(res=128,run='tracer',redshift=2.0)
+  sP = simParams(res=256,run='tracer',redshift=2.0)
   gc = loadGroupCat(sP=sP,/skipIDs)
 
+  ; do for tracers (and include tacc comparison plots) or instead do for gas?
+  accTimesRepTR = 1
+  
   ; single halo by haloID
   haloID = 304 ;z2.304 z2.301 z2.130 z2.64
   gcID = getMatchedIDs(sPa=sP,sPg=sP,haloID=haloID)
   gcIDList = [gcID.a]
-  hTag = 'h'+str(haloID)+'_m='+string(codeMassToLogMsun(gc.subgroupMass[gcID.a]),format='(f4.1)')
+  hTag = 'h'+str(haloID)+'_m='+string(codeMassToLogMsun(gc.subgroupMass[gcID.a]),format='(f4.1)')+$
+         '_tr'+str(accTimesRepTR)
 
   ; load gas timescales and best model fits
-  ts = loadFitTimescales(sP=sP,gcIDList=gcIDList)
+  ts = loadFitTimescales(sP=sP,gcIDList=gcIDList,accTimesRepTR=accTimesRepTR)
   
   ; plot config
-  coolingRange = [0.03,20]
-  dynRange     = [0.03,2.0]
-  tempRange    = [4.25,6.5]
-  densRange    = alog10([0.1,2000])
-  radRange     = [0.05,1.6]
+  coolingRange = [0.03,20]  ; Gyr
+  dynRange     = [0.03,2.0] ; Gyr
+  accRange     = dynRange
+  tempRange    = [4.25,6.5] ; log K
+  densRange    = [0.1,2000] ; log ratioToCrit
+  radRange     = [0.05,1.6] ; r/rvir
+  vradRange    = [-5.0,3.0] ; vrad/vcirc
+  ratioRange   = [0.01,80.0] ; tcool/tdyn (log)
   
   binsize = 0.1 / (sP.res/128)
   
@@ -613,7 +824,7 @@ pro compareTimescalesHalo
 
     cgPlot,ts.coolTime,alog10(rhoRatioToCrit(ts.curDens,redshift=sP.redshift)),psym=psym,xtitle="",$
       ytitle=textoidl('log( \rho_{gas} / \rho_{crit,z} )'),xtickname=replicate(' ',10),$
-      xrange=coolingRange,yrange=densRange,/xlog,/xs,/ys,xminor=0,/noerase,position=(sP.pos_3x1)[1]
+      xrange=coolingRange,yrange=alog10(densRange),/xlog,/xs,/ys,xminor=0,/noerase,position=(sP.pos_3x1)[1]
       
     cgPlot,[0],[0],/nodata,xtitle=textoidl('\tau_{cool} [Gyr]'),ytitle=textoidl('\tau_{dyn} [Gyr]'),$
       xrange=coolingRange,yrange=dynRange,/ys,/ylog,yminor=0,/xs,/xlog,xminor=0,position=(sP.pos_3x1)[2],/noerase
@@ -698,7 +909,7 @@ pro compareTimescalesHalo
     ; dens
     ; ----
     cgPlot,[0],[0],/nodata,xtitle=textoidl("r / r_{vir}"),ytitle=textoidl('log( \rho_{gas} / \rho_{crit,z} )'),$
-      xrange=radRange,yrange=densRange,/xs,/ys,/noerase,position=(sP.pos_3x1)[2],$
+      xrange=radRange,yrange=alog10(densRange),/xs,/ys,/noerase,position=(sP.pos_3x1)[2],$
       xtickv=[0.15,0.5,1.0,1.5],xticks=3,xtickname=['0.15','0.5','1.0','1.5']
       
     ; individual gas elements and median binned
@@ -707,8 +918,8 @@ pro compareTimescalesHalo
         psym=psym,color=cgColor('light gray'),/overplot
     endif else begin
       f2d = binHisto2D(xx=ts.gasRadii/ts.gasRvir, yy=alog10(rhoRatioToCrit(ts.curDens,sP=sP)), $
-                       xmm=radRange, ymm=densRange, xbs=binSizeXY[0], ybs=binSizeXY[3])        
-      oplot2DHistoSq, f2d, hsp=hsp, nc=nc, xrange=radRange, yrange=densRange, /colNorm, /gray
+                       xmm=radRange, ymm=alog10(densRange), xbs=binSizeXY[0], ybs=binSizeXY[3])        
+      oplot2DHistoSq, f2d, hsp=hsp, nc=nc, xrange=radRange, yrange=alog10(densRange), /colNorm, /gray
     endelse
 
     cgPlot,ts.radDens.binCen,alog10(rhoRatioToCrit(ts.radDens.radMedian,sP=sP)),psym=-4,color=cgColor('black'),/overplot
@@ -730,32 +941,146 @@ pro compareTimescalesHalo
     
   end_PS
   
-  ; vrad vs tsratio
-  start_PS,$
-    sP.plotPath+'vrad_tsRatio_vs_rad.'+hTag+'.'+str(sP.res)+'.'+sP.plotPrefix+'.'+str(sP.snap)+'.eps'
-
-    cgPlot,[0],[0],/nodata,xtitle=textoidl('v_{rad} / v_{circ}'),$
-      ytitle=textoidl('( \tau_{cool} / \tau_{dyn} )'),$
-      xrange=[-4.0,2.5],yrange=[0.01,50.0],/xs,/ys,/ylog,yminor=0
-      
-    tsRatio = ts.coolTime / ts.dynTime
+  ; accretion time plots
+  ; --------------------
+  if accTimesRepTR then begin
+    binSizeXY = [0.08,0.16]
+    do2DBin = 0
     
-    cgPlot,ts.gasVRad/ts.gasVcirc,tsRatio,psym=4,/overplot
+    ; plot (1) - cooling, dynamical, and ratio vs. tacc
+    start_PS, $
+    sP.plotPath + 'timescales_vs_tacc.'+hTag+'.'+str(sP.res)+'.'+sP.plotPrefix+'.'+str(sP.snap)+'.eps', ys=8,xs=6
+    
+    if sP.res eq 128 then pThick = !p.thick else pThick = 1.0
+
+    ; top: cooling
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle=textoidl('\tau_{cool} [Gyr]'),$
+      xrange=accRange,yrange=coolingRange,/xlog,/xs,/ys,xminor=0,/ylog,yminor=0,$
+      position=(sP.pos_3x1)[0],xtickname=replicate(' ',10)
+    
+    if ~keyword_set(do2DBin) then begin
+      cgPlot,ts.accTime,ts.coolTime,psym=psym,/overplot,thick=pThick
+    endif else begin
+      f2d = binHisto2D(xx=alog10(ts.accTime), yy=alog10(ts.coolTime), $
+                       xmm=alog10(accRange), ymm=alog10(coolingRange), $
+                       xbs=binSizeXY[0], ybs=binSizeXY[1])        
+      oplot2DHistoSq, f2d, hsp=hsp, nc=nc, xrange=accRange, yrange=coolingRange, /logX, /logY, /gray
+    endelse
+    
+    cgPlot,[0.04,1.8],[0.04,1.8],line=0,color=cgColor('orange'),/overplot
+    
+    ; middle: dynamical
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle=textoidl('\tau_{dyn} [Gyr]'),$
+      xrange=accRange,yrange=dynRange,/xlog,/xs,/ys,xminor=0,/ylog,yminor=0,$
+      /noerase,position=(sP.pos_3x1)[1],xtickname=replicate(' ',10)
+
+    ; set a contour palette
+    loadColorTable,'brewerc-blues'
+    tvlct, rr, gg, bb, /get
+    palette = [[rr],[gg],[bb]]
+    
+    ; contour
+    cgd = calcGridData(xx=ts.accTime,yy=ts.dynTime,$
+                       xMinMax=accRange*[0.8,1.1],yMinMax=dynRange*[0.8,1.1],$
+                       nPixels=[40,40],/logY,/logX)
+    
+    hh = smooth(cgd.dens_out,[3,3])
+    cgContour, hh/max(hh) > 0, 10.0^cgd.xPts, 10.0^cgd.yPts, $
+      /overplot, /fill, palette=palette, levels=[0.05,0.1,0.2,0.4,0.6,0.8,0.9],c_colors=(indgen(7)*20+50)
       
-  end_PS
+    ; individual elements
+    if ~keyword_set(do2DBin) then begin
+      cgPlot,ts.accTime,ts.dynTime,psym=psym,/overplot,thick=pThick
+    endif else begin
+      f2d = binHisto2D(xx=alog10(ts.accTime), yy=alog10(ts.dynTime), $
+                       xmm=alog10(accRange), ymm=alog10(dynRange), $
+                       xbs=binSizeXY[0], ybs=binSizeXY[1])        
+      oplot2DHistoSq, f2d, hsp=hsp, nc=nc, xrange=accRange, yrange=dynRange, /logX, /logY, /gray
+    endelse
+    
+    cgPlot,[0.04,1.8],[0.04,1.8],line=0,color=cgColor('orange'),/overplot
+    
+    ; 2tdyn envelope (no accTime greater than this can be found)
+    cgPlot,[0.08,1.8],0.5*[0.08,1.8],line=2,color=cgColor('orange'),/overplot
+      
+    ; bottom: ratio
+    cgPlot,[0],[0],/nodata,xtitle=textoidl('\tau_{acc} [Gyr]'),ytitle=textoidl('\tau_{cool}/\tau_{dyn}'),$
+      xrange=accRange,yrange=ratioRange,/ys,/xs,/xlog,xminor=0,/ylog,yminor=0,$
+      position=(sP.pos_3x1)[2],/noerase
+      
+    ; individual elements
+    if ~keyword_set(do2DBin) then begin
+      cgPlot,ts.accTime,ts.coolTime/ts.dynTime,psym=psym,/overplot,thick=pThick
+    endif else begin
+      f2d = binHisto2D(xx=alog10(ts.accTime), yy=ts.coolTime/ts.dynTime, $
+                       xmm=alog10(accRange), ymm=ratioRange, xbs=binSizeXY[0], ybs=binSizeXY[1])        
+      oplot2DHistoSq, f2d, hsp=hsp, nc=nc, xrange=accRange, yrange=ratioRange, /logX, /gray
+    endelse
+    
+    cgPlot,[0.04,1.8],[1.0,1.0],line=0,color=cgColor('orange'),/overplot
+    
+    end_PS
+    
+    ; plot (2) - radius, vrad vs. tacc
+    start_PS, $
+    sP.plotPath + 'timescales_vs_tacc2.'+hTag+'.'+str(sP.res)+'.'+sP.plotPrefix+'.'+str(sP.snap)+'.eps', ys=8,xs=6
+    
+    if sP.res eq 128 then pThick = !p.thick else pThick = 1.0
+
+    ; top: radius
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle=textoidl('r / r_{vir}'),$
+      xrange=accRange,yrange=radRange,/xlog,/xs,/ys,xminor=0,$
+      position=(sP.pos_3x1)[0],xtickname=replicate(' ',10),$
+      ytickv=[0.15,0.5,1.0,1.5],yticks=3,ytickname=['0.15','0.5','1.0','1.5']
+    
+    if ~keyword_set(do2DBin) then begin
+      cgPlot,ts.accTime,ts.gasRadii/ts.gasRvir,psym=psym,/overplot,thick=pThick
+    endif else begin
+      f2d = binHisto2D(xx=alog10(ts.accTime), yy=ts.gasRadii/ts.gasRvir, $
+                       xmm=alog10(accRange), ymm=radRange, xbs=binSizeXY[0], ybs=binSizeXY[1])        
+      oplot2DHistoSq, f2d, hsp=hsp, nc=nc, xrange=accRange, yrange=radRange, /logX, /gray
+    endelse
+    
+    ; middle: vrad
+    cgPlot,[0],[0],/nodata,xtitle="",ytitle=textoidl('v_{rad} / v_{circ}'),$
+      xrange=accRange,yrange=vradRange,/xlog,/xs,/ys,xminor=0,$
+      /noerase,position=(sP.pos_3x1)[1],xtickname=replicate(' ',10)
+
+    ; individual elements
+    if ~keyword_set(do2DBin) then begin
+      cgPlot,ts.accTime,ts.gasVrad/ts.gasVcirc,psym=psym,/overplot,thick=pThick
+    endif else begin
+      f2d = binHisto2D(xx=alog10(ts.accTime), yy=ts.gasVrad/ts.gasVcirc, $
+                       xmm=alog10(accRange), ymm=vradRange, $
+                       xbs=binSizeXY[0], ybs=binSizeXY[1])        
+      oplot2DHistoSq, f2d, hsp=hsp, nc=nc, xrange=accRange, yrange=vradRange, /logX, /gray
+    endelse
+    
+    cgPlot,[0.04,1.8],[0.0,0.0],line=0,color=cgColor('orange'),/overplot
+      
+    ; bottom: r / vrad
+    rvradRatioRange = [-20.0,5.0]
+    cgPlot,[0],[0],/nodata,xtitle=textoidl('\tau_{acc} [Gyr]'),$
+      ytitle=textoidl('(v_{rad}/v_{circ}) / (r/r_{vir})'),$
+      xrange=accRange,yrange=rvradRatioRange,/ys,/xs,/xlog,xminor=0,position=(sP.pos_3x1)[2],/noerase
+      
+    yy = (ts.gasVrad/ts.gasVcirc) / (ts.gasRadii/ts.gasRvir)
+    
+    ; individual elements
+    if ~keyword_set(do2DBin) then begin
+      cgPlot,ts.accTime,yy,psym=psym,/overplot,thick=pThick
+    endif else begin
+      f2d = binHisto2D(xx=alog10(ts.accTime), yy=yy, $
+                       xmm=alog10(accRange), ymm=vradRange, $
+                       xbs=binSizeXY[0], ybs=binSizeXY[1])        
+      oplot2DHistoSq, f2d, hsp=hsp, nc=nc, xrange=accRange, yrange=rvradRatioRange, /logX, /gray
+    endelse
+    
+    cgPlot,[0.04,1.8],[1.0,1.0],line=0,color=cgColor('orange'),/overplot
+    
+    end_PS
   
-  start_PS,$
-    sP.plotPath+'vrad_tsRatio_vs_rad2.'+hTag+'.'+str(sP.res)+'.'+sP.plotPrefix+'.'+str(sP.snap)+'.eps'
-
-    cgPlot,[0],[0],/nodata,xtitle=textoidl('r / r_{vir}'),$
-      ytitle=textoidl('(v_{rad} / v_{circ} ) / ( \tau_{cool} / \tau_{dyn} )'),$
-      xrange=radRange,yrange=[-2.0,1.0],/xs,/ys
-      
-    tsRatio = ts.coolTime / ts.dynTime
-    
-    cgPlot,ts.gasRadii/ts.gasRvir,(ts.gasVRad/ts.gasVcirc) / tsRatio,psym=4,/overplot
-      
-  end_PS
+  endif
   
   stop
   
