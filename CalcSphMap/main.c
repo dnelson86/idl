@@ -214,10 +214,12 @@ int CalcSphMap(int argc, void* argv[])
     IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,buf);
     return 0;
   } else {
+#ifdef VERBOSE
 #ifdef TWODIMS
     IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSphMap Loaded (TWODIMS!).");
 #else
     IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSphMap Loaded (NDIMS=3!).");
+#endif
 #endif
   }
 	
@@ -249,13 +251,13 @@ int CalcSphMap(int argc, void* argv[])
   Ypixels    = *(int *)argv[17];
 
 #ifdef VERBOSE
-  //printf("Input data:\n");
-  //printf("NumPart     = %d\n", NumPart);
-  //printf("BoxSize_Im  = %g %g %g\n", BoxSize_ImageX, BoxSize_ImageY, BoxSize_ImageZ);
-  //printf("BoxSize     = %g\n", BoxSize);
-  //printf("BoxCen      = %g %g %g\n", BoxCen_X, BoxCen_Y, BoxCen_Z);
-  //printf("axes        = %d %d\n", axis0, axis1);
-  //printf("nPixels     = %d %d\n", Xpixels, Ypixels);
+  printf("Input data:\n");
+  printf("NumPart     = %d\n", NumPart);
+  printf("BoxSize_Im  = %g %g %g\n", BoxSize_ImageX, BoxSize_ImageY, BoxSize_ImageZ);
+  printf("BoxSize     = %g\n", BoxSize);
+  printf("BoxCen      = %g %g %g\n", BoxCen_X, BoxCen_Y, BoxCen_Z);
+  printf("axes        = %d %d\n", axis0, axis1);
+  printf("nPixels     = %d %d\n", Xpixels, Ypixels);
 #endif
 
   // calculate density projection map

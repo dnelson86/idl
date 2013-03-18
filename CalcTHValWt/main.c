@@ -25,7 +25,11 @@ int CalcTHValWt_natural(int NumPart, float* data_pos_val_wt, int NumSearch, floa
   P = (struct particle_data *) data_pos_val_wt;
 
   // allocate and build tree
-  tree_treeallocate(2.0 * NumPart, NumPart);
+  int maxnodes = 2 * NumPart;
+  if(NumPart < 100000)
+    maxnodes = 10 * NumPart;
+
+  tree_treeallocate(maxnodes, NumPart);
   nNodes = tree_treebuild();
 
 #ifdef VERBOSE

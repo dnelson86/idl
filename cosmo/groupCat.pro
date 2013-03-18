@@ -119,20 +119,22 @@ function gcPriChildInd, gc=gc, haloID=haloID
 end
 
 ; gcIDList(): return a sub-list of subgroup IDs from a given group catalog gc
+;             note these subgroup IDs are the same used to index a galaxy catalog
 ; 
 ; select: one of the following
 ;   'pri' : members of the first subgroup of each group only ("background"/"main subhalo"/"halo")
 ;   'sec' : members of the non-first subgroups of each group only ("satellites"/"subhalos")
 ;   'all' : all subgroups
+;
+; massRange=[min,max] : if input, restrict to halos in this log(msun) mass range
 
-function gcIDList, sP=sP, gc=gc, select=select
+function gcIDList, sP=sP, gc=gc, select=select, massRange=massRange
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function loadGroupCat
 
-  if (not keyword_set(select)) then begin
-    message,'Error: Must specify select.'
-  endif
+  if ~keyword_set(select) then message,'Error: Must specify select.'
+  if select ne 'pri' and select ne 'sec' and select ne 'all' then message,'Error: Unknown select.'
     
   ; load galaxy cat if necessary
   if not keyword_set(gc) then begin
@@ -166,7 +168,7 @@ function gcIDList, sP=sP, gc=gc, select=select
         prevGrNr = gc.subgroupGrnr[i]
       endelse
     endfor
-    return,valGCids
+    
   endif
   
   if (select eq 'sec') then begin
@@ -186,7 +188,7 @@ function gcIDList, sP=sP, gc=gc, select=select
         
       endelse
     endfor
-    return,valGCids
+    
   endif
   
   if (select eq 'all') then begin
@@ -202,10 +204,18 @@ function gcIDList, sP=sP, gc=gc, select=select
       endelse ;minNumPart
       
     endfor
-    return,valGCids
+    
   endif
   
-  message,'Error: Unrecognized select in gcIDList?'
+  ; restrict by mass
+  if n_elements(massRange) gt 0 then begin
+    gcMasses = codeMassToLogMsun(gc.subgroupMass)
+    w = where(gcMasses[valGCids] ge massRange[0] and gcMasses[valGCids] le massRange[1],count)
+    if count eq 0 then message,'Error'
+    valGCids = valGCids[w]
+  endif
+  
+  return,valGCids
 
 end
 

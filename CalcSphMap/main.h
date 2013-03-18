@@ -1,7 +1,7 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-#define VERBOSE
+//#define VERBOSE
 
 /* note the changed KERNEL_COEFF_3 with respect to allvars.h (not sure if this should be there for 1d/2d */
 
