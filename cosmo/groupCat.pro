@@ -339,82 +339,44 @@ function subgroupPosByMostBoundID, sP=sP
                  
   if file_test(saveFilename) then begin
     restore,saveFilename
-  endif else begin 
+    return, groupCen
+  endif
   
-    h = loadSnapshotHeader(sP=sP)
-    gc = loadGroupCat(sP=sP,/skipIDs)
+  h = loadSnapshotHeader(sP=sP)
+  gc = loadGroupCat(sP=sP,/skipIDs)
   
-    groupCen = fltarr(3,gc.nSubgroupsTot)
+  groupCen = fltarr(3,gc.nSubgroupsTot)
+  
+  partTypes = ['gas','dm','star','bh','tracervel']
+  
+  numFound = 0L
+  
+  foreach partType,partTypes do begin
+    ; skip if no particles of this type, or if we have all our matches already
+    if h.nPartTot[partTypeNum(partType)] eq 0 then continue
+    if numFound eq gc.nSubgroupsTot then continue
     
-    ; load gas ids and pos, find matches
-    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    match,gc.subgroupIdMostBound,ids,gc_ind,ids_ind,count=count1,/sort
+    ; load ids and find matches for this type
+    ids = loadSnapshotSubset(sP=sP,partType=partType,field='ids')
+    match,gc.subgroupIdMostBound,ids,gc_ind,ids_ind,count=count,/sort
     
-    if count1 gt 0 then begin
+    numFound += count
+    
+    if count gt 0 then begin
+      ; load positions for matched most bound particles
       ids_ind = ids_ind[sort(gc_ind)]
       gc_ind  = gc_ind[sort(gc_ind)]
       
-      pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+      pos = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
       
       groupCen[*,gc_ind] = pos[*,ids_ind]
     endif
-    
-    ; load stars ids and pos, find matches
-    if h.nPartTot[partTypeNum('star')] gt 0 then begin
-      ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
-    
-      match,gc.subgroupIdMostBound,ids,gc_ind,ids_ind,count=count2,/sort
-      
-      if count2 gt 0 then begin
-        ids_ind = ids_ind[sort(gc_ind)]
-        gc_ind  = gc_ind[sort(gc_ind)]
-        
-        pos = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
-        
-        groupCen[*,gc_ind] = pos[*,ids_ind]
-      endif
-    endif else begin
-      count2 = 0
-    endelse
-    
-    ; load dm ids and pos, find matches
-    ids = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
-    match,gc.subgroupIdMostBound,ids,gc_ind,ids_ind,count=count3,/sort
-    
-    if count3 gt 0 then begin
-      ids_ind = ids_ind[sort(gc_ind)]
-      gc_ind  = gc_ind[sort(gc_ind)]
-      
-      pos = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
-      
-      groupCen[*,gc_ind] = pos[*,ids_ind]
-    endif
-    
-    ; load BH ids and pos, find matches
-    if h.nPartTot[partTypeNum('bh')] gt 0 then begin
-      ids = loadSnapshotSubset(sP=sP,partType='bh',field='ids')
-    
-      match,gc.subgroupIdMostBound,ids,gc_ind,ids_ind,count=count4,/sort
-      
-      if count4 gt 0 then begin
-        ids_ind = ids_ind[sort(gc_ind)]
-        gc_ind  = gc_ind[sort(gc_ind)]
-        
-        pos = loadSnapshotSubset(sP=sP,partType='bh',field='pos')
-        
-        groupCen[*,gc_ind] = pos[*,ids_ind]
-      endif
-    endif else begin
-      count4 = 0
-    endelse
+  endforeach
+
+  if numFound ne gc.nSubgroupsTot then message,'Error: Failed to find all most bound IDs.'
   
-    if ((count1 + count2 + count3 + count4) ne gc.nSubgroupsTot) then begin
-      print,'ERROR: Failed to find all most bound IDs.' & stop
-    endif
-  
-    ; save
-    save,groupCen,filename=saveFilename
-  endelse
+  ; save
+  save,groupCen,filename=saveFilename
   
   return, groupCen
 end
