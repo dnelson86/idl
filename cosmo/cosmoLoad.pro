@@ -1,6 +1,6 @@
 ; cosmoLoad.pro
 ; cosmological simulations - loading procedures (snapshots, fof/subhalo group cataloges)
-; dnelson may.2012
+; dnelson mar.2013
 
 ; getTypeSortedIDList(): within the group catalog ID list rearrange the IDs for each FOF group to be 
 ;                        ordered first by type (not by SubNr since Subfind was run) such that the
@@ -1109,13 +1109,132 @@ function loadSnapshotHeader, sP=sP, verbose=verbose, subBox=subBox, fileName=fil
   return, h
 end
 
+; readStrategyIO(): determine the blocking read strategy given the requested read pattern
+
+function readStrategyIO, inds=inds, indRange=indRange, $
+                         nPartTot=nPartTot, partType=partType, verbose=verbose
+
+  if keyword_set(inds) and keyword_set(indRange) then message,'Error: Not both.'
+  
+  ; no strategy: whole data field for all particles
+  if ~keyword_set(inds) and ~keyword_set(indRange) then begin
+    
+    rs = { nBlocks : 1, blockStart: [0LL], blockEnd: [nPartTot[partType]-1LL] }
+    
+    return, rs
+  endif
+  
+  ; indRange: whole block from min to max
+  if keyword_set(indRange) then begin
+    if indRange[0] ge indRange[1] or indRange[0] lt 0 or $
+       indRange[1] ge nPartTot[partType] then message,'Error: Bad indRange.'
+       
+    rs = { nBlocks     : 1                      ,$
+           nTotRead    : 0LL                    ,$
+           blockStart  : [long(indRange[0])]    ,$ ; snapshot index start
+           blockEnd    : [long(indRange[1])]    ,$ ; snapshot index end
+           indexMin    : [0LL]                  ,$ ; unused
+           indexMax    : [0LL]                   } ; unused
+           
+    rs.nTotRead = rs.blockEnd[0] - rs.blockStart[0] + 1
+    return, rs
+  endif
+         
+  ; simple: whole block from min to max, then take subset
+  rs = { nBlocks     : 1                      ,$
+         nTotRead    : 0LL                    ,$
+         blockStart  : [min(inds)]            ,$ ; snapshot index start
+         blockEnd    : [max(inds)]            ,$ ; snapshot index end
+         indexMin    : [0LL]                  ,$ ; start of subset of inds handled
+         indexMax    : [n_elements(inds)-1LL]  } ; end of subset of inds handled
+                     
+  rs.nTotRead = rs.blockEnd[0] - rs.blockStart[0] + 1
+  efficiencyFracSimple = n_elements(inds) / float(rs.nTotRead)
+    
+  if verbose then $
+    print,'I/O Strategy: [SimpleRead] reading ['+str(rs.nTotRead)+$
+      ' / '+str(nPartTot[partType])+'] fracOfSnap: '+$
+      string(rs.nTotRead*100.0/nPartTot[partType],format='(f5.2)')+'% efficiencyFrac: '+$
+      string(efficiencyFracSimple*100,format='(f5.2)')+'%'    
+    
+  ; if efficiency of the simple read is 40% or greater just go for that
+  if efficiencyFracSimple ge 0.4 then $
+    return, rs
+ 
+  ; lowN: for an extremely small number of indices (<1000 or so) just read those exact elements
+  ; TODO
+      
+  ; multiBlock: analyze sparsity of indices, decompose read into a reasonable number of blocks
+  ;             such that we don't read too much unwanted data, but also do enough sequential
+  ;             I/O and not too much random I/O
+  binSize = round(sqrt(max(inds))/10000.0) * 10000 > 10000 < 10000000 ; adjust to range
+      
+  hist = histogram(inds,binsize=binsize,min=0,loc=loc)
+  occBlocks = where(hist ne 0,count)
+      
+  nBlocks = 0
+  blockStart = []
+  blockLen   = []
+  prevBlock = ulong64(0)
+  count = 0
+      
+  ; search for contiguous id blocks
+  for i=0,n_elements(occBlocks)-1 do begin
+    count += 1
+    
+    ; jump detected (zero block length ge binsize)
+    if occBlocks[i] ne (prevBlock+1) then begin
+      nBlocks += 1
+      blockStart = [blockStart,loc[occBlocks[i]]]
+      blockLen   = [blockLen,count]
+      if i ne n_elements(occBlocks)-1 then count = 0
+    endif
+    
+    prevBlock = occBlocks[i]
+  endfor
+      
+  ; remove first (zero) block length and add final
+  count += 1
+  if nBlocks gt 1 then blockLen = [blockLen[1:*],count]
+  if nBlocks eq 1 then blockLen = [count]
+  if nBlocks le 0 then message,'Badness. Revert to simple?'
+  
+  ; determine rest of block structure
+  rs = { nBlocks     : nBlocks                                ,$
+         nTotRead    : round(total(blockLen * binSize))       ,$
+         blockStart  : blockStart                             ,$ ; snapshot index start
+         blockEnd    : blockStart + blockLen * binSize - 1    ,$ ; snapshot index end
+         indexMin    : lon64arr(nBlocks)                      ,$ ; start of subset of inds handled
+         indexMax    : lon64arr(nBlocks)                       } ; end of subset of inds handled
+  
+  for i=0,nBlocks-1 do begin
+    w = where(inds ge rs.blockStart[i] and inds le rs.blockEnd[i],count)
+    if count eq 0 then message,'Error: MultiBlock failure.'
+    rs.indexMin[i] = w[0]
+    rs.indexMax[i] = w[count-1]
+  endfor
+  
+  efficiencyFracMulti = n_elements(inds) / float(rs.nTotRead)
+      
+  if verbose then $
+    print,'I/O Strategy: [MultiBlock] reading ['+str(rs.nTotRead)+$
+      ' / '+str(nPartTot[partType])+'] fracOfSnap: '+$
+      string(rs.nTotRead*100.0/nPartTot[partType],format='(f5.2)')+'% efficiencyFrac: '+$
+      string(efficiencyFracMulti*100,format='(f5.2)')+'% (nBlocks = '+str(rs.nBlocks)+')'    
+
+  return, rs
+  
+end
+
 ; loadSnapshotSubset(): for a given snapshot load only one field for one particle type
 ;                       partType = [0,1,2,4] or ('gas','dm','tracer','stars') (case insensitive)
 ;                       field    = ['ParticleIDs','coordinates','xyz',...] (case insensitive)
+;                       inds     (optional) : known indices requested, optimize the load
+;                       indRange (optional) : same, but specify only min and max indices
 ; - specify either sP (with .snap) or a direct fileName
 
-function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field, $
-                             verbose=verbose, $
+function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field, verbose=verbose, $
+                             inds=inds, indRange=indRange, $
                              doublePrec=doublePrec, groupOrdered=groupOrdered, subBox=subBox
 
   if not keyword_set(verbose) then verbose = 0
@@ -1427,6 +1546,9 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     stop
   endif
   
+  ; I/0 planning
+  ; ------------
+  
   ; multidim slice (hyperslab selection) request
   multiDimSliceFlag = 0
   if (field eq 'x' or field eq 'y' or field eq 'z' or $
@@ -1443,41 +1565,51 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     rDims = 1
   endif
 
-  ; use rType to make return array
+  ; decide I/O strategy if we have known indices to read (simple, lowN, complex)
+  readStrategy = readStrategyIO(inds=inds, indRange=indRange, nPartTot=nPartTot, $
+                                partType=partType, verbose=verbose)
+    
+  ; decide size of return array
+  if keyword_set(inds) or keyword_set(indRange) then $
+    readSize = readStrategy.nTotRead $
+  else $
+    readSize = nPartTot[partType]
   
+  ; use rType to make return array
   if rType eq 'float' then begin
     ; double precision requested?
-    ; if (size(r,/tname) eq 'FLOAT' and keyword_set(doublePrec)) then r = double(r)
     if keyword_set(doublePrec) then $
-      r = dblarr(rDims,nPartTot[partType]) $
+      r = dblarr(rDims,readSize) $
     else $
-      r = fltarr(rDims,nPartTot[partType])
+      r = fltarr(rDims,readSize)
   endif
   
-  if rType eq 'int'   then r = intarr(rDims,nPartTot[partType])
+  if rType eq 'int'   then r = intarr(rDims,readSize)
   
   if rType eq 'long'  then begin
     if fieldName eq 'ParticleIDs' or fieldName eq 'ParentID' or fieldName eq 'TracerID' then begin
       ; IDs are 64bit?
       longIDsBits = h5_parse(fileList[0]) ; just parse full structure
       longIDsBits = longIDsBits.partType0.particleIDs._precision
-      if longIDsBits eq 32 then r = lonarr(rDims,nPartTot[partType])
-      if longIDsBits eq 64 then r = lon64arr(rDims,nPartTot[partType])
+      if longIDsBits eq 32 then r = lonarr(rDims,readSize)
+      if longIDsBits eq 64 then r = lon64arr(rDims,readSize)
       if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
     endif else begin
       ; non-ID long field
-      r = lonarr(rDims,nPartTot[partType])
+      r = lonarr(rDims,readSize)
     endelse
   endif
   
   r = reform(r)
   
-  if (verbose) then $
+  if verbose then $
     print,'Loading "' + str(fieldName) + '" for partType=' + str(partType) + ' from snapshot (' + $
-          str(sP.snap) + ') in [' + str(nFiles) + '] files. (nGas=' + $
-          str(nPartTot[0]) + ' nDM=' + str(nPartTot[1]) + ' nStars=' + str(nPartTot[4]) + ')' 
+          str(sP.snap) + ') in [' + str(nFiles) + '] files. (numPartTot=' + $
+          str(nPartTot[partType]) + ' nReadSize=' + str(readSize) + ')' 
    
   ; load requested field from particle type across all file parts
+  pOffset = 0UL
+  
   for i=0,nFiles-1 do begin
       fileID   = h5f_open(fileList[i])
       
@@ -1485,19 +1617,46 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       headerID = h5g_open(fileID,"Header")
       nPart = h5a_read(h5a_open_name(headerID,"NumPart_ThisFile"))
       
-      ; get field _data
       if (nPart[partType] eq 0) then continue
       
+      ; decide: reading anything from this file?
+      readFlag = 0
+      
+      for j=0,readStrategy.nBlocks-1 do begin
+        ; if block starts in this file, or file starts in block (i.e. block ends in file), we have size>0 to read
+        if readStrategy.blockStart[j] ge pOffset and $
+           readStrategy.blockStart[j] le pOffset+nPart[partType]-1 then readFlag = 1
+        if pOffset ge readStrategy.blockStart[j] and $
+           pOffset le readStrategy.blockEnd[j] then readFlag = 1
+      endfor
+      
+      ; debug
+      if verbose then begin
+        if readFlag eq 0 then print,' ['+str(i)+'] readFlag = 0, skipping'
+        if readFlag eq 1 then print,' ['+str(i)+'] readFlag = 1, reading'
+      endif
+      
+      pOffset += nPart[partType]
+      
+      if readFlag eq 0 then continue
+      
+      ; get field _data
       groupName = 'PartType'+str(partType)
       
       groupID = h5g_open(fileID,groupName)
       dataSetID = h5d_open(groupID,fieldName)
       
+      ; load dataset size
+      dataSpaceID = h5d_get_space(dataSetID)
+      dataSpaceDims = h5s_get_simple_extent_dims(dataSpaceID)
+      
+      ; for defining HDF5 subsets (start and length of requested data in each dimension)
+      nDims = n_elements(dataSpaceDims)
+      start  = ulon64arr(nDims)
+      length = ulon64arr(nDims)
+      
+      ; if multiDimSlice requested, select hyperslab
       if multiDimSliceFlag eq 1 then begin
-        ; if multiDimSlice requested, load dataset size and select hyperslab
-        dataSpaceID = h5d_get_space(dataSetID)
-        dataSpaceDims = h5s_get_simple_extent_dims(dataSpaceID)
-        
         ; these are all 2D arrays, determine which column (IDL) to read (row in hdf5/C)
         case field of
           'x'   : fN = 0
@@ -1526,9 +1685,6 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
         endcase
         
         ; start at this column with length equal to the dataset size
-        start  = ulon64arr(n_elements(dataSpaceDims))
-        length = ulon64arr(n_elements(dataSpaceDims))
-        
         start[0]  = fN
         length[0] = 1
         length[1] = dataSpaceDims[1]
@@ -1539,12 +1695,71 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
         
         ; read the data in the selected hyperslab
         groupData = reform(h5d_read(dataSetID, file_space=dataSpaceID, memory_space=memSpaceID))
+        
+        totReadSizeLocal = nPart[partType]
       endif else begin
+        ; if more than one dimension, want all of the first (e.g. all of xyz in pos)
+        if nDims gt 1 then begin
+          start[0] = 0
+          length[0] = dataSpaceDims[0]
+        endif
+        
+        ; for the last dimension (second if multidim), add simple hyperslabs based on our read strategy
+        totReadSizeLocal = 0L
+		
+		firstIndexLocal = pOffset - nPart[partType]
+		lastIndexLocal = pOffset - 1
+        
+        for j=0,readStrategy.nBlocks-1 do begin
+          ; skip this block if it has no intersection with this file
+          if (readStrategy.blockStart[j] lt firstIndexLocal and $ ; block does not start in this file
+              readStrategy.blockEnd[j] lt firstIndexLocal) or $
+             (readStrategy.blockStart[j] gt lastIndexLocal and $ ; file does not start in this block
+              readStrategy.blockEnd[j] gt lastIndexLocal) then continue
+           
+          ; determine offset within this file of blockStart and blockEnd
+          blockLen     = readStrategy.blockEnd[j] - readStrategy.blockStart[j] + 1
+          bOffsetStart = readStrategy.blockStart[j] - firstIndexLocal
+          bOffsetEnd   = bOffsetStart + blockLen - 1
+          
+          ; truncate start and end to the local extent of this file
+          if bOffsetStart lt 0 then bOffsetStart = 0
+          if bOffsetEnd ge nPart[partType] then bOffsetEnd = nPart[partType] - 1
+          
+          readSizeBlock = (bOffsetEnd - bOffsetStart + 1)
+          
+          ; sanity check
+          if bOffsetStart ge nPart[partType] then message,'Error: Bad starting local block offset.'
+          if bOffsetEnd lt 0 then message,'Error: Bad ending local block offset.'
+          
+          ; set slab dimensions and add to dataSpaceID
+          start[nDims-1] = bOffsetStart
+          length[nDims-1] = readSizeBlock
+          
+          if verbose then print,'  Block ['+str(j)+'] local start = ' + $
+            str(bOffsetStart) + ' length = ' + str(readSizeBlock)
+          
+          h5s_select_hyperslab, dataSpaceID, start, length, reset=(totReadSizeLocal eq 0) ; clear on first
+		  
+          totReadSizeLocal += readSizeBlock
+        endfor
+		
+	  if totReadSizeLocal eq 0 then message,'Error: Zero read size for this file, but not skipped.'
+        if h5s_get_select_hyper_nblocks(dataSpaceID) ne totReadSizeLocal then $
+	    message,'Error: HDF5 dataspace plan mismatch with blocking strategy.'
+		  
+        ; create a memory space to hold the total local result
+        length[nDims-1] = totReadSizeLocal ; override last block size with total
+        memSpaceID = h5s_create_simple(length)
+        
         ; normal read of all data in the dataSet
-        groupData = h5d_read(dataSetID)
+        if ~h5s_select_valid(dataSpaceID) then message,'Error: Invalid hdf5 selection.'
+
+        groupData = reform(h5d_read(dataSetID, file_space=dataSpaceID, memory_space=memSpaceID))
       endelse
 
       ; close file
+	h5s_close, dataSpaceID
       h5d_close, dataSetID
       h5g_close, groupID
       h5g_close, headerID
@@ -1554,14 +1769,47 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
         message,'ERROR: Return dimensionality of requested field not expected.'
   
       ; fill return array
-      if (rDims eq 1) then $
-        r[count : (count + nPart[partType] - 1)] = groupData
-      if (rDims gt 1) then $
-        r[*,count : (count + nPart[partType] - 1)] = groupData
+      if rDims eq 1 then r[count : (count + totReadSizeLocal - 1)] = groupData
+      if rDims gt 1 then r[*,count : (count + totReadSizeLocal - 1)] = groupData
       
-      count += nPart[partType]
-  
+      count += totReadSizeLocal
   endfor
+  
+  if pOffset ne nPartTot[partType] then message,'Error: Read failure.'
+  if count ne readSize then message,'Error: Read failure.'
+  
+  ; if we have known indices and an I/O strategy, take the inds subset
+  groupData = !NULL
+  
+  if keyword_set(inds) then begin
+    ; make a return array with the size of inds, keep type
+    if rDims eq 1 then rr = r[0:n_elements(inds)-1]
+    if rDims gt 1 then rr = r[*,0:n_elements(inds)-1]
+    
+    ; stamp in block by block
+    blockOffset = 0LL
+    
+    for j=0,readStrategy.nBlocks-1 do begin
+      
+      if rDims eq 1 then rr[readStrategy.indexMin[j] : readStrategy.indexMax[j]] = $
+        r[ inds[readStrategy.indexMin[j] : readStrategy.indexMax[j]] - readStrategy.blockStart[j] + blockOffset]
+      if rDims gt 1 then rr[readStrategy.indexMin[j] : readStrategy.indexMax[j]] = $
+        r[ *,inds[readStrategy.indexMin[j] : readStrategy.indexMax[j]] - readStrategy.blockStart[j] + blockOffset]
+        
+      blockLen = readStrategy.blockEnd[j] - readStrategy.blockStart[j] + 1
+      blockOffset += blockLen
+    endfor
+    
+    ; DEBUG (painful, recursively call the snapshotLoad for all particles then directly compare the subset)
+    aaa = loadSnapshotSubset(sP=sP,partType=PT,field=field)
+    if rDims eq 1 then aaa = aaa[inds]
+    if rDims gt 1 then aaa = aaa[*,inds]
+    if ~array_equal(aaa,rr) then message,'Error: Blocking strategy fail.'
+    print,'Verify Blocking: [OK].'
+    ; END DEBUG
+    
+    return,rr
+  endif
   
   return,r
 end
