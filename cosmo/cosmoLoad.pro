@@ -1112,7 +1112,8 @@ end
 ; readStrategyIO(): determine the blocking read strategy given the requested read pattern
 
 function readStrategyIO, inds=inds, indRange=indRange, $
-                         nPartTot=nPartTot, partType=partType, verbose=verbose
+                         nPartTot=nPartTot, partType=partType, verbose=verbose, $
+                         sort_inds=sort_inds, sorted_inds=sorted_inds ; output for MultiBlock
 
   if keyword_set(inds) and keyword_set(indRange) then message,'Error: Not both.'
   
@@ -1139,27 +1140,31 @@ function readStrategyIO, inds=inds, indRange=indRange, $
     rs.nTotRead = rs.blockEnd[0] - rs.blockStart[0] + 1
     return, rs
   endif
+  
+  ; for simple or multiblock we need to sort the indices to load in contiguous chunks
+  sort_inds = calcSort(inds)
+  sorted_inds = inds[sort_inds]
          
   ; simple: whole block from min to max, then take subset
-  rs = { nBlocks     : 1                      ,$
-         nTotRead    : 0LL                    ,$
-         blockStart  : [min(inds)]            ,$ ; snapshot index start
-         blockEnd    : [max(inds)]            ,$ ; snapshot index end
-         indexMin    : [0LL]                  ,$ ; start of subset of inds handled
-         indexMax    : [n_elements(inds)-1LL]  } ; end of subset of inds handled
+  rsSimple = { nBlocks     : 1                      ,$
+               nTotRead    : 0LL                    ,$
+               blockStart  : [min(inds)]            ,$ ; snapshot index start
+               blockEnd    : [max(inds)]            ,$ ; snapshot index end
+               indexMin    : [0LL]                  ,$ ; start of subset of inds handled
+               indexMax    : [n_elements(inds)-1LL]  } ; end of subset of inds handled
                      
-  rs.nTotRead = rs.blockEnd[0] - rs.blockStart[0] + 1
-  efficiencyFracSimple = n_elements(inds) / float(rs.nTotRead)
+  rsSimple.nTotRead = rsSimple.blockEnd[0] - rsSimple.blockStart[0] + 1
+  efficiencyFracSimple = n_elements(inds) / float(rsSimple.nTotRead)
     
   if verbose then $
-    print,'I/O Strategy: [SimpleRead] reading ['+str(rs.nTotRead)+$
+    print,'I/O Strategy: [SimpleRead] reading ['+str(rsSimple.nTotRead)+$
       ' / '+str(nPartTot[partType])+'] fracOfSnap: '+$
-      string(rs.nTotRead*100.0/nPartTot[partType],format='(f5.2)')+'% efficiencyFrac: '+$
+      string(rsSimple.nTotRead*100.0/nPartTot[partType],format='(f5.2)')+'% efficiencyFrac: '+$
       string(efficiencyFracSimple*100,format='(f5.2)')+'%'    
     
   ; if efficiency of the simple read is 40% or greater just go for that
   if efficiencyFracSimple ge 0.4 then $
-    return, rs
+    return, rsSimple
  
   ; lowN: for an extremely small number of indices (<1000 or so) just read those exact elements
   ; TODO
@@ -1208,18 +1213,21 @@ function readStrategyIO, inds=inds, indRange=indRange, $
          indexMax    : lon64arr(nBlocks)                       } ; end of subset of inds handled
   
   for i=0,nBlocks-1 do begin
-    w = where(inds ge rs.blockStart[i] and inds le rs.blockEnd[i],count)
+    w = where(sorted_inds ge rs.blockStart[i] and sorted_inds le rs.blockEnd[i],count)
     if count eq 0 then message,'Error: MultiBlock failure.'
     rs.indexMin[i] = w[0]
     rs.indexMax[i] = w[count-1]
   endfor
   
   efficiencyFracMulti = n_elements(inds) / float(rs.nTotRead)
+  fracOfSnap = rs.nTotRead*100.0/nPartTot[partType]
+      
+  if fracOfSnap gt 90 then return, rsSimple ; just a simple read if we already do most of the data
       
   if verbose then $
     print,'I/O Strategy: [MultiBlock] reading ['+str(rs.nTotRead)+$
       ' / '+str(nPartTot[partType])+'] fracOfSnap: '+$
-      string(rs.nTotRead*100.0/nPartTot[partType],format='(f5.2)')+'% efficiencyFrac: '+$
+      string(fracOfSnap,format='(f5.2)')+'% efficiencyFrac: '+$
       string(efficiencyFracMulti*100,format='(f5.2)')+'% (nBlocks = '+str(rs.nBlocks)+')'    
 
   return, rs
@@ -1567,7 +1575,8 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
 
   ; decide I/O strategy if we have known indices to read (simple, lowN, complex)
   readStrategy = readStrategyIO(inds=inds, indRange=indRange, nPartTot=nPartTot, $
-                                partType=partType, verbose=verbose)
+                                partType=partType, verbose=verbose, $
+                                sort_inds=sort_inds, sorted_inds=sorted_inds)
     
   ; decide size of return array
   if keyword_set(inds) or keyword_set(indRange) then $
@@ -1684,6 +1693,9 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
           'tracer_exchdisterr'     : fN = 12
         endcase
         
+        ; multiDimSlice not yet unified with inds/indRange
+        if keyword_set(inds) or keyword_set(indRange) then message,'Error: no multidim yet with inds.'
+        
         ; start at this column with length equal to the dataset size
         start[0]  = fN
         length[0] = 1
@@ -1707,8 +1719,8 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
         ; for the last dimension (second if multidim), add simple hyperslabs based on our read strategy
         totReadSizeLocal = 0L
 		
-		firstIndexLocal = pOffset - nPart[partType]
-		lastIndexLocal = pOffset - 1
+	  firstIndexLocal = pOffset - nPart[partType]
+	  lastIndexLocal = pOffset - 1
         
         for j=0,readStrategy.nBlocks-1 do begin
           ; skip this block if it has no intersection with this file
@@ -1743,9 +1755,10 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
 		  
           totReadSizeLocal += readSizeBlock
         endfor
-		
-	  if totReadSizeLocal eq 0 then message,'Error: Zero read size for this file, but not skipped.'
-        if h5s_get_select_hyper_nblocks(dataSpaceID) ne totReadSizeLocal then $
+        
+        if totReadSizeLocal eq 0 then message,'Error: Zero read size for this file, but not skipped.'
+        
+        if h5s_get_select_npoints(dataSpaceID) ne totReadSizeLocal*rDims then $
 	    message,'Error: HDF5 dataspace plan mismatch with blocking strategy.'
 		  
         ; create a memory space to hold the total local result
@@ -1776,7 +1789,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   endfor
   
   if pOffset ne nPartTot[partType] then message,'Error: Read failure.'
-  if count ne readSize then message,'Error: Read failure.'
+  ;if count ne readSize then message,'Error: Read failure.' ; not true if block is truncated in file
   
   ; if we have known indices and an I/O strategy, take the inds subset
   groupData = !NULL
@@ -1791,21 +1804,25 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     
     for j=0,readStrategy.nBlocks-1 do begin
       
-      if rDims eq 1 then rr[readStrategy.indexMin[j] : readStrategy.indexMax[j]] = $
-        r[ inds[readStrategy.indexMin[j] : readStrategy.indexMax[j]] - readStrategy.blockStart[j] + blockOffset]
-      if rDims gt 1 then rr[readStrategy.indexMin[j] : readStrategy.indexMax[j]] = $
-        r[ *,inds[readStrategy.indexMin[j] : readStrategy.indexMax[j]] - readStrategy.blockStart[j] + blockOffset]
+      ; where in the output rr to place the reads from this block (original inds ordering)
+      block_output_inds = sort_inds[readStrategy.indexMin[j] : readStrategy.indexMax[j]]
+      
+      ; where in the full read r to obtain the reads of these elements
+      block_read_inds  = sorted_inds[readStrategy.indexMin[j] : readStrategy.indexMax[j]] $
+                         - readStrategy.blockStart[j] + blockOffset
+                            
+      if rDims eq 1 then rr[block_output_inds] = r[ block_read_inds ]
+      if rDims gt 1 then rr[*,block_output_inds] = r[ *, block_read_inds]
         
       blockLen = readStrategy.blockEnd[j] - readStrategy.blockStart[j] + 1
       blockOffset += blockLen
     endfor
     
     ; DEBUG (painful, recursively call the snapshotLoad for all particles then directly compare the subset)
-    aaa = loadSnapshotSubset(sP=sP,partType=PT,field=field)
-    if rDims eq 1 then aaa = aaa[inds]
-    if rDims gt 1 then aaa = aaa[*,inds]
-    if ~array_equal(aaa,rr) then message,'Error: Blocking strategy fail.'
-    print,'Verify Blocking: [OK].'
+    ;aaa = loadSnapshotSubset(sP=sP,partType=PT,field=field)
+    ;if rDims eq 1 then aaa = aaa[inds]
+    ;if rDims gt 1 then aaa = aaa[*,inds]
+    ;if ~array_equal(aaa,rr) then message,'Error: Blocking strategy fail.'
     ; END DEBUG
     
     return,rr
