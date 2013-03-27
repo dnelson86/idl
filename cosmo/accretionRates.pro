@@ -1,6 +1,6 @@
 ; accretionRates.pro
 ; halo cooling project - future accretion history of hot halo gas onto the central galaxy
-; dnelson march.2013
+; dnelson mar.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionRates(): description
@@ -113,7 +113,7 @@ function accretionRates, sP=sP, restart=restart
       h = loadSnapshotHeader(sP=sP)
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
         
-      match,galcat_gmem_trids[galcat_gmem_tr_src],tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
+      calcMatch,galcat_gmem_trids[galcat_gmem_tr_src],tr_ids,galcat_ind,trids_gmem_ind,count=countGmem
       trids_gmem_ind  = trids_gmem_ind[sort(galcat_ind)] ; rearrange trids_gmem_ind to be ordered as galcat_gmem_trids
       
       tr_ids     = !NULL
@@ -144,7 +144,7 @@ function accretionRates, sP=sP, restart=restart
         if n_elements(par_ids) eq 0 then continue ; no particles of this type in snapshot
         
         ; note: tr_parids_gal,gmem,stars are NOT UNIQUE, use a value_locate approach (not match)
-        sort_inds = sort(par_ids)
+        sort_inds = calcSort(par_ids)
         
         ; gmem
         gmem_ind = value_locate(par_ids[sort_inds],tr_parids_gmem)
@@ -162,7 +162,7 @@ function accretionRates, sP=sP, restart=restart
         gmem_parids = par_ids[tr_parids_gmem_inPar]
         
         ; note: gmem_parids are NOT UNIQUE, use value_locate approach (not match)
-        sort_inds = sort(loc_galcat.galaxyIDs)
+        sort_inds = calcSort(loc_galcat.galaxyIDs)
         
         gmem_ind = value_locate(loc_galcat.galaxyIDs[sort_inds],gmem_parids)
         gmem_ind = sort_inds[gmem_ind>0]
@@ -225,12 +225,13 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
   
   ; config
   nWindows = 10 ; go back i=1,2,...,nWindows and calculate accretion rates using each
+  nTheory  = 6  ; how many different "theoretical" ways of calculating accRate?
   
   ; check if save exists
   saveFilename = sP.derivPath + 'binnedVals/binAR.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
     str(sP.snap) + '.nw' + str(nWindows) + '.' + sgSelect + '.sav'
   
-  ; results exist, return
+  ; if results exist, return
   if file_test(saveFilename) then begin
     restore,saveFilename
     return,r
@@ -248,8 +249,8 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
   gcIDMask[gcIDList] = 1B
   
   ; halo count and halo masses for median binning
-  nHalos   = n_elements(gcIDList)
-  gcMasses = codeMassToLogMsun(gc.subgroupMass[gcIDList])
+  nHalosTot = n_elements(galcat.galaxyLen)
+  gcMasses  = codeMassToLogMsun(gc.subgroupMass[gcIDList])
   
   ; time in Gyr back to subsequent snapshots
   curAge     = redshiftToAgeFlat(sP.redshift)
@@ -269,38 +270,40 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
   ; save arrays (per halo and median)
   r = { gmem_accRate_halo    : fltarr(nWindows,n_elements(gcIDList)) + !values.f_nan  ,$
         gmem_accRate_median  : fltarr(nWindows,logMassNBins) + !values.f_nan          ,$
+        t_accRate_halo       : fltarr(nTheory,n_elements(gcIDList)) + !values.f_nan   ,$
+        t_accRate_median     : fltarr(nTheory,logMassNBins) + !values.f_nan           ,$
         gcMasses             : gcMasses                                               ,$
         logMassBins          : logMassBins                                            ,$
         logMassNBins         : logMassNBins                                           ,$
         logMassBinCen        : logMassBinCen                                          ,$
+        nTheory              : nTheory                                                ,$
         nWindows             : nWindows                                               ,$
         windowsGyr           : windowsGyr                                              }
   
   offset_tr   = 0L ; we don't have an offset table for the tracer inds, so walk all gcIDLIst in order
   offset_gmem = 0L ; as is done in galcatINDList(), same to get primary indices and skip secondary gmem
+  gcSelectInd = 0L ; walk through gcIDList
   
   ; loop over all halos
-  for i=0UL,n_elements(galcat.galaxyLen)-1 do begin
-    if i mod fix(nHalos/20) eq 0 then print,'i = '+string(i,format='(i6)')+' '+str(float(i)*100/nHalos)+'%'
+  for gcID=0UL,nHalosTot-1 do begin
+    if gcID mod fix(nHalosTot/20) eq 0 then $
+      print,'gcID = '+string(gcID,format='(i6)')+' '+str(float(gcID)*100/nHalosTot)+'%'
     
     ; indices for this halo
-    gcInd = gcIDList[i]
-    
-    if galcat.groupmemLen[gcInd] eq 0 then continue ; no gmem gas in this halo
+    if galcat.groupmemLen[gcID] eq 0 then continue ; no gmem gas in this halo
        
-    inds = lindgen(galcat.groupmemLen[gcInd]) + offset_gmem
-    
-    offset_gmem += galcat.groupmemLen[gcInd]
+    inds = lindgen(galcat.groupmemLen[gcID]) + offset_gmem
+    offset_gmem += galcat.groupmemLen[gcID]
     
     ; replicate child_counts for tracer indices
     tot_children_tr = total(ar.galcat_gmem_cc[inds],/int)
     
-    offset_tr += tot_children_tr
-    
     if tot_children_tr eq 0 then continue ; although have parents, they have no children
-    if gcIDMask[gcID] eq 0B then continue ; don't want to process this halo
     
     inds_tr = lindgen(tot_children_tr) + offset_tr
+    offset_tr += tot_children_tr
+    
+    if gcIDMask[gcID] eq 0B then continue ; don't want to process this halo
     
     ; get child tracers in this halo
     loc_accSnapOffset = ar.accSnap_gmem[inds_tr]
@@ -315,9 +318,11 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
     for j=0,nWindows-1 do begin
       w = where(loc_AccSnapOffset le j+1,count)
       if count gt 0 then begin
-        r.gmem_accRate_halo[j,i] = count / windowsGyr[j]
+        r.gmem_accRate_halo[j,gcSelectInd] = count / windowsGyr[j]
       endif
     endfor
+    
+    gcSelectInd += 1
     
   endfor
   
@@ -327,6 +332,140 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
   ; convert (numPart / Gyr) to (msun (h^-1) / yr)
   r.gmem_accRate_halo *= (massPerPart * float(units.UnitMass_in_Msun)) / 1e9
   
+  ; now load cooling and dynamical timescales and calculate some related theoretical accretion rates
+  ar = !NULL
+
+  ct       = coolingTime(sP=sP)
+  encMass  = enclosedMass(sP=sP)
+  gasRadii = galaxyCatRadii(sP=sP)
+  
+  gasVRad  = gasRadii.gmem_vrad_pri
+  gasRadii = gasRadii.gmem_sec
+  
+  ; estimate dynamical timescale using total enclosed mass at each gas cell
+  h = loadSnapshotHeader(sP=sP)
+  
+  meanDensEnc = codeDensToPhys( 3*encMass / (4 * !pi * gasRadii^3.0), scalefac=h.time ) ; code units (physical)
+  
+  dynTime = sqrt( 3*!pi / (32 * float(units.G * meanDensEnc)) ) ; code units (Gyr)
+  
+  encMass = !NULL
+  meanDensEnc = !NULL
+  
+  ; need masses for mass accretion rates
+  if sP.trMCPerCell eq 0 then begin
+    ; SPH case: all particles have constant mass
+    massPerPart = sP.targetGasMass
+    masses = replicate(massPerPart,h.nPartTot[partTypeNum('gas')])
+  endif else begin
+    ids_gmem = galcat.groupmemIDs
+  
+    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    calcMatch,ids,ids_gmem,ids_ind,ids_gmem_ind,count=countMatch
+    if countMatch ne n_elements(ids_gmem) then message,'error'
+    ids = !NULL
+    ids_ind = ids_ind[sort(ids_gmem_ind)]
+  
+    masses = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
+    masses = masses[ids_ind]
+  endelse
+  
+  ; loop over halos a second time
+  offset_gmem = 0L ; as is done in galcatINDList(), same to get primary indices and skip secondary gmem
+  gcSelectInd = 0L ; walk through gcIDList
+  
+  tables = interpLambdaSD93()
+  
+  for gcID=0UL,nHalosTot-1 do begin
+    if gcID mod fix(nHalosTot/20) eq 0 then $
+      print,'gcID = '+string(gcID,format='(i6)')+' '+str(float(gcID)*100/nHalosTot)+'%'
+    
+    ; indices for this halo
+    if galcat.groupmemLen[gcID] eq 0 then continue ; no gmem gas in this halo
+    
+    inds = lindgen(galcat.groupmemLen[gcID]) + offset_gmem
+    offset_gmem += galcat.groupmemLen[gcID]
+    
+    if gcIDMask[gcID] eq 0B then continue ; don't want to process this halo
+    
+    ; local properties
+    loc_coolTime = ct.coolTime[inds]
+    loc_curTemp  = ct.temp[inds]
+    loc_curDens  = ct.dens[inds]
+    loc_dynTime  = dynTime[inds]
+    loc_gasRad   = gasRadii[inds]
+    loc_gasVRad  = gasVRad[inds]
+    loc_masses   = masses[inds]
+    
+    ; halo properties
+    grNr = gc.subgroupGrNr[gcID]
+  
+    meanDensEnc_halo = 3*gc.subgroupMass[gcID] / (4*!pi*gc.group_r_crit200[grNr]^3.0) ; gas+DM+stars
+    meanDensEnc_halo = codeDensToPhys( meanDensEnc_halo, scalefac=h.time )
+    dynTime_halo = float(sqrt( 3*!pi / (32 * float(units.G) * meanDensEnc_halo) ))
+    
+    ; halo models
+    haloDMMass = gc.subgroupMassType[partTypeNum('dm'),gcID] * units.HubbleParam
+    hotGasMass = total(loc_masses)
+    
+    sis_dm  = sis_profile([1.0], mass=haloDMMass, redshift=sP.redshift)
+    sis_gas = sis_gas_profile(mass_hot=hotGasMass, sis_dm=sis_dm, tables=tables)
+    
+    ; (0) accRate if each gas cell with tcool<tdyn accreted after tdyn (cell by cell window)
+    w = where(loc_coolTime le loc_dynTime and loc_coolTime gt 0.0,count)
+    
+    if count gt 0 then $
+      r.t_accRate_halo[0,gcSelectInd] = total(loc_masses[w] / loc_dynTime[w])
+    
+    ; (1) accRate if each gas cell accretes after tcool (cell by cell window)
+    w = where(loc_coolTime gt 0.0,count)
+    
+    if count gt 0 then $
+      r.t_accRate_halo[1,gcSelectInd] = total(loc_masses[w] / loc_coolTime[w])
+    
+    ; (2) accRate if each gas cell accretes after tdyn (cell by cell window)
+    w = where(loc_dynTime gt 0.0,count)
+    
+    if count gt 0 then $
+      r.t_accRate_halo[2,gcSelectInd] = total(loc_masses[w] / loc_dynTime[w])
+    
+    ; (3) accRate if all gas cells with individual tcool < tdyn(rvir/halo) accreted after tdyn(rvir/halo)
+    w = where(loc_coolTime le dynTime_halo and loc_coolTime gt 0.0,count)
+    
+    if count gt 0 then $
+      r.t_accRate_halo[3,gcSelectInd] = total(loc_masses[w] / dynTime_halo) ; or sis_gas.dynTime_halo
+    
+    ; (4) same as above, but take dynTime_halo from the SIS gas fit
+    w = where(loc_coolTime le sis_gas.dynTime_halo and loc_coolTime gt 0.0,count)
+    
+    if count gt 0 then $
+      r.t_accRate_halo[4,gcSelectInd] = total(loc_masses[w] / sis_gas.dynTime_halo)
+    
+    ; (5) Croton model (slow or rapid, from SAGE code, differs by factor of 2 for slow from Lu Eqn 5)
+    if finite(sis_gas.r_cool_croton) and sis_gas.r_cool_croton gt 0.0 then begin
+      if sis_gas.r_cool_croton le sis_dm.r200 then begin
+        ; slow
+        r.t_accRate_halo[5,gcSelectInd] = float(hotGasMass * sis_gas.r_cool_croton * $
+                                        (sis_dm.vCirc_rVir * units.kmS_in_kpcGyr) / $
+                                        (sis_dm.r200*sis_dm.r200))
+      endif else begin
+        ; rapid
+        r.t_accRate_halo[5,gcSelectInd] = float(hotGasMass / sis_dm.r200 * (sis_dm.vCirc_rVir * units.kmS_in_kpcGyr))
+      endelse
+    endif
+    
+    ; anything with NFW
+    ; todo
+    
+    gcSelectInd += 1
+    
+  endfor
+  
+  if offset_gmem ne n_elements(galcat.groupmemIDs) then message,'Error: Bad gmem indexing.'
+  
+  ; convert (codeMass / Gyr) to (msun (h^-1) / yr)
+  r.t_accRate_halo *= (float(units.UnitMass_in_Msun) / 1e9)
+  
   ; bin medians vs. halo mass
   for i=0,logMassNbins-1 do begin
   
@@ -335,6 +474,9 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
     if count gt 0 then begin
       for j=0,nWindows-1 do begin
         r.gmem_accRate_median[j,i] = median(r.gmem_accRate_halo[j,w])
+      endfor
+      for j=0,nTheory-1 do begin
+        r.t_accRate_median[j,i] = median(r.t_accRate_halo[j,w])
       endfor
     endif
     
@@ -354,7 +496,7 @@ pro plotAccretionRates
   units = getUnits()
   
   ; config
-  sP = simParams(res=128,run='tracer',redshift=2.0)
+  sP = simParams(res=512,run='tracer',redshift=2.0)
   
   if sP.run eq 'tracer'   then snapsBackMinusOne = 8 ; back 9 steps, ~300Myr on 313 snaps
   if sP.run eq 'feedback' then snapsBackMinusOne = 1 ; back 2 snaps, ~300Myr on 139 snaps
@@ -364,7 +506,7 @@ pro plotAccretionRates
   bAr = binAccretionRates(sP=sP,sgSelect='pri')
   
   ; plot
-  sK     = 5 ; smoothing kernel
+  sK     = 1 ; smoothing kernel
   xrange = [9.0,12.0]
   yrange = [0.01,50.0]
 
@@ -386,16 +528,26 @@ pro plotAccretionRates
       /overplot, /fill, palette=palette, levels=[0.25,0.5,1,2,5,10,20],c_colors=(indgen(7)*20+50)
     ;cgPlot,bAr.gcMasses,bAr.gmem_accRate_halo[1,*],psym=4,color=cgColor('orange'),/overplot
     
-    ; median lines
+    ; sim: median lines
     loadct,0,/silent
     
-    cgPlot,bAr.logMassBinCen,smooth(bAr.gmem_accRate_median[snapsBackMinusOne,*],sK,/nan),line=j,/overplot
+    cgPlot,bAr.logMassBinCen,smooth(bAr.gmem_accRate_median[snapsBackMinusOne,*],sK,/nan),$
+      color=cgColor('crimson'),line=0,/overplot
     
-    ;for j=0,bAr.nWindows-1 do $
-    ;  cgPlot,bAr.logMassBinCen,bAr.gmem_accRate_median[j,*],line=j,/overplot
+    ; theory: median lines
+    for j=0,bAr.nTheory-1 do $
+      cgPlot,bAr.logMassBinCen,smooth(bAr.t_accRate_median[j,*],sK,/nan),line=j+1,/overplot
       
     ; legend, redo plot borders
-    ;legend,string(indgen(bAr.nWindows)+1,format='(i2)'),linestyle=indgen(bAr.nWindows),box=0,/top,/left
+    strings = textoidl(['M(\tau_{cool} < \tau_{dyn}) / \tau_{dyn} CbC',$
+                        'M / \tau_{cool} CbC',$
+                        'M / \tau_{dyn} CbC',$
+                        'M(\tau_{cool} < \tau_{dyn,sim}) / \tau_{dyn,sim}',$
+                        'M(\tau_{cool} < \tau_{dyn,SIS}) / \tau_{dyn,SIS}',$
+                        'M_{dot,Croton}'])
+    legend,strings,linestyle=indgen(bAr.nTheory)+1,linesize=0.38,box=0,/top,/left
+    
+    cgText,xRange[1]*0.975,yrange[0]*2,'median',/data,alignment=0.5,color=cgColor('crimson')
     
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/ylog,yminor=0,/xs,/ys,/noerase
     

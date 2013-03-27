@@ -1,6 +1,6 @@
 ; galaxyCat.pro
 ; gas accretion project - gas selections of interest (galaxy/halo catalogs)
-; dnelson dec.2012
+; dnelson mar.2013
 
 ; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
 ;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)
@@ -54,8 +54,8 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
 
     ; load gas ids and match to catalog
     ids  = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    match,gcPIDs,ids,gc_ind,ids_ind,count=countMatch,/sort
-    ids_ind = ids_ind[sort(gc_ind)] ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs
+    calcMatch,gcPIDs,ids,gc_ind,ids_ind,count=countMatch
+    ids_ind = ids_ind[calcSort(gc_ind)] ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs
                                     ; need this if we want ids[ids_ind], temp[ids_ind], etc to be
                                     ; in the same order as the group catalog id list
 
@@ -67,11 +67,11 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
     ; load star ids and match to catalog
     gcPIDs_stars = gcPIDList(gc=gc,select='all',partType='stars')
     ids_stars = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
-    match,gcPIDs_stars,ids_stars,gc_ind,ids_ind_stars,count=countMatch,/sort
-    ids_ind_stars = ids_ind_stars[sort(gc_ind)] ; IMPORTANT! rearrange ids_ind_stars
+    calcMatch,gcPIDs_stars,ids_stars,gc_ind,ids_ind_stars,count=countMatch
+    ids_ind_stars = ids_ind_stars[calcSort(gc_ind)] ; IMPORTANT! rearrange ids_ind_stars
 
     if countMatch ne n_elements(gcPIDs_stars) then message,'Error: Failed to locate all star gcPIDs in star ids.'
-
+    
     ; if GFM_WINDS, remove any wind particles from these stars
     if sP.gfmWinds ne 0 then begin
         btime_stars = loadSnapshotSubset(sP=sP,partType='stars',field='gfm_sftime')
@@ -92,10 +92,8 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
     ids_stars = ids_stars[ids_ind_stars]
 
     ; load u,nelec and calculate temp of gas
-    u = loadSnapshotSubset(sP=sP,partType='gas',field='u')
-    u = u[ids_ind]
-    nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec')
-    nelec = nelec[ids_ind]
+    u = loadSnapshotSubset(sP=sP,partType='gas',field='u',inds=ids_ind)
+    nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec',inds=ids_ind)
     
     temp = convertUtoTemp(u,nelec)
     
@@ -103,8 +101,7 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
     nelec = !NULL
     
     ; load rho of gas and make galaxy (rho,temp) plane cut
-    dens = loadSnapshotSubset(sP=sP,partType='gas',field='density')
-    dens = dens[ids_ind]
+    dens = loadSnapshotSubset(sP=sP,partType='gas',field='density',inds=ids_ind)
     
     ; scale Torrey+ (2011) galaxy cut to physical density
     scalefac = snapNumToRedshift(sP=sP,/time) ; time flag gives simulation time = scale factor
@@ -114,11 +111,10 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
     ; (rho,temp) cut
     wGal = where(alog10(temp) - sP.galcut_rho * alog10(dens) lt sP.galcut_T,$
                  countGal,comp=wGmem,ncomp=countGmem)
-
+                 
     ; calculate radial distances of gas elements to primary parents
     if sP.radcut_rvir ne 0.0 then begin
-      pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
-      pos = pos[*,ids_ind]
+      pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos',inds=ids_ind)
       
       ; find group center positions with most bound particles for each group
       subgroupCen = subgroupPosByMostBoundID(sP=sP)
@@ -177,13 +173,13 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
       rad_pri /= par_rvir
 
       ; override (rho,temp) cut with (rho,temp,rad) cut
-      wGal  = where(alog10(temp) - sP.galcut_rho*alog10(dens) lt sP.galcut_T and rad_pri lt sP.radcut_rvir,countGal)
+      wGal  = where(alog10(temp) - sP.galcut_rho*alog10(dens) lt sP.galcut_T and $
+                     rad_pri lt sP.radcut_rvir,countGal)
       wGmem = where(alog10(temp) - sP.galcut_rho*alog10(dens) ge sP.galcut_T and $
                      rad_pri ge sP.radcut_rvir and rad_pri le sP.radcut_out,countGmem)
                      
       ; load stellar positions calculate radial vector of stars from group center (PRI)
-      pos = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
-      pos = pos[*,ids_ind_stars]
+      pos = loadSnapshotSubset(sP=sP,partType='stars',field='pos',inds=ids_ind_stars)
       
       rad_pri  = periodicDists(subgroupCen[*,sgParIDs_stars],pos,sP=sP)
       par_rvir = gc.group_r_crit200[gc.subgroupGrNr[sgParIDs_stars]] ; normalize by fof parent rvir
@@ -217,7 +213,7 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
       nextOff = 0UL
       
       ; match indices between galaxy ids and group ids
-      match,ids,gc.IDs,ids_ind,gcIDs_ind,count=countID,/sort
+      calcMatch,ids,gc.IDs,ids_ind,gcIDs_ind,count=countID
       
       for gcID=0L,gc.nSubgroupsTot-1 do begin
         ; select ids in group
@@ -237,7 +233,7 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
       end
       
       ; make sure all gas particles were found in the group catalog
-      match,ids,galaxyIDs,ind1,ind2,count=countCheck
+      calcMatch,ids,galaxyIDs,ind1,ind2,count=countCheck
       if countCheck ne n_elements(ids) then message,'Error: Failed to locate all gal.'
 
       ; immediate return for galaxy only (accretionRates)?
@@ -266,7 +262,7 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
       nextOff = 0UL
       
       ; match indices between gas ids and group member ids
-      match,ids_groupmem,gc.IDs,ids_ind,gcIDs_ind,count=countID,/sort
+      calcMatch,ids_groupmem,gc.IDs,ids_ind,gcIDs_ind,count=countID
       
       for gcID=0L,gc.nSubgroupsTot-1 do begin
         ; select ids in group
@@ -286,7 +282,7 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
       end
   
       ; make sure all gas particles were found in the group catalog
-      match,ids_groupmem,groupmemIDs,ind1,ind2,count=countCheck
+      calcMatch,ids_groupmem,groupmemIDs,ind1,ind2,count=countCheck
       if countCheck ne n_elements(ids_groupmem) then message,'Error: Failed to locate all gmem.'
       
       ; save group membership catalog
@@ -308,7 +304,7 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
       nextOff = 0UL
       
       ; match indices between star ids and group ids
-      match,ids_stars,gc.IDs,ids_ind,gcIDs_ind,count=countID,/sort
+      calcMatch,ids_stars,gc.IDs,ids_ind,gcIDs_ind,count=countID
       
       for gcID=0L,gc.nSubgroupsTot-1 do begin
         ; select ids in group
@@ -328,7 +324,7 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
       end
       
       ; make sure all stellar particles were found in the group catalog
-      match,ids_stars,stellarIDs,ind1,ind2,count=countCheck
+      calcMatch,ids_stars,stellarIDs,ind1,ind2,count=countCheck
       if countCheck ne n_elements(ids_stars) then message,'Error: Failed to locate all stars.'
 
       ; save stellar catalog
@@ -383,11 +379,11 @@ function galaxyCatRadii, sP=sP
     
     ; IMPORTANT! rearrange ids_ind to be in the order of gc.xIDs, need this if we want ids[ids_ind], 
     ; temp[ids_ind], etc to be in the same order as the galaxy catalog id list    
-    match,galcat.galaxyIDs,ids,galcat_ind,ids_gal_ind,count=countGal,/sort
-    ids_gal_ind = ids_gal_ind[sort(galcat_ind)]
+    calcMatch,galcat.galaxyIDs,ids,galcat_ind,ids_gal_ind,count=countGal
+    ids_gal_ind = ids_gal_ind[calcSort(galcat_ind)]
     
-    match,galcat.groupmemIDs,ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-    ids_gmem_ind = ids_gmem_ind[sort(galcat_ind)]
+    calcMatch,galcat.groupmemIDs,ids,galcat_ind,ids_gmem_ind,count=countGmem
+    ids_gmem_ind = ids_gmem_ind[calcSort(galcat_ind)]
     
     ids        = !NULL
     galcat_ind = !NULL
@@ -403,14 +399,13 @@ function galaxyCatRadii, sP=sP
     ; load stellar ids and match, calculate radial distances
     ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
     
-    match,galcat.stellarIDs,ids,galcat_ind,ids_stars_ind,count=countStars,/sort
-    ids_stars_ind = ids_stars_ind[sort(galcat_ind)]
+    calcMatch,galcat.stellarIDs,ids,galcat_ind,ids_stars_ind,count=countStars
+    ids_stars_ind = ids_stars_ind[calcSort(galcat_ind)]
     
     ids        = !NULL
     galcat_ind = !NULL
     
-    pos_stars = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
-    pos_stars = pos_stars[*,ids_stars_ind]
+    pos_stars = loadSnapshotSubset(sP=sP,partType='stars',field='pos',ind=ids_stars_ind)
     
     ; load subhalo catalog for mostBoundParticleID and for priParentIDs
     gc = loadGroupCat(sP=sP,/skipIDs)
@@ -884,7 +879,7 @@ function gcSubsetProp, sP=sP, select=select, $
     mt = mergerTreeSubset(sP=sP)
     
     ; use intersection of (pri,sec,all) list and tracked list
-    match,gcIDList,mt.galcatIDList,ind1,ind2,count=count,/sort
+    calcMatch,gcIDList,mt.galcatIDList,ind1,ind2,count=count
     if count eq 0 then message,'Error: mtS and gcIDList intersection empty.'
     ;print,'gcSubsetProp intersect',n_elements(gcIDList),n_elements(mt.galcatIDList),count
     
@@ -1041,11 +1036,15 @@ function gcSubsetProp, sP=sP, select=select, $
     
     ; if all tracers requested, find children of all the gas IDs in the groupcat
     if keyword_set(allTR) then begin
-      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-      ids_gal   = tr_ids[cosmoTracerChildren(sP=sP,gasIDs=galcat.galaxyIDs[galcatInds.gal],/getInds)]
-      ids_gmem  = tr_ids[cosmoTracerChildren(sP=sP,gasIDs=galcat.groupmemIDs[galcatInds.gmem],/getInds)]
-      ids_stars = tr_ids[cosmoTracerChildren(sP=sP,starIDs=galcat.stellarIDs[galcatInds.stars],/getInds)]
+      tr_ids    = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
+      tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
+      
+      ids_gal   = tr_ids[cosmoTracerChildren(sP=sP,gasIDs=galcat.galaxyIDs[galcatInds.gal],tr_parids=tr_parids,/getInds)]
+      ids_gmem  = tr_ids[cosmoTracerChildren(sP=sP,gasIDs=galcat.groupmemIDs[galcatInds.gmem],tr_parids=tr_parids,/getInds)]
+      ids_stars = tr_ids[cosmoTracerChildren(sP=sP,starIDs=galcat.stellarIDs[galcatInds.stars],tr_parids=tr_parids,/getInds)]
+      
       tr_ids = !NULL
+      tr_parids = !NULL
       
       r = {gal:ids_gal,gmem:ids_gmem,stars:ids_stars}
       

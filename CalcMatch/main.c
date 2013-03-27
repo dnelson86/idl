@@ -23,6 +23,13 @@ int inplace_comparison_func(const void *a, const void *b)
   return ( id1 - id2 );
 }
 
+int inplace_indcomp_func(const void *a, const void *b) // unused
+{
+  MyIndType ind1 = *(MyIndType *)a;
+  MyIndType ind2 = *(MyIndType *)b;
+  return ( ind1 - ind2 );
+}
+
 // sort the index array, and in the comparator use it to index the actual IDs
 
 int indexing_comp_func(const void *a, const void *b)
@@ -43,6 +50,19 @@ int indexB_comp_func(const void *a, const void *b)
   MyInt id1 = B[ *(MyIndType *)a ];
   MyInt id2 = B[ *(MyIndType *)b ];
   return ( id1 - id2 );
+}
+
+// variant of indexB which uses the addresses of B to insure stability for the CalcMatchDupe case
+
+int indexB_comp_stable_func(const void *a, const void *b)
+{
+  MyInt id1 = B[ *(MyIndType *)a ];
+  MyInt id2 = B[ *(MyIndType *)b ];
+  
+  if ( id1 != id2 )
+    return ( id1 - id2 ); // data value difference
+    
+  return &( B[ *(MyIndType *)a ] ) - &( B[ *(MyIndType *)b ] ); // address difference
 }
 
 /* 64bit ID with 32bit indices sort example, return permutation indices:
@@ -244,6 +264,151 @@ int CalcMatch(int argc, void* argv[])
   
   // copy number of matched elements over numA and numB (note: off1=off2)
   count_out[0] = indOffset;
+
+  return 1;
+}
+
+/* match two 64bit ID arrays, where B can have duplicates (i.e. B is tracer_parentIDs, A is gasIDs)
+
+    ; prepare inputs/outputs
+    numA  = long(n_elements(A))
+    numB  = long(n_elements(B))
+    
+    inds_A_out = lindgen(numA)
+    inds_B_out = lindgen(numB)
+    count      = -1L
+    
+    ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_int64.so', 'CalcMatchDupe', $
+                        numA,numB,A,B,inds_A_out,inds_B_out,count,/CDECL)
+    
+    ; take index subsets
+    inds_A_out = inds_A_out            ; child_counts for each parent (number of B duplicates per A)
+    inds_B_out = inds_B_out[0:count-1] ; indices of B matched to A, ordered in their original orders
+
+*/
+
+int CalcMatchDupe(int argc, void* argv[])
+{
+  MyIndType i = 0, j = 0;
+  char buf[128];
+  
+  MyIndType numA, numB;
+  MyIndType *inds_A_out, *inds_B_out, *count_out;
+  MyIndType *inds_A, *inds_B;
+
+  // validate input
+  if (argc != 7)
+  {
+    sprintf(buf,"Wrong number of arguments (%d)!\n",argc);
+    IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,buf);
+    return 0;
+  }
+  
+#ifdef VERBOSE
+#ifdef INT64_PRECISION
+  //IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSort Loaded (INT64).");
+#else
+  //IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSort Loaded (INT32).");
+#endif
+#endif
+
+  // inputs and return by reference
+  numA   = *(MyIndType *)argv[0];
+  numB   = *(MyIndType *)argv[1];
+  
+  A = (MyInt *)argv[2];
+  B = (MyInt *)argv[3];
+  
+  inds_A_out = (MyIndType *)argv[4];
+  inds_B_out = (MyIndType *)argv[5];
+  count_out  = (MyIndType *)argv[6];
+   
+  // make a copy of the input indices (which are 0,1,2,...)
+  inds_A = (MyIndType *) malloc(numA * sizeof(MyIndType));
+  inds_B = (MyIndType *) malloc(numB * sizeof(MyIndType));
+  
+  if ( inds_A == NULL || inds_B == NULL ) {
+    sprintf(buf,"Error: Failed to allocate memory for indices copy.");
+    IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,buf);
+    return 0;
+  }
+  
+  memcpy( inds_A, inds_A_out, numA * sizeof(MyIndType) );
+  memcpy( inds_B, inds_B_out, numB * sizeof(MyIndType) );
+  
+  // fhtr sort (threaded), skip for A if method >= 10
+  my_qsort( inds_A, numA, sizeof(MyIndType), indexA_comp_func );
+  my_qsort( inds_B, numB, sizeof(MyIndType), indexB_comp_stable_func );
+  
+  // allocate space for the offset table
+  MyIndType *offsetTable = (MyIndType *) malloc( (numA+1) * sizeof(MyIndType) );
+  offsetTable[0] = 0;
+  
+  // zero the input/output inds_A_out array so child counts start at zero
+  memset( inds_A_out, 0, numA * sizeof(MyIndType) );
+  
+  MyIndType indOffset = 0; // sequential walk through inds_B_out
+  MyIndType count = 0; // number of children for this parent
+  
+  // single walk match, B can contain duplicates
+  while (i < numA && j < numB)
+  {
+    if ( A[ inds_A[i] ] == B[ inds_B[j] ] ) {
+      // matched element
+      inds_A_out[inds_A[i]] += 1; // child_count of this A parent (in -unsorted- order)
+      inds_B_out[indOffset] = inds_B[j]; // ordered child tracer indices
+      
+      // move forward only in B, in case we have another match with this same A element
+      j += 1;
+      indOffset += 1;
+      count += 1;
+    } else if ( A[ inds_A[i] ] < B[ inds_B[j] ] ) {
+      // element mismatch, forward in A, reset local child count, update offsetTable
+      i += 1;
+      offsetTable[i] = offsetTable[i-1] + count;
+      count = 0;
+    } else {
+      // element mismatch, forward in B
+      j += 1;
+    }
+  }
+  
+  // number of total matched children
+  count_out[0] = indOffset;
+  
+  // reverse the A sort
+  MyIndType *inds_A_back = (MyIndType *) malloc( numA * sizeof(MyIndType) );
+    
+  for( i = 0; i < numA; i++)
+    inds_A_back[inds_A[i]] = i;
+  
+  // need to rearrange inds_B_out based on the sorting of A (using the offsetTable)
+  // first copy the first [0:indOffset-1] of inds_B_out over inds_B (no longer needed)
+  memcpy( inds_B, inds_B_out, indOffset * sizeof(MyIndType) );
+  
+  // walk through A (in original order) and copy its matched B indices sequentially into inds_B_out
+  indOffset = 0;
+  
+  MyIndType curInd;
+  int numMatches;
+  
+  for ( i = 0; i < numA; i++ )
+  {
+    curInd = inds_A_back[i];
+    numMatches = inds_A_out[i];
+    
+    if ( !numMatches )
+      continue;
+      
+    for ( j = 0; j < numMatches; j++ )
+      inds_B_out[indOffset + j] = inds_B[offsetTable[curInd] + j];
+
+    indOffset += numMatches;
+  }
+  
+  free(inds_A_back);
+  free(inds_A);
+  free(inds_B);
 
   return 1;
 }

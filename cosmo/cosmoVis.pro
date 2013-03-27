@@ -511,8 +511,8 @@ pro scatterMapPastPosComp
     ; load ids and match for indices
     print,'Loading...'
     ids = loadSnapshotSubset(sP=sPg,partType='gas',field='ids')
-    match,ids,galIDs.hot,ids_ind_hot,inds2,count=countHot
-    match,ids,galIDs.cold,ids_ind_cold,inds2,count=countCold
+    calcMatch,ids,galIDs.hot,ids_ind_hot,inds2,count=countHot
+    calcMatch,ids,galIDs.cold,ids_ind_cold,inds2,count=countCold
     if countHot ne n_elements(galIDs.hot) or countCold ne n_elements(galIDs.cold) then message,'error2'
     ids = !NULL
     
@@ -647,8 +647,8 @@ pro scatterMapPastPosComp
     ; load ids and match for tracer indices
     print,'Loading...'
     ids = loadSnapshotSubset(sP=sPa,partType='tracerMC',field='tracerIDs')
-    match,ids,galIDs.hot,ids_ind_hot,inds2,count=countHot
-    match,ids,galIDs.cold,ids_ind_cold,inds2,count=countCold
+    calcMatch,ids,galIDs.hot,ids_ind_hot,inds2,count=countHot
+    calcMatch,ids,galIDs.cold,ids_ind_cold,inds2,count=countCold
     if countHot ne n_elements(galIDs.hot) or countCold ne n_elements(galIDs.cold) then message,'error2'
     ids = !NULL
     

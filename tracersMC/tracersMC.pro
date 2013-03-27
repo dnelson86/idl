@@ -152,10 +152,14 @@ end
 ;                        specified gas cells/stars (by indices gasInds or ids gasIDs or ids starIDs)
 ; note: for MC tracers should not mix gas and stellar searches, do separately
 
-function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=verbose, $
+function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
                               gasInds=gasInds, gasIDs=gasIDs, starIDs=starIDs, $ ; input: gas cells/stars to search
+                              tr_parids=tr_parids, $ ; optional input, if already loaded
                               child_counts=child_counts ; optional output
                               
+  compile_opt idl2, hidden, strictarr, strictarrsubs               
+  useExternalLowMem = 0 ; roughly 50% slower, but half the peak memory usage
+                      
   if (n_elements(gasInds) eq 0 and n_elements(gasIDs) eq 0 and n_elements(starIDs) eq 0) then message,'Input required.'
   if (not keyword_set(getInds) and not keyword_set(getIDs)) then message,'Output type required.'
   if (n_elements(gasIDs) gt 0 and n_elements(starIDs) gt 0) then message,'Either gas or stars.'
@@ -163,9 +167,7 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=ver
   if n_elements(gasIDs) eq 0 and n_elements(starIDs) eq 0 then begin
     ; convert input gas indices into IDs
     if n_elements(gasInds) eq 0 then stop ; gas indices required if IDs not specified (no starInds support)
-    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')    
-    gasIDs = gas_ids[gasInds]
-    gas_ids = !NULL
+    gasIDs = loadSnapshotSubset(sP=sP,partType='gas',field='ids',inds=gasInds)
   endif
   
   pt = 'gas'
@@ -178,47 +180,54 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=ver
   endif
   
   ; get tracer parent IDs
-  tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
+  if ~keyword_set(tr_parids) then $
+    tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
   
-  ; reverse histogram
-  prevMax = max(tr_parids)
-  child_counts = histogram(tr_parids,min=0,rev=child_inds,/L64)
+  if useExternalLowMem eq 0 then begin
+  
+    ; (option 1) use reverse histogram approach
+    prevMax = max(tr_parids)
+    child_counts = histogram(tr_parids,min=0,rev=child_inds,/L64)
 
-  if min(child_inds) lt 0 then message,'Error: Corrupt RI.'
-  if max(tr_parids) ne prevMax then message,'Error: Corrupted histo input.'
+    if min(child_inds) lt 0 then message,'Error: Corrupt RI.'
+    if max(tr_parids) ne prevMax then message,'Error: Corrupted histo input.'
   
-  ; number of child tracers for each requested parent
-  child_counts = child_counts[gasIDs]
+    ; number of child tracers for each requested parent
+    child_counts = child_counts[gasIDs]
   
-  ; reduce memory usage if possible
-  if max(child_counts) lt 32767 then child_counts = uint(child_counts)
+    ; reduce memory usage if possible
+    if max(child_counts) lt 32767 then child_counts = long(child_counts)
 
-  ; DEBUG: sanity check on child counts
-  gas_ids = loadSnapshotSubset(sP=sP,partType=pt,field='ids')
-  placeMap = getIDIndexMap(gas_ids,minid=minid)
-  gas_ids = !NULL
+    ; find gas cells with at least one child tracer
+    w = where(child_counts gt 0,count)
+    if (count eq 0) then return, []
   
-  num_tr = loadSnapshotSubset(sP=sP,partType=pt,field='numtr')
-  num_tr = num_tr[placeMap[gasIDs-minid]]
-  placeMap = !NULL
-  if not array_equal(child_counts,num_tr) then message,'Error: Tracer child count mismatch.'
-
-  ; find gas cells with at least one child tracer
-  w = where(child_counts gt 0,count)
-  if (count eq 0) then return, []
+    ; add all children tracer indices to keeper array
+    tr_inds = lon64arr(total(child_counts,/int))
+    start = 0LL
   
-  ; add all children tracer indices to keeper array
-  ;if total(child_counts,/int) gt 2e9 then stop ; change tr_inds to lon64arr
-  tr_inds = lon64arr(total(child_counts,/int))
-  start = 0LL
+    foreach gasID,gasIDs[w],i do begin
+      tr_inds[start:start+child_counts[w[i]]-1] = child_inds[child_inds[gasID]:child_inds[gasID+1]-1]
+      start += child_counts[w[i]]
+    endforeach
   
-  foreach gasID,gasIDs[w],i do begin
-    tr_inds[start:start+child_counts[w[i]]-1] = child_inds[child_inds[gasID]:child_inds[gasID+1]-1]
-    start += child_counts[w[i]]
-  endforeach
+  endif else begin
+  
+    ; (option 2) use external routine
+    tr_inds = calcMatchDupe(gasIDs,tr_parids,dupe_counts=child_counts,count=count)
+    
+  endelse
   
   ; check for 32 bit long overflow
-  if (min(tr_inds) lt 0) then stop
+  if min(tr_inds) lt 0 or min(child_counts) lt 0 then message,'Error: Likely overflow.'
+  
+  ; DEBUG: sanity check on child counts
+  ;gas_ids = loadSnapshotSubset(sP=sP,partType=pt,field='ids')
+  ;placeMap = getIDIndexMap(gas_ids,minid=minid)
+  ;gas_ids = !NULL
+  ;num_tr = loadSnapshotSubset(sP=sP,partType=pt,field='numtr',inds=placeMap[gasIDs-minid])
+  ;placeMap = !NULL
+  ;if not array_equal(child_counts,num_tr) then message,'Error: Tracer child count mismatch.'
   
   ; DEBUG: sanity check (slower loop with concat)
   ;tr_inds2 = []
@@ -229,19 +238,14 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, verbose=ver
   ;endforeach
   ;if not array_equal(tr_inds,tr_inds2) then stop
   
-  if keyword_set(verbose) then print,'found ['+str(n_elements(tr_inds))+'] matching tracer children.'
-
-  ; if tracer IDs requested, load tracer IDs and do crossmatch
   if keyword_set(getIDs) then begin
-    tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-    
-    ; return children tracer ids
-    return,tr_ids[tr_inds]
-    
+    ; if tracer IDs requested, load tracer IDs and return subset
+    return, loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids',inds=tr_inds)
   endif else begin
     ; return children tracer indices
     return, tr_inds
   endelse
+  
 end
 
 ; checkTracerDistInGal()

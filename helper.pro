@@ -376,11 +376,15 @@ function getIDIndexMap, ids, minid=minid
   minid = min(ids)
   maxid = max(ids)
 
-  if n_elements(ids) gt 2e9 then message,'Error: Going to overrun arr.'
+  if n_elements(ids) gt 2e9 then message,'Error: Going to overrun arr, switch to long64.'
+  
+  ; Paul's direct indexing approach (fastest)  
+  arr = ulonarr(maxid-minid+1)
+  arr[ids-minid] = lindgen(n_elements(ids))
   
   ; C-style loop approach (good for sparse IDs)
-  arr = ulonarr(maxid-minid+1)
-  for i=0ULL,n_elements(ids)-1L do arr[ids[i]-minid] = i
+  ;arr = ulonarr(maxid-minid+1)
+  ;for i=0ULL,n_elements(ids)-1L do arr[ids[i]-minid] = i
   
   ; looped where approach (never a good idea)
   ;arr = l64indgen(maxid-minid+1)
@@ -882,19 +886,19 @@ end
 @timeScalesPlot
 
 @accretionRates
-@accretionTraj
-@accretionTrajVis
+;@accretionTraj
+;@accretionTrajVis
 @cosmoVis
 @cosmoVisMap
-@cosmoOverDens
-@haloCompProj
+;@cosmoOverDens
+;@haloCompProj
 @galaxyCatVis
 
 @sphere
 @spherePlot
 @spherePowerSpec
-@filamentSearch
-@filamentSearchPlot
+;@filamentSearch
+;@filamentSearchPlot
 
 @plotGalCat
 @plotMaxTemps
@@ -903,19 +907,18 @@ end
 @plotRadProfiles
 
 @tracersVel_Cosmo
-@tracersVel_Halos
+;@tracersVel_Halos
 ;@tracersVel_Disks
 ;@tracersVel_2D
 ;@tracersVel_SphSym
 
 @tracersMC
-@tracersMC_Halos
+;@tracersMC_Halos
 ;@tracersMC_2D
 ;@tracersMC_SphSym
 
-@arepoLoad
-@arepoVis2D
-@arepoSphSym
+;@arepoLoad
+;@arepoVis2D
+;@arepoSphSym
 
-@filamentTest
 @LSF

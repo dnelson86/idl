@@ -249,8 +249,8 @@ pro trTrajExport
     
     ; load tracer ids and match
     loc_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
-    match,loc_ids,trIDs,loc_ids_ind,trIDs_ind,count=countMatch,/sort
-    loc_ids_ind = loc_ids_ind[sort(trIDs_ind)]
+    calcMatch,loc_ids,trIDs,loc_ids_ind,trIDs_ind,count=countMatch
+    loc_ids_ind = loc_ids_ind[calcSort(trIDs_ind)]
     
     if countMatch ne nTracers then message,'Error: Failed to find all tracers'
     

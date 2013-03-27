@@ -47,7 +47,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        radIndGalAcc:  4,$     ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
        gfmElements:   ['H','He','C','N','O','Ne','Mg','Si','Fe'] ,$
        gfmNumElements: 0, $ ; set to >=1 for GFM runs outputting abundances by metal
-       gfmWinds: 0 $ ; set to 1 for GFM_WINDS
+       gfmWinds:       0, $ ; set to 1 for GFM_WINDS
+       mapNotMatch:    1  $ ; use idIndexMap instead of match() approach in analysis, whenever possible
       }
 
   ; copy inputs
@@ -68,7 +69,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.gfmNumElements = 9
     r.gfmWinds       = 1
     
-    if res eq 128 or res eq 256 then begin 
+    if res eq 128 or res eq 256 or res eq 512 then begin 
       r.boxSize       = 20000.0
       r.snapRange     = [0,139]
       r.groupCatRange = [45,139] ; z6=46, z5=50, z4=55, z3=61, z2=69
