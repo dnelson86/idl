@@ -1,6 +1,6 @@
 ; accretionTimes.pro
 ; gas accretion project - past radial history of gas elements (virial radius crossing)
-; dnelson dec.2012
+; dnelson mar.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionTimes(): for each gas particle/tracer, starting at some redshift, track backwards in time
@@ -93,13 +93,13 @@ function accretionTimes, sP=sP, restart=restart
       ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
       
       ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs   
-      match,galcat.galaxyIDs[mt.galcatSub.gal],ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+      calcMatch,galcat.galaxyIDs[mt.galcatSub.gal],ids,galcat_ind,ids_gal_ind,count=countGal
       ids_gal_ind = ids_gal_ind[sort(galcat_ind)]
       
-      match,galcat.groupmemIDs[mt.galcatSub.gmem],ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+      calcMatch,galcat.groupmemIDs[mt.galcatSub.gmem],ids,galcat_ind,ids_gmem_ind,count=countGmem
       ids_gmem_ind = ids_gmem_ind[sort(galcat_ind)]
       
-      match,galcat.stellarIDs[mt.galcatSub.stars],ids,galcat_stars_ind,ids_stars_ind,count=countStars,/sort
+      calcMatch,galcat.stellarIDs[mt.galcatSub.stars],ids,galcat_stars_ind,ids_stars_ind,count=countStars
       ids_stars_ind    = ids_stars_ind[sort(galcat_stars_ind)]
       galcat_stars_ind = galcat_stars_ind[sort(galcat_stars_ind)] ; use to incompletely fill r.x_stars
 
@@ -415,23 +415,31 @@ function accretionTimes, sP=sP, restart=restart
       h = loadSnapshotHeader(sP=sP)
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
       
-      ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
-      ; temp[ids_ind], etc to be in the same order as the group catalog id list    
-      match,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal,/sort
-      trids_gal_ind  = trids_gal_ind[sort(galcat_ind)]
-      
-      match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
-      trids_gmem_ind  = trids_gmem_ind[sort(galcat_ind)]
-      
-      match,galcat_stars_trids,tr_ids,galcat_ind,trids_stars_ind,count=countStars,/sort
-      trids_stars_ind  = trids_stars_ind[sort(galcat_ind)]
+      if sP.mapNotMatch then begin
+        idIndexMap = getIDIndexMap(tr_ids,minid=minid)
+          
+        trids_gal_ind   = idIndexMap[galcat_gal_trids-minid]
+        trids_gmem_ind  = idIndexMap[galcat_gmem_trids-minid]
+        trids_stars_ind = idIndexMap[galcat_stars_trids-minid]
+        idIndexMap = !NULL
+      endif else begin
+        ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
+        ; temp[ids_ind], etc to be in the same order as the group catalog id list   
+        calcMatch,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal
+        trids_gal_ind = trids_gal_ind[calcSort(galcat_ind)]
+        calcMatch,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem
+        trids_gmem_ind = trids_gmem_ind[calcSort(galcat_ind)]
+        calcMatch,galcat_stars_trids,tr_ids,galcat_ind,trids_stars_ind,count=countStars
+        trids_stars_ind = trids_stars_ind[calcSort(galcat_ind)]
+        
+        galcat_ind = !NULL
+        
+        if countGal ne n_elements(galcat_gal_trids) or $
+           countGmem ne n_elements(galcat_gmem_trids) or $
+           countStars ne n_elements(galcat_stars_trids) then message,'Error: Tracer id match counts'
+      endelse
       
       tr_ids     = !NULL
-      galcat_ind = !NULL
-      
-      if countGal ne n_elements(galcat_gal_trids) or $
-         countGmem ne n_elements(galcat_gmem_trids) or $
-         countStars ne n_elements(galcat_stars_trids) then message,'Error: Tracer id match counts'
       
       ; load tracer parents IDs
       tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentid')
@@ -452,7 +460,7 @@ function accretionTimes, sP=sP, restart=restart
         par_ids = loadSnapshotSubset(sP=sP,partType=partType,field='ids')
       
         ; note: tr_parids_gal,gmem,stars are NOT UNIQUE, use a value_locate approach (not match)
-        sort_inds = sort(par_ids)
+        sort_inds = calcSort(par_ids)
         par_ids_sorted = par_ids[sort_inds]
         
         ; gal
@@ -824,10 +832,10 @@ function accretionTimes, sP=sP, restart=restart
       
       ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
       ; temp[ids_ind], etc to be in the same order as the group catalog id list    
-      match,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal,/sort
+      calcMatch,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal
       trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
       
-      match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
+      calcMatch,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem
       trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
       
       tr_ids     = !NULL

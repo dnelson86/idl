@@ -310,7 +310,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       ;satPIDs = gcPIDList(gc=gc,select='sec',valGCids=satGCids,partType=partType)
       
       ; remove the intersection of (satPIDs,loc_ids) from posval
-      match,satPIDs,loc_ids,sat_ind,ids_ind,count=count,/sort
+      calcMatch,satPIDs,loc_ids,sat_ind,ids_ind,count=count
       sat_ind = !NULL
       
       all = bytarr(n_elements(loc_ids))

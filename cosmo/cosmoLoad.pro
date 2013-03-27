@@ -25,7 +25,7 @@ function getTypeSortedIDList, sP=sP, gc=gc
   count_gas = 0
   if h.nPartTot[partTypeNum('gas')] gt 0 then begin
     gas_ids  = loadsnapshotSubset(sP=sP,partType='gas',field='ids')
-    match,gas_ids,gc.IDs,gas_ind,gc_ind_gas,count=count_gas,/sort
+    calcMatch,gas_ids,gc.IDs,gas_ind,gc_ind_gas,count=count_gas
     gas_ids  = !NULL
     
     ; reorder indices into ID arrays to match order found in gc.IDs
@@ -38,7 +38,7 @@ function getTypeSortedIDList, sP=sP, gc=gc
   count_dm = 0
   if h.nPartTot[partTypeNum('dm')] gt 0 then begin
     dm_ids = loadsnapshotSubset(sP=sP,partType='dm',field='ids')
-    match,dm_ids,gc.IDs,dm_ind,gc_ind_dm,count=count_dm,/sort
+    calcMatch,dm_ids,gc.IDs,dm_ind,gc_ind_dm,count=count_dm
     dm_ids = !NULL
     gc_ind_dm = gc_ind_dm[sort(gc_ind_dm)]
     if (count_dm ne total(gc.groupLenType[partTypeNum('dm'),*])) then stop
@@ -47,7 +47,7 @@ function getTypeSortedIDList, sP=sP, gc=gc
   count_trvel = 0
   if h.nPartTot[partTypeNum('tracerVel')] gt 0 then begin
     trvel_ids = loadsnapshotSubset(sP=sP,partType='tracerVel',field='ids')
-    match,trvel_ids,gc.IDs,trvel_ind,gc_ind_trvel,count=count_trvel,/sort
+    calcMatch,trvel_ids,gc.IDs,trvel_ind,gc_ind_trvel,count=count_trvel
     trvel_ids = !NULL
     gc_ind_trvel = gc_ind_trvel[sort(gc_ind_trvel)]
     if (count_trvel ne total(gc.groupLenType[partTypeNum('tracerVel'),*])) then stop
@@ -56,7 +56,7 @@ function getTypeSortedIDList, sP=sP, gc=gc
   count_star = 0
   if h.nPartTot[partTypeNum('stars')] gt 0 then begin
     star_ids = loadsnapshotSubset(sP=sP,partType='star',field='ids')
-    match,star_ids,gc.IDs,star_ind,gc_ind_star,count=count_star,/sort
+    calcMatch,star_ids,gc.IDs,star_ind,gc_ind_star,count=count_star
     star_ids = !NULL
     gc_ind_star  = gc_ind_star[sort(gc_ind_star)]
     if (count_star ne total(gc.groupLenType[partTypeNum('stars'),*])) then stop
@@ -136,7 +136,7 @@ function getTypeSortedIDList, sP=sP, gc=gc
   ;if (count_gas gt 0 or count_dm gt 0 or count_trvel gt 0 or count_star gt 0) then stop
   
   ; DEBUG: match old and sorted ID lists for consistency
-  match,gc.IDs,sortedIDList,ind1,ind2,count=count,/sort
+  calcMatch,gc.IDs,sortedIDList,ind1,ind2,count=count
   if (count ne n_elements(sortedIDList)) then stop
   
   if min(sortedIDList) lt 0 then stop ; check for 32 bit long overflow

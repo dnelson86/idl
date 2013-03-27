@@ -2,6 +2,100 @@
 ; healpix power spectrum, isotropy parameter
 ; dnelson mar.2013
 
+; read_alm(): parse FITS output of anafast_cxx healpix for a_lm coefficients
+
+function read_alm, l_vals, fitsFileName
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  alm_in = mrdfits(fitsFileName,1,/silent)
+  spawn, 'rm '+fitsFileName, ret
+        
+  ;alm.index ; l*l+l+m+1 (m <= l) (which means l+1 m for each l)
+  totCoeffs = total(l_vals+1,/int)
+      
+  if totCoeffs ne n_elements(alm_in) then message,'Error: Bad size of fits input.'
+      
+  ; return structure
+  alm = {l : lonarr(totCoeffs) ,$
+         m : lonarr(totCoeffs) ,$
+         a : fltarr(totCoeffs)  }
+      
+  ; separate out l,m indices for each alm
+  l = 0L & m = 0L
+      
+  for i=0L,n_elements(alm_in)-1 do begin
+    alm.l[i] = l
+    alm.m[i] = m
+        
+    m += 1
+    if m gt l then begin
+      l += 1
+      m = 0
+    endif
+        
+  endfor
+      
+  if ~array_equal(alm_in.index, alm.l*alm.l+alm.l+alm.m+1) then message,'Error: Bad l,m decomposition.'
+    
+  ; overwrite alm structure with alm amplitudes
+  alm.a = sqrt(alm_in.real * alm_in.real + alm_in.imag * alm_in.imag)
+      
+  return,alm
+end
+
+; isotropyParam(): calculate "isotropy parameter" in various ways
+
+function isotropyParam, l_vals, cl=cl, l_split=l_split, $
+                                alm=alm, l_window=l_window
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  r = {cl1      : !values.f_nan ,$
+       cl2      : !values.f_nan ,$
+       cl_split : !values.f_nan ,$
+       alm1     : !values.f_nan ,$
+       alm2     : !values.f_nan  }
+
+  ; power spectrum
+  if keyword_set(cl) then begin
+    pSpec = l_vals*(l_vals+1)*cl/2/!pi
+    if pSpec[0] ne 0.0 then message,'strange, this is mean subtracted'
+    
+    r.cl1 = total(pSpec[2:*]) / pSpec[1]
+    r.cl2 = total(pSpec)
+    
+    if keyword_set(l_split) then $
+      r.cl_split = total(pSpec[0:l_split]) / total(pSpec[l_split+1:*])
+  endif
+  
+  ; alm coefficients
+  if keyword_set(alm) then begin
+    if ~keyword_set(l_window) then message,'Error: Must specify l window for alm IP.'
+    
+    window_vals = lindgen(l_window[1]-l_window[0]) + l_window[0]
+    
+    r.alm1 = 0.0
+    r.alm2 = 0.0
+    
+    foreach l_val,window_vals do begin
+      w = where(alm.l eq l_val,count)
+      if count eq 0 then message,'Error'
+    
+      ; (1)
+      a = alm.a[w] ; / mean(alm.a[w])
+      a -= mean(a)
+    
+      r.alm1 += total(abs(a))
+    
+      ; (2)
+      a = alm.a[w]
+      r.alm2 += stddev(a)
+    endforeach
+    
+  endif
+  
+  return,r
+end
+
 ; haloShellAngPSpecTheory(): make synthetic healpix maps and test the power spectra output
 
 pro haloShellAngPSpecTheory
@@ -58,13 +152,10 @@ pro haloShellAngPSpecTheory
       
       cgPlot,l_vals,l_vals*(l_vals+1)*cl/2/!pi,line=0,color=cgColor(units.colors[k]),/overplot
 
-      ; Munoz isotropy parameter
-      yy = l_vals*(l_vals+1)*cl/2/!pi
-      iso_param = total(yy[2:*]) / yy[1]
-      iso_param2 = total(yy)
-      if yy[0] ne 0.0 then message,'strange, this is mean subtracted'
+      ; isotropy parameter
+      ip = isotropyParam(l_vals,cl=cl)
         
-      print,angSize,pxFrac,iso_param,iso_param2
+      print,angSize,pxFrac,ip.cl1,ip.cl2
     endforeach
     
     ; legends
@@ -101,6 +192,7 @@ pro haloShellAngPSpecTheory
   
       cgText,xtpos[i]-0.01,ytpos[i]-0.01,'l = '+str(l_modes[i]),/normal,alignment=0.5
     endfor
+    
   end_PS, pngResize=60, /deletePS
   
   ; start plot (3)
@@ -132,17 +224,17 @@ pro haloShellAngPSpecTheory
       
       ; run power spectra
       ianafast,healpix_data,cl,nlmax=l_max,/cxx,/nested,tmpdir='/n/home07/dnelson/',$
-        /silent;,/won,iter_order=2
+        /silent,alm1_out='/n/home07/dnelson/alm.temp.fits';,/won,iter_order=2
         
       cgPlot,l_vals,l_vals*(l_vals+1)*cl/2/!pi,line=0,color=cgColor(units.colors[i]),/overplot
 
-      ; Munoz isotropy parameter
-      yy = l_vals*(l_vals+1)*cl/2/!pi
-      iso_param = total(yy[2:*]) / yy[1]
-      iso_param2 = total(yy)
-      if yy[0] ne 0.0 then message,'strange, this is mean subtracted'
+      ; recover a_lm coefficients and calculate isotropy parameters
+      alm = read_alm(l_vals,'/n/home07/dnelson/alm.temp.fits')
+      
+      l_window = [20,23]
+      ip = isotropyParam(l_vals,cl=cl,alm=alm,l_window=l_window)
         
-      print,i,l_modes[i],iso_param,iso_param2
+      print,i,l_modes[i],ip.cl1,ip.cl2,ip.alm1,ip.alm2
     endfor
     
     ; legends
@@ -208,29 +300,31 @@ pro haloShellAngPowerSpec
         healpix_data = reform(healpix_data)
         healpix_data /= (max(healpix_data)-min(healpix_data))
         ianafast,healpix_data,cl_gas,nlmax=l_max,/cxx,/nested,tmpdir='/n/home07/dnelson/',$
-          /silent;,/won,iter_order=2
+          /silent,alm1_out='/n/home07/dnelson/alm.temp.fits';,/won,iter_order=2
+      
+        alm_gas = read_alm(l_vals,'/n/home07/dnelson/alm.temp.fits')
       
         healpix_data = hsd_dm.value[*,radInd] - mean(hsd_dm.value[*,radInd])
         healpix_data = reform(healpix_data)
         healpix_data /= (max(healpix_data)-min(healpix_data))
         ianafast,healpix_data,cl_dm,nlmax=l_max,/cxx,/nested,tmpdir='/n/home07/dnelson/',$
-          /silent;,/won,iter_order=2        
+          /silent,alm1_out='/n/home07/dnelson/alm.temp.fits';,/won,iter_order=2        
+        
+        alm_dm = read_alm(l_vals,'/n/home07/dnelson/alm.temp.fits')
         
         ; plot power spectra
         cgPlot,l_vals,l_vals*(l_vals+1)*cl_gas/2/!pi,line=k,color=cgColor(units.colors[0]),/overplot
         cgPlot,l_vals,l_vals*(l_vals+1)*cl_dm/2/!pi,line=k,color=cgColor(units.colors[1]),/overplot
 
-        ; Munoz isotropy parameter
-        yy = l_vals*(l_vals+1)*cl_gas/2/!pi
-        iso_gas = total(yy[2:*]) / yy[1]
-        iso_gas2 = total(yy[0:l_split]) / total(yy[l_split+1:*])
-        if yy[0] ne 0.0 then message,'strange, mean sub'
+        ; isotropy parameters
+        l_window = [10,50]
         
-        yy = l_vals*(l_vals+1)*cl_dm/2/!pi
-        iso_dm = total(yy[2:*]) / yy[1]
-        iso_dm2 = total(yy[0:l_split]) / total(yy[l_split+1:*])
-        
-        print,hMassTargets[m],hsd_gas.radFacs[radInd],iso_gas,iso_gas2,iso_dm,iso_dm2
+        ip_gas = isotropyParam(l_vals,cl=cl_gas,l_split=l_split,alm=alm_gas,l_window=l_window)
+        ip_dm  = isotropyParam(l_vals,cl=cl_dm,l_split=l_split,alm=alm_dm,l_window=l_window)
+                
+        print,hMassTargets[m],hsd_gas.radFacs[radInd],$
+              ip_gas.cl1,ip_dm.cl1,ip_gas.cl_split,ip_dm.cl_split,$
+              ip_gas.alm1,ip_gas.alm2,ip_dm.alm1,ip_dm.alm2
       endforeach
       
       ; legends
@@ -255,13 +349,15 @@ function subsetIsotropy, sP=sP
 
   ; config
   sgSelect        = 'pri'
-  minNumGasInHalo = 4000 ; in any case this must be >>nNGB to make any sense
+  minNumGasInHalo = 3000 ; in any case this must be >>nNGB to make any sense
   subsetProp      = 'vradnorm'
   subsetRanges    = list([-5.0,5.0],[-5.0,-3.0],[-0.5,0.5],[1.0,5.0])
   
-  nSide   = 64 ; for healpix map
-  nNGB    = 20 ; in ThVal search
-  l_split = 10 ; take isotropy as ratio of power below to power above this wavenumber
+  nSide    = 64 ; for healpix map
+  nNGB     = 20 ; in ThVal search
+  l_split  = 10 ; CL: take isotropy as ratio of power below to power above this wavenumber
+  l_window = [20,50] ; ALM: take isotropy as a_lm coefficient width within l window
+  nIPs     = 4 ; number of isotropy parameters to store per subset
   
   nSubsets = n_elements(subsetRanges)
   nSphPx   = nSide2nPix(nSide) ; number of healpix pixels per map
@@ -269,7 +365,7 @@ function subsetIsotropy, sP=sP
   l_vals   = findgen(l_max+1)
   
   ; check if save exists
-  saveFilename = sP.derivPath + 'binnedVals/binIso.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+  saveFilename = sP.derivPath + 'binnedVals/binIsoNew.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
     str(sP.snap) + '.' + subsetProp + '_' + str(n_elements(subsetRanges)) + '.' + sgSelect + '.sav'
   
   ; results exist, return
@@ -294,7 +390,7 @@ function subsetIsotropy, sP=sP
   
   ; return array
   r = { powerSpecs   : fltarr(l_max+1,n_elements(gcIDs),nSubsets) ,$
-        isoIndex     : fltarr(n_elements(gcIDs),nSubsets) + !values.f_nan ,$
+        isoIndex     : fltarr(nIPs,n_elements(gcIDs),nSubsets) + !values.f_nan ,$
         sgSelect     : sgSelect      ,$
         subsetProp   : subsetProp    ,$
         subsetRanges : subsetRanges  ,$
@@ -314,10 +410,10 @@ function subsetIsotropy, sP=sP
   
   ; now restrict all these quantities to gmem only
   galcat = galaxyCat(sP=sP)
-  match,ids,galcat.groupmemIDs,ids_ind,gmem_ind,count=countGmem
+  calcMatch,ids,galcat.groupmemIDs,ids_ind,gmem_ind,count=countGmem
   ids = !NULL
   if countGmem ne n_elements(galcat.groupmemIDs) then message,'Error: Failed to find all gmem in gas ids.'
-  ids_ind = ids_ind[sort(gmem_ind)]
+  ids_ind = ids_ind[calcSort(gmem_ind)]
   
   mass = mass[ids_ind]
   pos  = pos[*,ids_ind]
@@ -395,14 +491,19 @@ function subsetIsotropy, sP=sP
       healpix_data -= mean(healpix_data)
       healpix_data /= (max(healpix_data)-min(healpix_data))
       ianafast,healpix_data,cl_gas,nlmax=l_max,/cxx,/nested,tmpdir='/n/home07/dnelson/',$
-        /silent;,/won,iter_order=2
+        /silent,alm1_out='/n/home07/dnelson/alm.temp.fits';,/won,iter_order=2
+          
+      alm_gas = read_alm(l_vals,'/n/home07/dnelson/alm.temp.fits')    
           
       ; save power spectrum and isotropy index
-      pSpec    = l_vals*(l_vals+1)*cl_gas/2/!pi
-      isoIndex = total(pSpec[0:l_split]) / total(pSpec[l_split+1:*])
+      pSpec = l_vals*(l_vals+1)*cl_gas/2/!pi
+      ip    = isotropyParam(l_vals,cl=cl_gas,l_split=l_split,alm=alm_gas,l_window=l_window)
       
       r.powerSpecs[*,k,j] = pSpec
-      r.isoIndex[k,j] = isoIndex
+      r.isoIndex[0,k,j]   = ip.cl_split
+      r.isoIndex[1,k,j]   = ip.cl1
+      r.isoIndex[2,k,j]   = ip.alm1
+      r.isoIndex[3,k,j]   = ip.alm2
     endforeach
     
   endforeach

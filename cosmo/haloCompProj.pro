@@ -134,7 +134,8 @@ pro makeHaloComparisonPage
       wMatch = where(matchedInds ne -1,countMatch,comp=wNoMatch,ncomp=countNoMatchA)
       
       ; find subset of gadget halos that were not matched
-      match,match.matchedInds,wG,inds_match,inds_wG,count=countNoMatchG,/sort
+      calcMatch,match.matchedInds,wG,inds_match,inds_wG,count=countNoMatchG
+      
       if countNoMatchG gt 0 then begin
         wGMatched = wG[inds_wG]
         wGNoMatch = removeIntersectionFromB(wGMatched,wG)

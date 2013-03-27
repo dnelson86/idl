@@ -1,6 +1,6 @@
 ; accretionTraj.pro
 ; particle trajectories with time for visualization
-; dnelson may.2012
+; dnelson mar.2013
 
 ; smoothHaloPos(): smooth the center position or bulk velocity over time of a halo
 
@@ -153,10 +153,10 @@ function accretionTraj, sP=sP, getVel=getVel
       ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
       
       ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs   
-      match,galcat.galaxyIDs[mt.galcatSub.gal],ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+      calcMatch,galcat.galaxyIDs[mt.galcatSub.gal],ids,galcat_ind,ids_gal_ind,count=countGal
       ids_gal_ind = ids_gal_ind[sort(galcat_ind)]
       
-      match,galcat.groupmemIDs[mt.galcatSub.gmem],ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+      calcMatch,galcat.groupmemIDs[mt.galcatSub.gmem],ids,galcat_ind,ids_gmem_ind,count=countGmem
       ids_gmem_ind = ids_gmem_ind[sort(galcat_ind)]
       
       ids        = !NULL
@@ -261,18 +261,33 @@ function accretionTraj, sP=sP, getVel=getVel
     ; load gas ids
     gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
 
-    ; match galcat IDs to gas_ids
-    match,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
-    ids_gal = gas_ids[ids_gal_ind[sort(galcat_ind)]]
-    
-    match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-    ids_gmem = gas_ids[ids_gmem_ind[sort(galcat_ind)]]
-    
+    if sP.mapNotMatch then begin
+      idIndexMap = getIDIndexMap(gas_ids,minid=minid)
+          
+      trids_ind  = idIndexMap[ galcat.galaxyIDs[mt.galcatSub.gal] - minid ]
+      ids_gal    = gas_ids[trids_ind]
+      trids_ind  = idIndexMap[ galcat.groupmemIDs[mt.galcatSub.gmem] - minid ]
+      ids_gmem   = gas_ids[trids_ind]
+        
+      trids_ind  = !NULL
+      idIndexMap = !NULL
+    endif else begin
+      ; match galcat IDs to gas_ids
+      calcMatch,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal
+      ids_gal = gas_ids[ids_gal_ind[sort(galcat_ind)]]
+      calcMatch,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem
+      ids_gmem = gas_ids[ids_gmem_ind[sort(galcat_ind)]]
+    endelse
+        
     gas_ids = !NULL
     
     ; locate tracer children (indices) of gas id subsets
-    galcat_gal_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
-    galcat_gmem_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
+    tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
+    galcat_gal_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, $
+                                            tr_parids=tr_parids, child_counts=galcat_gal_cc)
+    galcat_gmem_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, $
+                                            tr_parids=tr_parids, child_counts=galcat_gmem_cc)
+    tr_parids = !NULL
     
     ; convert tracer children indices to tracer IDs at this zMin
     tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
@@ -313,16 +328,25 @@ function accretionTraj, sP=sP, getVel=getVel
       h = loadSnapshotHeader(sP=sP)
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
       
-      ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
-      ; temp[ids_ind], etc to be in the same order as the group catalog id list    
-      match,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal,/sort
-      trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
+      if sP.mapNotMatch then begin
+        idIndexMap = getIDIndexMap(tr_ids,minid=minid)
+          
+        trids_gal_ind  = idIndexMap[ galcat_gal_trids - minid ]
+        trids_gmem_ind = idIndexMap[ galcat_gmem_trids - minid ]
+        
+        idIndexMap = !NULL
+      endif else begin
+        ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
+        ; temp[ids_ind], etc to be in the same order as the group catalog id list    
+        calcMatch,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal
+        trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
+        calcMatch,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem
+        trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
       
-      match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
-      trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
+        galcat_ind = !NULL
+      endelse
       
-      tr_ids     = !NULL
-      galcat_ind = !NULL
+      tr_ids = !NULL
       
       ; load tracer parents to match to gas
       tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentid')
@@ -433,13 +457,21 @@ function accretionTraj, sP=sP, getVel=getVel
     ; load gas ids
     gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
 
-    ; match galcat IDs to gas_ids
-    match,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
-    inds_gal = ids_gal_ind[sort(galcat_ind)]
+    if sP.mapNotMatch then begin
+      idIndexMap = getIDIndexMap(gas_ids,minid=minid)
+          
+      inds_gal  = idIndexMap[ galcat.galaxyIDs[mt.galcatSub.gal] - minid ]
+      inds_gmem = idIndexMap[ galcat.groupmemIDs[mt.galcatSub.gmem] - minid ]
+        
+      idIndexMap = !NULL
+    endif else begin
+      ; match galcat IDs to gas_ids
+      calcMatch,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal
+      inds_gal = ids_gal_ind[sort(galcat_ind)]
+      calcMatch,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem
+      inds_gmem = ids_gmem_ind[sort(galcat_ind)]
+    endelse
     
-    match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-    inds_gmem = ids_gmem_ind[sort(galcat_ind)]
-
     gas_ids = !NULL
     
     ; locate tracer children (indices) of gas id subsets
@@ -485,16 +517,23 @@ function accretionTraj, sP=sP, getVel=getVel
       h = loadSnapshotHeader(sP=sP)
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
       
-      ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
-      ; temp[ids_ind], etc to be in the same order as the group catalog id list    
-      match,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal,/sort
-      trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
+      if sP.mapNotMatch then begin
+        idIndexMap = getIDIndexMap(tr_ids,minid=minid)
+          
+        trids_gal_ind  = idIndexMap[ galcat_gal_trids - minid ]
+        trids_gmem_ind = idIndexMap[ galcat_gmem_trids - minid ]
+        
+        idIndexMap = !NULL
+      endif else begin
+        calcMatch,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal
+        trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
+        calcMatch,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem
+        trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
       
-      match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
-      trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
+        galcat_ind = !NULL
+      endelse
       
-      tr_ids     = !NULL
-      galcat_ind = !NULL
+      tr_ids = !NULL
       
       ; load velocities and store relative to smoothed halo CM velocity
       vel   = loadSnapshotSubset(sP=sP,partType='tracerVel',field='vel')
@@ -622,15 +661,14 @@ function accretionTrajSingle, sP=sP, hInd=hInd
       ids_local = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
       
       ; IMPORTANT! rearrange ids_ind to be in the order of original gas_ids 
-      match,gas_ids,ids_local,orig_ids_ind,ids_gas_ind,count=countGas,/sort
-      ids_gas_ind = ids_gas_ind[sort(orig_ids_ind)]
+      calcMatch,gas_ids,ids_local,orig_ids_ind,ids_gas_ind,count=countGas
+      ids_gas_ind = ids_gas_ind[calcSort(orig_ids_ind)]
       
       ids_local    = !NULL
       orig_ids_ind = !NULL
       
       ; load pos to calculate positions relative to halo centers
-      pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
-      pos = pos[*,ids_gas_ind]
+      pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos',inds=ids_gas_ind)
 
       ; calculate current distance of gas particle from smoothed halo center position for galaxy members
       pos[0,*] = hPos[mt.maxSnap-m,0] - pos[0,*]
@@ -645,15 +683,11 @@ function accretionTrajSingle, sP=sP, hInd=hInd
       pos = !NULL
       
       ; load gas u,nelec and calculate temperatures
-      u = loadSnapshotSubset(sP=sP,partType='gas',field='u')
-      u = u[ids_gas_ind]
-      
-      nelec = loadSnapshotSubset(sP=sP,partType='gas',field='ne')
-      nelec = nelec[ids_gas_ind]
+      u = loadSnapshotSubset(sP=sP,partType='gas',field='u',inds=ids_gas_ind)
+      nelec = loadSnapshotSubset(sP=sP,partType='gas',field='ne',inds=ids_gas_ind)
       
       ; load gas SFR and select off the effective EOS (SFR must be zero)
-      sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
-      sfr  = sfr[ids_gas_ind]
+      sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr',inds=ids_gas_ind)
 
       w = where(sfr eq 0.0,count)
       if count gt 0 then r.curTemp_gas[mt.maxSnap-m,w] = convertUtoTemp(u[w],nelec[w],/log)
@@ -666,15 +700,14 @@ function accretionTrajSingle, sP=sP, hInd=hInd
       ids_local = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
       
       ; IMPORTANT! rearrange ids_ind to be in the order of original gas_ids 
-      match,dm_ids,ids_local,orig_ids_ind,ids_dm_ind,count=countDM,/sort
-      ids_dm_ind = ids_dm_ind[sort(orig_ids_ind)]
+      calcMatch,dm_ids,ids_local,orig_ids_ind,ids_dm_ind,count=countDM
+      ids_dm_ind = ids_dm_ind[calcSort(orig_ids_ind)]
       
       ids_local    = !NULL
       orig_ids_ind = !NULL
       
       ; load pos to calculate positions relative to halo centers
-      pos = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
-      pos = pos[*,ids_dm_ind]
+      pos = loadSnapshotSubset(sP=sP,partType='dm',field='pos',inds=ids_dm_ind)
 
       ; calculate current distance of gas particle from smoothed halo center position for galaxy members
       pos[0,*] = hPos[mt.maxSnap-m,0] - pos[0,*]

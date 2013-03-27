@@ -1,6 +1,6 @@
 ; timeScales.pro
 ; cooling times of halo gas vs. dynamical/hubble timescales
-; dnelson feb.2013
+; dnelson mar.2013
 
 ; coolingTime(): calculate primordial network cooling times for all halo gas
 
@@ -23,8 +23,8 @@ function coolingTime, sP=sP
   ; load gas ids and match to catalog
   ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
 
-  match,galcat.groupmemIDs,ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-  ids_gmem_ind = ids_gmem_ind[sort(galcat_ind)]
+  calcMatch,galcat.groupmemIDs,ids,galcat_ind,ids_gmem_ind,count=countGmem
+  ids_gmem_ind = ids_gmem_ind[calcSort(galcat_ind)]
   
   ids = !NULL
   galcat_ind = !NULL
@@ -106,9 +106,9 @@ function enclosedMass, sP=sP
     ids = loadSnapshotSubset(sP=sP,partType=partType,field='ids')
     if n_elements(ids) eq 0 then continue ; no particles of this type present in this snapshot
     
-    match,ids,gc.IDs,ids_ind,gc_IDs_ind,count=countMatch,/sort
-    ids_ind = ids_ind[sort(gc_IDs_ind)] ; ids_ind indexes position in snapshot in the order of gc.IDs
-    gc_IDs_ind = gc_IDs_ind[sort(gc_IDs_ind)]
+    calcMatch,ids,gc.IDs,ids_ind,gc_IDs_ind,count=countMatch
+    ids_ind = ids_ind[calcSort(gc_IDs_ind)] ; ids_ind indexes position in snapshot in the order of gc.IDs
+    gc_IDs_ind = gc_IDs_ind[calcSort(gc_IDs_ind)]
     
     if countMatch ne total(gc.groupLenType[ptNum,*],/int) then message,'counts'
     if countMatch eq 0 then message,'error'
@@ -272,10 +272,10 @@ function loadFitTimescales, sP=sP, gcIDList=gcIDList, accTimesRepTR=accTimesRepT
     ids_gmem = galcat.groupmemIDs[inds.gmem]
   
     ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    match,ids,ids_gmem,ids_ind,ids_gmem_ind,count=countMatch
+    calcMatch,ids,ids_gmem,ids_ind,ids_gmem_ind,count=countMatch
     if countMatch ne n_elements(inds.gmem) then message,'error'
     ids = !NULL
-    ids_ind = ids_ind[sort(ids_gmem_ind)]
+    ids_ind = ids_ind[calcSort(ids_gmem_ind)]
   
     masses = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
     masses = masses[ids_ind]
@@ -399,10 +399,10 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
   endif else begin
     ; load gas ids to match to gmem ids
     ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    match,ids,galcat.groupmemIDs,ids_ind,galcat_ind,count=countGmem
+    calcMatch,ids,galcat.groupmemIDs,ids_ind,galcat_ind,count=countGmem
     if countGmem ne n_elements(galcat.groupmemIDs) then message,'Error: Failed to find all gmem ids.'
     
-    ids_ind = ids_ind[sort(galcat_ind)]
+    ids_ind = ids_ind[calcSort(galcat_ind)]
     ids = !NULL
     galcat_ind = !NULL
     

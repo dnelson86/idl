@@ -1,6 +1,6 @@
 ; accretionMode.pro
 ; gas accretion project - past substructure history of gas elements
-; dnelson dec.2012
+; dnelson mar.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionMode(): for eaching gas particle/tracer with a recorded accretion time, starting at some 
@@ -117,8 +117,9 @@ function accretionMode, sP=sP
       ; we only want to match galcat.stellarIDs against gas IDs in groupcat, not against any star ids
       ; just set all star blocks in gc.IDs to -1 to avoid any such matches later
       star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
-      match,star_ids,gc.IDs,star_ids_ind,gc_ids_ind,count=countMatch
+      calcMatch,star_ids,gc.IDs,star_ids_ind,gc_ids_ind,count=countMatch
       if countMatch gt 0 then gc.IDs[gc_ids_ind] = -1
+      
       star_ids     = !NULL
       star_ids_ind = !NULL
       gc_ids_ind   = !NULL
@@ -140,7 +141,7 @@ function accretionMode, sP=sP
       
       if count_gal gt 0 then begin
         ; global match against subgroup ID list (this includes fuzz and unbound gas)
-        match,galcat.galaxyIDs[galcatSub.gal[w_gal]],gc.IDs,galcat_ind,gc_gal_ind,count=countGal,/sort
+        calcMatch,galcat.galaxyIDs[galcatSub.gal[w_gal]],gc.IDs,galcat_ind,gc_gal_ind,count=countGal
         
         ; those that don't match, assign to category 1. smooth
         if countGal lt count_gal then begin
@@ -234,7 +235,7 @@ function accretionMode, sP=sP
         
         if countSmooth gt 0 then begin
           ; global match against subgroup ID list (this includes fuzz and unbound gas)
-          match,galcat.galaxyIDs[galcatSub.gal[wSmooth]],gc.IDs,galcat_ind,gc_gal_ind,count=countGal,/sort
+          calcMatch,galcat.galaxyIDs[galcatSub.gal[wSmooth]],gc.IDs,galcat_ind,gc_gal_ind,count=countGal
 
           ; those that match, calculate subgroup ID they belong to
           if countGal gt 0 then begin
@@ -261,7 +262,7 @@ function accretionMode, sP=sP
         
       if count_gmem gt 0 then begin
         ; global match against subgroup ID list (this includes fuzz and unbound gas)
-        match,galcat.groupmemIDs[galcatSub.gmem[w_gmem]],gc.IDs,galcat_ind,gc_gmem_ind,count=countGmem,/sort
+        calcMatch,galcat.groupmemIDs[galcatSub.gmem[w_gmem]],gc.IDs,galcat_ind,gc_gmem_ind,count=countGmem
         
         ; those that don't match, assign to category 1. smooth
         if countGmem lt count_gmem then begin
@@ -353,7 +354,7 @@ function accretionMode, sP=sP
         
         if countSmooth gt 0 then begin
           ; global match against subgroup ID list (this includes fuzz and unbound gas)
-          match,galcat.groupmemIDs[galcatSub.gmem[wSmooth]],gc.IDs,galcat_ind,gc_gmem_ind,count=countGmem,/sort
+          calcMatch,galcat.groupmemIDs[galcatSub.gmem[wSmooth]],gc.IDs,galcat_ind,gc_gmem_ind,count=countGmem
 
           ; those that match, calculate subgroup ID they belong to
           if countGmem gt 0 then begin
@@ -380,7 +381,7 @@ function accretionMode, sP=sP
       
       if count_stars gt 0 then begin
         ; global match against subgroup ID list (this includes fuzz and unbound gas)
-        match,galcat.stellarIDs[galcatSub.stars[w_stars]],gc.IDs,galcat_ind,gc_stars_ind,count=countStars,/sort
+        calcMatch,galcat.stellarIDs[galcatSub.stars[w_stars]],gc.IDs,galcat_ind,gc_stars_ind,count=countStars
         
         ; those that don't match, assign to category 1. smooth
         if countStars lt count_stars then begin
@@ -472,7 +473,7 @@ function accretionMode, sP=sP
         
         if countSmooth gt 0 then begin
           ; global match against subgroup ID list (this includes fuzz and unbound gas)
-          match,galcat.stellarIDs[galcatSub.stars[wSmooth]],gc.IDs,galcat_ind,gc_stars_ind,count=countStars,/sort
+          calcMatch,galcat.stellarIDs[galcatSub.stars[wSmooth]],gc.IDs,galcat_ind,gc_stars_ind,count=countStars
 
           ; those that match, calculate subgroup ID they belong to
           if countStars gt 0 then begin
@@ -634,11 +635,12 @@ function accretionMode, sP=sP
               
     ; for recycled mode, we can decide immediately based on the tracer windcounter
     if sP.gfmWinds ne 0 then begin
-      ; load wind counters
+      ; load wind counters and tracer parents
       tr_windcounter = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
+      tr_parids      = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
       
       ; gal: find recycled and override bracketSnap using earliest rvir crossing
-      galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, gasIDs=galcat.galaxyIDs[mt.galcatSub.gal])
+      galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, tr_parids=tr_parids, gasIDs=galcat.galaxyIDs[mt.galcatSub.gal])
       w = where(tr_windcounter[galcat_trinds[gal_w_at]] gt 0,count1)
       if count1 gt 0 then begin
         r.accMode_gal[w] = 10
@@ -646,7 +648,7 @@ function accretionMode, sP=sP
       endif
       
       ; gmem
-      galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, gasIDs=galcat.groupmemIDs[mt.galcatSub.gmem])
+      galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, tr_parids=tr_parids, gasIDs=galcat.groupmemIDs[mt.galcatSub.gmem])
       w = where(tr_windcounter[galcat_trinds[gmem_w_at]] gt 0,count2)
       if count2 gt 0 then begin
         r.accMode_gmem[w] = 10
@@ -654,13 +656,14 @@ function accretionMode, sP=sP
       endif
       
       ; stars
-      galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, starIDs=galcat.stellarIDs[mt.galcatSub.stars])
+      galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, tr_parids=tr_parids, starIDs=galcat.stellarIDs[mt.galcatSub.stars])
       w = where(tr_windcounter[galcat_trinds[stars_w_at]] gt 0,count3)
       if count3 gt 0 then begin
         r.accMode_stars[w] = 10
         bracketSnap.stars[w] = value_locate(snapTimes,at.accTime_stars[-1,stars_w_at[w]])
       endif
       
+      tr_parids = !NULL
       galcat_trinds = !NULL
       tr_windcounter = !NULL
       print,'Found recycled: ['+str(count1)+'] gal, ['+str(count2)+'] gmem, ['+str(count3)+'] stars ('+$
@@ -741,7 +744,7 @@ function accretionMode, sP=sP
         if count_now eq 0 then continue
         
         ; global match against subgroup tracers ID list (this includes -only- bound gas)
-        match,galcatSub.(k)[w_now],groupcat_trIDs,galcat_ind,gc_ind,count=countNow,/sort
+        calcMatch,galcatSub.(k)[w_now],groupcat_trIDs,galcat_ind,gc_ind,count=countNow
         
         ; those that don't match, assign to category 1. smooth
         if countNow lt count_now then begin
@@ -833,7 +836,7 @@ function accretionMode, sP=sP
           if countSmooth eq 0 then continue
           
           ; global match against subgroup ID list (this includes fuzz and unbound gas)
-          match,galcatSub.(k)[wSmooth],groupcat_trIDs,galcat_ind,gc_ind,count=countNow,/sort
+          calcMatch,galcatSub.(k)[wSmooth],groupcat_trIDs,galcat_ind,gc_ind,count=countNow
           
           if countNow eq 0 then continue
           

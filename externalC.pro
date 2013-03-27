@@ -403,6 +403,42 @@ function calcSort, array, inPlace=inPlace
   if ~keyword_set(inPlace) then return,inds
 end
 
+; calcMatchDupe(): same as calcMatch but allow duplicates in B
+
+function calcMatchDupe, A, B, dupe_counts=dupe_counts, count=count
+
+  ; sanity checks
+  numA = long(n_elements(A))
+  numB = long(n_elements(B))
+  
+  if numA gt 2e9 or numB gt 2e9 then message,'Error: Move to 64bit.'
+  if size(A,/type) ne size(B,/type) then message,'Error: A and B have different var types.'
+  if size(A,/tname) ne 'LONG' and size(A,/tname) ne 'LONG64' then $
+    message,'Error: Unsupported variable type in A,B.'
+    
+  ; prepare input
+  if size(A,/tname) eq 'LONG'   then soName = 'int32'
+  if size(A,/tname) eq 'LONG64' then soName = 'int64'
+  
+  ; output
+  inds_A = lindgen(numA)
+  inds_B = lindgen(numB)
+  
+  count = -1L
+  
+  ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_'+soName+'.so','CalcMatchDupe',$
+                      numA,numB,A,B,inds_A,inds_B,count,/CDECL)
+    
+  if count eq -1L then message,'Error: Count unchanged.'
+    
+  ; take index subsets
+  dupe_counts = inds_A            ; child_counts for each parent (number of B duplicates per A)
+  inds_B      = inds_B[0:count-1] ; indices of B matched to A, ordered in their original orders
+
+  return,inds_B
+    
+end
+
 ; calcMatch(): for two vectors A,B which contain only UNIQUE elements, find the intersection
 ;   where the return is such that A[ind1] = B[ind2]
 ;   note that like match.pro A[ind1] does not sample A in its (unsorted) order
@@ -454,7 +490,13 @@ pro calcMatch, A, B, ind1, ind2, count=count, noSortA=noSortA
     ind1 = -1
     ind2 = -1
   endelse
-
+  
+  ; DEBUG: verify
+  ;match,A,B,check_ind1,check_ind2,count=check_count
+  ;if count ne check_count then message,'Error.'
+  ;if ~array_equal(ind1,check_ind1) then message,'Error: ind1.'
+  ;if ~array_equal(ind2,check_ind2) then message,'Error: ind2.'  
+    
 end
 
 ; calcMatchBlock(): gives the functionality of calcMatch() above but only the first array A is
@@ -572,498 +614,4 @@ pro calcMatchBlock, A, ind1, ind2, sP=sP, partType=partType, field=field, count=
    
   count = totCount
   
-end
-
-; mymatch(): produces identical output of match.pro, but no concatenated array
-
-pro mymatch, A, B, ind1, ind2, count=count, retUnsorted=retUnsorted
-
-  ; sort A and B if not already
-  sort_A = sort(A)
-  sort_B = sort(B)
-  AA = A[sort_A]
-  BB = B[sort_B]
-  
-  i = 0LL
-  j = 0LL
-  
-  numA = n_elements(AA)
-  numB = n_elements(BB)
-  
-  if numA gt 2e9 or numB gt 2e9 then message,'Error: Move to 64bit.'
-  
-  ind1 = lonarr(numA)
-  ind2 = lonarr(numB)
-  
-  offset = 0LL
-  
-  while i lt numA and j lt numB do begin
-    if AA[i] eq BB[j] then begin
-      if keyword_set(retUnsorted) then begin
-        ind1[offset] = i
-        ind2[offset] = j
-      endif else begin
-        ; matched element
-        ind1[offset] = sort_A[i]
-        ind2[offset] = sort_B[j]
-      endelse
-      i += 1 & j += 1 & offset += 1
-    endif else if AA[i] lt BB[j] then begin
-      ; element mismatch, forward in A
-      i += 1
-    endif else begin
-      ; element mismatch, forward in B
-      j += 1
-    endelse
-  endwhile
-  
-  if offset gt 0 then begin
-    ind1 = ind1[0:offset-1]
-    ind2 = ind2[0:offset-1]
-  endif else begin
-    ind1 = -1
-    ind2 = -1
-  endelse
-  
-  count = offset
-  
-end
-
-; testMatchBlock()
-
-pro testMatchBlock
-
-  ; generate some data
-  num = 50
-  A = shuffle([indgen(num)+30,indgen(num)+100])
-  B = shuffle([indgen(num)+1000,indgen(num)+80])
-  
-  ; split B and match halves
-  num = n_elements(B)
-  
-  b1 = b[0:num/2-1]
-  b2 = b[num/2:num-1]
-  match,a,b1,inda1,indb1,count=count1
-  match,a,b2,inda2,indb2,count=count2
-  
-  count = count1+count2 ; number matched
-  
-  ; test
-  mymatch,a,b1,inda1_test,indb1_test,count=count3,/retUnsorted
-  mymatch,a,b2,inda2_test,indb2_test,count=count4,/retUnsorted
-  
-  inda_test = [inda1_test,inda2_test]
-  indb_test = [indb1_test,indb2_test + n_elements(b1)]
-  
-  ; rearrange inda_test
-  inda_fixed1 = (sort(a))[inda1_test]
-  inda_fixed2 = (sort(a))[inda2_test]
-  
-  inda_fixed = [inda_fixed1,inda_fixed2]
-  inda_fixed = inda_fixed[ sort(a[inda_fixed]) ]
-  
-  ; rearrange indb_test by the global sort of b
-  indb_fixed1 = (sort(b1))[indb1_test]
-  indb_fixed2 = (sort(b2))[indb2_test] + n_elements(b1)
-  
-  indb_fixed = [indb_fixed1,indb_fixed2] ; correct, just in wrong order
-  indb_fixed = indb_fixed[ sort(b[indb_fixed]) ]
-  
-  ; do it again with a loop, have only full A to start
-  ind1 = lonarr(n_elements(a))
-  ind2 = lonarr(n_elements(b))
-  
-  offset = 0L
-  b_offset = 0L
-  
-  for i=0,1 do begin
-    ; load b subset
-    if i eq 0 then b_subset = b[0:num/2-1]
-    if i eq 1 then b_subset = b[num/2:num-1]
-    
-    ; match
-    mymatch,a,b_subset,inda_sub,indb_sub,count=count_sub;,/retUnsorted
-    b_offset += n_elements(b_subset)
-    
-    if count_sub eq 0 then continue
-    
-    ind1_sub = inda_sub
-    ind2_sub = indb_sub + (b_offset-n_elements(b_subset))
-    
-    ind1[offset : offset+count_sub-1] = ind1_sub
-    ind2[offset : offset+count_sub-1] = ind2_sub
-    
-    offset += count_sub
-  endfor
-  
-  ; take matched subset
-  if offset gt 0 then begin
-    ind1 = ind1[0:offset-1]
-    ind2 = ind2[0:offset-1]
-  endif else begin
-    ind1 = -1
-    ind2 = -1
-  endelse
-  
-  ; now finished, fix ind1 while we have A
-  ind1 = ind1[ sort(a[ind1]) ]
-  ; delete A and load full B, fix ind2
-  ind2 = ind2[ sort(b[ind2]) ]
-  
-  ; match full for comparison
-  match,a,b,Ia,Ib,count=count5
-
-  print,'new:'
-  print,array_equal(inda_fixed,Ia)
-  print,array_equal(indb_fixed,Ib)
-  print,'loop:'
-  print,array_equal(ind1,Ia)
-  print,array_equal(ind2,Ib)
-  print,'counts:'
-  print,count5,count1+count2,count3+count4
-  
-  stop
-  
-  ; OLD
-  ; concatenate subindex arrays
-  second_b_offset = count1
-  
-  inda       = [inda1,inda2]
-  indb       = [indb1,indb2 + second_b_offset]
-  
-  ; now here we could delete full A and load full B, sort full B
-  b_sorted    = b[sort(b)]
-  b_subsorted = [b1(sort(b1)),b2(sort(b2))]
-  
-  b_subsortinds = [sort(b1),sort(b2) + second_b_offset]
-  b_sortinds = sort(b)
-  
-  ; allocate arrays for our final solution
-  inda_fixed = lonarr(num)
-  indb_fixed = lonarr(num)
-  
-  ; walk through b_subsorted (and so inda,indb)
-  if 0 then begin
-  for i=0,count-1 do begin
-    ; where in full b_sorted is this b_subsorted element?
-    new_index = ( where(b_sorted eq b_subsorted[i]) )[0]
-    new_index2 = b_subsorted[i] ; test, wrong
-    
-    ; move this inda index to the index corresponding to b_sorted (instead of b_subsorted)
-    inda_fixed[new_index] = inda[i]
-    indb_fixed[new_index] = indb[i]
-    print,new_index,new_index2
-  endfor
-  endif ;0
-  
-end
-
-; testMatching():
-
-pro testMatching
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-  forward_function simParams, loadSnapshotSubset
-  
-  ; run each sort a few times and store mean runtime  
-  nTests    = 4
-  meanTimes = fltarr(nTests)
-  
-  nIter    = 1
-  runTimes = fltarr(nIter)
-  
-  ; start memory monitor and timer
-  print,'Loading...'
-  
-  mem = memory(/current) / 1024.0^3 ; GB
-  time = systime(/sec) ; start timer (microsecond resolution)
-  
-  ; load some 64 bit data
-  partType = 'gas'
-  field    = 'ids'
-  sP = simParams(res=128,run='tracer',redshift=2.0)
-  ids_1 = loadSnapshotSubset(sP=sP,partType=partType,field=field)
-  
-  sP.snap -= 1
-  ids_2 = loadSnapshotSubset(sP=sP,partType=partType,field=field)
-  
-  NumData = long(n_elements(ids_1))  
- 
-  ; report time and memory
-  maxMem = memory(/highwater) / 1024.0^3 - mem
-  curMem = memory(/current) / 1024.0^3
-  print,'Load took: ['+string(systime(/sec)-time,format='(f5.1)')+'] sec, ['+$
-    string(maxMem,format='(f5.2)')+' GB] max, ['+string(curMem,format='(f5.2)'),' GB] cur'
- 
-  ; run normal IDL match
-  ;if 0 then begin
-  print,'Running IDL match...' 
-  
-  for i=0,nIter-1 do begin  
-    time = systime(/sec)
-  
-    match,ids_1,ids_2,ind1_a,ind2_a,count=count_a
-  
-    maxMem = memory(/highwater) / 1024.0^3 - mem
-    curMem = memory(/current) / 1024.0^3
-    runTimes[i] = systime(/sec) - time
-    print,'['+str(i)+'] IDL match took: ['+string(runTimes[i],format='(f5.1)')+'] sec, ['+$
-      string(maxMem,format='(f5.2)')+' GB] max, ['+string(curMem,format='(f5.2)'),' GB] cur'
-  endfor
-  
-  meanTimes[0] = mean(runTimes)
-
-  ; run pure IDL mymatch
-  print,'Running pure IDL mymatch...'
-  
-  for i=0,nIter-1 do begin  
-    time = systime(/sec)
-  
-    mymatch,ids_1,ids_2,ind1_b,ind2_b,count=count_b
-  
-    maxMem = memory(/highwater) / 1024.0^3 - mem
-    curMem = memory(/current) / 1024.0^3
-    runTimes[i] = systime(/sec) - time
-    print,'['+str(i)+'] IDL mymatch took: ['+string(runTimes[i],format='(f5.1)')+'] sec, ['+$
-      string(maxMem,format='(f5.2)')+' GB] max, ['+string(curMem,format='(f5.2)'),' GB] cur'
-  endfor
-  
-  meanTimes[1] = mean(runTimes)
-  ;endif ;0
-  
-  ; run CalcMatch one-pass
-  print,'Running CalcMatch one-pass...'
-  
-  for i=0,nIter-1 do begin  
-    time = systime(/sec)
-    ids_2 = loadSnapshotSubset(sP=sP,partType=partType,field=field)
-    CalcMatch,ids_1,ids_2,ind1_c,ind2_c,count=count_c
-  
-    maxMem = memory(/highwater) / 1024.0^3 - mem
-    curMem = memory(/current) / 1024.0^3
-    extMem = (n_elements(ids_1) + n_elements(ids_2)) * 4 / 1024.0^3
-    runTimes[i] = systime(/sec) - time
-    print,'['+str(i)+'] CalcMatch took: ['+string(runTimes[i],format='(f5.1)')+'] sec, ['+$
-      string(maxMem,format='(f5.2)')+' GB] max, ['+string(extMem,format='(f5.2)')+' GB] ext, ['+$
-      string(curMem,format='(f5.2)'),' GB] cur'
-  endfor
-  
-  meanTimes[2] = mean(runTimes)
-  
-  ; run CalcMatch blocked
-  print,'Running CalcMatch blocked...'
-  
-  for i=0,nIter-1 do begin  
-    time = systime(/sec)
-  
-    CalcMatchBlock,ids_1,ind1_d,ind2_d,sP=sP,partType=partType,field=field,count=count_d
-  
-    maxMem = memory(/highwater) / 1024.0^3 - mem
-    curMem = memory(/current) / 1024.0^3
-    extMem = (n_elements(ids_1) + n_elements(ids_2)/10) * 4 / 1024.0^3
-    runTimes[i] = systime(/sec) - time
-    print,'['+str(i)+'] CalcMatchBlock took: ['+string(runTimes[i],format='(f5.1)')+'] sec, ['+$
-      string(maxMem,format='(f5.2)')+' GB] max, ['+string(extMem,format='(f5.2)')+' GB] ext, ['+$
-      string(curMem,format='(f5.2)'),' GB] cur'
-  endfor
-  
-  meanTimes[3] = mean(runTimes)
-  
-  ; verify
-  strings = ['IDL match  ','IDL mymatch','CalcMatch  ','CalcBlock  ']
-  foreach sName,strings,i do print,sName+' : ['+string(meanTimes[i],format='(f5.1)')+'] sec.'
-  
-  if count_a ne count_b then message,'Error.'
-  if count_a ne count_c then message,'Error.'
-  if count_a ne count_d then message,'Error.'
-  if ~array_equal(ind1_a,ind1_b) then message,'Error 1b.'
-  if ~array_equal(ind2_a,ind2_b) then message,'Error 2b.'
-  if ~array_equal(ind1_a,ind1_c) then message,'Error 1c.'
-  if ~array_equal(ind2_a,ind2_c) then message,'Error 2c.'
-  if ~array_equal(ind1_a,ind1_d) then message,'Error 1d.'
-  if ~array_equal(ind2_a,ind2_d) then message,'Error 2d.'
-  stop
-  
-end
-
-pro monteCarloTestMatching
-
-  nIter = 10
-  
-  ; load full data set
-  partType = 'tracermc'
-  field    = 'tracerids'
-  sP = simParams(res=128,run='tracer',redshift=2.0)
-  ids_1_full = loadSnapshotSubset(sP=sP,partType=partType,field=field)
-  
-  sP.snap -= 1
-  ids_2_full = loadSnapshotSubset(sP=sP,partType=partType,field=field)
-  
-  ; loop
-  for i=0,nIter-1 do begin
-    ; make subsets, shuffle
-    startInd = round( randomu(seed,1) * 0.5 * n_elements(ids_1) ) > 0
-    endInd   = round( randomu(seed,1) * 2.0 * n_elements(ids_1) ) $
-               > startInd + 1000 < n_elements(ids_1)-1   
-    
-    ids_1 = shuffle(ids_1_full[startInd:endInd])
-  
-    startInd = round( randomu(seed,1) * 0.5 * n_elements(ids_1) ) > 0
-    endInd   = round( randomu(seed,1) * 2.0 * n_elements(ids_1) ) $
-               > startInd + 1000 < n_elements(ids_1)-1  
-
-    ids_2 = shuffle(ids_2_full[startInd:endInd])       
-  
-    ; run CalcMatch, CalcMatchBlock
-    match,ids_1,ids_2,ind1_a,ind2_a,count=count_a
-    
-    CalcMatch,ids_1,ids_2,ind1_c,ind2_c,count=count_c
-    
-    ; verify
-    if count_a ne count_c then message,'Error.'
-    if ~array_equal(ind1_a,ind1_c) then message,'Error 1c.'
-    if ~array_equal(ind2_a,ind2_c) then message,'Error 2c.'
-    
-    ; run CalcMatch with ids_2_full, CalcMatchBlock
-    CalcMatch,ids_1,ids_2_full,ind1_a,ind2_a,count=count_a
-    
-    CalcMatchBlock,ids_1,ind1_c,ind2_c,sP=sP,partType=partType,field=field,count=count_c
-    
-    ; verify
-    if count_a ne count_c then message,'Error.'
-    if ~array_equal(ind1_a,ind1_c) then message,'Error 1c.'
-    if ~array_equal(ind2_a,ind2_c) then message,'Error 2c.'
-    
-    print,i,startInd,endInd,'Passed.'
-  endfor
-
-end
-
-; testSorting(): testing sort algorithms, IDL vs various C implementations, single vs multi threaded
-
-pro testSorting
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-  forward_function simParams, loadSnapshotSubset
-    
-  ; run each sort a few times and store mean runtime
-  nTests    = 4
-  meanTimes = fltarr(nTests)
-  
-  nIter    = 3
-  runTimes = fltarr(nIter)
-
-  ; disable IDL threadpool
-  ;CPU, tpool_nthreads = 1
-  
-  ; start memory monitor and timer
-  print,'Loading...'
-  
-  mem = memory(/current) / 1024.0^3 ; GB
-  time = systime(/sec) ; start timer (microsecond resolution)
-  
-  ; load some 64 bit data
-  sP = simParams(res=256,run='tracer',redshift=2.0)
-  ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-  
-  NumData = long(n_elements(ids))  
-  
-  ; report time and memory
-  maxMem = memory(/highwater) / 1024.0^3 - mem
-  curMem = memory(/current) / 1024.0^3
-  print,'Load took: ['+string(systime(/sec)-time,format='(f5.1)')+'] sec, ['+$
-    string(maxMem,format='(f5.2)')+' GB] max, ['+string(curMem,format='(f5.2)'),' GB] cur'
-  
-  ; run normal IDL sort
-  print,'Running IDL sort...'
-  
-  inds_0 = lonarr(NumData)
-  
-  for i=0,nIter-1 do begin
-    time = systime(/sec) ; start timer
-    inds_0 = sort(ids)
-  
-    maxMem = memory(/highwater) / 1024.0^3 - mem
-    curMem = memory(/current) / 1024.0^3
-    runTimes[i] = systime(/sec) - time
-    print,'['+str(i)+'] IDL sort took: ['+string(runTimes[i],format='(f5.1)')+'] sec, ['+$
-      string(maxMem,format='(f5.2)')+' GB] max, ['+string(curMem,format='(f5.2)'),' GB] cur'
-  endfor
-  
-  meanTimes[0] = mean(runTimes)
-  
-  ; run external qsort (glibc, single threaded)
-  print,'Running glibc qsort (single threaded)...'
-  method = 1L
-
-  inds_1 = lindgen(NumData)
-  
-  for i=0,nIter-1 do begin
-    time = systime(/sec) ; start timer
-  
-    ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_int64.so','CalcSort',$
-                        NumData,ids,inds_1,method,/CDECL)
-  
-    maxMem = memory(/highwater) / 1024.0^3 - mem
-    extMem = 0 ;(bytesMyInt * NumData + bytesMyInd * NumData) / 1024.0^3
-    curMem = memory(/current) / 1024.0^3
-    runTimes[i] = systime(/sec) - time
-    print,'['+str(i)+'] glibc qsort took: ['+string(runTimes[i],format='(f5.1)')+'] sec, ['+$
-      string(maxMem,format='(f5.2)')+' GB] max, ['+string(extMem,format='(f5.2)')+' GB] ext, ['+$
-      string(curMem,format='(f5.2)'),' GB] cur'
-  endfor
-  
-  meanTimes[1] = mean(runTimes)
-  
-  ; run external qsort (threaded, fhtr generic)
-  print,'Running fhtr qsort (multi-threaded)...'
-  method = 2L
-  
-  inds_2 = lindgen(NumData)
-  
-  for i=0,nIter-1 do begin
-    time = systime(/sec) ; start timer
-  
-    ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_int64.so','CalcSort',$
-                        NumData,ids,inds_2,method,/CDECL)
-  
-    maxMem = memory(/highwater) / 1024.0^3 - mem
-    extMem = 0 ;(bytesMyInt * NumData + bytesMyInd * NumData) / 1024.0^3
-    curMem = memory(/current) / 1024.0^3
-    runTimes[i] = systime(/sec) - time
-    print,'['+str(i)+'] fhtr-generic qsort took: ['+string(runTimes[i],format='(f5.1)')+'] sec, ['+$
-      string(maxMem,format='(f5.2)')+' GB] max, ['+string(extMem,format='(f5.2)')+' GB] ext, ['+$
-      string(curMem,format='(f5.2)'),' GB] cur'
-  endfor
-  
-  meanTimes[2] = mean(runTimes)
-  
-  ; run inplace
-  print,'Running fhtr qsort inplace (multi-threaded)...'
-  method = 12L
-  inds_3 = [0]
-  
-  for i=0,nIter-1 do begin
-    dataIn = ids
-    time = systime(/sec) ; start timer
-  
-    ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_int64.so','CalcSort',$
-                        NumData,dataIn,inds_3,method,/CDECL)
-  
-    maxMem = memory(/highwater) / 1024.0^3 - mem
-    extMem = 0 ; O(logn) at most since inplace
-    curMem = memory(/current) / 1024.0^3
-    runTimes[i] = systime(/sec) - time
-    print,'['+str(i)+'] fhtr-inplace qsort took: ['+string(runTimes[i],format='(f5.1)')+'] sec, ['+$
-      string(maxMem,format='(f5.2)')+' GB] max, ['+string(extMem,format='(f5.2)')+' GB] ext, ['+$
-      string(curMem,format='(f5.2)'),' GB] cur'
-  endfor
-  
-  meanTimes[3] = mean(runTimes)
-  
-  ; verify sorts agree
-  strings = ['IDL   ','glibc ','fhtr1 ','fhtrIP']
-  foreach sName,strings,i do print,sName+' sort: ['+string(meanTimes[i],format='(f5.1)')+'] sec.'
-  
-  if ~array_equal(inds_0,inds_1) then message,'Error: Fail 1.'
-  if ~array_equal(inds_0,inds_2) then message,'Error: Fail 2.'
-  stop
 end

@@ -1,6 +1,6 @@
 ; mergerTree.pro
 ; cosmological halo tracking / merger tree through time
-; dnelson aug.2012
+; dnelson mar.2013
 
 ; mergerTree(): construct simplified merger tree for tracking halos/subhalos through time across snaps
 ; 
@@ -67,7 +67,7 @@ function mergerTree, sP=sP, makeNum=makeNum
     partIDs_prev = gcPIDList(gc=gcPrev,select='all',partType=ptNum)
     
     ; do global match between current and previous particle IDs
-    match,partIDs_cur,partIDs_prev,cur_ind,prev_ind,count=matchCount,/sort
+    calcMatch,partIDs_cur,partIDs_prev,cur_ind,prev_ind,count=matchCount
    
     ; IMPORTANT! rearrange cur_ind to be in the order of partIDs_cur (needed for while walk)
     prev_ind    = prev_ind[sort(cur_ind)]    
@@ -509,46 +509,23 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
   endif
 
   if sP.trMCPerCell gt 0 then begin
-    ; note: do not need to load and match to gas/star IDs, since ids_gal=galcat.galaxyIDs[mt.galcatSub.gal] etc
-    ids_gal   = galcat.galaxyIDs[mt.galcatSub.gal] ; new
+    ids_gal   = galcat.galaxyIDs[mt.galcatSub.gal]
     ids_gmem  = galcat.groupmemIDs[mt.galcatSub.gmem]
     ids_stars = galcat.stellarIDs[mt.galcatSub.stars]
     
     ; locate tracer children (indices) of gas id subsets
-    galcat_gal_trids   = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
-    galcat_gmem_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
-    galcat_stars_trids = cosmoTracerChildren(sP=sP, /getInds, starIDs=ids_stars, child_counts=galcat_stars_cc)
+    tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
+    galcat_gal_trids   = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, $
+                                             tr_parids=tr_parids, child_counts=galcat_gal_cc)
+    galcat_gmem_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, $
+                                             tr_parids=tr_parids, child_counts=galcat_gmem_cc)
+    galcat_stars_trids = cosmoTracerChildren(sP=sP, /getInds, starIDs=ids_stars, $
+                                             tr_parids=tr_parids, child_counts=galcat_stars_cc)
      
+    tr_parids = !NULL
     ids_gal   = !NULL
     ids_gmem  = !NULL
     ids_stars = !NULL
-    
-    ; OLD REMOVE:
-    ; exclude all tracers with nonzero wind counters (automatically excludes tracers currently in winds as well)
-    ;if sP.gfmWinds ne 0 then begin
-    ;  tr_windcounter = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
-    ;    
-    ;  w = where(tr_windcounter[galcat_gal_trids] eq 0,count)
-    ;  galcat_gal_trids   = galcat_gal_trids[w]
-    ;  galcat_gal_cc      = (replicate_var(galcat_gal_cc))[w]
-    ;  galcat_gal_cc      = histogram(galcat_gal_cc,min=0)
-    ;  if total(galcat_gal_cc,/int) ne count then message,'error1b'
-    ;    
-    ;  w = where(tr_windcounter[galcat_gmem_trids] eq 0,count)
-    ;  galcat_gmem_trids  = galcat_gmem_trids[w]
-    ;  galcat_gmem_cc     = (replicate_var(galcat_gmem_cc))[w]
-    ;  galcat_gmem_cc     = histogram(galcat_gmem_cc,min=0)
-    ;  if total(galcat_gmem_cc,/int) ne count then message,'error2b'
-    ;    
-    ;  w = where(tr_windcounter[galcat_stars_trids] eq 0,count)
-    ;  galcat_stars_trids = galcat_stars_trids[w]
-    ;  galcat_stars_cc    = (replicate_var(galcat_stars_cc))[w]
-    ;  galcat_stars_cc    = histogram(galcat_stars_cc,min=0)
-    ;  if total(galcat_stars_cc,/int) ne count then message,'error3b'
-    ;    
-    ;  tr_windcounter = !NULL
-    ;  w = !NULL
-    ;endif
     
     ; convert tracer children indices to tracer IDs at this zMin if we are returning them
     if keyword_set(galcat_gal_trids) then begin
@@ -580,17 +557,23 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
     gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
 
     ; match galcat IDs to gas_ids
-    match,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
-    inds_gal = ids_gal_ind[sort(galcat_ind)]
+    if sP.mapNotMatch then begin
+      idIndexMap = getIDIndexMap(gas_ids,minid=minid)
+          
+      inds_gal   = idIndexMap[galcat.galaxyIDs[mt.galcatSub.gal] - minid]
+      inds_gmem  = idIndexMap[galcat.groupmemIDs[mt.galcatSub.gmem] - minid]
+      idIndexMap = !NULL
+    endif else begin
+      calcMatch,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal
+      inds_gal = ids_gal_ind[sort(galcat_ind)]
+      calcMatch,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem
+      inds_gmem = ids_gmem_ind[sort(galcat_ind)]
+      ; no stars
+      
+      if countGal ne n_elements(mt.galcatSub.gal) or countGmem ne n_elements(mt.galcatSub.gmem) then $
+        message,'Error: Failed to locate all of galcat in gas_ids (overflow64?).'
+    endelse
     
-    match,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-    inds_gmem = ids_gmem_ind[sort(galcat_ind)]
-    
-    ; no stars
-    
-    if countGal ne n_elements(mt.galcatSub.gal) or countGmem ne n_elements(mt.galcatSub.gmem) then $
-      message,'Error: Failed to locate all of galcat in gas_ids (overflow64?).'
-
     gas_ids = !NULL
     
     ; locate tracer children (indices) of gas id subsets
@@ -638,7 +621,7 @@ function mergerTreeINDList, sP=sP, galcat=galcat, mt=mt, gcIDList=gcIDList
   if ~keyword_set(mt) then mt = mergerTreeSubset(sP=sP)
   
   ; verify that all the requested subgroup IDs are part of the mergerTreeSubset
-  match,mt.galcatIDList,gcIDList,ind1,ind2,count=count
+  calcMatch,mt.galcatIDList,gcIDList,ind1,ind2,count=count
   if count ne n_elements(gcIDList) then message,'Error: Not all gcIDs found in mergerTreeSubset.'
   
   ; make mask for requested subgroup IDs

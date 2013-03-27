@@ -697,7 +697,7 @@ function haloRefineFilaments, sP=sP, hfs=hfs
 ;  satPIDs = gcPIDList(gc=gc,select='sec',valGCids=satGCids,partType='gas')
       
   ; remove the intersection of (satPIDs,loc_ids) from posval
-;  match,satPIDs,ids_gas,sat_ind,ids_ind,count=count,/sort
+;  calcMatch,satPIDs,ids_gas,sat_ind,ids_ind,count=count
 ;  sat_ind = !NULL
       
 ;  all = bytarr(n_elements(ids_gas))
@@ -854,7 +854,7 @@ function makeFilamentProfile, sP=sP, subgroupID=subgroupID
     satPIDs = gcPIDList(gc=gc,select='sec',partType='gas')
     
     ; remove the intersection of (satPIDs,ids)
-    match,satPIDs,ids,sat_ind,ids_ind,count=count,/sort
+    calcMatch,satPIDs,ids,sat_ind,ids_ind,count=count
     sat_ind = !NULL
     
     all = bytarr(n_elements(ids))

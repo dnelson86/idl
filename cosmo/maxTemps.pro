@@ -1,6 +1,6 @@
 ; maxTemps.pro
 ; gas accretion project - past temperature history of gas
-; dnelson nov.2012
+; dnelson mar.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; maxTemps(): find maximum temperature for gas particles in galaxy/group member catalogs at redshift
@@ -133,14 +133,14 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       
       ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
       ; temp[ids_ind], etc to be in the same order as the group catalog id list    
-      match,galcat.galaxyIDs,ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+      calcMatch,galcat.galaxyIDs,ids,galcat_ind,ids_gal_ind,count=countGal
       ids_gal_ind = ids_gal_ind[sort(galcat_ind)]
       
-      match,galcat.groupmemIDs,ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+      calcMatch,galcat.groupmemIDs,ids,galcat_ind,ids_gmem_ind,count=countGmem
       ids_gmem_ind = ids_gmem_ind[sort(galcat_ind)]
       
       ; match galcat star ids to current gas ids
-      match,galcat.stellarIDs,ids,galcat_ind,ids_stars_ind,count=countStars,/sort
+      calcMatch,galcat.stellarIDs,ids,galcat_ind,ids_stars_ind,count=countStars
       ids_stars_ind = ids_stars_ind[sort(galcat_ind)]
       
       ids        = !NULL
@@ -223,59 +223,16 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
     if maxTempsAllFlag eq 1 then print,'Using ['+maxTempsAllSaveFilename+']'
       
     if ~file_test(resFilename) then begin ; no restart   
-      ; load gas ids
-      gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-  
-      ; match galcat IDs to gas_ids
-      match,galcat.galaxyIDs,gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
-      ids_gal = gas_ids[ids_gal_ind[sort(galcat_ind)]]
-      
-      match,galcat.groupmemIDs,gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
-      ids_gmem = gas_ids[ids_gmem_ind[sort(galcat_ind)]]
-      
-      gas_ids = !NULL
-      
-      ; load star ids and match
-      star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
-      
-      match,galcat.stellarIDs,star_ids,galcat_ind,ids_stars_ind,count=countStars,/sort
-      ids_stars = star_ids[ids_stars_ind[sort(galcat_ind)]]
-      
-      star_ids = !NULL
       
       ; locate tracer children (indices) of gas id subsets
-      galcat_gal_trids   = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, child_counts=galcat_gal_cc)
-      galcat_gmem_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, child_counts=galcat_gmem_cc)
-      galcat_stars_trids = cosmoTracerChildren(sP=sP, /getInds, starIDs=ids_stars, child_counts=galcat_stars_cc)
-      
-      ; exclude all tracers with nonzero wind counters (automatically excludes tracers currently in winds as well)
-      ; change this: all galcat parents are non-wind, so search for all their child tracers
-      ; maxtemps for MC tracers are only recorded when they have a gas cell parent (with Utherm field)
-      
-      ;if sP.gfmWinds ne 0 then begin
-      ;  tr_windcounter = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
-      ;  
-      ;  w = where(tr_windcounter[galcat_gal_trids] eq 0,count)
-      ;  galcat_gal_trids   = galcat_gal_trids[w]
-      ;  galcat_gal_cc      = (replicate_var(galcat_gal_cc))[w]
-      ;  galcat_gal_cc      = histogram(galcat_gal_cc,min=0)
-      ;  if total(galcat_gal_cc,/int) ne count then message,'error1'
-      ;  
-      ;  w = where(tr_windcounter[galcat_gmem_trids] eq 0,count)
-      ;  galcat_gmem_trids  = galcat_gmem_trids[w]
-      ;  galcat_gmem_cc     = (replicate_var(galcat_gmem_cc))[w]
-      ;  galcat_gmem_cc     = histogram(galcat_gmem_cc,min=0)
-      ;  if total(galcat_gmem_cc,/int) ne count then message,'error2'
-      ;  
-      ;  w = where(tr_windcounter[galcat_stars_trids] eq 0,count)
-      ;  galcat_stars_trids = galcat_stars_trids[w]
-      ;  galcat_stars_cc    = (replicate_var(galcat_stars_cc))[w]
-      ;  galcat_stars_cc    = histogram(galcat_stars_cc,min=0)
-      ;  if total(galcat_stars_cc,/int) ne count then message,'error3'
-      ;  
-      ;  tr_windcounter = !NULL
-      ;  w = !NULL
-      ;endif
+      tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
+      galcat_gal_trids   = cosmoTracerChildren(sP=sP, /getInds, gasIDs=galcat.galaxyIDs, $
+        tr_parids=tr_parids, child_counts=galcat_gal_cc)
+      galcat_gmem_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=galcat.groupmemIDs, $
+        tr_parids=tr_parids, child_counts=galcat_gmem_cc)
+      galcat_stars_trids = cosmoTracerChildren(sP=sP, /getInds, starIDs=galcat.stellarIDs, $
+        tr_parids=tr_parids, child_counts=galcat_stars_cc)
+      tr_parids = !NULL
       
       ; convert tracer children indices to tracer IDs at this zMin
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
@@ -285,9 +242,6 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       galcat_stars_trids = tr_ids[galcat_stars_trids]
   
       tr_ids    = !NULL
-      ids_gal   = !NULL
-      ids_gmem  = !NULL
-      ids_stars = !NULL
       galcat    = !NULL ; not used past this point
       
       ; store the main arrays for all tracers as structures so we can write them directly
@@ -327,17 +281,24 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
   
         ; load tracer ids and match to child ids from zMin
         tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-        
-        ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
-        ; temp[ids_ind], etc to be in the same order as the group catalog id list    
-        match,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal,/sort
-        trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
-        
-        match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
-        trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
-        
-        match,galcat_stars_trids,tr_ids,galcat_ind,trids_stars_ind,count=countStars,/sort
-        trids_stars_ind = trids_stars_ind[sort(galcat_ind)]
+       
+        if sP.mapNotMatch then begin
+          idIndexMap = getIDIndexMap(tr_ids,minid=minid)
+          
+          trids_gal_ind   = idIndexMap[galcat_gal_trids-minid]
+          trids_gmem_ind  = idIndexMap[galcat_gmem_trids-minid]
+          trids_stars_ind = idIndexMap[galcat_stars_trids-minid]
+          idIndexMap = !NULL
+        endif else begin
+          ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
+          ; temp[ids_ind], etc to be in the same order as the group catalog id list   
+          calcMatch,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal
+          trids_gal_ind = trids_gal_ind[calcSort(galcat_ind)]
+          calcMatch,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem
+          trids_gmem_ind = trids_gmem_ind[calcSort(galcat_ind)]
+          calcMatch,galcat_stars_trids,tr_ids,galcat_ind,trids_stars_ind,count=countStars
+          trids_stars_ind = trids_stars_ind[calcSort(galcat_ind)]
+        endelse
         
         tr_ids     = !NULL
         galcat_ind = !NULL
@@ -396,24 +357,32 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         
         ; load tracer ids and match to maxTempsAll save order (sorted ascending)
         tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-        tr_ids = tr_ids[sort(tr_ids)]
+        ret = calcSort(tr_ids,/inPlace)
         
-        ; IMPORTANT! rearrange trids_x_ind to be in the order of galcat_x_trids
-        match,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal,/sort
-        trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
-        
-        match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
-        trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
-        
-        match,galcat_stars_trids,tr_ids,galcat_ind,trids_stars_ind,count=countStars,/sort
-        trids_stars_ind = trids_stars_ind[sort(galcat_ind)]
+        if sP.mapNotMatch then begin
+          idIndexMap = getIDIndexMap(tr_ids,minid=minid)
+          
+          trids_gal_ind   = idIndexMap[galcat_gal_trids-minid]
+          trids_gmem_ind  = idIndexMap[galcat_gmem_trids-minid]
+          trids_stars_ind = idIndexMap[galcat_stars_trids-minid]
+          idIndexMap = !NULL
+        endif else begin
+          ; IMPORTANT! rearrange trids_x_ind to be in the order of galcat_x_trids
+          calcMatch,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal
+          trids_gal_ind = trids_gal_ind[calcSort(galcat_ind)]
+          calcMatch,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem
+          trids_gmem_ind = trids_gmem_ind[calcSort(galcat_ind)]
+          calcMatch,galcat_stars_trids,tr_ids,galcat_ind,trids_stars_ind,count=countStars
+          trids_stars_ind = trids_stars_ind[calcSort(galcat_ind)]
+          
+          if countGal ne n_elements(galcat_gal_trids) or $
+             countGmem ne n_elements(galcat_gmem_trids) or $
+             countStars ne n_elements(galcat_stars_trids) then $
+               message,'Error: maxTempsAll recovery failed.'
+        endelse
         
         tr_ids = !NULL
         galcat_ind = !NULL
-        
-        if countGal ne n_elements(galcat_gal_trids) or $
-           countGmem ne n_elements(galcat_gmem_trids) or $
-           countStars ne n_elements(galcat_stars_trids) then message,'Error: maxTempsAll recovery failed.'
         
         ; fill rtr_gal, rtr_gmem, rtr_stars
         restore,maxTempsAllSaveFilename,/verbose
@@ -605,10 +574,10 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
   
       ; match galcat IDs to gas_ids
-      match,galcat.galaxyIDs,gas_ids,galcat_ind,ids_gal_ind,count=countGal,/sort
+      calcMatch,galcat.galaxyIDs,gas_ids,galcat_ind,ids_gal_ind,count=countGal
       inds_gal = ids_gal_ind[sort(galcat_ind)]
       
-      match,galcat.groupmemIDs,gas_ids,galcat_ind,ids_gmem_ind,count=countGmem,/sort
+      calcMatch,galcat.groupmemIDs,gas_ids,galcat_ind,ids_gmem_ind,count=countGmem
       inds_gmem = ids_gmem_ind[sort(galcat_ind)]
   
       gas_ids = !NULL
@@ -661,10 +630,10 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       
       ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
       ; temp[ids_ind], etc to be in the same order as the group catalog id list    
-      match,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal,/sort
+      calcMatch,galcat_gal_trids,tr_ids,galcat_ind,trids_gal_ind,count=countGal
       trids_gal_ind = trids_gal_ind[sort(galcat_ind)]
       
-      match,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem,/sort
+      calcMatch,galcat_gmem_trids,tr_ids,galcat_ind,trids_gmem_ind,count=countGmem
       trids_gmem_ind = trids_gmem_ind[sort(galcat_ind)]
       
       tr_ids     = !NULL
@@ -862,16 +831,6 @@ pro maxTempsAll, sP=sP
   ; MONTE CARLO TRACERS CASE - track all tracers (constant number) by ID
   ; ------------------------
   if sP.trMCPerCell gt 0 then begin
-  
-    ; for debugging:
-    ;  ; load tracer IDs at minimum snap (this is really unneccessary, but gives us a debug check)
-    ;  sP.snap = minSnap
-    ;  tr_ids_orig = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-    ;   
-    ;   ; sort and verify
-    ;   tr_ids_orig_sort = sort(tr_ids_orig)
-    ;   tr_ids_orig = tr_ids_orig[tr_ids_orig_sort] ; sorted ascending
-    ;   nTracers = n_elements(tr_ids_orig)
       
     h = loadSnapshotHeader(sP=sP)
     nTracers = h.nPartTot[partTypeNum('tracerMC')]

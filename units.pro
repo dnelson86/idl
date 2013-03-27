@@ -69,7 +69,8 @@ function getUnits, redshift=redshift
             kpc_in_km : 3.085680e16                           ,$
             
             ; derived unit conversions
-            kmS_in_kpcYr : 0.0                                 $
+            kmS_in_kpcYr  : 0.0                               ,$
+            kmS_in_kpcGyr : 0.0                                $
       }
       
   ; derived units
@@ -101,7 +102,8 @@ function getUnits, redshift=redshift
   endif
   
   ; derived unit conversions
-  units.kmS_in_kpcYr = units.s_in_Myr / units.kpc_in_km / 1e6 ; Myr->yr
+  units.kmS_in_kpcYr  = units.s_in_Myr / units.kpc_in_km / 1e6 ; Myr->yr
+  units.kmS_in_kpcGyr = units.s_in_Myr / units.kpc_in_km * 1e3 ; Myr->Gyr
 
   ; color list
   units.colors = ['black','blue','green','red','cyan','magenta','gray','orange', $

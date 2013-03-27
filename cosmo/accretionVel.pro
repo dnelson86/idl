@@ -1,6 +1,6 @@
 ; accretionVel.pro
 ; gas accretion project - past velocity history of gas elements
-; dnelson oct.2012
+; dnelson mar.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionVel(): for each gas particle/tracer, consider it over the time range between it accretes on
@@ -179,9 +179,9 @@ function accretionVel, sP=sP, restart=restart
       ; do a single match (re-sort results into the order of single_match_ids)
       single_match_ids = [galcatSub.gal[w_gal],galcatSub.stars[w_stars]]
       
-      match,single_match_ids,tr_ids,galcat_ind,trids_single_ind,count=countSingle,/sort
-      trids_single_ind = trids_single_ind[sort(galcat_ind)]
-      galcat_ind = galcat_ind[sort(galcat_ind)]
+      calcMatch,single_match_ids,tr_ids,galcat_ind,trids_single_ind,count=countSingle
+      trids_single_ind = trids_single_ind[calcSort(galcat_ind)]
+      galcat_ind = galcat_ind[calcSort(galcat_ind)]
 
       ; explode results back into gal,gmem,stars
       countGal   = total(galcat_ind lt count_gal,/int)
@@ -213,7 +213,7 @@ function accretionVel, sP=sP, restart=restart
       gasIDMap = getIDIndexMap(gas_ids,minid=minid)
 
       ; match star tracer parents to gas ids (keep only those with gas parents at this snapshot)
-      match,gas_ids,tr_parids_stars,ind1,ind2,count=countStars ; override countStars
+      calcMatch,gas_ids,tr_parids_stars,ind1,ind2,count=countStars ; override countStars
       ind2 = ind2[sort(ind2)]
       
       if countStars gt 0 then begin
@@ -541,53 +541,4 @@ pro velSingleHalo
   
   stop
   
-end
-
-; proof of concept on doing a single match
-
-pro testSingleMatch
-
-  master = [1,3,5,4,2,8,7,9]
-  search1 = [4,2,7]
-  search2 = [3,10,1]
-  search3 = [5]
-  
-  search4 = [search1,search2,search3]
-  
-  match,search1,master,ind1,mind1,count=count1,/sort
-  mind1 = mind1[sort(ind1)]
-  ind1  = ind1[sort(ind1)]
-  match,search2,master,ind2,mind2,count=count2,/sort
-  mind2 = mind2[sort(ind2)]
-  ind2  = ind2[sort(ind2)]
-  match,search3,master,ind3,mind3,count=count3,/sort
-  mind3 = mind3[sort(ind3)]
-  ind3  = ind3[sort(ind3)]
-  
-  match,search4,master,ind4,mind4,count=count4,/sort
-  mind4 = mind4[sort(ind4)]
-  ind4  = ind4[sort(ind4)]
-  
-  ; don't really have count1-3, need to make them
-  count1 = total(ind4 lt n_elements(search1),/int)
-  count2 = total(ind4 lt n_elements(search1)+n_elements(search2) and ind4 ge n_elements(search1),/int)
-  count3 = total(ind4 ge n_elements(search1)+n_elements(search2),/int)
-  
-  mind1b = mind4[0:count1-1]
-  mind2b = mind4[count1:count1+count2-1]
-  mind3b = mind4[count1+count2:count1+count2+count3-1]
-  
-  ind1b = ind4[0:count1-1]
-  ind1b -= min(ind1b)
-  ind2b = ind4[count1:count1+count2-1]
-  ind2b -= min(ind2b)
-  ind3b = ind4[count1+count2:count1+count2+count3-1]
-  ind3b -= min(ind3b)
-  
-  print,array_equal(mind1,mind1b),array_equal(mind2,mind2b),array_equal(mind3,mind3b)
-  print,array_equal(ind1,ind1b),array_equal(ind2,ind2b),array_equal(ind3,ind3b)
-  
-  stop
-
-
 end

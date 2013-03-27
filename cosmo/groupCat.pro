@@ -358,18 +358,18 @@ function subgroupPosByMostBoundID, sP=sP
     
     ; load ids and find matches for this type
     ids = loadSnapshotSubset(sP=sP,partType=partType,field='ids')
-    match,gc.subgroupIdMostBound,ids,gc_ind,ids_ind,count=count,/sort
+    calcMatch,gc.subgroupIdMostBound,ids,gc_ind,ids_ind,count=count
     
     numFound += count
     
     if count gt 0 then begin
       ; load positions for matched most bound particles
-      ids_ind = ids_ind[sort(gc_ind)]
-      gc_ind  = gc_ind[sort(gc_ind)]
+      sort_gc_ind = calcSort(gc_ind)
+      ids_ind = ids_ind[sort_gc_ind]
+      gc_ind  = gc_ind[sort_gc_ind]
       
-      pos = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
-      
-      groupCen[*,gc_ind] = pos[*,ids_ind]
+      pos = loadSnapshotSubset(sP=sP,partType=partType,field='pos',inds=ids_ind)
+      groupCen[*,gc_ind] = pos
     endif
   endforeach
 
