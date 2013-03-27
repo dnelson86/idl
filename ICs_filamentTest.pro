@@ -1,4 +1,4 @@
-; filamentTest.pro
+; ICs_filamentTest.pro
 ; idealized filament impacting hot halo atmosphere test
 ; dnelson mar.2012
 
