@@ -160,57 +160,41 @@ function getGroupCatFilename, fileBase, snapNum=m
     f = fileBase
     
     if file_test(f) then return,f
-  endif else begin
-    ; check for '/' on end of fileBase
-    lastChar = strmid(fileBase,strlen(fileBase)-1,1)
-    if (lastChar ne '/') then fileBase += '/'
+  endif
+  
+  ; check for '/' on end of fileBase
+  lastChar = strmid(fileBase,strlen(fileBase)-1,1)
+  if (lastChar ne '/') then fileBase += '/'
     
-    ; format snap number
-    if (m le 999) then $
-      ext = string(m,format='(I3.3)')
-    if (m gt 999) then $
-      ext = string(m,format='(I4.4)')
+  ; format snap number
+  if (m le 999) then $
+    ext = string(m,format='(I3.3)')
+  if (m gt 999) then $
+    ext = string(m,format='(I4.4)')
       
-    f = fileBase + 'groups_' + ext + '/fof_subhalo_tab_' + ext
-  endelse
+  ; check for single (non-split) in root directory
+  if file_test(fileBase+'/fof_subhalo_tab_'+ext+'.hdf5') then $
+    return, [fileBase + 'fof_subhalo_tab_' + ext + '.hdf5']
+    
+  ; check for both fof+subfind and just fof
+  fBases = [ fileBase + 'groups_' + ext + '/fof_subhalo_tab_' + ext ,$
+             fileBase + 'groups_' + ext + '/fof_tab_' + ext ]
+             
+  foreach f,fBases do begin
 
-  ; check for single (non-split)
-  if file_test(fileBase+'/fof_subhalo_tab_'+ext+'.hdf5') then begin
-    f = fileBase + 'fof_subhalo_tab_' + ext + '.hdf5'
-  endif else begin
-  
-    ; check existance and multiple outputs
-    if not file_test(f+'.hdf5') then begin
-      if not file_test(f+'.0.hdf5') then begin
-        ;print, 'ERROR: group catalog [' + str(m) + '] at ' + fileBase + ' does not exist!'
-        flag = 1
-      endif
+    ; check for single inside a directory?
+    if file_test(f+'.hdf5') then $
+      return, [f+'.hdf5']
+    
+    ; check for split
+    if file_test(f+'.0.hdf5') then begin
+      ff = file_search(f+'.*hdf5')
+      return, f + '.' + str(indgen(n_elements(ff))) + '.hdf5'
     endif
-    
-    f = f + '.*hdf5'
-    
-  endelse
   
-  ; look for FoF only results (no subhalos)
-  if (flag eq 1) then begin
-    f = fileBase + 'groups_' + ext + '/fof_tab_' + ext
-  
-    ; check for single (non-split)
-    if file_test(fileBase+'/fof_tab_'+ext+'.hdf5') then begin
-      f = fileBase + 'fof_tab_' + ext + '.hdf5'
-    endif else begin
+  endforeach
     
-      ; check existance and multiple outputs
-      if not file_test(f+'.hdf5') then begin
-        if not file_test(f+'.0.hdf5') then $
-          print, 'WARNING: new group catalog [' + str(m) + '] at ' + fileBase + ' does not exist!'
-      endif
-      
-    endelse
-  endif ;flag
-  
-  if n_elements(f) gt 10 then print,'WARNING SORT GT 10 GROUPCAT OUT OF ORDER!'
-  return, file_search(f)
+  print,'Error: Failed to find group catalog file(s).'
 
 end
 
@@ -234,7 +218,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
   nFiles = n_elements(fileList)
 
   ; if new group catalog not found, look for old format
-  if fileList[0] eq '' then return,loadSubhaloGroups(sP=sP,skipIDs=skipIDs,verbose=verbose)
+  if nFiles eq 0 then return,loadSubhaloGroups(sP=sP,skipIDs=skipIDs,verbose=verbose)
 
   ; load number of split files from header of first part
   hdf5s    = h5_parse(fileList[0]) ;structure only
@@ -529,7 +513,6 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
 end
 
 ; loadSubhaloGroups(): load (OLD, not HDF5) complete subfind group catalog for a given snapshot
-;
 ; skipIDs=1 : don't load actual group member particle IDs
 
 function loadSubhaloGroups, sP=sP, verbose=verbose, skipIDs=skipIDs
@@ -1020,7 +1003,7 @@ end
 
 ; getSnapFilelist(): take input path and snapshot number and find snapshot filename
 
-function getSnapFilelist, fileBase, snapNum=m, groupOrdered=groupOrdered, subBox=subBox
+function getSnapFilelist, fileBase, snapNum=m, subBox=subBox
 
   sbstr = ''
   if keyword_set(subBox) then sbstr = 'subbox_'
@@ -1045,24 +1028,30 @@ function getSnapFilelist, fileBase, snapNum=m, groupOrdered=groupOrdered, subBox
   endelse
 
   ; check for single (non-split)
-  if not keyword_set(groupOrdered) then $
   if file_test(fileBase+'snap_'+sbstr+ext+'.hdf5') then $
-    return, file_search(fileBase + 'snap_' + sbstr + ext + ".*hdf5")
+    return, [fileBase+'snap_'+sbstr+ext+'.hdf5']
 
   ; check for single groupordered
   if file_test(fileBase+'snap-groupordered_'+ext+'.hdf5') then $
-    return, file_search(fileBase + 'snap-groupordered_' + ext+".*hdf5")
+    return, [fileBase+'snap-groupordered_'+ext+'.hdf5']
   
   ; check for multiple groupordered
-  if file_test(fileBase+'snapdir_'+ext+'/snap-groupordered_'+ext+'.0.hdf5') then $
-    return, file_search(fileBase + 'snapdir_' + ext + '/snap-groupordered_' + ext+".*hdf5")
+  if file_test(fileBase+'snapdir_'+ext+'/snap-groupordered_'+ext+'.0.hdf5') then begin
+    ff = file_search(fileBase + 'snapdir_' + ext + '/snap-groupordered_' + ext+".*hdf5")
+    return, fileBase + 'snapdir_' + ext + '/snap-groupordered_' + ext + '.' + $
+            str(indgen(n_elements(ff))) + '.hdf5'
+  endif
   
   ; check for exact name or multiple outputs
-  if (file_test(f+'.hdf5') or file_test(f+'.0.hdf5')) then $
-    return, file_search(f+".*hdf5")
+  if file_test(f+'.hdf5') then return, [f+'.hdf5']
+  
+  ; check for multiple outputs (general cosmo case)
+  if file_test(f+'.0.hdf5') then begin
+    ff = file_search(f+".*hdf5")
+    return, f + '.' + str(indgen(n_elements(ff))) + '.hdf5'
+  endif
 
-  print,'Error: Failed to find snapshot.'
-  stop
+  message,'Error: Failed to find snapshot.'
 end
 
 ; loadSnapshotHeader(): load header
@@ -1242,18 +1231,17 @@ end
 ; - specify either sP (with .snap) or a direct fileName
 
 function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field, verbose=verbose, $
-                             inds=inds, indRange=indRange, $
-                             doublePrec=doublePrec, groupOrdered=groupOrdered, subBox=subBox
+                             inds=inds, indRange=indRange, doublePrec=doublePrec, subBox=subBox
 
   if not keyword_set(verbose) then verbose = 0
 
   if n_elements(fileName) eq 0 then $
-    fileList = getSnapFilelist(sP.simPath,snapNum=sP.snap,groupOrdered=groupOrdered,subBox=subBox)
+    fileList = getSnapFilelist(sP.simPath,snapNum=sP.snap,subBox=subBox)
   if n_elements(fileName) gt 0 then $
     fileList = [fileName]
 
   nFiles = n_elements(fileList)
-  
+
   ; input config: set partType number if input in string
   partType = strlowcase(string(PT)) ; so we don't change the input
   partType = partTypeNum(partType)
