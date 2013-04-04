@@ -738,16 +738,21 @@ end
     
 function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
     
+    origSnap = sP.snap
+    if endSnap ge sP.snap then message,'Error: Ending snap is not earlier.'
+    
     ; try to trace back to this snapshot for new halo center position
     failSnap = -1
     sgCenters = fltarr(3,sP.snap-endSnap+1) ; xyz ckpc
+    gcIDs     = lonarr(sP.snap-endSnap+1)
     times     = fltarr(sP.snap-endSnap+1) ; Gyr age
     
     gcIDcur = gcID ; starting halo ID
     startSnap = sP.snap ; starting snapshot number
     
     for m=startSnap,endSnap,-1 do begin
-      ;print,m,gcIDcur,failSnap
+      gcIDs[startSnap-m] = gcIDcur
+      print,m,gcIDcur,failSnap
       sP.snap = m
       
       ; haven't failed yet, keep recording positions
@@ -792,7 +797,8 @@ function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
       endelse
     endelse
     
-    return,haloPos
+    sP.snap = origSnap
+    return,{sgCenters:sgCenters,haloPosEnd:haloPos,gcIDs:gcIDs}
 end
 
 ; plotHaloTracking(): plot fraction of successful halo adaptive tracking vs redshift

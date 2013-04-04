@@ -203,14 +203,14 @@ pro makeArepoICs
   ; config
   boxSize = 1.0
 
-  fileName = "/n/home07/dnelson/vis/ArepoVTK/test/Arepo2b.hdf5"
+  fileName = "/n/home07/dnelson/ArepoVTK/test/Arepo3c.hdf5"
   
   rho_base = 1.1
   u_base   = 5.0
   
-  Nx = 2L
-  Ny = 2L
-  Nz = 2L
+  Nx = 4L
+  Ny = 4L
+  Nz = 4L
 
   Ntot = Nx*Ny*Nz+1 ;+1 for central point test
   
@@ -238,17 +238,10 @@ pro makeArepoICs
         pos[0,pid] = i*deltaXYZ[0]+deltaXYZ[0]/2.0 ;x
         pos[1,pid] = j*deltaXYZ[1]+deltaXYZ[1]/2.0 ;y
         pos[2,pid] = k*deltaXYZ[2]+deltaXYZ[2]/2.0 ;z
-  
-        ;xyz = [pos[0,pid], pos[1,pid], pos[2,pid]]
-  
+ 
         ;all points
         rho[pid] = rho_base
         u[pid]   = u_base
-        
-        ;small perturb
-        ;if (pid eq 10) then begin
-        ;  rho[pid] *= 2.0
-        ;endif
         
         print,pid,pos[0,pid],pos[1,pid],pos[2,pid],rho[pid]
         pid++
@@ -262,6 +255,25 @@ pro makeArepoICs
   pos[2,pid] = 0.5
   rho[pid]   = 1.2 * rho_base
   u[pid]     = 2.0 * u_base
+  
+  print,pid,pos[0,pid],pos[1,pid],pos[2,pid],rho[pid]
+
+  ; Arepo3c: perturb outer layer so we don't have a cubical grid
+  w = where( (pos[0,*] lt 0.2 or pos[0,*] gt 0.8) or $
+             (pos[1,*] lt 0.2 or pos[1,*] gt 0.8) or $
+             (pos[2,*] lt 0.2 or pos[2,*] gt 0.8), count)
+
+  print,'Found ['+str(count)+'] on outer layer.'
+  
+  seed = 424242L
+  
+  for i=0,2 do begin
+    pp = round(5*(randomu(seed,count)-0.5))/50.0 ; -0.04 to +0.04
+    pos[i,w] += pp
+  endfor
+  
+  for i=0,pid-1 do print,i,pos[0,i],pos[1,i],pos[2,i]
+  ; end Arepo3c
 
   ;write
   ;writeICFile,fileName,pos,vel,id,rho,u

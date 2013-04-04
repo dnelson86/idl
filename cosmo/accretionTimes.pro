@@ -498,12 +498,6 @@ function accretionTimes, sP=sP, restart=restart
         
         sort_inds = !NULL
         par_ids_sorted = !NULL
-      
-        ; consistency check: if not GFM_WINDS, then all gal/gmem should have been found in gas
-        if sP.gfmWinds eq 0 and partType eq 'gas' then begin
-          if countGal_inPar ne countGal then message,'Error: Did not find all gal in gas (winds off).'
-          if countGmem_inPar ne countGmem then message,'Error: Did not find all gmem in gas (winds off).'
-        endif
         
         ; for gal/stars with gas parents: apply galaxy cut in (rho,T) plane
         if partType eq 'gas' then begin
