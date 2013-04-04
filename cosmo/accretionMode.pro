@@ -734,7 +734,7 @@ function accretionMode, sP=sP
       ; loop over tracer parent types (gal,gmem,stars)
       ; ----------------------------------------------
       for k=0,n_tags(bracketSnap)-1 do begin
-      
+ 
         ; select those gas particles whose accretion modes are determined at this snapshot
         w_now   = where(bracketSnap.(k) eq sP.snap,count_now)
       

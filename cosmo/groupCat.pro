@@ -1,100 +1,171 @@
 ; groupCat.pro
 ; cosmological simulations - group (fof/subfind) catalog utilities
-; dnelson nov.2012
+; dnelson apr.2013
 
-; getMatchedIDs(): return subgroup IDs given the z2.haloID from the HaloComparisonProject
-;                  account for resolution, redshift, and run
+; getMatchedIDs(): return matched subgroup IDs given a "haloID" from the HaloComparisonProject
+;                  account for resolution, redshift, and run. try to prevent IDs from floating
+;                  around in various functions
 
-function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID
-
+function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
   if sPa.res ne sPg.res then message,'Error: Resolutions differ.'
-  if sPa.snap ne sPg.snap then message,'Error: Snapshots differ.'
+  if abs(sPa.redshift - sPg.redshift) gt 0.02 then message,'Error: Redshifts differ.'
+  if sPa.redshift ne 2.0 and sPa.redshift ne 3.0 then message,'Error: Only redshift 2 or 3.'
   
-  redshift = sPa.redshift
-  if redshift ne 2.0 then message,'Error: Only redshift 2.'
+  ; hash container
+  sgIDs = hash()
   
-  ; info
-  r = { a:9999999, g:9999999, axes:[0,1] }
+  ; return 8 matched IDs for mosaic?
+  if keyword_set(mosaicIDs) then begin
+    sgIDs['z2_res512_tracer']   = [5611,4518,2874,2389,2058,1037,816,252]
+    sgIDs['z2_res512_gadget']   = [6369,5151,3338,2824,2538,1117,981,266]
+    sgIDs['z2_res512_feedback'] = [5750,4622,2940,2384,2131,834,676,150]
+    sgIDs['z2_res512_axes']     = list([0,2],[0,1],[0,2],[0,2],[1,2],[0,2],[1,2],[0,1])
+    
+    sgIDs['z3_res512_tracer']   = [3664,2920,1812,1459,1210,620,496,137] ; ~same mass spacing as z2
+    sgIDs['z3_res512_gadget']   = [4398,3194,2061,1593,1275,742,573,154] ; matched from tracer
+    sgIDs['z3_res512_feedback'] = [4451,3067,1801,1453,1135,671,468,151] ; matched from tracer
+    sgIDs['z3_res512_axes']     = list([0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1])
+    
+    keyA = 'z' + str(fix(sPa.redshift)) + '_res' + str(sPa.res) + '_' + sPa.run
+    keyG = 'z' + str(fix(sPg.redshift)) + '_res' + str(sPg.res) + '_' + sPg.run
+    keyAxes = 'z' + str(fix(sPa.redshift)) + '_res' + str(sPa.res) + '_axes'
+    
+    if ~sgIDs.HasKey(keyA) or ~sgIDs.HasKey(keyG) then message,'Error: Unknown request.'
+    
+    return, { gcIDsA : sgIDs[keyA], gcIDsG : sgIDs[keyG], axes : sgIDs[keyAxes] }
+  endif
   
   ; z2.314 (disappearing fan along bottom, all-sky views for paper)
-  if haloID eq 314 then begin
-    if sPa.res eq 512 then begin
-      if sPa.run eq 'tracer'    then r.a = 816
-      if sPg.run eq 'gadget'    then r.g = 981
-      if sPa.run eq 'arepo'     then r.a = 879 ;had as 927 in comparison project?
-      if sPg.run eq 'gadgetold' then r.g = 981
-    endif
-    
-    if sPa.res eq 256 then begin
-      if sPa.run eq 'tracer'    then r.a = 169
-      if sPg.run eq 'gadget'    then r.g = 278
-    endif
-    
-    if sPa.res eq 128 then begin
-      if sPa.run eq 'tracer'    then r.a = 50
-      if sPg.run eq 'gadget'    then r.g = 71
-    endif
+  sgIDs['z2_h314_res512_tracer']   = 816
+  sgIDs['z2_h314_res512_gadget']   = 981
+  sgIDs['z2_h314_res512_arepo']    = 879 ;had as 927 in comparison project?
+  sgIDs['z2_h314_res512_feedback'] = 676
   
-  endif
+  sgIDs['z2_h314_res256_tracer']   = 169
+  sgIDs['z2_h314_res256_gadget']   = 278
+  sgIDs['z2_h314_res256_feedback'] = 154
   
+  sgIDs['z2_h314_res128_tracer']   = 50
+  sgIDs['z2_h314_res128_gadget']   = 71
+  sgIDs['z2_h314_res128_feedback'] = 48
+  
+  ; z3 h314 (tracked back)
+  sgIDs['z3_h314_res512_tracer']   = 183
+  sgIDs['z3_h314_res512_gadget']   = 211
+  sgIDs['z3_h314_res512_feedback'] = 199
+  
+  sgIDs['z3_h314_res256_tracer']   = 46
+  sgIDs['z3_h314_res256_gadget']   = 51
+  sgIDs['z3_h314_res256_feedback'] = 47
+  
+  sgIDs['z3_h314_res128_tracer']   = 16
+  sgIDs['z3_h314_res128_gadget']   = 19
+  sgIDs['z3_h314_res128_feedback'] = 14
+    
   ; z2.304 (four filaments aligned in a plus pattern, high mass example for paper)
-  if haloID eq 304 then begin    
-    if sPa.res eq 512 then begin
-      if sPa.run eq 'tracer'    then r.a = 2004
-      if sPg.run eq 'gadget'    then r.g = 2342
-      if sPa.run eq 'arepo'     then r.a = 2132
-      if sPg.run eq 'gadgetold' then r.g = 2342
-    endif
-    
-    if sPa.res eq 256 then begin
-      if sPa.run eq 'tracer'    then r.a = 510
-      if sPg.run eq 'gadget'    then r.g = 673
-    endif
-    
-    if sPa.res eq 128 then begin
-      if sPa.run eq 'tracer'    then r.a = 150
-      if sPg.run eq 'gadget'    then r.g = 217
-    endif
-  endif
+  sgIDs['z2_h304_res512_tracer']   = 2004
+  sgIDs['z2_h304_res512_gadget']   = 2342
+  sgIDs['z2_h304_res512_arepo']    = 2132
+  sgIDs['z2_h304_res512_feedback'] = 2029
+  
+  sgIDs['z2_h304_res256_tracer']   = 510
+  sgIDs['z2_h304_res256_gadget']   = 673
+  sgIDs['z2_h304_res256_feedback'] = 464
+  
+  sgIDs['z2_h304_res128_tracer']   = 150
+  sgIDs['z2_h304_res128_gadget']   = 217
+  sgIDs['z2_h304_res128_feedback'] = 144
+  
+  ; z3 h304 (tracked back)
+  sgIDs['z3_h304_res512_tracer']   = 1669
+  sgIDs['z3_h304_res512_gadget']   = 1902
+  sgIDs['z3_h304_res512_arepo']    = 1657
+  sgIDs['z3_h304_res512_feedback'] = 1643
+  
+  sgIDs['z3_h304_res256_tracer']   = 271
+  sgIDs['z3_h304_res256_gadget']   = 533
+  sgIDs['z3_h304_res256_feedback'] = 390
+  
+  sgIDs['z3_h304_res128_tracer']   = 91
+  sgIDs['z3_h304_res128_gadget']   = 162
+  sgIDs['z3_h304_res128_feedback'] = 117
   
   ; z2.301
-  if haloID eq 301 then begin    
-    if sPa.res eq 512 then begin
-      if sPa.run eq 'arepo'     then r.a = 2034
-      if sPg.run eq 'gadgetold' then r.g = 2289
-    endif
-  endif
+  sgIDs['z2_h301_res512_gadget']   = 2289
+  sgIDs['z2_h301_res512_arepo']    = 2034
   
   ; z2.130 (low mass example for paper)
-  if haloID eq 130 then begin
-    r.axes = [0,2]
-    if sPa.res eq 512 then begin
-      if sPa.run eq 'arepo'     then r.a = 5966
-      if sPg.run eq 'gadgetold' then r.g = 6369
-      if sPa.run eq 'tracer'    then r.a = 5611
-      if sPg.run eq 'gadget'    then r.g = 6369
-    endif
-    
-    if sPa.res eq 256 then begin
-      if sPa.run eq 'tracer'    then r.a = 1527
-      if sPg.run eq 'gadget'    then r.g = 1888
-    endif
-    
-    if sPa.res eq 128 then begin
-      if sPa.run eq 'tracer'    then r.a = 619
-      if sPg.run eq 'gadget'    then r.g = 802
-    endif
-  endif
+  sgIDs['z2_h130_res512_tracer']   = 5611
+  sgIDs['z2_h130_res512_gadget']   = 6369
+  sgIDs['z2_h130_res512_arepo']    = 5966
+  sgIDs['z2_h130_res512_feedback'] = 6091
+  
+  sgIDs['z2_h130_res256_tracer']   = 1527
+  sgIDs['z2_h130_res256_gadget']   = 1888
+  sgIDs['z2_h130_res256_feedback'] = 1467
+  
+  sgIDs['z2_h130_res128_tracer']   = 619
+  sgIDs['z2_h130_res128_gadget']   = 802
+  sgIDs['z2_h130_res128_feedback'] = 579
   
   ; z2.64
-  if haloID eq 64 then begin
-    if sPa.res eq 512 then begin
-      if sPa.run eq 'arepo'     then r.a = 5097
-      if sPg.run eq 'gadgetold' then r.g = 5498
-    endif
-  endif
+  sgIDs['z2_h64_res512_gadget']    = 5498
+  sgIDs['z2_h64_res512_arepo']     = 5097
+
+  ; make key and pull the requested subgroup ID out
+  keyA = 'z' + str(fix(sPa.redshift)) + '_h' + str(haloID) + '_res' + str(sPa.res) + '_' + sPa.run
+  keyG = 'z' + str(fix(sPg.redshift)) + '_h' + str(haloID) + '_res' + str(sPg.res) + '_' + sPg.run
+    
+  if ~sgIDs.HasKey(keyA) and ~sgIDs.HasKey(keyG) then message,'Error: Unknown request.'
+    
+  ; make return
+  r = { a:9999999, g:9999999, axes:[0,1] }
+    
+  if sgIDs.HasKey(keyA) then r.a = sgIDs[keyA]
+  if sgIDs.HasKey(keyG) then r.g = sgIDs[keyG]
   
   return,r
+
+end
+
+; rematch(): crossmatch a few subhalos between different sims
+
+pro rematch
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  forward_function loadGroupCat
+
+  sP1 = simParams(res=512,run='tracer',redshift=3.0)
+  sP2 = simParams(res=512,run='gadget',redshift=3.0)
+
+  gc1 = loadGroupCat(sP=sP1,/skipIDs)
+  gc2 = loadGroupCat(sP=sP2,/skipIDs)
+
+  known1gcIDs = [3664,2920,1812,1459,1210,620,496,137]
+  
+  ;known1gcIDs = [1643]
+  
+  foreach gcID,known1gcIDs do begin
+    ; find closest spatial match
+    dists = periodicDists(gc1.subgroupPos[*,gcID],gc2.subgroupPos,sP=sP1)
+    w = where(dists eq min(dists))
+    
+    ; sort dists to find second closest
+    dists_sort = sort(dists)
+    dists = dists[dists_sort]
+    
+    ; report closest
+    print,'Matched known ['+str(gcID)+'] to new ['+str(w[0])+'].'
+    print,'Masses ',gc1.subgroupMass[gcID],gc2.subgroupMass[w[0]]
+    print,'Distance of match: ['+string(min(dists),format='(f5.1)')+'] and second closest: ['+$
+      string(dists[1],format='(f5.1)')+'] with mass: '+$
+      string(gc2.subgroupMass[dists_sort[1]],format='(f5.2)')
+    print,''
+  endforeach
+  
+  stop
 
 end
 

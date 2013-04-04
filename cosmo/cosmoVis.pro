@@ -21,10 +21,10 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
   ; if single halo requested and save exists, load it
   if n_elements(saveFilenames) eq 1 then $
     if file_test(saveFilenames) then restore,saveFilename
-
+    
   ; proceed with cutouts if at least one save is missing
   if readFlag then begin
-  
+    
   gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
   sgcen = subgroupPosByMostBoundID(sP=sP)   
   
@@ -737,43 +737,26 @@ pro scatterMapPastPosComp
   stop
 end
 
-pro rematch
-
-  sPg = simParams(res=512,run='gadget',redshift=2.0)
-  sPa = simParams(res=512,run='tracer',redshift=2.0)
-
-  gcG = loadGroupCat(sP=sPg,/skipIDs)
-  gcA = loadGroupCat(sP=sPa,/skipIDs)
-
-  gcIDsG = [6369,5151,3338,2824,2538,1117,981,266]
-  
-  foreach gcIDg,gcIDsG do begin
-    dists = periodicDists(gcG.subgroupPos[*,gcIDg],gcA.subgroupPos,sP=sPg)
-    w = where(dists eq min(dists))
-    print,w
-    print,gcG.subgroupMass[gcIDg],gcA.subgroupMass[w[0]]
-  endforeach
-
-end
-
 ; mosaicHalosComp(): mosaic 4x2 comparison between arepo/gadget (cold only)
 
 pro mosaicHalosComp
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  sPg = simParams(res=512,run='gadget',redshift=2.0)
-  sPa = simParams(res=512,run='tracer',redshift=2.0)
+  sPg = simParams(res=512,run='feedback',redshift=3.0)
+  sPa = simParams(res=512,run='tracer',redshift=3.0)
   
-  ; good candidates:
-  gcIDsG = [6369,5151,3338,2824,2538,1117,981,266]
-  gcIDsA = [5611,4518,2874,2389,2058,1037,816,252]
-  axes   = list([0,2],[0,1],[0,2],[0,2],[1,2],[0,2],[1,2],[0,1])
+  ; get list of matched IDs for good comparison
+  mag = getMatchedIDs(sPa=sPa,sPg=sPg,/mosaicIDs)
   
   ; config
   sizeFac     = 2.5       ; times rvir
   tempMinMax  = [4.0,5.0] ; log(K)
   coldTempCut = 5.0       ; log(K)
+  
+  ; pre-cutout
+  cutout = cosmoVisCutout(sP=sPg,gcInd=mag.gcIDsG,sizeFac=sizeFac)
+  cutout = cosmoVisCutout(sP=sPa,gcInd=mag.gcIDsA,sizeFac=sizeFac)
   
   ; GADGET
   ; ------
@@ -790,16 +773,12 @@ pro mosaicHalosComp
   cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('black')
   loadColorTable,'helix'
   
-  TVLCT, rr, gg, bb, /GET
-  
-  textColor = getColor24([180,180,180]) ; light gray
-  
   ; initial position: upper left corner
   pos = [0.0,0.75,0.25,1.0]                 
                  
   gaHaloMasses = []
                  
-  foreach gcIDg,gcIDsG,k do begin
+  foreach gcIDg,mag.gcIDsG,k do begin
     ; load
     cutout = cosmoVisCutout(sP=sPg,gcInd=gcIDg,sizeFac=sizeFac)
     
@@ -815,7 +794,7 @@ pro mosaicHalosComp
     colorinds_cold = colorinds[wCold]
     
     ; get box center (in terms of specified axes)
-    axisPair   = axes[k]
+    axisPair   = mag.axes[k]
     boxCenImg  = [sgcen[axisPair[0],gcIDg],sgcen[axisPair[1],gcIDg],sgcen[3-axisPair[0]-axisPair[1],gcIDg]]
 
     gaHaloMasses = [gaHaloMasses,cutout.haloMass]
@@ -836,25 +815,22 @@ pro mosaicHalosComp
 
     tvcircle,config.haloVirRad,0,0,cgColor('light gray'),thick=0.6,/data
     
-    newcolors_right = getColor24([[rr[colorinds_cold]], [gg[colorinds_cold]], [bb[colorinds_cold]]])
-           
     ; particle loop for velocity vector plotting (cold gas only)
     nCutoutRight = n_elements(loc_pos_cold[0,*])
     for i=0L,nCutoutRight-1 do $
       oplot,[loc_pos_cold[config.axisPair[0],i],loc_pos2_cold[config.axisPair[0],i]],$
              [loc_pos_cold[config.axisPair[1],i],loc_pos2_cold[config.axisPair[1],i]],$
-             line=0,color=newcolors_right[i]
-             
-    newcolors_right = !NULL
+             line=0,color=colorinds_cold[i]
     
     ; scale bar
     if ~keyword_set(bottom) then begin
       len = 100.0 ;ckpc
       cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.4,$
-             string(len,format='(i3)')+' kpc',alignment=0.5,color=textColor,charsize=!p.charsize-0.2
+             string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('light gray'),$
+             charsize=!p.charsize-0.2
       cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
              [config.boxSizeImg[1]/2.1,config.boxSizeImg[1]/2.1],$
-             color=textColor,thick=4.0,/overplot
+             color=cgColor('light gray'),thick=4.0,/overplot
     endif
     
     if keyword_set(bottom) then $
@@ -862,7 +838,7 @@ pro mosaicHalosComp
     
     ; redshift and halo mass
     cgText,config.boxSizeImg[0]/2.1,config.boxSizeImg[1]/2.3,alignment=1.0,$
-      "M = "+string(config.haloMass,format='(f4.1)'),color=textColor,charsize=!p.charsize-0.2
+      "M = "+string(config.haloMass,format='(f4.1)'),color=cgColor('light gray'),charsize=!p.charsize-0.2
     
     ; dividing lines
     cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=0.5,color=cgColor('dark gray'),/overplot
@@ -883,7 +859,7 @@ pro mosaicHalosComp
   ; initial position: 3rd row left space
   pos = [0.0,0.25,0.25,0.5]                 
                  
-  foreach gcIDa,gcIDsA,k do begin
+  foreach gcIDa,mag.gcIDsA,k do begin
     ; load
     cutout = cosmoVisCutout(sP=sPa,gcInd=gcIDa,sizeFac=sizeFac)
     
@@ -899,7 +875,7 @@ pro mosaicHalosComp
     colorinds_cold = colorinds[wCold]
   
     ; get box center (in terms of specified axes)
-    axisPair   = axes[k]
+    axisPair   = mag.axes[k]
     boxCenImg  = [sgcen[axisPair[0],gcIDa],sgcen[axisPair[1],gcIDa],sgcen[3-axisPair[0]-axisPair[1],gcIDa]]
   
     config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
@@ -918,25 +894,22 @@ pro mosaicHalosComp
 
     tvcircle,config.haloVirRad,0,0,cgColor('light gray'),thick=0.6,/data
     
-    newcolors_right = getColor24([[rr[colorinds_cold]], [gg[colorinds_cold]], [bb[colorinds_cold]]])
-           
     ; particle loop for velocity vector plotting (cold gas only)
     nCutoutRight = n_elements(loc_pos_cold[0,*])
     for i=0L,nCutoutRight-1 do $
       oplot,[loc_pos_cold[config.axisPair[0],i],loc_pos2_cold[config.axisPair[0],i]],$
              [loc_pos_cold[config.axisPair[1],i],loc_pos2_cold[config.axisPair[1],i]],$
-             line=0,color=newcolors_right[i]
-             
-    newcolors_right = !NULL
+             line=0,color=colorinds_cold[i]
     
     ; scale bar
     if ~keyword_set(bottom) then begin
       len = 100.0 ;ckpc
       cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.4,$
-             string(len,format='(i3)')+' kpc',alignment=0.5,color=textColor,charsize=!p.charsize-0.2
+             string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('light gray'),$
+             charsize=!p.charsize-0.2
       cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
              [config.boxSizeImg[1]/2.1,config.boxSizeImg[1]/2.1],$
-             color=textColor,thick=4.0,/overplot
+             color=cgColor('light gray'),thick=4.0,/overplot
     endif
     
     if keyword_set(bottom) then $
@@ -944,7 +917,7 @@ pro mosaicHalosComp
     
     ; redshift and halo mass
     cgText,config.boxSizeImg[0]/2.1,config.boxSizeImg[1]/2.3,alignment=1.0,$
-      "M = "+string(gaHaloMasses[k],format='(f4.1)'),color=textColor,charsize=!p.charsize-0.2
+      "M = "+string(gaHaloMasses[k],format='(f4.1)'),color=cgColor('light gray'),charsize=!p.charsize-0.2
     
     ; dividing lines
     cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=0.5,color=cgColor('dark gray'),/overplot
@@ -967,6 +940,8 @@ pro mosaicHalosComp
   pos = [0.02,0.35,0.076,0.65]
   fac = 0.5
   pos *= [fac,1,fac,1]
+  
+  loadColorTable,'helix'
   cgColorbar,position=pos,divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
   cgText,0.5,0.0375*fac,textoidl("log T_{gas} [K]"),alignment=0.5,color=cgColor('black'),/normal
   
@@ -979,8 +954,8 @@ pro mosaicHalosComp
   cgText,0.627,0.036*fac,string(tempMinMax[1],format='(f3.1)'),alignment=0.5,color=cgColor('black'),/normal
   
   ; simname labels
-  cgText,0.5,0.95,"GADGET",charsize=!p.charsize+0.4,alignment=0.5,/normal,color=cgColor('white')
-  cgText,0.5,0.45,"AREPO",charsize=!p.charsize+0.4,alignment=0.5,/normal,color=cgColor('white')
+  cgText,0.5,0.95,sPg.simName,charsize=!p.charsize+0.4,alignment=0.5,/normal,color=cgColor('white')
+  cgText,0.5,0.45,sPa.simName,charsize=!p.charsize+0.4,alignment=0.5,/normal,color=cgColor('white')
           
   end_PS, pngResize=60
   

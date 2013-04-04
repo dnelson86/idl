@@ -253,9 +253,6 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
     yMinMax = [-config.boxSizeScat[1]/2.0,config.boxSizeScat[1]/2.0]  
   
     ; plot position (normalized)
-    ;posTop = [leftOffset,0.75,leftOffset+0.5,1.0] ;4x2
-    ;posBottom = posTop - [0.0,0.25,0.0,0.25] ;4x2
-    
     posTop = [leftOffset,0.666,leftOffset+0.5,1.0]
     posBottom = [leftOffset,0.333,leftOffset+0.5,0.666]
   
@@ -267,11 +264,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
       cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('black')
   
     ; color table and establish temperature -> color mapping
-    loadColorTable,'helix';,/reverse
-    
-    TVLCT, rr, gg, bb, /GET
-
-    newcolors_left = getColor24([[rr[scatter.cinds_left]], [gg[scatter.cinds_left]], [bb[scatter.cinds_left]]])
+    loadColorTable,config.ctNameScat
 
     ; all gas (left panel)
     cgPlot, /nodata, xMinMax, yMinMax, pos=posTop, xs=5, ys=5, /noerase
@@ -284,9 +277,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
     for i=0L,nCutoutLeft-1 do $
       oplot,[scatter.pos_left[config.axes[0],i],scatter.pos2_left[config.axes[0],i]],$
              [scatter.pos_left[config.axes[1],i],scatter.pos2_left[config.axes[1],i]],$
-             line=0,color=newcolors_left[i]
-             
-    newcolors_left = !NULL
+             line=0,color=scatter.cinds_left[i]
                
     ; dividing lines
     cgPlot,xMinMax,[yMinMax[0],yMinMax[0]],line=0,thick=1.0,color=cgColor('light gray'),/overplot
@@ -297,22 +288,16 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
     cgPlot, /nodata, xMinMax, yMinMax, pos=posBottom, xs=5, ys=5, /noerase
 
     tvcircle,config.haloVirRad,0,0,cgColor('light gray'),thick=0.8,/data
-    
-    newcolors_right = getColor24([[rr[scatter.cinds_right]], [gg[scatter.cinds_right]], [bb[scatter.cinds_right]]])
-    
+        
     ; particle loop for velocity vector plotting (cold gas only)
     nCutoutRight = n_elements(scatter.pos_right[0,*])
     for i=0L,nCutoutRight-1 do $
       oplot,[scatter.pos_right[config.axes[0],i],scatter.pos2_right[config.axes[0],i]],$
              [scatter.pos_right[config.axes[1],i],scatter.pos2_right[config.axes[1],i]],$
-             line=0,color=newcolors_right[i]
-             
-    newcolors_right = !NULL  
+             line=0,color=scatter.cinds_right[i]
   
     if ~keyword_set(right) then begin
       len = 100.0 ;kpc
-      ;xpos = [config.boxCen[0]-config.boxSizeImg[0]*0.5,config.boxCen[0]-config.boxSizeImg[0]*0.5+len]
-      ;ypos = replicate(config.boxCen[1]+config.boxSizeImg[1]*0.48,2)
       
       xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+len]
       ypos = replicate(yMinMax[1]*0.93,2)
@@ -320,7 +305,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
       cgText,mean(xpos),ypos*0.9,string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('white')
       loadct,0,/silent
       oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
-      loadColorTable,'helix'
+      loadColorTable,config.ctNameScat
     endif
     
     ; dividing lines
@@ -339,7 +324,8 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
       ; one colorbar (centered)
       offset = 0.333
       pos = [offset+0.01,0.3,offset+0.034,0.7]
-      colorbar,position=pos,divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
+      loadColorTable,config.ctNameScat
+      cgColorbar,position=pos,divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
       
       ; colorbar labels
       ;cbLabels = str([fix(config.fieldMinMax[0]),fix(config.fieldMinMax[1])]
@@ -354,8 +340,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
     !x.thick = xthick
     !y.thick = ythick
 
-  
-  ; LOWER TWO PANELS - sphmap
+  ; LOWER PANEL - sphmap
   
   clipFacs = [0.10,400.0,1.05,280.0]
   
@@ -388,29 +373,14 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
   yMinMax = [config.boxCen[1]-config.boxSizeImg[1]/2.0,config.boxCen[1]+config.boxSizeImg[1]/2.0]
   
   ; plot position (normalized)
-  ;posTop = [leftOffset,0.25,leftOffset+0.5,0.5]
-  ;posBottom = posTop - [0.0,0.25,0.0,0.25]
-  
   posBottom = [leftOffset,0.0,leftOffset+0.5,0.333]
   
-  !p.charsize = 0.8
-  loadColorTable,'helix'
-
-  ; density
-  ;cgPlot, /nodata, xMinMax, yMinMax, pos=posTop, xs=5, ys=5, /noerase
-  ;tv, sphmap.dens_out,posTop[0],posTop[1],/normal,xsize=0.5
+  ; output image
+  loadColorTable,config.ctNameMap
   
-  ; circle at virial radius
-  ;tvcircle,config.haloVirRad,0,0,cgColor('white'),thick=0.8,/data
-        
-  ; horizontal dividing line
-  ;cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('light gray'),/overplot
-        
-  ; mass weighted temperature
-  ;loadColorTable,'blue-red'
-  loadct,33,/silent
   cgPlot, /nodata, xMinMax, yMinMax, pos=posBottom, xs=5, ys=5, /noerase
-  tv, sphmap.quant_out,posBottom[0],posBottom[1],/normal,xsize=0.5
+  tv, sphmap.quant_out,posBottom[0],posBottom[1],/normal,xsize=0.5 ; mass-weighted temp
+  ;tv, sphmap.dens_out,posTop[0],posTop[1],/normal,xsize=0.5 ; density
 
   ; circle at virial radius
   tvcircle,config.haloVirRad,0,0,cgColor('white'),thick=0.8,/data    
@@ -418,8 +388,6 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
   ; scale bar
   if ~keyword_set(right) then begin
     len = 200.0 ;kpc
-    ;xpos = [config.boxCen[0]-config.boxSizeImg[0]*0.5,config.boxCen[0]-config.boxSizeImg[0]*0.5+len]
-    ;ypos = replicate(config.boxCen[1]+config.boxSizeImg[1]*0.48,2)
     
     xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+len]
     ypos = replicate(yMinMax[1]*0.93,2)
@@ -427,7 +395,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
     cgText,mean(xpos),ypos*0.9,string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('white')
     loadct,0,/silent
     oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
-    loadColorTable,'helix'
+    loadColorTable,'bw linear'
   endif
   
   ; redshift and halo mass
@@ -439,7 +407,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
   endif
   
   ; simulation name
-  if keyword_set(left) then cgText,0.25,0.97,"GADGET",charsize=!p.charsize+0.5,$
+  if keyword_set(left) then cgText,0.25,0.97,"FEEDBACK",charsize=!p.charsize+0.5,$
     alignment=0.5,/normal,color=cgColor('white')
   if keyword_set(right) then cgText,0.75,0.97,"AREPO",charsize=!p.charsize+0.5,$
     alignment=0.5,/normal,color=cgColor('white')    
@@ -587,14 +555,14 @@ pro sphMapHaloComp
 
 end
 
-; sphScatterAndMapHaloComp(): compare scatterplots and density/temperature of arepo/gadget in 4x2 panels
+; sphScatterAndMapHaloComp(): compare scatterplots and density/temperature of arepo/gadget in 3x2 panels
 
 pro sphScatterAndMapHaloComp
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  sPa = simParams(res=512,run='tracer',redshift=2.0)
-  sPg = simParams(res=512,run='gadget',redshift=2.0)
+  sPa = simParams(res=512,run='tracer',redshift=3.0)
+  sPg = simParams(res=512,run='feedback',redshift=3.0)
   
   ; config
   sizeFacMap  = 5.0       ; times rvir
@@ -607,7 +575,7 @@ pro sphScatterAndMapHaloComp
   
   haloID = 304 ;z2.304 z2.301 z2.130 z2.64
   gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)
-  
+
   saveFilename = 'sc.map.'+sPa.savPrefix+str(sPa.res)+'.'+str(sPa.snap)+'.h'+str(gcID.a)+$
                  '.'+sPg.savPrefix+str(sPg.res)+'.h'+str(gcID.g)+'.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
                  
@@ -651,7 +619,8 @@ pro sphScatterAndMapHaloComp
   ; plot
   config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:fieldMinMax,$
             gcID:gcID.g,haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
-            boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,boxSizeScat:cutout2.boxSizeImg,sP:sPg,bartype:'none'}
+            boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,boxSizeScat:cutout2.boxSizeImg,$
+            ctNameScat:'helix',ctNameMap:'blue-red2',sP:sPg,bartype:'none'}
             
   plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, /left
   
@@ -693,7 +662,8 @@ pro sphScatterAndMapHaloComp
   ; plot
   config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:fieldMinMax,$
             gcID:gcID.a,haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
-            boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,boxSizeScat:cutout2.boxSizeImg,sP:sPa,bartype:'1bar'}
+            boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,boxSizeScat:cutout2.boxSizeImg,$
+            ctNameScat:'helix',ctNameMap:'blue-red2',sP:sPa,bartype:'1bar'}
        
   plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, /right
   

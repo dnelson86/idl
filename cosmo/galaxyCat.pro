@@ -334,6 +334,17 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
 
   endfor ;snapRange
   
+  ; if just one snap requested and just calculated, return it now
+  if snapRange[0] eq snapRange[1] then begin
+    restore,saveFilename1
+    restore,saveFilename2
+    restore,saveFilename3
+    r = {galaxyOff:galaxyOff,galaxyLen:galaxyLen,galaxyIDs:galaxyIDs,$
+         stellarOff:stellarOff,stellarLen:stellarLen,stellarIDs:stellarIDs,$
+         groupmemOff:groupmemOff,groupmemLen:groupmemLen,groupmemIDs:groupmemIDs}
+    return,r
+  endif
+  
 end
 
 ; galaxyCatRadii(): find radial distance and radial velocities of all group member particles wrt 

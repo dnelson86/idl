@@ -471,14 +471,14 @@ pro plot2Halo3ValComp
   ; config
   redshift = 2
   
-  sPg = simParams(res=128,run='gadget',redshift=float(redshift))
-  sPa = simParams(res=128,run='tracer',redshift=float(redshift))
+  sPg = simParams(res=512,run='feedback',redshift=float(redshift))
+  sPa = simParams(res=512,run='tracer',redshift=float(redshift))
   
   radInd   = 4        ; pre-saved radFacs (3=0.25, 4=0.5, 7=rvir)
   rot_ang  = [0,45]   ; [lat,long] center in deg (left,up)
   cutSubS  = 1        ; cut satellite substructures out from halo
 
-  haloID = 314 ;z2.304 z2.301 z2.130 z2.64
+  haloID = 304 ;z2.304 z2.301 z2.130 z2.64
   gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)
 
   partTypes = ['gas','gas','gas']
@@ -526,7 +526,7 @@ pro plot2Halo3ValComp
 
       if i eq 0 then $
         plotMollweideProj,healpix_data,rot_ang=rot_ang,bartitle=bartitles[i],pos=pos[i],$
-          ctName=ctNames[i],minmax=ranges[i],title="GADGET"
+          ctName=ctNames[i],minmax=ranges[i],title=sPg.simName
       if i gt 0 then $
         plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle=bartitles[i],pos=pos[i],$
           /noerase,ctName=ctNames[i],minmax=ranges[i]
@@ -552,7 +552,7 @@ pro plot2Halo3ValComp
 
       if i eq 0 then $
         plotMollweideProj,healpix_data,rot_ang=rot_ang,bartitle="",pos=pos[i+3],$
-          /noerase,ctName=ctNames[i],minmax=ranges[i],title="AREPO"
+          /noerase,ctName=ctNames[i],minmax=ranges[i],title=sPa.simName
       if i gt 0 then $
         plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle="",pos=pos[i+3],$
           /noerase,ctName=ctNames[i],minmax=ranges[i]

@@ -1,20 +1,25 @@
 ; webGL.pro
 ; cosmological boxes - exporters, etc for webgl demos
-; dnelson dec.2012
+; dnelson apr.2013
 
 ; vorMeshExport(): export the VORONOI_MESHOUTPUT data files
 
 pro vorMeshExport
 
   ; config
-  fileNameOut = "vorMesh_diego_b.dat"
+  fileNameOut = "vorMesh_Arepo3b.dat"
   fileBaseIn = "voronoi_mesh_0_"
-  bboxSize = 1000.0
+  bboxSize = 1000.0 ; don't change
+  
+  ; Arepo2b/3b/other test boxes
+  x_minmax = [0,1]
+  y_minmax = [0,1]
+  z_minmax = [0,1]
   
   ; DIEGO
-  x_minmax = [990,1020]
-  y_minmax = [990,1020]
-  z_minmax = [990,1020]
+  ;x_minmax = [990,1020]
+  ;y_minmax = [990,1020]
+  ;z_minmax = [990,1020]
   
   ; 512z2h304
   ;x_minmax = [16465,17120]
@@ -113,21 +118,23 @@ pro vorMeshExport
   endfor
             
   ; make a spatial subset?
-  w = where(faceCentroids[0,*] ge x_minmax[0] and faceCentroids[0,*] le x_minmax[1] and $
-            faceCentroids[1,*] ge y_minmax[0] and faceCentroids[1,*] le y_minmax[1] and $
-            faceCentroids[2,*] ge z_minmax[0] and faceCentroids[2,*] le z_minmax[1],count)   
+  if n_elements(x_minmax) gt 0 then begin
+    w = where(faceCentroids[0,*] ge x_minmax[0] and faceCentroids[0,*] le x_minmax[1] and $
+              faceCentroids[1,*] ge y_minmax[0] and faceCentroids[1,*] le y_minmax[1] and $
+              faceCentroids[2,*] ge z_minmax[0] and faceCentroids[2,*] le z_minmax[1],count)  
+
+    print,'Found ['+str(count)+'] faces in spatial subset.'
             
-  print,'Found ['+str(count)+'] faces in spatial subset.'
-            
-  faceCentroids = faceCentroids[*,w]
-  faceLengths   = faceLengths[w]
-  faceOffsets   = faceOffsets[w]
+    faceCentroids = faceCentroids[*,w]
+    faceLengths   = faceLengths[w]
+    faceOffsets   = faceOffsets[w]              
+  endif
   
   ; construct dataout1 array
   dataout1 = fix(faceLengths)
   
   if min(faceLengths) lt 0 or max(faceLengths) gt 20 then message,'Error: Strange face lengths.'
-  if min(faceInds) lt 5 then print,'WARNING: A face references an infinity tetra point.'
+  if min(faceInds) lt 0 then print,'WARNING: A face references the bounding tetra.'
   
   ; compress points into [-1000,1000] range (maintain aspect ratio if not cube)
   xyzr = float([x_minmax[1]-x_minmax[0], y_minmax[1]-y_minmax[0], z_minmax[1]-z_minmax[0]])

@@ -214,9 +214,9 @@ function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap
 
   saveFileName = sP.derivPath + sP.savPrefix + '_snapnum.redshift.sav'
 
-  if not file_test(saveFileName) then stop
+  if not file_test(saveFileName) then message,'Error: Failed to find snapnum save file.'
   if n_elements(snap) eq 0 then snap = sP.snap
-  if snap[0] eq -1 then stop
+  if snap[0] eq -1 then message,'Error: sP.snap used but was undefined.'
   
   ; restore
   restore,saveFilename
@@ -226,12 +226,13 @@ function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap
     
     if (snap[0] ge 0 and snap[0] lt n_elements(redshifts)) then $
       return,redshifts[snap]
-  endif else begin
-    if (keyword_set(all)) then return,times
+  endif
+  
+  ; keyword_set(time)
+  if (keyword_set(all)) then return,times
       
-    if (snap[0] ge 0 and snap[0] lt n_elements(redshifts)) then $
-      return,times[snap]
-  endelse
+  if (snap[0] ge 0 and snap[0] lt n_elements(redshifts)) then $
+    return,times[snap]
 
 end
 

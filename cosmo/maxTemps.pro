@@ -357,8 +357,8 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         
         ; load tracer ids and match to maxTempsAll save order (sorted ascending)
         tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-        ret = calcSort(tr_ids,/inPlace)
-        
+        tr_ids = tr_ids[sort(tr_ids)]
+
         if sP.mapNotMatch then begin
           idIndexMap = getIDIndexMap(tr_ids,minid=minid)
           
