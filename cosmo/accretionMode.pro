@@ -872,7 +872,9 @@ function accretionMode, sP=sP
           origParIDs.(k)[w] = Parent[origParIDs.(k)[w]]
           
           ; sanity check no IDs are -1 (we should only be processing the mergerTreeAdaptiveSubset)
-          if min(origParIDs.(k)[where(trMinSnap.(k) lt m-1)])     lt 0 then message,'Error: Bad parent.'
+          w = where(trMinSnap.(k) lt m-1,count)
+          if count gt 0 then $
+            if min(origParIDs.(k)[w]) lt 0 then message,'Error: Bad parent.'
         endfor
       endif
       

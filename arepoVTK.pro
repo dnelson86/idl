@@ -203,7 +203,7 @@ pro makeArepoICs
   ; config
   boxSize = 1.0
 
-  fileName = "/n/home07/dnelson/ArepoVTK/test/Arepo3c.hdf5"
+  fileName = "/n/home07/dnelson/ArepoVTK/test/Arepo3a.hdf5"
   
   rho_base = 1.1
   u_base   = 5.0
@@ -267,12 +267,12 @@ pro makeArepoICs
   
   seed = 424242L
   
-  for i=0,2 do begin
-    pp = round(5*(randomu(seed,count)-0.5))/50.0 ; -0.04 to +0.04
-    pos[i,w] += pp
-  endfor
+  ;for i=0,2 do begin
+  ;  pp = round(5*(randomu(seed,count)-0.5))/50.0 ; -0.04 to +0.04
+  ;  pos[i,w] += pp
+  ;endfor
   
-  for i=0,pid-1 do print,i,pos[0,i],pos[1,i],pos[2,i]
+  ;for i=0,pid-1 do print,i,pos[0,i],pos[1,i],pos[2,i]
   ; end Arepo3c
 
   ;write

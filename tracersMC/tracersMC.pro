@@ -187,7 +187,7 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   
     ; (option 1) use reverse histogram approach
     prevMax = max(tr_parids)
-    child_counts = histogram(tr_parids,min=0,rev=child_inds,/L64)
+    child_counts = histogram(tr_parids,min=0,max=prevMax+1,rev=child_inds,/L64)
 
     if min(child_inds) lt 0 then message,'Error: Corrupt RI.'
     if max(tr_parids) ne prevMax then message,'Error: Corrupted histo input.'

@@ -557,12 +557,12 @@ end
 
 ; sphScatterAndMapHaloComp(): compare scatterplots and density/temperature of arepo/gadget in 3x2 panels
 
-pro sphScatterAndMapHaloComp
+pro sphScatterAndMapHaloComp, redshift=redshift
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  sPa = simParams(res=512,run='tracer',redshift=3.0)
-  sPg = simParams(res=512,run='feedback',redshift=3.0)
+  sPa = simParams(res=512,run='tracer',redshift=redshift)
+  sPg = simParams(res=512,run='feedback',redshift=redshift)
   
   ; config
   sizeFacMap  = 5.0       ; times rvir

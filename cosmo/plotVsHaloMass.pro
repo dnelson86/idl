@@ -10,12 +10,12 @@ pro plotPreBin, res=res
 
   ; config
   sgSelect   = 'pri'
-  redshift   = 3.0 ;redshifts  = [2.0,3.0]
+  redshift   = 2.0 ;redshifts  = [2.0,3.0]
   ;res       = 512
   
   timeWindows = list(250.0,500.0,1000.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
   accModes = list('all','smooth','clumpy','stripped') ;,'recycled'
-  runs = list('tracer') ;list('tracer','gadget')
+  runs = list('feedback_noFB') ;list('tracer','gadget')
   
   ;foreach redshift,redshifts do begin
     foreach timeWindow,timeWindows do begin

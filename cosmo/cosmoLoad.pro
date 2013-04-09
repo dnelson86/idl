@@ -1223,6 +1223,25 @@ function readStrategyIO, inds=inds, indRange=indRange, $
   
 end
 
+; snapshotFieldExists(): check if a specified field exists in the snapshot
+function snapshotFieldExists, sP=sP, fileName=fileName, field=field
+
+  if n_elements(fileName) eq 0 then $
+    fileList = getSnapFilelist(sP.simPath,snapNum=sP.snap,subBox=subBox)
+  if n_elements(fileName) gt 0 then $
+    fileList = [fileName]
+
+  ; input config: set partType number if input in string
+  ;partType = strlowcase(string(PT)) ; so we don't change the input
+  ;partType = partTypeNum(partType)
+  
+  ; parse for this field name (over all particle types)
+  hdf5s = h5_parse(fileList[0]) ;structure only
+  existsFlag = tag_exist(hdf5s,field)
+
+  return, existsFlag
+end
+
 ; loadSnapshotSubset(): for a given snapshot load only one field for one particle type
 ;                       partType = [0,1,2,4] or ('gas','dm','tracer','stars') (case insensitive)
 ;                       field    = ['ParticleIDs','coordinates','xyz',...] (case insensitive)
@@ -1395,15 +1414,15 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     if (partType ne 0) then message,'Error: GFM_CoolingRate is gas only!'
     if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
   endif
-  if (field eq 'gfm_windhosthalomass') then begin
+  if (field eq 'gfm_winddmveldisp') then begin
     rType = 'float'
-    fieldName = 'GFM_WindHostHaloMass'
-    if (partType ne 0) then message,'Error: GFM_WindHostHaloMass is gas only!'
+    fieldName = 'GFM_WindDMVelDisp'
+    if (partType ne 0) then message,'Error: GFM_WindDMVelDisp is gas only!'
     if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
   endif
-  if (field eq 'hosthalomass') then begin
+  if (field eq 'gfm_agnradiation' or field eq 'gfm_agnrad') then begin
     rType = 'float'
-    fieldName = 'HostHaloMass'
+    fieldName = 'GFM_AGNRadiation'
     if (partType ne 0 and partType ne 5) then message,'Error: HostHaloMass is gas/BHs only!'
   endif
   
@@ -1413,7 +1432,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     rType = 'float'
     fieldName = 'Metallicity'
     if (partType ne 0 and partType ne 4) then message,'Error: Z is gas/stars only!'
-    if GFMExistsFlag then message,'Error: Old field. Use GFM_Metallicity.'
+    if GFMExistsFlag then fieldName = 'GFM_Metallicity' ; use GFM field
   endif
   if (field eq 'gfm_metallicity' or field eq 'gfm_z') then begin
     rType = 'float'
@@ -1466,40 +1485,79 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   
   ; bh only
   ; -------
+  if (field eq 'bh_cumegyinjection_qm' or field eq 'cumegyinjection_qm') then begin
+    rType = 'float'
+    fieldName = 'BH_CumEgyInjection_QM'
+  endif
+  if (field eq 'bh_cummassgrowth_qm' or field eq 'cummassgrowth_qm') then begin
+    rType = 'float'
+    fieldName = 'BH_CumMassGrowth_QM'
+  endif
   if (field eq 'bh_coolingluminosity' or field eq 'coolingluminosity') then begin
     rType = 'float'
     fieldName = 'BH_CoolingLuminosity'
-    if (partType ne 5) then message,'Error: BH_CoolingLuminosity is BHs only!'
   endif
-  if (field eq 'bh_halogasmass') then begin
+  if (field eq 'bh_density' or field eq 'bh_dens' or field eq 'bh_rho') then begin
     rType = 'float'
-    fieldName = 'BH_CoolingLuminosity'
-    if (partType ne 5) then message,'Error: BH_CoolingLuminosity is BHs only!'
+    fieldName = 'BH_Density'
   endif
   if (field eq 'bh_hsml' or field eq 'bh_smoothinglength') then begin
     rType = 'float'
     fieldName = 'BH_HSML'
-    if (partType ne 5) then message,'Error: BH_HSML is BHs only!'
   endif
   if (field eq 'bh_mass' or field eq 'bh_masses') then begin
     rType = 'float'
     fieldName = 'BH_Mass'
-    if (partType ne 5) then message,'Error: BH_Mass is BHs only!'
+  endif
+  if (field eq 'bh_mass_bubbles') then begin
+    rType = 'float'
+    fieldName = 'BH_Mass_Bubbles'
+  endif
+  if (field eq 'bh_mass_ini') then begin
+    rType = 'float'
+    fieldName = 'BH_Mass_Ini'
   endif
   if (field eq 'bh_mdot') then begin
     rType = 'float'
     fieldName = 'BH_MDot'
-    if (partType ne 5) then message,'Error: BH_MDot is BHs only!'
   endif
   if (field eq 'bh_mdotradio' or field eq 'bh_mdot_radio') then begin
     rType = 'float'
     fieldName = 'BH_MDotRadio'
-    if (partType ne 5) then message,'Error: BH_MDotRadio is BHs only!'
+  endif
+  if (field eq 'bh_pressure' or field eq 'bh_pres') then begin
+    rType = 'float'
+    fieldName = 'BH_Pressure'
   endif
   if (field eq 'bh_prog' or field eq 'bh_progs' or field eq 'bh_progenitors') then begin
     rType = 'float'
     fieldName = 'BH_Progs'
-    if (partType ne 5) then message,'Error: BH_Progs is BHs only!'
+  endif
+  if (field eq 'bh_u' or field eq 'bh_energy') then begin
+    rType = 'float'
+    fieldName = 'BH_U'
+  endif
+  if (field eq 'bh_hosthalomass' or field eq 'hosthalomass') then begin
+    rType = 'float'
+    fieldName = 'HostHaloMass'
+    if partType ne 5 then message,'Error: Hosthalo mass is BH only!'
+  endif
+  
+  if (strmid(field,0,3) eq 'bh_' and partType ne 5) then message,'Error: BH fields are BH only!'
+  
+  ; subfind SAVE_HSML_IN_SNAPSHOT
+  ; -------
+  if (field eq 'subfind_dens' or field eq 'subfind_density') then begin
+    rType = 'float'
+    fieldName = 'SubfindDensity'
+  endif
+  if (field eq 'subfind_hsml' or field eq 'subfind_smoothinglength') then begin
+    rType = 'float'
+    fieldName = 'SubfindHSML'
+  endif
+  if (field eq 'subfind_veldisp' or field eq 'subfind_dmveldisp') then begin
+    rType = 'float'
+    fieldName = 'SubfindVelDisp'
   endif
   
   ; tracers (Monte Carlo)
