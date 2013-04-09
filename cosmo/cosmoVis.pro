@@ -1,32 +1,52 @@
 ; cosmoVis.pro
 ; cosmological boxes - 2d visualization
-; dnelson mar.2013
+; dnelson apr.2013
 
 ; cosmoVisCutout(): make a spatial cutout around a halo
 ;                   call with multiple gcInd's for one load and save cutouts
 ;                   call with one gcInd to return results
+;                   call with selectGmem
 
-function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
+function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectGmem=selectGmem
 
-  velVecFac = 0.01 ; times velocity (km/s) in plotted kpc
-  hsmlFac = 1.75      ; increase arepo 'hsml' to decrease visualization noise  
-
-  ; check existence of requested saves if more than one halo
-  saveFilenames = sP.derivPath + 'cutouts/cutout.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + $
-                  '.h' + str(gcInd) + '.sf' + str(fix(sizeFac*10)) + '.sav'
-                  
-  readFlag = 0
-  foreach saveFilename,saveFilenames do if ~file_test(saveFilename) then readFlag = 1
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
   
+  velVecFac = 0.01 ; times velocity (km/s) in plotted kpc
+  hsmlFac   = 1.75 ; increase arepo 'hsml' to decrease visualization noise  
+
+  if keyword_set(sizeFac) and keyword_set(selectGmem) then message,'The two are exclusive.'
+  if ~keyword_set(sP) or n_elements(gcInd) eq 0 then message,'Error'
+  
+  ; filename tag for selectGmem or not
+  cutTag = 'cutout'
+  if keyword_set(selectGmem) then begin
+    cutTag = 'gmemCut'
+    sizeFac = 0
+  endif
+  
+  ; check existence of requested saves if more than one halo
+  saveFilenames = sP.derivPath + 'cutouts/' + cutTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.h' + str(gcInd) + '.sf' + str(fix(sizeFac*10)) + '.sav'
+        
   ; if single halo requested and save exists, load it
   if n_elements(saveFilenames) eq 1 then $
-    if file_test(saveFilenames) then restore,saveFilename
+    if file_test(saveFilenames) then restore,saveFilenames
+        
+  ; more than one halo requested, see if any need to be made
+  readFlag = 0
+  foreach saveFilename,saveFilenames do if ~file_test(saveFilename) then readFlag = 1
     
   ; proceed with cutouts if at least one save is missing
   if readFlag then begin
     
   gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
   sgcen = subgroupPosByMostBoundID(sP=sP)   
+  
+  ; have metallicities to include in cutout?
+  metalsFlag = 0
+  if snapshotFieldExists(sP=sP,field='Metallicity') or $
+     snapshotFieldExists(sP=sP,field='GFM_Metallicity') then metalsFlag = 1
   
   ; load u,nelec,dens and calculate temperature,entropy
   u     = loadSnapshotSubset(sP=sP,partType='gas',field='u')
@@ -36,8 +56,15 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
   dens  = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
   ent   = calcEntropyCGS(u,dens,/log,sP=sP)
   u     = !NULL
-  dens  = !NULL
-
+  
+  if metalsFlag then begin
+    metal = loadSnapshotSubset(sP=sP,partType='gas',field='metallicity')
+    ; convert to log(metallicity) for positive values, otherwise set GFM_MIN_METAL = -20 (log)
+    w = where(metal gt 0.0,count,comp=wc,ncomp=ncomp)
+    if count gt 0 then metal[w] = alog10(metal[w])
+    if ncomp gt 0 then metal[wc] = -20.0
+  endif
+    
   ; load HSMLs or volumes (convert to sizes)
   if sP.trMCPerCell eq 0 then begin
     hsml = loadSnapshotSubset(sP=sP,partType='gas',field='hsml')
@@ -48,7 +75,8 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
     hsml = hsmlFac * temporary(hsml) ; increase hsml to decrease visualization noise
   endelse  
   
-  ; load gas positions, velocities and masses
+  ; load gas ids, positions, velocities and masses
+  ids  = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
   pos  = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
   vel  = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
   mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
@@ -58,42 +86,96 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
   iseed = 424242L
   sort_inds = sort(randomu(iseed,n_elements(temp)))
   
-  temp = temp[sort_inds]
-  ent  = ent[sort_inds]
-  hsml = hsml[sort_inds]
-  mass = mass[sort_inds]
-  pos  = pos[*,sort_inds]
-  vel  = vel[*,sort_inds]
+  ids   = ids[sort_inds]
+  temp  = temp[sort_inds]
+  ent   = ent[sort_inds]
+  dens  = dens[sort_inds]
+  hsml  = hsml[sort_inds]
+  mass  = mass[sort_inds]
+  pos   = pos[*,sort_inds]
+  vel   = vel[*,sort_inds]
+  
+  if metalsFlag then metal = metal[sort_inds]
   
   sort_inds = !NULL
   
+  ; now restrict all these quantities to gmem only if requested
+  if keyword_set(selectGmem) then begin
+    h = loadSnapshotHeader(sP=sP)
+    galcat = galaxyCat(sP=sP)
+    
+    idIndexMap = getIDIndexMap(ids,minid=minid)
+    ids_ind = idIndexMap[galcat.groupmemIDs-minid]
+  
+    ids  = ids[ids_ind]
+    temp = temp[ids_ind]
+    ent  = ent[ids_ind]
+    dens = dens[ids_ind]
+    hsml = hsml[ids_ind]
+    mass = mass[ids_ind]
+    dens = dens[ids_ind]
+    pos  = pos[*,ids_ind]
+    vel  = vel[*,ids_ind]
+    
+    if metalsFlag then metal = metal[ids_ind]
+  
+    ; load cooling and dynamical timescales (already gmem only)
+    encMass = enclosedMass(sP=sP) ; code units
+
+    gasRadii = galaxyCatRadii(sP=sP)
+    gasRadii = gasRadii.gmem_sec
+    meanDensEnc = 3*encMass / (4 * !pi * gasRadii^3.0) / (h.time)^3.0 ; code units (physical)
+    dynTime = sqrt( 3*!pi / (32 * float(units.G) * meanDensEnc * units.HubbleParam) ) ; code units (Gyr)
+    encMass = !NULL
+    gasRadii = !NULL
+  
+    ct = coolingTime(sP=sP)
+    coolTime = ct.coolTime
+    ct = !NULL
+  endif
+  
   print,'cutout...'
   foreach gcIndCur,gcInd,k do begin
-    ; get subhalo position and size of imaging box
-    boxCen     = sgcen[*,gcIndCur]
-    boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcIndCur]] / 10.0) * 10.0
-    boxSizeImg = [boxSize,boxSize,boxSize] ; cube
-  
-    ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
-    xDist = pos[0,*] - boxCen[0]
-    yDist = pos[1,*] - boxCen[1]
-    zDist = pos[2,*] - boxCen[2]
+    ; halo properties
+    haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcIndCur]] ;ckpc
+    haloMass = codeMassToLogMsun(gc.subgroupMass[gcIndCur])
+    haloM200 = codeMassToLogMsun(gc.group_m_crit200[gc.subgroupGrNr[gcIndCur]])
+    haloV200 = sqrt(units.G * gc.subgroupMass[gcIndCur] / haloVirRad )
     
-    correctPeriodicDistVecs, xDist, sP=sP
-    correctPeriodicDistVecs, yDist, sP=sP
-    correctPeriodicDistVecs, zDist, sP=sP
+    ; decide cutout
+    if keyword_set(sizeFac) then begin
+      ; get subhalo position and size of imaging box
+      boxCen     = sgcen[*,gcIndCur]
+      boxSize    = ceil(sizeFac * haloVirRad / 10.0) * 10.0
     
-    rvir = gc.group_r_crit200[gc.subgroupGrNr[gcIndCur]]
+      ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
+      xDist = pos[0,*] - boxCen[0]
+      yDist = pos[1,*] - boxCen[1]
+      zDist = pos[2,*] - boxCen[2]
+    
+      correctPeriodicDistVecs, xDist, sP=sP
+      correctPeriodicDistVecs, yDist, sP=sP
+      correctPeriodicDistVecs, zDist, sP=sP
   
-    ; local (cube) cutout
-    wCut = where(abs(xDist) le 0.5*boxSize and abs(yDist) le 0.5*boxSize and $
-                 abs(zDist) le 0.5*boxSize,nCutout)
+      ; local (cube) cutout
+      wCut = where(abs(xDist) le 0.5*boxSize and abs(yDist) le 0.5*boxSize and $
+                   abs(zDist) le 0.5*boxSize,nCutout)
+    endif else begin
+      ; gmem selection (all quantities are in gmem catalog order)
+      wCut = galcatINDList(sP=sP, galcat=galcat, gcIDList=[gcIndCur])
+      wCut = wCut.gmem
+    
+      nCutout  = n_elements(wCut)
+    endelse
                  
-    loc_temp = temp[wCut]
-    loc_ent  = ent[wCut]
-	  loc_hsml = hsml[wCut]
-    loc_mass = mass[wCut]
-    loc_pos  = fltarr(3,nCutout)
+    ; take selection of fields
+    loc_ids   = ids[wCut]
+    loc_temp  = temp[wCut]
+    loc_ent   = ent[wCut]
+    loc_dens  = dens[wCut]
+    loc_hsml  = hsml[wCut]
+    loc_mass  = mass[wCut]
+    loc_pos   = fltarr(3,nCutout)
     loc_pos[0,*] = xDist[wCut] ; delta
     loc_pos[1,*] = yDist[wCut]
     loc_pos[2,*] = zDist[wCut]
@@ -102,7 +184,18 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
     yDist = !NULL
     zDist = !NULL
     
+    if metalsFlag then loc_metal = metal[wCut]
+    if ~metalsFlag then loc_metal = -1    
+    
     loc_vel = vel[*,wCut]
+    
+    if keyword_set(selectGmem) then begin
+      loc_dynTime  = dynTime[wCut]
+      loc_coolTime = coolTime[wCut]
+    endif else begin
+      loc_dynTime = -1
+      loc_coolTime = -1
+    endelse
     
     ; calculate norm of radial velocity vector
     rad = reform(loc_pos[0,*]^2.0 + loc_pos[1,*]^2.0 + loc_pos[2,*]^2.0)
@@ -120,22 +213,22 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac
     loc_pos2[1,*] = loc_pos[1,*] + loc_vel[1,*]*velVecFac
     loc_pos2[2,*] = loc_pos[2,*] + loc_vel[2,*]*velVecFac
     loc_vel = !NULL
-    
-    haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcIndCur]] ;ckpc
-    haloMass = codeMassToLogMsun(gc.subgroupMass[gcIndCur])
-    haloM200 = codeMassToLogMsun(gc.group_m_crit200[gc.subgroupGrNr[gcIndCur]])
-    
+
     ; fix halo mass if we're using old (x2 bug) catalogs
     if sP.run eq 'gadgetold' or sP.run eq 'arepo' then $
       haloMass = codeMassToLogMsun(0.5*gc.subgroupMass[gcIndCur])  
   
+    boxSizeImg = [boxSize,boxSize,boxSize] ; cube
+    
     ; save
     r = {loc_pos:loc_pos,loc_temp:loc_temp,loc_ent:loc_ent,loc_vrad:loc_vrad,loc_hsml:loc_hsml,$
-	       loc_pos2:loc_pos2,loc_mass:loc_mass,sP:sP,gcID:gcIndCur,boxCen:boxCen,$
-         sizeFac:sizeFac,boxSizeImg:boxSizeImg,haloVirRad:haloVirRad,haloMass:haloMass}
+	   loc_pos2:loc_pos2,loc_mass:loc_mass,loc_metal:loc_metal,loc_ids:loc_ids,$
+         loc_dynTime:loc_dynTime,loc_coolTime:loc_coolTime,loc_dens:loc_dens,$
+         sP:sP,gcID:gcIndCur,boxCen:boxCen,boxSizeImg:boxSizeImg,sizeFac:sizeFac,$
+         haloVirRad:haloVirRad,haloMass:haloMass,haloM200:haloM200,haloV200:haloV200}
          
-    saveFilename = sP.derivPath + 'cutouts/cutout.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + $
-                   '.h' + str(gcIndCur) + '.sf' + str(fix(sizeFac*10)) + '.sav'  
+    saveFilename = sP.derivPath + 'cutouts/' + cutTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+      str(sP.snap) + '.h' + str(gcIndCur) + '.sf' + str(fix(sizeFac*10)) + '.sav'  
          
     save,r,filename=saveFilename
     print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
@@ -246,6 +339,8 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         if config.colorField eq 'vradnorm'  then labelText = "v_{rad} / v_{200}"
         if config.colorField eq 'temp'      then labelText = "log T_{gas} [K]"
         if config.colorField eq 'entropy'   then labelText = "log (S) [cgs]"
+        if config.colorField eq 'density'   then labelText = "\rho_{gas}"
+        if config.colorField eq 'metal'     then labelText = "log Z"
         if config.colorField eq 'overdens'  then labelText = "log \rho_{DM} / <\rho_{DM}>"
         if config.colorField eq 'coolTime'  then labelText = "t_{cool} [Gyr]"
         if config.colorField eq 'dynTime'   then labelText = "t_{dyn} [Gyr]"
@@ -280,7 +375,7 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         if config.barType eq '2bar' then begin
           ; two colorsbars (separate ranges)
           cgColorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,$
-            bottom=0,ncolor=250,ticklen=0.00001
+            bottom=config.nbottom,ncolor=(255-config.nbottom),ticklen=0.00001
           
           ; second (right panel)
           loc_mm = [config.fieldMinMax[0],config.secondCutVal]
@@ -289,7 +384,7 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
           loadColorTable,config.ctName
           
           cgColorbar,position=[0.02,0.6,0.076,0.9],divisions=0,charsize=0.000001,$
-            bottom=5,ticklen=0.00001
+            bottom=config.nbottom,ncolor=(255-config.nbottom),ticklen=0.00001
           
           ; first text
           cgText,0.25,0.0375,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
@@ -334,7 +429,7 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         end_PS, pngResize=60;, /deletePS
 end
 
-; scatterMapHalosComp(): same as above but compare arepo/gadget top/bottom
+; scatterMapHalosComp(): for one quantity compare arepo/gadget top/bottom
 
 pro scatterMapHalosComp
 
@@ -739,12 +834,12 @@ end
 
 ; mosaicHalosComp(): mosaic 4x2 comparison between arepo/gadget (cold only)
 
-pro mosaicHalosComp
+pro mosaicHalosComp, redshift=redshift
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  sPg = simParams(res=512,run='feedback',redshift=3.0)
-  sPa = simParams(res=512,run='tracer',redshift=3.0)
+  sPg = simParams(res=512,run='feedback',redshift=redshift)
+  sPa = simParams(res=512,run='tracer',redshift=redshift)
   
   ; get list of matched IDs for good comparison
   mag = getMatchedIDs(sPa=sPa,sPg=sPg,/mosaicIDs)
@@ -794,7 +889,7 @@ pro mosaicHalosComp
     colorinds_cold = colorinds[wCold]
     
     ; get box center (in terms of specified axes)
-    axisPair   = mag.axes[k]
+    axisPair   = (mag.axes)[k]
     boxCenImg  = [sgcen[axisPair[0],gcIDg],sgcen[axisPair[1],gcIDg],sgcen[3-axisPair[0]-axisPair[1],gcIDg]]
 
     gaHaloMasses = [gaHaloMasses,cutout.haloMass]
@@ -875,7 +970,7 @@ pro mosaicHalosComp
     colorinds_cold = colorinds[wCold]
   
     ; get box center (in terms of specified axes)
-    axisPair   = mag.axes[k]
+    axisPair   = (mag.axes)[k]
     boxCenImg  = [sgcen[axisPair[0],gcIDa],sgcen[axisPair[1],gcIDa],sgcen[3-axisPair[0]-axisPair[1],gcIDa]]
   
     config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$

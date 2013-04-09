@@ -469,7 +469,7 @@ pro plot2Halo3ValComp
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  redshift = 2
+  redshift = 3
   
   sPg = simParams(res=512,run='feedback',redshift=float(redshift))
   sPa = simParams(res=512,run='tracer',redshift=float(redshift))
@@ -478,7 +478,7 @@ pro plot2Halo3ValComp
   rot_ang  = [0,45]   ; [lat,long] center in deg (left,up)
   cutSubS  = 1        ; cut satellite substructures out from halo
 
-  haloID = 304 ;z2.304 z2.301 z2.130 z2.64
+  haloID = 314 ;z2.304 z2.301 z2.130 z2.64
   gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)
 
   partTypes = ['gas','gas','gas']

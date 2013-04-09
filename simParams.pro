@@ -10,6 +10,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
      print,'Error: simParams: arguments not specified.'
      exit
   endif
+  
+  run = strlowcase(run)
 
   r = {simPath:      '',$    ; root path to simulation snapshots and group catalogs
        arepoPath:    '',$    ; root path to Arepo and param.txt for e.g. projections/fof
@@ -64,7 +66,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.snap = snap
  
   ; sims.feedback (Velocity + f=5 Monte Carlo) 128,256,512 @ 20Mpc w/ fiducial Illustris parameters
-  if (run eq 'feedback') then begin
+  if (run eq 'feedback') or (run eq 'feedback_noz') or (run eq 'feedback_nofb') then begin
     r.minNumGasPart  = -1 ; no additional cut
     r.trMCPerCell    = 5
     r.gfmNumElements = 9
@@ -86,12 +88,12 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     
     if res eq 128 then r.gravSoft = 4.0
     if res eq 256 then r.gravSoft = 2.0
-	if res eq 512 then r.gravSoft = 1.0
+    if res eq 512 then r.gravSoft = 1.0
   
     r.simPath    = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/output/'
     r.arepoPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/'
     r.savPrefix  = 'F'
-	r.simName    = 'FEEDBACK'
+    r.simName    = 'FEEDBACK'
     r.saveTag    = 'feMC'
     r.plotPrefix = 'feMC'
     r.plotPath   = '/n/home07/dnelson/coldflows/'
@@ -104,6 +106,30 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
       r.plotPrefix = 'feVel'
       r.saveTag    = 'feVel'
     endif
+	
+    ; if noZ or noFB runs, modify details and paths
+    if run eq 'feedback_noz' then begin
+      if res ne 256 then stop ; only 256 exists
+      
+      r.simPath    = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noZ/output/'
+      r.arepoPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noZ/'
+      r.saveTag    = 'feNoZ'
+	r.simName    = 'AREPO noZ'
+      r.plotPrefix = 'feNoZ'
+      r.derivPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noZ/data.files/'
+    endif
+	
+    if run eq 'feedback_nofb' then begin
+      if res ne 256 then stop ; only 256 exists
+      
+      r.gfmWinds   = 0
+      r.simPath    = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noFB/output/'
+      r.arepoPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noFB/'
+      r.saveTag    = 'feNoFB'
+	r.simName    = 'AREPO noFB'
+      r.plotPrefix = 'feNoFB'
+      r.derivPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noFB/data.files/'
+    endif
     
     ; if redshift passed in, convert to snapshot number and save
     if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
@@ -112,7 +138,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   endif
  
   ; ComparisonProject GADGET 128,256,512 @ 20Mpc
-  if (run eq 'gadget') or (run eq 'gadget_rad') then begin
+  if (run eq 'gadget') then begin
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 0  ; none (SPH)
     
@@ -141,12 +167,6 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.plotPrefix = 'G'
     r.plotPath   = '/n/home07/dnelson/coldflows/'
     r.derivPath  = '/n/home07/dnelson/sims.gadget/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
-    
-    ; if radially restricted group catalogs, modify derivPath
-    if run eq 'gadget_rad' then begin
-      r.plotPrefix = r.plotPrefix + 'rad'
-      r.derivPath = '/n/home07/dnelson/sims.gadget/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files.rad/'
-    endif
     
     ; if redshift passed in, convert to snapshot number and save
     if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
@@ -184,7 +204,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   endif
   
   ; sims.tracers (Velocity + f=10 Monte Carlo) 128,256,512 @ 20Mpc
-  if (run eq 'tracer') or (run eq 'tracer_rad') or (run eq 'tracer_nouv') then begin
+  if (run eq 'tracer') or (run eq 'tracer_nouv') then begin
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 10
     
@@ -221,12 +241,6 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
       r.trMCPerCell = -1
       r.plotPrefix = 'trVel'
       r.saveTag    = 'trVel'
-    endif
-    
-    ; if radially restricted group catalogs, modify derivPath
-    if run eq 'tracer_rad' then begin
-      r.plotPrefix = r.plotPrefix + 'rad'
-      r.derivPath = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files.rad/'
     endif
     
     ; if noUV run, modify details and paths

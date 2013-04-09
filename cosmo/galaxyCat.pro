@@ -111,7 +111,7 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
     ; (rho,temp) cut
     wGal = where(alog10(temp) - sP.galcut_rho * alog10(dens) lt sP.galcut_T,$
                  countGal,comp=wGmem,ncomp=countGmem)
-                 
+    stop
     ; calculate radial distances of gas elements to primary parents
     if sP.radcut_rvir ne 0.0 then begin
       pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos',inds=ids_ind)
@@ -416,7 +416,7 @@ function galaxyCatRadii, sP=sP
     ids        = !NULL
     galcat_ind = !NULL
     
-    pos_stars = loadSnapshotSubset(sP=sP,partType='stars',field='pos',ind=ids_stars_ind)
+    pos_stars = loadSnapshotSubset(sP=sP,partType='stars',field='pos',inds=ids_stars_ind)
     
     ; load subhalo catalog for mostBoundParticleID and for priParentIDs
     gc = loadGroupCat(sP=sP,/skipIDs)
