@@ -783,6 +783,8 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       endif ;save
     endfor ;m
   endif
+  
+  sP.snap = maxSnap + 1 ; restore sP.snap
 
 end
 
@@ -903,7 +905,9 @@ pro maxTempsAll, sP=sP
   ; ---------------------
   if sP.trMCPerCell eq -1 then begin
     message,'todo'
-  endif  
+  endif
+  
+  sP.snap = maxSnap + 1 ; restore sP.snap
 
 end
 

@@ -187,6 +187,8 @@ function mergerTree, sP=sP, makeNum=makeNum
         string(delta_z,format='(f5.3)')+' Dt = '+string(delta_age,format='(f6.1)')+' Myr)'
     endelse
   endfor
+  
+  sP.snap = maxSnap ; restore sP.snap
 
 end
 
@@ -334,6 +336,8 @@ function mergerTreeAdaptiveSubset, sP=sP, verbose=verbose
   save,r,filename=saveFilename
   print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
 
+  sP.snap = maxSnap ; restore sP.snap  
+  
   return,r
 end
 

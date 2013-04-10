@@ -237,9 +237,10 @@ pro runGasAccPaper
         x = galaxyCatRadii(sP=sP)
         
         ; primary analysis
-        x = maxTemps(sP=sP) & sP.snap = snap
-        x = mergerTree(sP=sP,makeNum=snap) & sP.snap = snap
-        x = accretionTimes(sP=sP) & sP.snap = snap
+        x = maxTemps(sP=sP)
+        x = mergerTree(sP=sP,makeNum=snap)
+        x = mergerTreeAdaptiveSubset(sP=sP)
+        x = accretionTimes(sP=sP)
         x = accretionMode(sP=sP)
         
         ; binning for plots
@@ -254,17 +255,15 @@ pro runGasAccPaper
   endforeach
         
   ; line plots
-  plotAccRateVsHaloMass
-  plotColdFracVsHaloMass
   plotByMode
+  plotByMethod
+  plotByRes
   plotTmaxHistos
+  plotTmaxHisto2D
   
   ; visual plots
   scatterMapHalosComp
-  scatterMapPastPosComp
   mosaicHalosComp
-  scatterMapHalosGasDM
   plotHaloShellValueComp
   
 end
-

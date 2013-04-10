@@ -23,7 +23,7 @@ pro scatterMapHalos, showGmem=showGmem, showAll=showAll
 
   ; config
   singleColorScale = 0 ; 1=use same color scale for right panel, 0=rescale
-  secondGt         = 0 ; 1=show greater than cut, 0=show less than cut
+  secondGt         = 1 ; 1=show greater than cut, 0=show less than cut
   axes             = list([0,1],[0,2],[1,2]) ;xy,xz,yz
   nbottom          = 50
   sizeFac          = 3.5 ; times rvir
@@ -32,7 +32,7 @@ pro scatterMapHalos, showGmem=showGmem, showAll=showAll
   ; use which field and cut value for right panel?
   ;secondField = 'temp'     & secondCutVal = 5.0
   ;secondField = 'entropy'  & secondCutVal = 7.5
-  secondField = 'metal'     & secondCutVal = -1.0
+  secondField = 'metal'     & secondCutVal = -2.5
   ;secondField = 'vrad'      & secondCutVal = -200.0
   ;secondField = 'vradnorm'  & secondCutVal = 2.0
   ;secondField = 'coolTime'  & secondCutVal = 1.0 ; gmem only
@@ -42,7 +42,7 @@ pro scatterMapHalos, showGmem=showGmem, showAll=showAll
   ; use which field and minmax for color mapping?
   ;colorField = 'temp'     & fieldMinMax  = [4.0,7.0]
   ;colorField = 'entropy'  & fieldMinMax  = [6.5,8.5] ; log(CGS)
-  colorField = 'metal'     & fieldMinMax = [-4.0,1.0] ; log(Z/Zsun)
+  colorField = 'metal'     & fieldMinMax = [-4.0,-1.0] ; log(Z/Zsun)
   ;colorField = 'vrad'      & fieldMinMax = [-400,400] ; km/s
   ;colorField = 'vradnorm'  & fieldMinMax = [0.0,4.0] ; vrad/v200
   ;colorField  = 'coolTime' & fieldMinMax = [0.0,5.0] ; gmem only

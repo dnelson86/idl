@@ -46,6 +46,7 @@ function accretionMode, sP=sP
   nTotSearch = n_elements(gal_w_at) + n_elements(gmem_w_at) + n_elements(stars_w_at)
   
   ; load galaxy/group member catalogs at zMin for gas ids to search for
+  origSnap = sP.snap
   galcat = galaxyCat(sP=sP)
   
   count_bracketed = 0UL
@@ -962,7 +963,9 @@ function accretionMode, sP=sP
   ; ---------------------
   if sP.trMCPerCell eq -1 then begin
     message,'todo'
-  endif  
+  endif
+  
+  sP.snap = origSnap ; restore sP.snap
   
 end
 
