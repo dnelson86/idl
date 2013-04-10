@@ -353,10 +353,10 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
             
           ; more than one digit?
           if alog10(abs(config.fieldMinMax[1])) ge 1.0 then $
-            extraPad += floor(alog10(abs(config.fieldMinMax[1]))) * 0.006
+            extraPad += floor(alog10(abs(config.fieldMinMax[1]))) * 0.007
         endif else begin
           firstText = string(config.fieldMinMax,format='(f3.1)')
-          extraPad = 0.006
+          extraPad = 0.007
         endelse
         
         if config.barType eq '1bar' then begin
@@ -392,16 +392,16 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
           cgText,0.385-extraPad,0.036,firstText[1],alignment=0.5,color=cgColor('black'),/normal
           
           ; second text: integer or has a decimal?
-          if round(loc_mm[1]) eq loc_mm[1] then begin
+          if round(loc_mm[1]) eq loc_mm[1] and round(loc_mm[0]) eq loc_mm[0] then begin
             secondText = str(fix(loc_mm))
             extraPad = 0.0
             
             ; more than one digit?
             if alog10(abs(loc_mm[1])) ge 1.0 then $
-              extraPad += floor(alog10(abs(loc_mm[1]))) * 0.006
+              extraPad += floor(alog10(abs(loc_mm[1]))) * 0.007
           endif else begin
-            secondText = string(loc_mm,format='(f3.1)')
-            extraPad = 0.006
+            secondText = str(string(loc_mm,format='(f4.1)'))
+            extraPad = 0.007
           endelse
             
           cgText,0.75,0.0375,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal

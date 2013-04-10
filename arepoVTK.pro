@@ -53,24 +53,30 @@ pro makeVTKCosmoCutout
   ; config
   sP = simParams(res=512,run='tracer',redshift=2.0)
   
-  gcID    = 2004 ; NEW512 z2.304 g2342 a2004
-  sizeFac = 3.6 ; times rvir for the bounding box of each cutout
+  haloID = 304 ;z2.304 z2.301 z2.130 z2.64
+  gcID = getMatchedIDs(sPa=sP,sPg=sP,haloID=haloID)
+  sizeFac = 3.7 ; times rvir for the bounding box of each cutout
 
   ; target list
   gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
-  sgcen = subgroupPosByMostBoundID(sP=sP) 
+  sgcen = subgroupPosByMostBoundID(sP=sP)
+  rvir  = gc.group_r_crit200[gc.subgroupGrNr[gcID.a]]
   
   ; get subhalo position and size of imaging box
-  boxCen     = sgcen[*,gcID]
-  boxSize    = ceil(sizeFac * gc.group_r_crit200[gc.subgroupGrNr[gcID]] / 10.0) * 10.0
+  boxCen     = sgcen[*,gcID.a]
+  boxSize    = ceil(sizeFac * rvir / 10.0) * 10.0
   boxSizeImg = [boxSize,boxSize,boxSize] ; cube
+  
+  ; exclude inner region (galaxy)
+  excludeSize = ceil(0.25 * rvir / 10.0) * 10.0
 
   print,'boxCen',boxCen
   print,'boxSize',boxSize
+  print,'excludeSize',excludeSize
 
   ; make cutout
-  createSnapshotCutout,sP=sP,fOut='/n/home07/dnelson/cutout_arepo2.hdf5',$
-    cenPos=boxCen,boxSize=boxSizeImg,/includeGas,/convertUtoTemp,/verbose
+  createSnapshotCutout,sP=sP,fOut='/n/home07/dnelson/cutout_tracer2.hdf5',$
+    cenPos=boxCen,boxSize=boxSizeImg,excludeSize=excludeSize,/includeGas,/convertUtoTemp
 
 end
 

@@ -17,7 +17,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        arepoPath:    '',$    ; root path to Arepo and param.txt for e.g. projections/fof
        savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
        saveTag:      '',$    ; save string: trVel, trMC, or SPH
-	   simName:      '',$    ; label to add to plot legends (e.g. "GADGET", "AREPO", "FEEDBACK")
+	 simName:      '',$    ; label to add to plot legends (e.g. "GADGET", "AREPO", "FEEDBACK")
        plotPrefix:   '',$    ; plot prefix for simulation (make unique, e.g. 'GR')
        boxSize:      0.0,$   ; boxsize of simulation, kpc
        targetGasMass:0.0,$   ; refinement/derefinement target, equal to SPH gas mass in equivalent run
@@ -32,6 +32,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        res:          0,$     ; copied from input
        run:          '',$    ; copied from input
        redshift:     -1.0,$  ; copied from input
+       $
        $ ; analysis parameters:
        minNumGasPart: 0,$    ; minimum number of gas particles required to use subgroup (unused)
        radcut_rvir:   0.15,$ ; galcat: fraction of rvir as maximum for gal/stars, minimum for gmem (zero to disable)
@@ -39,19 +40,22 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        galcut_T:      6.0,$  ; galcat: temp coefficient for (rho,temp) galaxy cut
        galcut_rho:    0.25,$ ; galcat: dens coefficient for (rho,temp) galaxy cut
        rVirFacs:      [1.0,0.75,0.5,0.25,0.15,0.05,0.01],$ ; search for accretion times across these fractions of the virial radius
-       TcutVals:      [5.3,5.5,5.7],$ ; log(K) for constant threshold comparisons
-       TvirVals:      [1.0,0.8,0.4],$ ; T/Tvir coefficients for variable threshold comparisons
-       $ ; plotting/vis parameters:
-       colorsA:       [getColor24(['00'x,'eb'x,'00'x]),getColor24(['00'x,'bd'x,'00'x]),getColor24(['00'x,'90'x,'00'x])],$ ; green 128,256,512
-       colorsG:       [getColor24(['e6'x,'7a'x,'22'x]),getColor24(['b3'x,'5f'x,'1b'x]),getColor24(['80'x,'44'x,'13'x])],$ ; brown 128,256,512
-       pos_3x1:       list([0.18,0.67,0.95,0.95],[0.18,0.39,0.95,0.67],[0.18,0.11,0.95,0.39]) ,$
-       pos_2x1:       list([0.15,0.55,0.95,0.95], [0.15,0.15,0.95,0.55])                      ,$
        radIndHaloAcc: 0,$     ; 1.0 rvir crossing for halo accretion
        radIndGalAcc:  4,$     ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
+       mapNotMatch:   1,$ ; use idIndexMap instead of match() approach in analysis, whenever possible
+       TcutVals:      [5.3,5.5,5.7],$ ; log(K) for constant threshold comparisons
+       TvirVals:      [1.0,0.8,0.4],$ ; T/Tvir coefficients for variable threshold comparisons
+       $
+       $ ; plotting/vis parameters:
+       colors:        [0L,0L,0L] ,$ ; color sequence for res 128,256,512
+       pos_3x1:       list([0.18,0.67,0.95,0.95],[0.18,0.39,0.95,0.67],[0.18,0.11,0.95,0.39]) ,$
+       pos_2x2:       list([0.13,0.5,0.53,0.9],[0.53,0.5,0.93,0.9],[0.13,0.1,0.53,0.5],[0.53,0.1,0.93,0.5]) ,$
+       pos_2x1:       list([0.15,0.55,0.95,0.95],[0.15,0.15,0.95,0.55])  ,$
+       $
+       $ ; GFM and other indications of optional snapshot fields
        gfmElements:   ['H','He','C','N','O','Ne','Mg','Si','Fe'] ,$
        gfmNumElements: 0, $ ; set to >=1 for GFM runs outputting abundances by metal
-       gfmWinds:       0, $ ; set to 1 for GFM_WINDS
-       mapNotMatch:    1  $ ; use idIndexMap instead of match() approach in analysis, whenever possible
+       gfmWinds:       0  $ ; set to 1 for GFM_WINDS
       }
 
   ; copy inputs
@@ -99,6 +103,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.plotPath   = '/n/home07/dnelson/coldflows/'
     r.derivPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
     
+    r.colors = [getColor24(['ff'x,'40'x,'40'x]), $ ; red, light to dark
+                getColor24(['ff'x,'00'x,'00'x]), $
+                getColor24(['a6'x,'00'x,'00'x])]
+    
     ; if f=-1 use velocity tracers
     if keyword_set(f) then begin
       if f ne -1 then message,'Error.' ; only valid input is -1
@@ -117,6 +125,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
 	r.simName    = 'AREPO noZ'
       r.plotPrefix = 'feNoZ'
       r.derivPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noZ/data.files/'
+      
+      r.colors = [getColor24(['b2'x,'3a'x,'d4'x]), $ ; purple, light to dark
+                  getColor24(['85'x,'06'x,'a9'x]), $
+                  getColor24(['56'x,'02'x,'6e'x])]
     endif
 	
     if run eq 'feedback_nofb' then begin
@@ -129,6 +141,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
 	r.simName    = 'AREPO noFB'
       r.plotPrefix = 'feNoFB'
       r.derivPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noFB/data.files/'
+      
+      r.colors = [getColor24(['4e'x,'51'x,'d8'x]), $ ; blue, light to dark
+                  getColor24(['1a'x,'1e'x,'b2'x]), $
+                  getColor24(['08'x,'0b'x,'74'x])]
     endif
     
     ; if redshift passed in, convert to snapshot number and save
@@ -167,6 +183,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.plotPrefix = 'G'
     r.plotPath   = '/n/home07/dnelson/coldflows/'
     r.derivPath  = '/n/home07/dnelson/sims.gadget/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
+    
+    r.colors = [getColor24(['e6'x,'7a'x,'22'x]),$ ; brown, light to dark
+                getColor24(['b3'x,'5f'x,'1b'x]),$
+                getColor24(['80'x,'44'x,'13'x])]
     
     ; if redshift passed in, convert to snapshot number and save
     if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
@@ -234,6 +254,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.plotPrefix = 'trMC'
     r.plotPath   = '/n/home07/dnelson/coldflows/'
     r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
+    
+    r.colors = [getColor24(['00'x,'eb'x,'00'x]), $ ; green, light to dark
+                getColor24(['00'x,'bd'x,'00'x]), $
+                getColor24(['00'x,'90'x,'00'x])]
     
     ; if f=-1 use velocity tracers
     if keyword_set(f) then begin

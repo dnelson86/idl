@@ -33,6 +33,7 @@ function accretionTimes, sP=sP, restart=restart
                 str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'
   
   ; load galaxy/group member catalogs at zMin for gas ids to search for
+  origSnap = sP.snap
   galcat = galaxyCat(sP=sP)
   
   ; count of how many particles/tracers we tracked through r_vir
@@ -941,5 +942,7 @@ function accretionTimes, sP=sP, restart=restart
     print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
                 
   endif
+  
+  sP.snap = origSnap ; restore sP.snap
   
 end
