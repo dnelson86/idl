@@ -236,11 +236,11 @@ int CalcMatch(int argc, void* argv[])
   
   memcpy( inds_A, inds_A_out, numA * sizeof(MyIndType) );
   memcpy( inds_B, inds_B_out, numB * sizeof(MyIndType) );
-  
+
   // fhtr sort (threaded), skip for A if method >= 10
   if(method < 10)
     my_qsort( inds_A, numA, sizeof(MyIndType), indexA_comp_func );
-    
+
   my_qsort( inds_B, numB, sizeof(MyIndType), indexB_comp_func );
 
   // single walk match

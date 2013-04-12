@@ -18,12 +18,21 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
   
   ; return 8 matched IDs for mosaic?
   if keyword_set(mosaicIDs) then begin
+    ; 512^3 z=2
     sgIDs['z2_res512_tracer']   = [5611,4518,2874,2389,2058,1037,816,252]
     sgIDs['z2_res512_gadget']   = [6369,5151,3338,2824,2538,1117,981,266]
-    sgIDs['z2_res512_feedback'] = [5750,4622,2940,2384,2131,834,676,150]
+    sgIDs['z2_res512_feedback'] = [5750,4622,2940,2384,2131,834,676,105]
     sgIDs['z2_res512_axes']     = list([0,2],[0,1],[0,2],[0,2],[1,2],[0,2],[1,2],[0,1])
     
-    sgIDs['z3_res512_tracer']   = [3664,2920,1812,1459,1210,620,496,137] ; ~same mass spacing as z2
+    ; 256^3 z=2 (matched from 512)
+    sgIDs['z2_res256_tracer']        = [1527,1229,733,605,539,203,169,28]
+    sgIDs['z2_res256_gadget']        = [1888,1565,983,845,758,330,278,74]
+    sgIDs['z2_res256_feedback']      = [1467,1132,692,582,519,218,154,27]
+    sgIDs['z2_res256_feedback_noz']  = [1485,1112,688,607,529,193,187,47]
+    sgIDs['z2_res256_axes']          = list([0,2],[0,1],[0,2],[0,2],[1,2],[0,2],[1,2],[0,1])
+    
+    ; 512^3 z=3 (~same mass spacing as z2, but randomly selected at z=3 for run=tracer)
+    sgIDs['z3_res512_tracer']   = [3664,2920,1812,1459,1210,620,496,137]
     sgIDs['z3_res512_gadget']   = [4398,3194,2061,1593,1275,742,573,154] ; matched from tracer
     sgIDs['z3_res512_feedback'] = [4451,3067,1801,1453,1135,671,468,151] ; matched from tracer
     sgIDs['z3_res512_axes']     = list([0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1])
@@ -46,6 +55,7 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
   sgIDs['z2_h314_res256_tracer']   = 169
   sgIDs['z2_h314_res256_gadget']   = 278
   sgIDs['z2_h314_res256_feedback'] = 154
+  sgIDs['z2_h314_res256_feedback_noz'] = 187
   
   sgIDs['z2_h314_res128_tracer']   = 50
   sgIDs['z2_h314_res128_gadget']   = 71
@@ -73,6 +83,7 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
   sgIDs['z2_h304_res256_tracer']   = 510
   sgIDs['z2_h304_res256_gadget']   = 673
   sgIDs['z2_h304_res256_feedback'] = 464
+  sgIDs['z2_h304_res256_feedback_noz'] = 485
   
   sgIDs['z2_h304_res128_tracer']   = 150
   sgIDs['z2_h304_res128_gadget']   = 217
@@ -137,15 +148,14 @@ pro rematch
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function loadGroupCat
 
-  sP1 = simParams(res=512,run='tracer',redshift=3.0)
-  sP2 = simParams(res=512,run='gadget',redshift=3.0)
+  sP1 = simParams(res=512,run='gadget',redshift=2.0)
+  sP2 = simParams(res=256,run='gadget',redshift=2.0)
 
   gc1 = loadGroupCat(sP=sP1,/skipIDs)
   gc2 = loadGroupCat(sP=sP2,/skipIDs)
 
-  known1gcIDs = [3664,2920,1812,1459,1210,620,496,137]
-  
-  ;known1gcIDs = [1643]
+  ;known1gcIDs = [3664,2920,1812,1459,1210,620,496,137]
+  known1gcIDs = [6369,5151,3338,2824,2538,1117,981,266]
   
   foreach gcID,known1gcIDs do begin
     ; find closest spatial match
@@ -161,7 +171,7 @@ pro rematch
     print,'Masses ',gc1.subgroupMass[gcID],gc2.subgroupMass[w[0]]
     print,'Distance of match: ['+string(min(dists),format='(f5.1)')+'] and second closest: ['+$
       string(dists[1],format='(f5.1)')+'] with mass: '+$
-      string(gc2.subgroupMass[dists_sort[1]],format='(f5.2)')
+      string(gc2.subgroupMass[dists_sort[1]],format='(f6.2)')+' ind: ['+str(dists_sort[1])+']'
     print,''
   endforeach
   

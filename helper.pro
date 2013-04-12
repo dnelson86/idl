@@ -1,6 +1,6 @@
 ; helper.pro
 ; helper functions (NOTE: all my IDL routines loaded at bottom of this file)
-; dnelson feb.2013
+; dnelson apr.2013
 
 ; one line utility functions
 ; --------------------------
@@ -890,9 +890,9 @@ end
 ;@accretionTrajVis
 @cosmoVis
 @cosmoVisMap
+;@cosmoVisTry
 ;@cosmoOverDens
 ;@haloCompProj
-@galaxyCatVis
 
 @sphere
 @spherePlot

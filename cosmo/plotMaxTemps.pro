@@ -438,9 +438,9 @@ pro plotTmaxHistos
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  runs       = ['gadget','tracer','feedback']
+  runs       = ['feedback','feedback_noZ']
   redshift   = 2.0
-  res        = 512
+  res        = 256
   sgSelect   = 'pri'
   timeWindow = 1000.0 ; Myr
   accModes   = ['smooth'] ;['all','smooth','clumpy','stripped']
@@ -656,11 +656,11 @@ pro plotTmaxHisto2D
   units = getUnits()
   
   ; config
-  runs       = ['feedback','tracer']
+  runs       = ['feedback','feedback_noZ']
   sgSelect   = 'pri'
   timeWindow = 1000.0 ; Myr
   redshift   = 2.0
-  res        = 512
+  res        = 256
   accModes   = ['all','smooth'] ;['all','smooth','clumpy','stripped']  
   
   ; plot config

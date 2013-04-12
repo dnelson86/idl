@@ -4,19 +4,18 @@
 
 ; sphMapBox: run sph kernel density projection on whole box
 
-pro sphMapBox, partType=partType
+pro sphMapBox
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  res = 128
-  run = 'tracernew'
-  ;partType = 'tracervel'
+  res      = 256
+  run      = 'feedback_noFB'
+  redshift = 2.0
+  partType = 'gas' ;tracervel, tracermc, dm
 
-  redshift = 0.0
-  
+  ; plot config
   nPixels = [800,800] ;px
-
   zoomFac = 1    ; only in axes, not along projection direction
   nNGB    = 64   ; use CalcHSML for HSML with nNGB
   axes    = [0,1] ; x,y
@@ -30,44 +29,43 @@ pro sphMapBox, partType=partType
   
   foreach k,axes do boxSizeImg[k] /= zoomFac
   
-  outFilename = 'sphmap.box_'+str(zoomFac)+'.nNGB='+str(nNGB)+'.snap='+str(sP.snap)+$
-                '.box.axis0='+str(axes[0])+'.axis1='+str(axes[0])+'.'+partType
+  outFilename = 'sphmap.'+sP.saveTag+'.box_'+str(zoomFac)+'.nNGB='+str(nNGB)+'.snap='+str(sP.snap)+$
+                '.box.axis0='+str(axes[0])+'.axis1='+str(axes[0])+'.'+partType+'.sav'
 
   ; save/restore
-  if (file_test(sP.derivPath + outFilename + '.sav')) then begin
-    restore,sP.derivPath + outFilename + '.sav',/verbose
+  if (file_test(sP.derivPath + outFilename)) then begin
+    restore,sP.derivPath + outFilename,/verbose
   endif else begin
 
     ; gas cells or sph particles (pos,hsml stored in snapshots)
-    if partType eq 'gas' then begin
-      mass = loadSnapshotSubset(sP=sP,partType=partType,field='mass',/verbose)
+    if partType eq 'gas' or partType eq 'stars' or partType eq 'dm' then begin
+      mass = loadSnapshotSubset(sP=sP,partType=partType,field='mass')
       pos  = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
       hsml = loadSnapshotSubset(sP=sP,partType=partType,field='hsml')
-      quant = replicate(1.0,h.nPartTot[0]) ; dummy quant for now
     endif
     
     ; velocity tracers (pos stored in snapshots, calculate hsmls and use constant eff mass)
     if partType eq 'tracervel' then begin
-      mass = replicate(sP.targetGasMass, h.nPartTot[2])
-      pos  = loadSnapshotSubset(sP=sP,partType=partType,field='pos',/verbose)
+      mass = replicate(sP.targetGasMass, h.nPartTot[partTypeNum(partType)])
+      pos  = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
       hsml = calcHSML(pos,ndims=3,nNGB=nNGB,boxSize=h.boxSize)
-      quant = replicate(1.0,h.nPartTot[2]) ; dummy quant for now
     endif
     
     ; monte carlo tracers (use gas pos,hsml and replace mass by num_child_tr*tr_mass_eff)
     if partType eq 'tracermc' then begin
-      mass = loadSnapshotSubset(sP=sP,partType='gas',field='numtr',/verbose)
+      mass = loadSnapshotSubset(sP=sP,partType='gas',field='numtr')
       mass *= sP.trMassConst
       pos  = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
       hsml = loadSnapshotSubset(sP=sP,partType='gas',field='hsml')
-      quant = replicate(1.0,h.nPartTot[0]) ; dummy quant for now
     endif
+    
+    quant = replicate(1.0, h.nPartTot[partTypeNum(partType)]) ; dummy quant for now
     
     sphMap = calcSphMap(pos,hsml,mass,quant,boxSizeImg=boxSizeImg,boxSizeSim=h.boxSize,boxCen=boxCen,$
                         nPixels=nPixels,axes=axes,ndims=3)
     colMassMap = sphMap.dens_out
     
-    save,colMassMap,filename=sP.derivPath + outFilename + '.sav'
+    save,colMassMap,filename=sP.derivPath + outFilename
   endelse
 
   ; rescale
@@ -91,8 +89,8 @@ pro sphMapBox, partType=partType
   xMinMax = [boxCen[0]-boxSizeImg[0]/2.0,boxCen[0]+boxSizeImg[0]/2.0]
   yMinMax = [boxCen[1]-boxSizeImg[1]/2.0,boxCen[1]+boxSizeImg[1]/2.0]
   
-  start_PS, sP.plotPath + outFilename + '.eps'
-    loadct, 4, bottom=1, /silent
+  start_PS, sP.plotPath + strmid(outFilename,0,strlen(outFilename)-4) + '.eps'
+    loadColorTable,'helix'
     tvim,colMassMap,xrange=xMinMax,yrange=yMinMax,pcharsize=0.0001
   end_PS, pngResize=68, /deletePS
   
@@ -407,9 +405,9 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
   endif
   
   ; simulation name
-  if keyword_set(left) then cgText,0.25,0.97,"FEEDBACK",charsize=!p.charsize+0.5,$
+  if keyword_set(left) then cgText,0.25,0.97,config.sP.simName,charsize=!p.charsize+0.5,$
     alignment=0.5,/normal,color=cgColor('white')
-  if keyword_set(right) then cgText,0.75,0.97,"AREPO",charsize=!p.charsize+0.5,$
+  if keyword_set(right) then cgText,0.75,0.97,config.sP.simName,charsize=!p.charsize+0.5,$
     alignment=0.5,/normal,color=cgColor('white')    
           
   ; quantity name
@@ -450,7 +448,7 @@ pro sphMapHalos;, sP=sP, gcIDs=gcIDs, coldOnly=coldOnly
   
 	  cutout = cosmoVisCutout(sP=sP,gcInd=gcID,sizeFac=sizeFac)
     
-    saveFilename = 'map.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
+    saveFilename = 'map.'+sP.saveTag+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
                    '.axes'+str(axisPair[0])+str(axisPair[1])+'.sav'
                
     ; get box center (we have relative positions centered around origin)
@@ -494,8 +492,8 @@ pro sphMapHaloComp
   haloID = 130 ;z2.304 z2.301 z2.130 z2.64
   gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)
   
-  saveFilename = 'map.'+sPa.savPrefix+str(sPa.res)+'.'+str(sPa.snap)+'.h'+str(gcID.a)+$
-                 '.'+sPg.savPrefix+str(sPg.res)+'.h'+str(gcID.g)+'.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
+  saveFilename = 'map.'+sPa.saveTag+str(sPa.res)+'.'+str(sPa.snap)+'.h'+str(gcID.a)+$
+                 '.'+sPg.saveTag+str(sPg.res)+'.h'+str(gcID.g)+'.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
                  
   start_PS, sPa.plotPath + saveFilename, xs=8, ys=8   
   
@@ -561,8 +559,8 @@ pro sphScatterAndMapHaloComp, redshift=redshift
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  sPa = simParams(res=512,run='tracer',redshift=redshift)
-  sPg = simParams(res=512,run='feedback',redshift=redshift)
+  sPa = simParams(res=256,run='gadget',redshift=redshift)
+  sPg = simParams(res=256,run='tracer',redshift=redshift)
   
   ; config
   sizeFacMap  = 5.0       ; times rvir
@@ -576,8 +574,8 @@ pro sphScatterAndMapHaloComp, redshift=redshift
   haloID = 304 ;z2.304 z2.301 z2.130 z2.64
   gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)
 
-  saveFilename = 'sc.map.'+sPa.savPrefix+str(sPa.res)+'.'+str(sPa.snap)+'.h'+str(gcID.a)+$
-                 '.'+sPg.savPrefix+str(sPg.res)+'.h'+str(gcID.g)+'.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
+  saveFilename = 'sc.map.'+sPa.saveTag+str(sPa.res)+'.'+str(sPa.snap)+'.h'+str(gcID.a)+$
+                 '.'+sPg.saveTag+str(sPg.res)+'.h'+str(gcID.g)+'.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
                  
   start_PS, sPa.plotPath + saveFilename, xs=6, ys=9  
   
@@ -719,7 +717,7 @@ pro sphMapHalosDM, sP=sP, gcIDs=gcIDs
   
     foreach axisPair, axes do begin
   
-      saveFilename = 'dmMap.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
+      saveFilename = 'dmMap.'+sP.saveTag+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
                      '.axes'+str(axisPair[0])+str(axisPair[1])+'.sav'
                     
       if ~file_test(sP.derivPath+'sphMaps/'+saveFilename) then begin
