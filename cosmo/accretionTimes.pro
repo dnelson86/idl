@@ -944,5 +944,6 @@ function accretionTimes, sP=sP, restart=restart
   endif
   
   sP.snap = origSnap ; restore sP.snap
+  return,r
   
 end

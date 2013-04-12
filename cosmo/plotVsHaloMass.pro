@@ -4,18 +4,18 @@
 
 ; plotPreBin():
 
-pro plotPreBin, res=res
+pro plotPreBin
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
   sgSelect   = 'pri'
   redshift   = 2.0 ;redshifts  = [2.0,3.0]
-  ;res       = 512
+  res        = 128
   
   timeWindows = list(250.0,500.0,1000.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
   accModes = list('all','smooth','clumpy','stripped') ;,'recycled'
-  runs = list('feedback_noFB') ;list('tracer','gadget')
+  runs = list('gadget') ;list('tracer','gadget')
   
   ;foreach redshift,redshifts do begin
     foreach timeWindow,timeWindows do begin
@@ -121,14 +121,14 @@ pro plotByMethod
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  runs       = ['gadget','tracer','feedback']
+  runs       = ['feedback','feedback_noZ']
   sgSelect   = 'pri'
   accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
   timeWindow = 1000.0 ; consider accretion over this past time range (Myr)
                       ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0 ; plot Tmax/Tvir=1
-  res        = 512
-  redshift   = 3.0
+  res        = 256
+  redshift   = 2.0
   
   lines   = [1,0,2] ; tvircur,tviracc,const5.5
   thicks  = [4,6,8] ; 128,256,512
@@ -533,9 +533,9 @@ pro plotByMode
   ; config
   sgSelect   = 'pri'
   redshift   = 2.0
-  res        = 512
+  res        = 256
   timeWindow = 1000.0
-  runs       = ['gadget','tracer','feedback']
+  runs       = ['feedback','feedback_noZ']
   accModes   = ['all','smooth','clumpy','stripped','recycled']
   
   ; plot config
@@ -1024,7 +1024,7 @@ pro plotByRes
   ; config
   sgSelect    = 'pri'
   accMode     = 'smooth'
-  redshift    = 2.0
+  redshift    = 3.0
   timeWindow  = 1000.0 ; Myr
   resolutions = [512,256,128]
   runs        = ['gadget','tracer','feedback']

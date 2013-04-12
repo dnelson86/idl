@@ -508,7 +508,6 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
   endif
   
   !except = 1
-  
   return,sf
 end
 

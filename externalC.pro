@@ -476,7 +476,7 @@ pro calcMatch, A, B, ind1, ind2, count=count, noSortA=noSortA
   ; pick library based on 32bit or 64bit IDs
   if size(A,/tname) eq 'LONG'   then soName = 'int32'
   if size(A,/tname) eq 'LONG64' then soName = 'int64'
-    
+
   ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_'+soName+'.so', 'CalcMatch', $
                       method,numA,numB,A,B,ind1,ind2,count,/CDECL)
 
