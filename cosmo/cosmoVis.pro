@@ -5,9 +5,9 @@
 ; cosmoVisCutout(): make a spatial cutout around a halo
 ;                   call with multiple gcInd's for one load and save cutouts
 ;                   call with one gcInd to return results
-;                   call with selectGmem
+;                   call with selectHalo to restrict to galaxyHaloCat
 
-function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectGmem=selectGmem
+function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectHalo
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
@@ -15,19 +15,15 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectGmem=selectG
   velVecFac = 0.01 ; times velocity (km/s) in plotted kpc
   hsmlFac   = 1.75 ; increase arepo 'hsml' to decrease visualization noise  
 
-  if keyword_set(sizeFac) and keyword_set(selectGmem) then message,'The two are exclusive.'
   if ~keyword_set(sP) or n_elements(gcInd) eq 0 then message,'Error'
   
-  ; filename tag for selectGmem or not
-  cutTag = 'cutout'
-  if keyword_set(selectGmem) then begin
-    cutTag = 'gmemCut'
-    sizeFac = 0
-  endif
+  ; filename tag for selectHalo or not
+  cutTag = '.sf' + str(fix(sizeFac*10))
+  if keyword_set(selectHalo) then cutTag = '.haloCut'
   
   ; check existence of requested saves if more than one halo
-  saveFilenames = sP.derivPath + 'cutouts/' + cutTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
-    str(sP.snap) + '.h' + str(gcInd) + '.sf' + str(fix(sizeFac*10)) + '.sav'
+  saveFilenames = sP.derivPath + 'cutouts/cutout.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.h' + str(gcInd) + cutTag + '.sav'
         
   ; if single halo requested and save exists, load it
   if n_elements(saveFilenames) eq 1 then $
@@ -99,13 +95,13 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectGmem=selectG
   
   sort_inds = !NULL
   
-  ; now restrict all these quantities to gmem only if requested
-  if keyword_set(selectGmem) then begin
+  ; now restrict all these quantities to fullhalo only if requested
+  if keyword_set(selectHalo) then begin
     h = loadSnapshotHeader(sP=sP)
-    galcat = galaxyCat(sP=sP)
+    galHaloCat = galaxyHaloCat(sP=sP)
     
     idIndexMap = getIDIndexMap(ids,minid=minid)
-    ids_ind = idIndexMap[galcat.groupmemIDs-minid]
+    ids_ind = idIndexMap[galHaloCat.fullhaloIDs-minid]
   
     ids  = ids[ids_ind]
     temp = temp[ids_ind]
@@ -113,17 +109,15 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectGmem=selectG
     dens = dens[ids_ind]
     hsml = hsml[ids_ind]
     mass = mass[ids_ind]
-    dens = dens[ids_ind]
     pos  = pos[*,ids_ind]
     vel  = vel[*,ids_ind]
     
     if metalsFlag then metal = metal[ids_ind]
   
-    ; load cooling and dynamical timescales (already gmem only)
+    ; load cooling and dynamical timescales (already fullhalo only)
     encMass = enclosedMass(sP=sP) ; code units
 
-    gasRadii = galaxyCatRadii(sP=sP)
-    gasRadii = gasRadii.gmem_sec
+    gasRadii = galHaloCat.fullhaloRad
     meanDensEnc = 3*encMass / (4 * !pi * gasRadii^3.0) / (h.time)^3.0 ; code units (physical)
     dynTime = sqrt( 3*!pi / (32 * float(units.G) * meanDensEnc * units.HubbleParam) ) ; code units (Gyr)
     encMass = !NULL
@@ -142,30 +136,28 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectGmem=selectG
     haloM200 = codeMassToLogMsun(gc.group_m_crit200[gc.subgroupGrNr[gcIndCur]])
     haloV200 = sqrt(units.G * gc.subgroupMass[gcIndCur] / haloVirRad )
     
+    ; get subhalo position and size of imaging box
+    boxCen     = sgcen[*,gcIndCur]
+    boxSize    = ceil(sizeFac * haloVirRad / 10.0) * 10.0
+    
+    ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
+    xDist = pos[0,*] - boxCen[0]
+    yDist = pos[1,*] - boxCen[1]
+    zDist = pos[2,*] - boxCen[2]
+    
+    correctPeriodicDistVecs, xDist, sP=sP
+    correctPeriodicDistVecs, yDist, sP=sP
+    correctPeriodicDistVecs, zDist, sP=sP
+    
     ; decide cutout
     if keyword_set(sizeFac) then begin
-      ; get subhalo position and size of imaging box
-      boxCen     = sgcen[*,gcIndCur]
-      boxSize    = ceil(sizeFac * haloVirRad / 10.0) * 10.0
-    
-      ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
-      xDist = pos[0,*] - boxCen[0]
-      yDist = pos[1,*] - boxCen[1]
-      zDist = pos[2,*] - boxCen[2]
-    
-      correctPeriodicDistVecs, xDist, sP=sP
-      correctPeriodicDistVecs, yDist, sP=sP
-      correctPeriodicDistVecs, zDist, sP=sP
-  
       ; local (cube) cutout
       wCut = where(abs(xDist) le 0.5*boxSize and abs(yDist) le 0.5*boxSize and $
                    abs(zDist) le 0.5*boxSize,nCutout)
     endif else begin
-      ; gmem selection (all quantities are in gmem catalog order)
-      wCut = galcatINDList(sP=sP, galcat=galcat, gcIDList=[gcIndCur])
-      wCut = wCut.gmem
-    
-      nCutout  = n_elements(wCut)
+      ; halo selection (all quantities are in galHaloCat catalog order)
+      wCut    = galHaloCatINDList(sP=sP, galHaloCat=galHaloCat, gcIDList=[gcIndCur])
+      nCutout = n_elements(wCut)
     endelse
                  
     ; take selection of fields
@@ -189,7 +181,7 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectGmem=selectG
     
     loc_vel = vel[*,wCut]
     
-    if keyword_set(selectGmem) then begin
+    if keyword_set(selectHalo) then begin
       loc_dynTime  = dynTime[wCut]
       loc_coolTime = coolTime[wCut]
     endif else begin
@@ -227,8 +219,8 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectGmem=selectG
          sP:sP,gcID:gcIndCur,boxCen:boxCen,boxSizeImg:boxSizeImg,sizeFac:sizeFac,$
          haloVirRad:haloVirRad,haloMass:haloMass,haloM200:haloM200,haloV200:haloV200}
          
-    saveFilename = sP.derivPath + 'cutouts/' + cutTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
-      str(sP.snap) + '.h' + str(gcIndCur) + '.sf' + str(fix(sizeFac*10)) + '.sav'  
+    saveFilename = sP.derivPath + 'cutouts/cutout.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.h' + str(gcIndCur) + cutTag + '.sav'
          
     save,r,filename=saveFilename
     print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
@@ -242,35 +234,73 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectGmem=selectG
   
 end
 
+; formatCBLabel()
+
+function formatCBLabel, loc_mm
+    if round(loc_mm[1]) eq loc_mm[1] and round(loc_mm[0]) eq loc_mm[0] then begin
+      text = str(fix(loc_mm))
+      extraPad = 0.0
+      
+      ; more than one digit?
+      if alog10(abs(loc_mm[1])) ge 1.0 then $
+        extraPad += floor(alog10(abs(loc_mm[1]))) * 0.007
+    endif else begin
+      text = str(string(loc_mm,format='(f4.1)'))
+      extraPad = 0.007
+    endelse
+    
+    return, {text:text,extraPad:extraPad}
+end
+
 ; plotScatterComp(): plot side by side colored/vectorized scatter plots
 
-pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cinds_right, $
-                     config=config, top=top, bottom=bottom, subtitle=subtitle
+pro plotScatterComp, sub=sub, config=config, first=first, second=second, row=row
 
       xMinMax = [-config.boxSizeImg[0]/2.0,config.boxSizeImg[0]/2.0]
       yMinMax = [-config.boxSizeImg[1]/2.0,config.boxSizeImg[1]/2.0]
       
-      plotPath = '/n/home07/dnelson/coldflows/'
-      
-      posLeft = [0.0,0.0,0.5,1.0]
-      if keyword_set(top) then posLeft = [0.0,0.5,0.5,1.0]
-      if keyword_set(bottom) then posLeft = [0.0,0.0,0.5,0.5]
-      posRight = posLeft + [0.5,0.0,0.5,0.0]
-      
-      if ~keyword_set(top) and ~keyword_set(bottom) then $
-        start_PS, plotPath + config.plotFilename, xs=8, ys=4
+      if n_elements(row) eq 0 then begin
+        ; 2x1 or 2x2 single halo or halo comparison
+        posLeft = [0.0,0.0,0.5,1.0]
+        if keyword_set(first) then posLeft = [0.0,0.5,0.5,1.0]
+        if keyword_set(second) then posLeft = [0.0,0.0,0.5,0.5]
+        posRight = posLeft + [0.5,0.0,0.5,0.0]
+        row = [0,1] ; for background fill
+      endif else begin
+        ; row by row progression of panels
+        curRow  = float(row[0])
+        totRows = row[1]
+        
+        ; just two images per row
+        posLeft = [0.0,curRow/totRows,0.5,(curRow+1)/totRows]
+        posRight = posLeft + [0.5,0.0,0.5,0.0]
+        
+        ; four images per row
+        if keyword_set(first) then begin
+          posLeft[[0,2]] = [0.0,0.25] ; compress in x-direction by two
+          posRight[[0,2]] = [0.25,0.5]
+        endif
+        if keyword_set(second) then begin
+          posLeft[[0,2]] = [0.5,0.75]
+          posRight[[0,2]] = [0.75,1.0]
+        endif
+        
+      endelse
+
+      if config.plotFilename ne '' then $
+        start_PS, config.sP.plotPath + config.plotFilename, xs=8, ys=4
       
         !p.thick = 3.0
         !p.charsize = 0.8
       
         ; fill with black background
-        if ~keyword_set(bottom) then $
+        if ~keyword_set(second) and row[0] eq row[1]-1 then $
           cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('black')
       
         ; color table and establish temperature -> color mapping
         loadColorTable,config.ctName
         
-        ; (left panel)
+        ; (first panel)
         ; ------------
         cgPlot, /nodata, xMinMax, yMinMax, pos=posLeft, xs=5, ys=5, /noerase
         
@@ -278,14 +308,14 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         tvcircle,config.haloVirRad,0,0,cgColor('light gray'),thick=0.6,/data
 
         ; particle loop for velocity vector plotting
-        nCutoutLeft = n_elements(pos_left[0,*])
+        nCutoutLeft = n_elements(sub.pos_left[0,*])
         for i=0L,nCutoutLeft-1 do $
-          oplot,[pos_left[config.axisPair[0],i],pos2_left[config.axisPair[0],i]],$
-                 [pos_left[config.axisPair[1],i],pos2_left[config.axisPair[1],i]],$
-                 line=0,color=cinds_left[i]
+          oplot,[sub.pos_left[config.axisPair[0],i],sub.pos_left2[config.axisPair[0],i]],$
+                 [sub.pos_left[config.axisPair[1],i],sub.pos_left2[config.axisPair[1],i]],$
+                 line=0,color=sub.cinds_left[i]
         
         ; scale bar
-        if ~keyword_set(bottom) then begin
+        if ~keyword_set(second) then begin
           len = 100.0 ;ckpc
           cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.3,$
                  string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('light gray')
@@ -294,10 +324,11 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
                  color=cgColor('light gray'),thick=4.0,/overplot
         endif
         
-        if keyword_set(bottom) then $
-          cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('dark gray'),/overplot
+        ; dividing lines
+        cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('dark gray'),/overplot
+        cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('dark gray'),/overplot
                
-        ; (right panel)
+        ; (second panel)
         ; -------------
         loadColorTable,config.ctName
         
@@ -306,33 +337,32 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         tvcircle,config.haloVirRad,0,0,cgColor('light gray'),thick=0.6,/data
         
         ; particle loop for velocity vector plotting (cold gas only)
-        nCutoutRight = n_elements(pos_right[0,*])
+        nCutoutRight = n_elements(sub.pos_right[0,*])
         for i=0L,nCutoutRight-1 do $
-          oplot,[pos_right[config.axisPair[0],i],pos2_right[config.axisPair[0],i]],$
-                 [pos_right[config.axisPair[1],i],pos2_right[config.axisPair[1],i]],$
-                 line=0,color=cinds_right[i]
+          oplot,[sub.pos_right[config.axisPair[0],i],sub.pos_right2[config.axisPair[0],i]],$
+                 [sub.pos_right[config.axisPair[1],i],sub.pos_right2[config.axisPair[1],i]],$
+                 line=0,color=sub.cinds_right[i]
         
-        ; redshift and halo mass
-        if ~keyword_set(bottom) then begin
+        ; redshift and halo mass (top on 2x2, right on progression)
+        if (~keyword_set(second) and row[1] eq 1) or (~keyword_set(first) and row[1] gt 1) then begin
           cgText,config.boxSizeImg[0]/2.1,config.boxSizeImg[1]/2.4,alignment=1.0,$
             "z = "+string(config.sP.redshift,format='(f3.1)'),color=cgColor('light gray')
           cgText,config.boxSizeImg[0]/2.1,config.boxSizeImg[1]/2.2,alignment=1.0,$
             "M = "+string(config.haloMass,format='(f4.1)'),color=cgColor('light gray')
         endif
         
-        ; dividing line
+        ; dividing lines
         cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('dark gray'),/overplot
+        cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('dark gray'),/overplot
         
-        if keyword_set(bottom) then $ ; horizontal dividing line
-          cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('dark gray'),/overplot
-        
-        ; colorbar(s) on bottom
+        ; colorbar(s)
+        ; ----------
         loadColorTable,config.ctName
         
         !x.thick = 1.0
         !y.thick = 1.0
         
-        if ~keyword_set(top) then begin
+        if ~keyword_set(first) then begin
         
         ; choose center colorbar label
         if config.colorField eq 'vrad'      then labelText = "v_{rad} [km/s]"
@@ -347,211 +377,223 @@ pro plotScatterComp, pos_left, pos2_left, pos_right, pos2_right, cinds_left, cin
         if config.colorField eq 'timeRatio' then labelText = "t_{cool} / t_{dyn}"
 
         ; first text: integer or has a decimal?
-        if round(config.fieldMinMax[1]) eq config.fieldMinMax[1] then begin
-          firstText = str(fix(config.fieldMinMax))
-          extraPad = 0.0
-            
-          ; more than one digit?
-          if alog10(abs(config.fieldMinMax[1])) ge 1.0 then $
-            extraPad += floor(alog10(abs(config.fieldMinMax[1]))) * 0.007
-        endif else begin
-          firstText = string(config.fieldMinMax,format='(f3.1)')
-          extraPad = 0.007
-        endelse
+        rr = formatCBLabel(config.fieldMinMax)
         
         if config.barType eq '1bar' then begin
           ; one colorbar (centered)
           pos = [0.35,0.02,0.65,0.078]
-          if keyword_set(bottom) then pos *= [1.0,0.5,1.0,0.5]
+          
+          if keyword_set(second) then pos *= [1.0,0.5,1.0,0.5]
           cgColorbar,position=pos,divisions=0,charsize=0.000001,ticklen=0.00001,$
             bottom=config.nbottom,ncolors=(255-3-config.nbottom) ; 3 to remove white band at rightside
           
           ; colorbar labels
           cgText,0.5,0.021,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
-          cgText,pos[0]+0.015+extraPad,0.0195,firstText[0],alignment=0.5,color=cgColor('black'),/normal
-          cgText,pos[2]-0.015-extraPad,0.0195,firstText[1],alignment=0.5,color=cgColor('black'),/normal
+          cgText,pos[0]+0.015+rr.extraPad,0.0195,rr.text[0],alignment=0.5,color=cgColor('black'),/normal
+          cgText,pos[2]-0.015-rr.extraPad,0.0195,rr.text[1],alignment=0.5,color=cgColor('black'),/normal
         endif
         
-        if config.barType eq '2bar' then begin
-          ; two colorsbars (separate ranges)
-          cgColorbar,position=[0.02,0.1,0.076,0.4],divisions=0,charsize=0.000001,$
+        if config.barType eq '2bar' then begin ; two colorsbars (separate ranges)
+          ; first colorbar (left)
+          xpos_bar = [0.1,0.4]
+          if row[1] gt 1 then xpos_bar = [0.175,0.325]
+          ypos_bar = [0.02,0.076] * 1.0/row[1]
+          cgColorbar,position=[xpos_bar[0],ypos_bar[0],xpos_bar[1],ypos_bar[1]],$
+            divisions=0,charsize=0.000001,$
             bottom=config.nbottom,ncolor=(255-config.nbottom),ticklen=0.00001
           
-          ; second (right panel)
+          ; first text  
+          ypos = 0.0375 * 1.0/row[1]
+          ytext = 0.036 * 1.0/row[1]
+          
+          cgText,mean(xpos_bar),ypos,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
+          cgText,xpos_bar[0]+0.015+rr.extraPad,ytext,rr.text[0],$
+            alignment=0.5,color=cgColor('black'),/normal
+          cgText,xpos_bar[1]-0.015-rr.extraPad,ytext,rr.text[1],$
+            alignment=0.5,color=cgColor('black'),/normal
+          
+          ; second colorbar (right)
+          loadColorTable,config.ctName
+          
           loc_mm = [config.fieldMinMax[0],config.secondCutVal]
           if config.secondGt then loc_mm = [config.secondCutVal,config.fieldMinMax[1]]
           
-          loadColorTable,config.ctName
-          
-          cgColorbar,position=[0.02,0.6,0.076,0.9],divisions=0,charsize=0.000001,$
+          xpos_bar = [0.6,0.9]
+          if row[1] gt 1 then xpos_bar = [0.675,0.825]
+          cgColorbar,position=[xpos_bar[0],ypos_bar[0],xpos_bar[1],ypos_bar[1]],$
+            divisions=0,charsize=0.000001,$
             bottom=config.nbottom,ncolor=(255-config.nbottom),ticklen=0.00001
-          
-          ; first text
-          cgText,0.25,0.0375,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.115+extraPad,0.036,firstText[0],alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.385-extraPad,0.036,firstText[1],alignment=0.5,color=cgColor('black'),/normal
-          
-          ; second text: integer or has a decimal?
-          if round(loc_mm[1]) eq loc_mm[1] and round(loc_mm[0]) eq loc_mm[0] then begin
-            secondText = str(fix(loc_mm))
-            extraPad = 0.0
-            
-            ; more than one digit?
-            if alog10(abs(loc_mm[1])) ge 1.0 then $
-              extraPad += floor(alog10(abs(loc_mm[1]))) * 0.007
-          endif else begin
-            secondText = str(string(loc_mm,format='(f4.1)'))
-            extraPad = 0.007
-          endelse
-            
-          cgText,0.75,0.0375,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.615+extraPad,0.036,secondText[0],alignment=0.5,color=cgColor('black'),/normal
-          cgText,0.885-extraPad,0.036,secondText[1],alignment=0.5,color=cgColor('black'),/normal
+ 
+          ; second text
+          rr = formatCBLabel(loc_mm)
+
+          cgText,mean(xpos_bar),ypos,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
+          cgText,xpos_bar[0]+0.015+rr.extraPad,ytext,rr.text[0],$
+            alignment=0.5,color=cgColor('black'),/normal
+          cgText,xpos_bar[1]-0.015-rr.extraPad,ytext,rr.text[1],$
+            alignment=0.5,color=cgColor('black'),/normal
         endif
         
-        endif ;top
+        endif ;~first
         
         ; simulation name
-        if keyword_set(top) and ~keyword_set(subtitle) then cgText,0.5,0.96,"GADGET",charsize=!p.charsize+0.5,$
-          alignment=0.5,/normal,color=cgColor('white')
-        if keyword_set(bottom) and ~keyword_set(subtitle) then cgText,0.5,0.46,"AREPO",charsize=!p.charsize+0.5,$
-          alignment=0.5,/normal,color=cgColor('white')
+        if ~tag_exist(config,'subtitle') and row[0] eq row[1]-1 then begin
+          ; single row
+          if row[1] eq 1 then $
+            cgText,0.5,0.96,config.sP.simName,alignment=0.5,/normal,color=cgColor('white')
+            
+          ; multiple rows, only if comparison on each row, in which case config.sP2 exists
+          if row[1] gt 1 and keyword_set(second) then begin
+            ypos = 1.0 - 1.0/row[1] * 0.06 ; keep same spacing against the top
+            
+            cgText,(0.25+0.00)/2,ypos,config.sP.simName,alignment=0.5,/normal,charsize=!p.charsize+0.5,color=cgColor('white')
+            cgText,(0.50+0.25)/2,ypos,config.sP2.simName,alignment=0.5,/normal,charsize=!p.charsize+0.5,color=cgColor('white')
+            cgText,(0.75+0.50)/2,ypos,config.sP.simName,alignment=0.5,/normal,charsize=!p.charsize+0.5,color=cgColor('white')
+            cgText,(1.00+0.75)/2,ypos,config.sP2.simName,alignment=0.5,/normal,charsize=!p.charsize+0.5,color=cgColor('white')
+          endif
+        endif
           
         ; or subtitle for each panel
-        if keyword_set(subtitle) then begin
-          if keyword_set(top) then ypos = 0.52
-          if keyword_set(bottom) then ypos = 0.462
-          cgText,0.48,ypos,subtitle[0],alignment=1.0,/normal,charsize=!p.charsize+0.5,color=cgColor('white')
-          cgText,0.52,ypos,subtitle[1],alignment=0.0,/normal,charsize=!p.charsize+0.5,color=cgColor('white')
+        if tag_exist(config,'subtitle') then begin
+          if row[1] eq 1 then begin
+            ; 4panel
+            if keyword_set(first) then ypos = 0.52 * 1.0/row[1]
+            if keyword_set(second) then ypos = 0.462 * 1.0/row[1]
+          endif else begin
+            ; progression
+            ypos = 0.0375 * 1.0/row[1]
+          endelse
+          cgText,0.48,ypos,config.subtitle[0],alignment=1.0,/normal,charsize=!p.charsize+0.5,color=cgColor('white')
+          cgText,0.52,ypos,config.subtitle[1],alignment=0.0,/normal,charsize=!p.charsize+0.5,color=cgColor('white')
         endif
         
-      if ~keyword_set(top) and ~keyword_set(bottom) then $        
-        end_PS, pngResize=60;, /deletePS
+      if config.plotFilename ne '' then end_PS, pngResize=60;, /deletePS
+end
+
+; cosmoVisCutoutSub(): create color mapping
+
+function cosmoVisCutoutSub, cutout=cutout, config=config
+                            
+  ; create color index mapping
+  if config.colorField eq 'temp'      then fieldVal = cutout.loc_temp
+  if config.colorField eq 'entropy'   then fieldVal = cutout.loc_ent
+  if config.colorField eq 'density'   then fieldVal = cutout.loc_dens
+  if config.colorField eq 'metal'     then fieldVal = cutout.loc_metal
+  if config.colorField eq 'vrad'      then fieldVal = reform(cutout.loc_vrad)
+  if config.colorField eq 'vradnorm'  then fieldVal = reform(cutout.loc_vrad)/cutout.haloV200
+  if config.colorField eq 'coolTime'  then fieldVal = cutout.loc_coolTime
+  if config.colorField eq 'dynTime'   then fieldVal = cutout.loc_dynTime
+  if config.colorField eq 'timeRatio' then fieldVal = cutout.loc_coolTime / cutout.loc_dynTime
+    
+  ; right now, first panel is "all"
+  pos_left  = cutout.loc_pos
+  pos_left2 = cutout.loc_pos2
+  
+  cinds_all = (fieldVal-config.fieldMinMax[0])*(255.0-config.nbottom) / $
+              (config.fieldMinMax[1]-config.fieldMinMax[0])
+  cinds_all = fix(cinds_all + config.nbottom) > 0 < 255 ;nbottom-255  
+  
+  cinds_left = cinds_all
+  
+  ; second/right panel cutout
+  wSecond = where(fieldVal le config.secondCutVal,nCutoutSecond,comp=wComp)
+  if nCutoutSecond eq 0 and ~config.secondGt then print,'warning: none in second cutout'
+  
+  ; show gas above this cut value (instead of below)?
+  if config.secondGt then wSecond = wComp
+    
+  pos_right   = cutout.loc_pos[*,wSecond]
+  pos_right2  = cutout.loc_pos2[*,wSecond]
+  cinds_right = cinds_all[wSecond]
+
+  ; use instead a differently scaled color mapping for the second panel?
+  if config.singleColorScale eq 0 then begin
+    if config.secondGt eq 1 then $
+      cinds_right = (fieldVal-config.secondCutVal)*(255.0-config.nbottom) / $
+                    (config.fieldMinMax[1]-config.secondCutVal)
+    if config.secondGt eq 0 then $
+      cinds_right = (fieldVal-config.fieldMinMax[0])*(255.0-config.nbottom) / $
+                    (config.secondCutVal-config.fieldMinMax[0])
+      
+    cinds_right = fix(cinds_right[wSecond] + config.nbottom) > 0 < 255 ; nbottom-255
+  endif
+
+  return, {cinds_left:cinds_left,pos_left:pos_left,pos_left2:pos_left2,$
+           cinds_right:cinds_right,pos_right:pos_right,pos_right2:pos_right2}
+  
 end
 
 ; scatterMapHalos: plot colored scatter plots with velocity vectors on boxes centered on halos
-; showGmem/showAll (use galaxy catalog and display gmem only, or all in spatial subset)
+; showHalo (use galaxy catalog and display halo only, otherwise all in spatial subset)
 
-pro scatterMapHalos, showGmem=showGmem, showAll=showAll
+pro scatterMapHalos, selectHalo=selectHalo
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  if ~keyword_set(showGmem) and ~keyword_set(showAll) then message,'Choose one.'
   
   ; config
   sP = simParams(res=512,run='tracer',redshift=2.0)
   units = getUnits()
 
   haloID = 304 ;z2.304 z2.301 z2.130 z2.64
-  gcID = getMatchedIDs(sPa=sP,sPg=sP,haloID=haloID)
-  gcIDs = [gcID.a]
+  gcIDs = getMatchedIDs(simParams=sP,haloID=haloID)
 
   if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
 
   ; compare to a second run (2x2 panels instead of 2x1)?
   ; TODO
-  ; xs=8, ys=8, /top, /bottom
+  ; xs=8, ys=8, /first, /second
   
   ; plot config
   singleColorScale = 0 ; 1=use same color scale for right panel, 0=rescale
-  secondGt         = 1 ; 1=show greater than cut, 0=show less than cut
+  secondGt         = 0 ; 1=show greater than cut, 0=show less than cut
   axes             = list([0,1]) ;list([0,1],[0,2],[1,2]) ;xy,xz,yz
   nbottom          = 50
-  sizeFac          = 3.5 ; times rvir
+  sizeFac          = 2.1 ; times rvir
   ctName           = 'helix'
   
-  ; use which field and cut value for right panel?
-  ;secondField = 'temp'     & secondCutVal = 5.0
-  ;secondField = 'entropy'  & secondCutVal = 7.5
-  secondField = 'metal'     & secondCutVal = -2.5
-  ;secondField = 'vrad'      & secondCutVal = -200.0
-  ;secondField = 'vradnorm'  & secondCutVal = 2.0
-  ;secondField = 'coolTime'  & secondCutVal = 1.0 ; gmem only
-  ;secondField = 'dynTime'   & secondCutVal = 0.4 ; gmem only
-  ;secondField = 'timeRatio' & secondCutVal = 1.0 ; gmem only
-  
-  ; use which field and minmax for color mapping?
-  ;colorField = 'temp'     & fieldMinMax  = [4.0,7.0]
-  ;colorField = 'entropy'  & fieldMinMax  = [6.5,8.5] ; log(CGS)
-  colorField = 'metal'     & fieldMinMax = [-4.0,-1.0] ; log(Z/Zsun)
-  ;colorField = 'vrad'      & fieldMinMax = [-400,400] ; km/s
-  ;colorField = 'vradnorm'  & fieldMinMax = [0.0,4.0] ; vrad/v200
-  ;colorField  = 'coolTime' & fieldMinMax = [0.0,5.0] ; gmem only
-  ;colorField = 'dynTime'   & fieldMinMax = [0.0,0.8] ; gmem only
-  ;colorField = 'timeRatio' & fieldMinMax = [0.0,4.0] ; gmem only
+  ; use which field and minmax for color mapping? cut value for right panel?
+  ;colorField = 'temp'     & fieldMinMax  = [4.0,7.0] & secondCutVal = 5.0
+  ;colorField = 'entropy'  & fieldMinMax  = [6.5,8.5] & secondCutVal = 7.5 ; log(CGS)
+  ;colorField = 'metal'     & fieldMinMax = [-4.0,-1.0] & secondCutVal = -2.5 ; log(Z/Zsun)
+  ;colorField = 'vrad'      & fieldMinMax = [-400,400] & secondCutVal = -200.0 ; km/s
+  ;colorField = 'vradnorm'  & fieldMinMax = [0.0,4.0] & secondCutVal = 2.0 ; vrad/v200
+  ;colorField  = 'coolTime' & fieldMinMax = [0.0,5.0] & secondCutVal = 1.0 ; halo only
+  ;colorField = 'dynTime'   & fieldMinMax = [0.0,0.8] & secondCutVal = 0.4 ; halo only
+  colorField = 'timeRatio' & fieldMinMax = [0.0,4.0] & secondCutVal = 1.0 ; halo only
 
   ; pre-make cutouts (multiple or single)
-  ;if keyword_set(showGmem) then cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,/selectGmem)
-  ;if keyword_set(showAll)  then cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,sizeFac=sizeFac)
-
-  ; target list
-  gc    = loadGroupCat(sP=sP,/skipIDs)
-  sgcen = subgroupPosByMostBoundID(sP=sP) 
+  ;cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,sizeFac=sizeFac,selectHalo=selectHalo)
   
   print,'rendering...'
   ; loop over all requested halos and image
   foreach gcID, gcIDs do begin
     
     ; load cutout
-    if keyword_set(showGmem) then cutout = cosmoVisCutout(sP=sP,gcInd=gcID,/selectGmem)
-    if keyword_set(showAll)  then cutout = cosmoVisCutout(sP=sP,gcInd=gcID,sizeFac=sizeFac)
+    cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,sizeFac=sizeFac,selectHalo=selectHalo)
     
-    ; create color index mapping
-    if colorField eq 'temp'      then fieldVal = cutout.loc_temp
-    if colorField eq 'entropy'   then fieldVal = cutout.loc_ent
-    if colorField eq 'density'   then fieldVal = cutout.loc_dens
-    if colorField eq 'metal'     then fieldVal = cutout.loc_metal
-    if colorField eq 'vrad'      then fieldVal = reform(cutout.loc_vrad)
-    if colorField eq 'vradnorm'  then fieldVal = reform(cutout.loc_vrad)/cutout.haloV200
-    if colorField eq 'coolTime'  then fieldVal = cutout.loc_coolTime
-    if colorField eq 'dynTime'   then fieldVal = cutout.loc_dynTime
-    if colorField eq 'timeRatio' then fieldVal = cutout.loc_coolTime / cutout.loc_dynTime
+    boxSizeImg = sizeFac*[cutout.haloVirRad,cutout.haloVirRad]
     
-    colorinds = (fieldVal-fieldMinMax[0])*(255.0-nbottom) / (fieldMinMax[1]-fieldMinMax[0])
-    colorinds = fix(colorinds + nbottom) > 0 < 255 ;nbottom-255  
-  
-    ; second/right panel cutout
-    wSecond = where(fieldVal le secondCutVal,nCutoutSecond,comp=wComp)
-    if nCutoutSecond eq 0 then message,'None in cutout.'
-      
-    ; show gas above this cut value (instead of below)?
-    if secondGt then wSecond = wComp
+    config = {boxSizeImg:boxSizeImg,plotFilename:'',haloVirRad:cutout.haloVirRad,$
+              haloMass:cutout.haloMass,axisPair:[0,0],sP:sP,singleColorScale:singleColorScale,$
+              colorField:colorField,fieldMinMax:fieldMinMax,secondCutVal:secondCutVal,$
+              secondGt:secondGt,nbottom:nbottom,barMM:fieldMinMax,ctName:ctName,barType:'2bar'}
     
-    loc_pos_second   = cutout.loc_pos[*,wSecond]
-    loc_pos2_second  = cutout.loc_pos2[*,wSecond]
-    colorinds_second = colorinds[wSecond]
-    
-    ; use instead a differently scaled color mapping for the second panel?
-    if singleColorScale eq 0 then begin
-      if secondGt eq 1 then $
-        colorinds_second = (fieldVal-secondCutVal)*(255.0-nbottom) / (fieldMinMax[1]-secondCutVal)
-      if secondGt eq 0 then $
-        colorinds_second = (fieldVal-fieldMinMax[0])*(255.0-nbottom) / (secondCutVal-fieldMinMax[0])
-      
-      colorinds_second = fix(colorinds_second[wSecond] + nbottom) > 0 < 255 ; nbottom-255
-    endif
+    sub = cosmoVisCutoutSub(cutout=cutout,config=config)
 
     ; make a plot for each requested projection direction
     foreach axisPair, axes do begin
            
-      ; get box center (in terms of specified axes)
-      boxCenImg  = [sgcen[axisPair[0],gcID],sgcen[axisPair[1],gcID],sgcen[3-axisPair[0]-axisPair[1],gcID]]
-      
       print,'['+string(gcID,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
-            str(axisPair[1])+'] with '+str(cutout.boxSizeImg[0])+$
-            ' kpc box around center ['+str(boxCenImg[0])+' '+str(boxCenImg[1])+' '+str(boxCenImg[2])+']'
+            str(axisPair[1])+'] with '+str(config.boxSizeImg[0])+$
+            ' kpc box around center ['+str(cutout.boxCen[0])+' '+str(cutout.boxCen[1])+' '+str(cutout.boxCen[2])+']'
 
-      pFilename = 'scatter.'+sP.saveTag+'.'+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
-                     '.axes'+str(axisPair[0])+str(axisPair[1])+'-'+$
-                     colorField+'-'+secondField+'-'+str(secondGt)+'sCS'+str(singleColorScale)+'.eps'
-
-      config = {boxSizeImg:cutout.boxSizeImg,plotFilename:pFilename,haloVirRad:cutout.haloVirRad,$
-                haloMass:cutout.haloMass,axisPair:axisPair,sP:sP,$
-                colorField:colorField,fieldMinMax:fieldMinMax,secondCutVal:secondCutVal,$
-                secondGt:secondGt,nbottom:nbottom,barMM:fieldMinMax,ctName:ctName,barType:'2bar'}
-      
+      config.axisPair = axisPair
+      config.plotFilename = 'scatter.'+sP.saveTag+'.'+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
+                            '.axes'+str(axisPair[0])+str(axisPair[1])+'-'+$
+                            colorField+'-'+str(secondGt)+'sCS'+str(singleColorScale)+'.eps'
+                     
       ; plot
-      plotScatterComp,cutout.loc_pos,cutout.loc_pos2,loc_pos_second,loc_pos2_second,$
-        colorinds,colorinds_second,config=config            
+      plotScatterComp,sub=sub,config=config            
 
     endforeach ;axisPair
 
@@ -562,17 +604,16 @@ pro scatterMapHalos, showGmem=showGmem, showAll=showAll
 end
 
 ; scatterMap4Panels(): four slices of some field for one halo
-; showGmem/showAll (use galaxy catalog and display gmem only, or all in spatial subset)
+; selectHalo (use galaxy catalog and display halo only, otherwise all in spatial subset)
 
-pro scatterMap4Panels, showGmem=showGmem, showAll=showAll
+pro scatterMap4Panels, selectHalo=selectHalo
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   sP = simParams(res=512,run='tracer',redshift=2.0)
   
   haloID = 304 ;z2.304 z2.301 z2.130 z2.64
-  gcID = getMatchedIDs(sPa=sP,sPg=sP,haloID=haloID)
-  gcIDs = [gcID.a]
+  gcIDs = getMatchedIDs(simParams=sP,haloID=haloID)
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -582,7 +623,7 @@ pro scatterMap4Panels, showGmem=showGmem, showAll=showAll
   singleColorScale = 1 ; 1=use same color scale for all panels, 0=rescale
   secondGt         = 0 ; 1=show greater than cut, 0=show less than cut
   axes             = list([0,1]) ;xy,xz,yz
-  sizeFac          = 1.5 ; times rvir
+  sizeFac          = 2.1 ; times rvir
   
   ; use which field and minmax for color mapping?
   ; temp [log K]
@@ -610,20 +651,14 @@ pro scatterMap4Panels, showGmem=showGmem, showAll=showAll
   ;ctName      = 'brewer-redblue'
   
   ; make cutouts (multiple or single)
-  ;if keyword_set(showAll)  then cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,/selectGmem)
-  ;if keyword_set(showAll)  then cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,sizeFac=sizeFac)
-
-  ; target list
-  gc    = loadGroupCat(sP=sP,/skipIDs)
-  sgcen = subgroupPosByMostBoundID(sP=sP) 
+  ;cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,sizeFac=sizeFac,selectHalo=selectHalo)
   
   print,'rendering...'
   ; loop over all requested halos and image
   foreach gcID, gcIDs do begin
   
     ; load cutout
-    if keyword_set(showAll)  then cutout = cosmoVisCutout(sP=sP,gcInd=gcID,/selectGmem)
-    if keyword_set(showAll)  then cutout = cosmoVisCutout(sP=sP,gcInd=gcID,sizeFac=sizeFac)
+    cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,sizeFac=sizeFac,selectHalo=selectHalo)
 
     ; create color index mapping
     if colorField eq 'temp'      then fieldVal = cutout.loc_temp
@@ -637,16 +672,17 @@ pro scatterMap4Panels, showGmem=showGmem, showAll=showAll
                      '.axes'+str(axisPair[0])+str(axisPair[1])+'-'+$
                      colorField+'-'+str(secondGt)+'sCS'+str(singleColorScale)+'.eps'
       
-      config = {boxSizeImg:cutout.boxSizeImg*sizeFac,plotFilename:pFilename,haloVirRad:cutout.haloVirRad,$
+      boxSizeImg = sizeFac * [cutout.haloVirRad,cutout.haloVirRad]
+      config = {boxSizeImg:boxSizeImg,plotFilename:'',haloVirRad:cutout.haloVirRad,$
                 haloMass:cutout.haloMass,axisPair:axisPair,sP:sP,barMM:fieldMinMax,$
-                colorField:colorField,fieldMinMax:fieldMinMax,$
-                ctName:ctName,nbottom:nbottom,barType:'1bar'}
+                colorField:colorField,fieldMinMax:fieldMinMax,secondGt:secondGt,subtitle:['',''],$
+                singleColorScale:singleColorScale,ctName:ctName,nbottom:nbottom,barType:'1bar'}
 
       if ~singleColorScale then config.barType = ''
                 
-      start_PS, sP.plotPath + config.plotFilename, xs=8, ys=8
+      start_PS, sP.plotPath + pFilename, xs=8, ys=8
                 
-      ; cutouts and plot (k=0 top, k=1 bottom)
+      ; cutouts and plot (k=0 first/top, k=1 second/bottom)
       for k=0,1 do begin
         wCutout = where(fieldVal ge fieldRanges[k*2+0,0] and fieldVal lt fieldRanges[k*2+0,1],nCutout)
           
@@ -676,10 +712,13 @@ pro scatterMap4Panels, showGmem=showGmem, showAll=showAll
           
         colorinds_right = fix(colorinds + nbottom) > 0 < 255 ;nbottom-255
         
+        sub = {cinds_left:colorinds_left,pos_left:loc_pos_left,pos_left2:loc_pos2_left,$
+               cinds_right:colorinds_right,pos_right:loc_pos_right,$
+               pos_right2:loc_pos2_right}
+               
+        config.subtitle = subtitles[(k*2+0):(k*2+1)]
         
-        plotScatterComp,loc_pos_left,loc_pos2_left,loc_pos_right,loc_pos2_right,$
-          colorinds_left,colorinds_right,config=config,$
-          top=(k eq 0),bottom=(k eq 1),subtitle=subtitles[(k*2+0):(k*2+1)]
+        plotScatterComp,sub=sub,config=config,first=(k eq 0),second=(k eq 1)
         
       endfor
       
@@ -697,8 +736,8 @@ pro mosaicHalosComp, redshift=redshift
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  sPg = simParams(res=256,run='gadget',redshift=redshift)
-  sPa = simParams(res=256,run='tracer',redshift=redshift)
+  sPg = simParams(res=256,run='feedback',redshift=redshift)
+  sPa = simParams(res=256,run='feedback_noZ',redshift=redshift)
   
   ; get list of matched IDs for good comparison
   mag = getMatchedIDs(sPa=sPa,sPg=sPg,/mosaicIDs)
@@ -753,7 +792,7 @@ pro mosaicHalosComp, redshift=redshift
 
     gaHaloMasses = [gaHaloMasses,cutout.haloMass]
   
-    config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
+    config = {boxSizeImg:cutout.boxSizeImg,plotFilename:'',haloVirRad:cutout.haloVirRad,$
               colorField:'na',fieldMinMax:tempMinMax,secondCutVal:coldTempCut,secondGt:0,$
               haloMass:cutout.haloMass,axisPair:axisPair,sP:sPg,barMM:tempMinMax,barType:'na'}
     
@@ -777,19 +816,14 @@ pro mosaicHalosComp, redshift=redshift
              line=0,color=colorinds_cold[i]
     
     ; scale bar
-    if ~keyword_set(bottom) then begin
-      len = 100.0 ;ckpc
-      cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.4,$
-             string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('light gray'),$
-             charsize=!p.charsize-0.2
-      cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
-             [config.boxSizeImg[1]/2.1,config.boxSizeImg[1]/2.1],$
-             color=cgColor('light gray'),thick=4.0,/overplot
-    endif
-    
-    if keyword_set(bottom) then $
-      cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('dark gray'),/overplot
-    
+    len = 100.0 ;ckpc
+    cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.4,$
+           string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('light gray'),$
+           charsize=!p.charsize-0.2
+    cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
+           [config.boxSizeImg[1]/2.1,config.boxSizeImg[1]/2.1],$
+           color=cgColor('light gray'),thick=4.0,/overplot
+
     ; redshift and halo mass
     cgText,config.boxSizeImg[0]/2.1,config.boxSizeImg[1]/2.3,alignment=1.0,$
       "M = "+string(config.haloMass,format='(f4.1)'),color=cgColor('light gray'),charsize=!p.charsize-0.2
@@ -832,7 +866,7 @@ pro mosaicHalosComp, redshift=redshift
     axisPair   = (mag.axes)[k]
     boxCenImg  = [sgcen[axisPair[0],gcIDa],sgcen[axisPair[1],gcIDa],sgcen[3-axisPair[0]-axisPair[1],gcIDa]]
   
-    config = {boxSizeImg:cutout.boxSizeImg,plotFilename:plotFilename,haloVirRad:cutout.haloVirRad,$
+    config = {boxSizeImg:cutout.boxSizeImg,plotFilename:'',haloVirRad:cutout.haloVirRad,$
               colorField:'na',fieldMinMax:tempMinMax,secondCutVal:coldTempCut,secondGt:0,$
               haloMass:cutout.haloMass,axisPair:axisPair,sP:sPa,barMM:tempMinMax,barType:'na'}
     
@@ -856,18 +890,13 @@ pro mosaicHalosComp, redshift=redshift
              line=0,color=colorinds_cold[i]
     
     ; scale bar
-    if ~keyword_set(bottom) then begin
-      len = 100.0 ;ckpc
-      cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.4,$
-             string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('light gray'),$
-             charsize=!p.charsize-0.2
-      cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
-             [config.boxSizeImg[1]/2.1,config.boxSizeImg[1]/2.1],$
-             color=cgColor('light gray'),thick=4.0,/overplot
-    endif
-    
-    if keyword_set(bottom) then $
-      cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('dark gray'),/overplot
+    len = 100.0 ;ckpc
+    cgText,mean([-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len]),config.boxSizeImg[0]/2.4,$
+           string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('light gray'),$
+           charsize=!p.charsize-0.2
+    cgPlot,[-config.boxSizeImg[0]/2.2,-config.boxSizeImg[0]/2.2+len],$
+           [config.boxSizeImg[1]/2.1,config.boxSizeImg[1]/2.1],$
+           color=cgColor('light gray'),thick=4.0,/overplot
     
     ; redshift and halo mass
     cgText,config.boxSizeImg[0]/2.1,config.boxSizeImg[1]/2.3,alignment=1.0,$

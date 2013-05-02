@@ -102,14 +102,14 @@ function cosmoCompMassFunctions, sP=sP, noPlot=noPlot
     xrange = [5e8,5e12]
     yrange = [0.0,2.0]
     
-    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/xlog,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/xlog,$
          xtitle="Halo Mass [DM h"+textoidl("^{-1}")+" M"+textoidl("_{sun}")+"]",$
          ytitle="Gas Tracer Mass / Gas Mass",$
          title=str(sP.res)+textoidl("^3")+" "+sP.run+" (f="+str(sP.trMCPerCell)+$
                ") z="+string(sP.redshift,format='(f3.1)')+" (FoF Catalog)"
          
-    fsc_plot,xrange,[1.0,1.0],line=0,color=fsc_color('light gray'),/overplot
-    fsc_plot,hm_dm,hm_tr_gas/hm_gas,psym=8,symsize=0.4,/overplot,color=getColor(1)
+    cgPlot,xrange,[1.0,1.0],line=0,color=cgColor('light gray'),/overplot
+    cgPlot,hm_dm,hm_tr_gas/hm_gas,psym=8,symsize=0.4,/overplot,color=getColor(1)
     
   end_PS
     
@@ -118,14 +118,14 @@ function cosmoCompMassFunctions, sP=sP, noPlot=noPlot
       xrange = [5e8,5e12]
       yrange = [0.0,2.0]
       
-      fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/xlog,$
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/xlog,$
            xtitle="Halo Mass [DM h"+textoidl("^{-1}")+" M"+textoidl("_{sun}")+"]",$
            ytitle="Star Tracer Mass / Star Mass",$
            title=str(sP.res)+textoidl("^3")+" "+sP.run+" (f="+str(sP.trMCPerCell)+$
                  ") z="+string(sP.redshift,format='(f3.1)')+" (FoF Catalog)"
            
-      fsc_plot,xrange,[1.0,1.0],line=0,color=fsc_color('light gray'),/overplot
-      fsc_plot,hm_dm,hm_tr_star/hm_star,psym=8,symsize=0.4,/overplot,color=getColor(1)
+      cgPlot,xrange,[1.0,1.0],line=0,color=cgColor('light gray'),/overplot
+      cgPlot,hm_dm,hm_tr_star/hm_star,psym=8,symsize=0.4,/overplot,color=getColor(1)
       
       ; legend
       strings = ['tr mass/star mass', 'mean','stddev']
@@ -157,19 +157,19 @@ function cosmoCompMassFunctions, sP=sP, noPlot=noPlot
     xrange = [1e8,max(hm_dm)*1.2]
     yrange = [1e-4,1e0]
     
-    fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,/xlog,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,/xlog,$
          xtitle="",xtickname=replicate(' ',10),$
          ytitle="number ("+textoidl("\geq")+" M) [h"+textoidl("^3")+" Mpc"+textoidl("^{-3}")+"]",$
          title=str(sP.res)+textoidl("^3")+" "+sP.run+" (f="+str(sP.trMCPerCell)+$
                ") z="+string(sP.redshift,format='(f3.1)')+" (FoF catalog)",$
          position=[0.18,0.35,0.9,0.9]
          
-    fsc_plot,hm_dm,y_dm,line=0,/overplot,color=getColor(1)
-    fsc_plot,hm_gas,y_gas,line=0,/overplot,color=getColor(3)
-    fsc_plot,hm_star,y_star,line=0,/overplot,color=getColor(2)
+    cgPlot,hm_dm,y_dm,line=0,/overplot,color=getColor(1)
+    cgPlot,hm_gas,y_gas,line=0,/overplot,color=getColor(3)
+    cgPlot,hm_star,y_star,line=0,/overplot,color=getColor(2)
     
-    fsc_plot,hm_tr_gas,y_tr_gas,line=0,/overplot,color=getColor(7)
-    fsc_plot,hm_tr_star,y_tr_star,line=0,/overplot,color=getColor(4)
+    cgPlot,hm_tr_gas,y_tr_gas,line=0,/overplot,color=getColor(7)
+    cgPlot,hm_tr_star,y_tr_star,line=0,/overplot,color=getColor(4)
     
     ; legend
     if (h.nPartTot[4] gt 0) then $
@@ -181,7 +181,7 @@ function cosmoCompMassFunctions, sP=sP, noPlot=noPlot
                
     ; gas/tr residual plot
     yrange = [0.3,1.7]
-    fsc_plot,[0],[0],/nodata,/noerase,xrange=xrange,yrange=yrange,/xs,/ys,/xlog,$
+    cgPlot,[0],[0],/nodata,/noerase,xrange=xrange,yrange=yrange,/xs,/ys,/xlog,$
              xtitle="Mass [h"+textoidl("^{-1}")+" M"+textoidl("_{sun}")+"]",$
              ytitle="ratio",ytickv=[0.5,1.0,1.5],yticks=2,$
              position=[0.18,0.15,0.9,0.35]
@@ -193,16 +193,16 @@ function cosmoCompMassFunctions, sP=sP, noPlot=noPlot
     tr_gas_res = interpol(y_tr_gas,hm_tr_gas,res_pts)
     
     ; plot
-    fsc_plot,xrange,[1.0,1.0],line=0,color=fsc_color('light gray'),/overplot
-    fsc_plot,xrange,[1.5,1.5],line=1,color=fsc_color('light gray'),/overplot
-    fsc_plot,xrange,[0.5,0.5],line=1,color=fsc_color('light gray'),/overplot
-    fsc_plot,res_pts,tr_gas_res/gas_res,line=0,color=getColor(3),/overplot
+    cgPlot,xrange,[1.0,1.0],line=0,color=cgColor('light gray'),/overplot
+    cgPlot,xrange,[1.5,1.5],line=1,color=cgColor('light gray'),/overplot
+    cgPlot,xrange,[0.5,0.5],line=1,color=cgColor('light gray'),/overplot
+    cgPlot,res_pts,tr_gas_res/gas_res,line=0,color=getColor(3),/overplot
     
     ; do the same for the stars
     res_pts = 10.0^( findgen(nbins+1)/nbins * (11.8-8.0) + 8.0 )
     star_res = interpol(y_star,hm_star,res_pts)
     tr_star_res = interpol(y_tr_star,hm_tr_star,res_pts)
-    fsc_plot,res_pts,tr_star_res/star_res,line=0,color=getColor(8),/overplot
+    cgPlot,res_pts,tr_star_res/star_res,line=0,color=getColor(8),/overplot
     
     ; legend
     if (h.nPartTot[4] gt 0) then $
@@ -270,7 +270,7 @@ pro cosmoCompMassFunctionsMulti
            ytitle="Tracer Mass / Baryon Mass",$
            title="Tracer Halo Mass Agreement z="+string(redshiftSet[0],format='(f3.1)')+" (FoF)"
 
-      cgPlot,xrange*[1.3,0.75],[1.0,1.0],line=0,/overplot,color=fsc_color('light gray')
+      cgPlot,xrange*[1.3,0.75],[1.0,1.0],line=0,/overplot,color=cgColor('light gray')
       
       cgPlot,10.0^loc,gas_mean,line=0,/overplot,color=getColor(k)
       ;cgPlot,10.0^loc,star_mean,line=0,/overplot,color=getColor(2*k+1)
@@ -657,8 +657,8 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
   ; config
   resSet = [128] ;[256,128]
   ;f      = '1'
-  run    = 'tracernew' ;coolSF.GFM
-  stars  = 1
+  run    = 'shytest' ;coolSF.GFM
+  stars  = 0
   
   ; A. run match
   ;sP1 = simParams(res=resSet[1],run=run,redshift=redshift)
@@ -725,7 +725,7 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
         yrange = [min([rs.rho_gas[where(rs.rho_gas ne 0)],rs.rho_dm[where(rs.rho_dm ne 0)]])/2,$
                   max([rs.rho_dm,rs.rho_gas])*2]
          
-        fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
              xtitle="r [ckpc]",$
              ytitle="mass density [h"+textoidl("^2")+" M"+textoidl("_{sun}")+$
              " ckpc"+textoidl("^{-3}")+"]",title=plotTitle,/ylog,/xlog
@@ -733,36 +733,36 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
         ; r200 lines
         r200 = minmax(gc.group_r_crit200[rs.haloIDs])
   
-        fsc_plot,[r200[0],r200[0]],yrange*[1.1,0.98],line=2,color=fsc_color('light gray'),/overplot
-        fsc_plot,[r200[1],r200[1]],yrange*[1.1,0.98],line=2,color=fsc_color('light gray'),/overplot
-        fsc_text,mean(r200)*0.95,yrange[0]*2,textoidl("r_{200}"),alignment=0.5,$
-          charsize=!p.charsize-0.3,color=fsc_color('light gray')
+        cgPlot,[r200[0],r200[0]],yrange*[1.1,0.98],line=2,color=cgColor('light gray'),/overplot
+        cgPlot,[r200[1],r200[1]],yrange*[1.1,0.98],line=2,color=cgColor('light gray'),/overplot
+        cgText,mean(r200)*0.95,yrange[0]*2,textoidl("r_{200}"),alignment=0.5,$
+          charsize=!p.charsize-0.3,color=cgColor('light gray')
         
         ; plot gas dens
-        fsc_plot,rs.midBins,psym=-8,rs.rho_gas,/overplot,color=getColor(1)
+        cgPlot,rs.midBins,psym=-8,rs.rho_gas,/overplot,color=getColor(1)
       endif else begin
-        fsc_plot,rs.midBins,rs.rho_gas,line=line,/overplot,color=getColor(1)
+        cgPlot,rs.midBins,rs.rho_gas,line=line,/overplot,color=getColor(1)
       endelse
       
       ; plot other densities
-      fsc_plot,rs.midBins,rs.rho_dm,line=line,/overplot,color=getColor(2)
-      fsc_plot,rs.midBins,rs.rho_tr,line=line,/overplot,color=getColor(3)
+      cgPlot,rs.midBins,rs.rho_dm,line=line,/overplot,color=getColor(2)
+      cgPlot,rs.midBins,rs.rho_tr,line=line,/overplot,color=getColor(3)
       
       if (stars eq 1) then begin
-        fsc_plot,rs.midBins,rs.rho_stars,line=line,/overplot,color=getColor(7)
-        fsc_plot,rs.midBins,rs.rho_tr_stars,line=line,/overplot,color=getColor(8)
+        cgPlot,rs.midBins,rs.rho_stars,line=line,/overplot,color=getColor(7)
+        cgPlot,rs.midBins,rs.rho_tr_stars,line=line,/overplot,color=getColor(8)
       endif
       
       ; softening lines
       soft = sP.gravSoft * [1.0,2.8]
       
-     fsc_plot,[soft[0],soft[0]],[yrange[0],yrange[0]*10],line=line,/overplot,color=fsc_color('dark gray')
-     fsc_plot,[soft[1],soft[1]],[yrange[0],yrange[0]*10],line=line,/overplot,color=fsc_color('dark gray') 
+     cgPlot,[soft[0],soft[0]],[yrange[0],yrange[0]*10],line=line,/overplot,color=cgColor('dark gray')
+     cgPlot,[soft[1],soft[1]],[yrange[0],yrange[0]*10],line=line,/overplot,color=cgColor('dark gray') 
      
       if (k eq 0) then begin
-        fsc_text,soft[0]*0.8,yrange[0]*5,textoidl('\epsilon_{grav}'),color=fsc_color('dark gray'),$
+        cgText,soft[0]*0.8,yrange[0]*5,textoidl('\epsilon_{grav}'),color=cgColor('dark gray'),$
           charsize=!p.charsize-0.5,alignment=0.5
-        fsc_text,soft[1]*0.75,yrange[0]*5,textoidl('2.8\epsilon_{grav}'),color=fsc_color('dark gray'),$
+        cgText,soft[1]*0.75,yrange[0]*5,textoidl('2.8\epsilon_{grav}'),color=cgColor('dark gray'),$
           charsize=!p.charsize-0.5,alignment=0.5
       endif
                
@@ -821,54 +821,54 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
         
         plotTitle = "gas size and number counts"
         
-        fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
              xtitle="r [ckpc]",$
              ytitle="<r"+textoidl("_{gas cell}")+"> [ckpc] / <N"+textoidl("_{gas}>")+" / <N"+textoidl("_{tr}>"),$
              title=plotTitle,/ylog,/xlog
         
-        fsc_plot,xrange,[100.0,100.0],line=1,color=fsc_color('light gray'),/overplot
-        fsc_plot,xrange,[10.0,10.0],line=1,color=fsc_color('light gray'),/overplot
+        cgPlot,xrange,[100.0,100.0],line=1,color=cgColor('light gray'),/overplot
+        cgPlot,xrange,[10.0,10.0],line=1,color=cgColor('light gray'),/overplot
         
         ; r200 lines
         r200 = minmax(rs.haloRadii)
   
-        fsc_plot,[r200[0],r200[0]],yrange*[1.1,0.98],line=2,color=fsc_color('light gray'),/overplot
-        fsc_plot,[r200[1],r200[1]],yrange*[1.1,0.98],line=2,color=fsc_color('light gray'),/overplot
-        fsc_text,mean(r200)*0.95,yrange[0]*2,textoidl("r_{200}"),alignment=0.5,$
-          charsize=!p.charsize-0.3,color=fsc_color('light gray')
+        cgPlot,[r200[0],r200[0]],yrange*[1.1,0.98],line=2,color=cgColor('light gray'),/overplot
+        cgPlot,[r200[1],r200[1]],yrange*[1.1,0.98],line=2,color=cgColor('light gray'),/overplot
+        cgText,mean(r200)*0.95,yrange[0]*2,textoidl("r_{200}"),alignment=0.5,$
+          charsize=!p.charsize-0.3,color=cgColor('light gray')
         
         ; plot gas/star dens and number of tracers
-        fsc_plot,rs.midBins,rs.num_gas,psym=-8,/overplot,color=getColor(1)
-        fsc_plot,rs.midBins,rs.num_tr,psym=-8,/overplot,color=getColor(3)
-        fsc_plot,rs.midBins,rs.num_stars,psym=-8,/overplot,color=getColor(4)
-        fsc_plot,rs.midBins,rs.num_tr_stars,psym=-8,/overplot,color=getColor(6)
+        cgPlot,rs.midBins,rs.num_gas,psym=-8,/overplot,color=getColor(1)
+        cgPlot,rs.midBins,rs.num_tr,psym=-8,/overplot,color=getColor(3)
+        cgPlot,rs.midBins,rs.num_stars,psym=-8,/overplot,color=getColor(4)
+        cgPlot,rs.midBins,rs.num_tr_stars,psym=-8,/overplot,color=getColor(6)
       endif else begin
-        fsc_plot,rs.midBins,rs.num_gas,line=line,/overplot,color=getColor(1)
-        fsc_plot,rs.midBins,rs.num_tr,line=line,/overplot,color=getColor(3)
-        fsc_plot,rs.midBins,rs.num_stars,line=line,/overplot,color=getColor(4)
-        fsc_plot,rs.midBins,rs.num_tr_stars,line=line,/overplot,color=getColor(6)
+        cgPlot,rs.midBins,rs.num_gas,line=line,/overplot,color=getColor(1)
+        cgPlot,rs.midBins,rs.num_tr,line=line,/overplot,color=getColor(3)
+        cgPlot,rs.midBins,rs.num_stars,line=line,/overplot,color=getColor(4)
+        cgPlot,rs.midBins,rs.num_tr_stars,line=line,/overplot,color=getColor(6)
       endelse
       
       ; plot other quantities
-      fsc_plot,rs.midBins,rs.size_gas,line=line,/overplot,color=getColor(2)
-      fsc_plot,rs.midBins,rs.num_gas_notr/rs.num_gas*100,line=line,/overplot,color=getColor(5)
-      fsc_plot,rs.midBins,rs.num_gas_motr/rs.num_gas*100,line=line,/overplot,color=getColor(7)
+      cgPlot,rs.midBins,rs.size_gas,line=line,/overplot,color=getColor(2)
+      cgPlot,rs.midBins,rs.num_gas_notr/rs.num_gas*100,line=line,/overplot,color=getColor(5)
+      cgPlot,rs.midBins,rs.num_gas_motr/rs.num_gas*100,line=line,/overplot,color=getColor(7)
       
       if (stars eq 1) then begin
-        fsc_plot,rs.midBins,rs.num_stars_notr/rs.num_stars*100,line=line,/overplot,color=getColor(8)
-        fsc_plot,rs.midBins,rs.num_stars_motr/rs.num_stars*100,line=line,/overplot,color=getColor(12)
+        cgPlot,rs.midBins,rs.num_stars_notr/rs.num_stars*100,line=line,/overplot,color=getColor(8)
+        cgPlot,rs.midBins,rs.num_stars_motr/rs.num_stars*100,line=line,/overplot,color=getColor(12)
       endif
       
       ; softening lines
       soft = sP.gravSoft * [1.0,2.8]
       
-     fsc_plot,[soft[0],soft[0]],[yrange[0],yrange[0]*6],line=line,/overplot,color=fsc_color('dark gray')
-     fsc_plot,[soft[1],soft[1]],[yrange[0],yrange[0]*6],line=line,/overplot,color=fsc_color('dark gray') 
+     cgPlot,[soft[0],soft[0]],[yrange[0],yrange[0]*6],line=line,/overplot,color=cgColor('dark gray')
+     cgPlot,[soft[1],soft[1]],[yrange[0],yrange[0]*6],line=line,/overplot,color=cgColor('dark gray') 
      
       if (k eq 0) then begin
-        fsc_text,soft[0]*0.8,yrange[0]*2,textoidl('\epsilon_{grav}'),color=fsc_color('dark gray'),$
+        cgText,soft[0]*0.8,yrange[0]*2,textoidl('\epsilon_{grav}'),color=cgColor('dark gray'),$
           charsize=!p.charsize-0.5,alignment=0.5
-        fsc_text,soft[1]*0.75,yrange[0]*2,textoidl('2.8\epsilon_{grav}'),color=fsc_color('dark gray'),$
+        cgText,soft[1]*0.75,yrange[0]*2,textoidl('2.8\epsilon_{grav}'),color=cgColor('dark gray'),$
           charsize=!p.charsize-0.5,alignment=0.5
       endif
                
@@ -912,5 +912,5 @@ pro cosmoCompRadProfiles, massBinLog=massBinLog, haloIDs=haloIDs, redshift=redsh
   ;endfor ;match or individuals
   
   end_PS
-
+stop
 end

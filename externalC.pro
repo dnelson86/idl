@@ -17,7 +17,7 @@ function calcHSML, Pos, ndims=ndims, nNGB=nNGB, boxSize=boxSize
   Mass    = fltarr(npos)+1.0 ;dummy
   
   DesNumNgb    = long(nNGB) ; number of neighbors to use
-  DesNumNgbDev = long(0)
+  DesNumNgbDev = long(1)
   boxSize      = float(boxSize)
   HsmlGuess    = float(1.0)
   Softening    = float(1.0)
@@ -243,6 +243,9 @@ function calcGridData, xx=xx, yy=yy, mm=mm, qq=qq, nPixels=nPixels, $
     yyy = alog10(yy[w])
     yMinMax = alog10(ymm)
   endif
+  
+  xxx = reform(xxx)
+  yyy = reform(yyy)
   
   ; prepare inputs
   NumPart = n_elements(xxx)

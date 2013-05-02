@@ -4,7 +4,7 @@
 
 ; plotTSFracsVsHaloMass(): plot gas mass fractions for timescale ratios vs halo mass
 
-pro plotTSFracsVsHaloMass
+pro plotTSFracsVsHaloMass, redshift=redshift
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
@@ -13,7 +13,7 @@ pro plotTSFracsVsHaloMass
   sgSelect     = 'pri'
   simHotMasses = 1 ; 0=analytical, 1=derive hot halo masses from sim
   
-  sP = simParams(res=512,run='tracer',redshift=2.0)
+  sP = simParams(res=512,run='tracer',redshift=redshift)
   
   xrange = [9.0,12.0]
   yrange = [0.0,1.03]
@@ -27,6 +27,11 @@ pro plotTSFracsVsHaloMass
   hsp = [0.004,0.0035] ; mass (0.003 10-12), frac
   nc  = 110 ; number of colors (of 255) to use for background 2d histo
 
+  ; calcGridData
+  cgdInd = 1  ; which tsRatioVal to contour
+  cgdRes = 50 ; NxN 2d sph mapping
+  cgdSK  = 3  ; NxN post-smoothing
+  
   ; load timescales
   ts = timescaleFracsVsHaloMass(sP=sP,sgSelect=sgSelect)
   
@@ -42,15 +47,25 @@ pro plotTSFracsVsHaloMass
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
       xtitle=textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),ytitle="Gas Mass Fraction "+textoidl("(t_{cool} < t_{dyn})")
       
+    ; set a contour palette
+    ;loadColorTable,'brewerc-greens'
+    ;tvlct, rr, gg, bb, /get
+    ;palette = [[rr],[gg],[bb]]
+      
+    ; sim contour
+    ;yy = reform(ts.tsFracs.gmem_tcool_tdyn[cgdInd,*])
+    ;ww = where(finite(yy))
+    ;cgd = calcGridData(xx=ts.gcMasses[ww],yy=yy[ww],xMinMax=xrange,yMinMax=yrange,nPixels=[cgdRes,cgdRes])
+    ;hh = smooth(cgd.dens_out,[cgdSK,cgdSK])
+    ;cgContour, hh, cgd.xPts, cgd.yPts, $
+    ;  /overplot, /fill, palette=palette, levels=[1,5,10,25,50,100,200,500],c_colors=(indgen(7)*20+50)
+             
     ; sim 2d histo
-    yy = ts.tsFracs.gmem_tcool_tdyn[1,*]
+    yy = ts.tsFracs.gmem_tcool_tdyn[cgdInd,*]
     f2d = binHisto2D(xx=ts.gcMasses, yy=yy, xmm=xrange, ymm=yrange, xbs=binSizeMass, ybs=binSizeFrac)      
     oplot2DHistoSq, f2d, hsp=hsp, nc=nc, xrange=xrange, yrange=yrange, /colNorm, /green
              
     ; sim lines
-    j=1
-    cgPlot,ts.gcMasses,ts.tsFracs.gmem_tcool_tdyn[j,*],psym=4,color=sP.colorsA[cInd],/overplot
-      
     for j=0,n_elements(ts.tsRatioVals)-1 do $
       cgPlot,ts.logMassBinCen,ts.tsMedian.gmem_tcool_tdyn[j,*],color=cgColor('black'),line=lines[j],/overplot
       
@@ -83,14 +98,11 @@ pro plotTSFracsVsHaloMass
       xtitle=textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),ytitle="Gas Mass Fraction "+textoidl("(t_{cool} < t_{H})")
       
     ; sim 2d histo
-    yy = ts.tsFracs.gmem_tcool_tage[1,*]
+    yy = ts.tsFracs.gmem_tcool_tage[cgdInd,*]
     f2d = binHisto2D(xx=ts.gcMasses, yy=yy, xmm=xrange, ymm=yrange, xbs=binSizeMass, ybs=binSizeFrac)      
     oplot2DHistoSq, f2d, hsp=hsp, nc=nc, xrange=xrange, yrange=yrange, /colNorm, /green
     
     ; sim lines
-    j=1
-    cgPlot,ts.gcMasses,ts.tsFracs.gmem_tcool_tage[j,*],psym=4,color=sP.colorsA[cInd],/overplot
-      
     for j=0,n_elements(ts.tsRatioVals)-1 do $
       cgPlot,ts.logMassBinCen,ts.tsMedian.gmem_tcool_tage[j,*],color=cgColor('black'),line=lines[j],/overplot
       
@@ -326,7 +338,7 @@ pro timescaleVRadStack
     
     ; load gas timescales and best model fits
     ts = loadFitTimescales(sP=sP,gcIDList=gcIDList)
-    
+    stop
     ; radial fit
     cgPlot,ts.radVrad.binCen,ts.radVrad.radMedian,line=2,color=cgColor('black'),/overplot
                 
@@ -647,21 +659,21 @@ pro compareTimescalesHalo
   units = getUnits()
   
   ; config
-  sP = simParams(res=256,run='tracer',redshift=2.0)
+  sP = simParams(res=512,run='tracer',redshift=2.0)
   gc = loadGroupCat(sP=sP,/skipIDs)
 
   ; do for tracers (and include tacc comparison plots) or instead do for gas?
-  accTimesRepTR = 1
+  accTimesRepTR = 0
   
   ; single halo by haloID
   haloID = 304 ;z2.304 z2.301 z2.130 z2.64
-  gcID = getMatchedIDs(sPa=sP,sPg=sP,haloID=haloID)
-  gcIDList = [gcID.a]
-  hTag = 'h'+str(haloID)+'_m='+string(codeMassToLogMsun(gc.subgroupMass[gcID.a]),format='(f4.1)')+$
+  gcID = getMatchedIDs(simParams=sP,haloID=haloID)
+  
+  hTag = 'h'+str(haloID)+'_m='+string(codeMassToLogMsun(gc.subgroupMass[gcID]),format='(f4.1)')+$
          '_tr'+str(accTimesRepTR)
-
+  
   ; load gas timescales and best model fits
-  ts = loadFitTimescales(sP=sP,gcIDList=gcIDList,accTimesRepTR=accTimesRepTR)
+  ts = loadFitTimescales(sP=sP,gcIDList=gcID,accTimesRepTR=accTimesRepTR)
   
   ; plot config
   coolingRange = [0.03,20]  ; Gyr

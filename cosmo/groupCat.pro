@@ -1,17 +1,18 @@
 ; groupCat.pro
 ; cosmological simulations - group (fof/subfind) catalog utilities
-; dnelson apr.2013
+; dnelson may.2013
 
 ; getMatchedIDs(): return matched subgroup IDs given a "haloID" from the HaloComparisonProject
 ;                  account for resolution, redshift, and run. try to prevent IDs from floating
 ;                  around in various functions
 
-function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
+function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mosaicIDs=mosaicIDs
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
-  if sPa.res ne sPg.res then message,'Error: Resolutions differ.'
-  if abs(sPa.redshift - sPg.redshift) gt 0.02 then message,'Error: Redshifts differ.'
-  if sPa.redshift ne 2.0 and sPa.redshift ne 3.0 then message,'Error: Only redshift 2 or 3.'
+  if keyword_set(sPa) and keyword_set(sPg) then begin
+    if sPa.res ne sPg.res then message,'Error: Resolutions differ.'
+    if abs(sPa.redshift - sPg.redshift) gt 0.02 then message,'Error: Redshifts differ.'
+  endif
   
   ; hash container
   sgIDs = hash()
@@ -29,6 +30,7 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
     sgIDs['z2_res256_gadget']        = [1888,1565,983,845,758,330,278,74]
     sgIDs['z2_res256_feedback']      = [1467,1132,692,582,519,218,154,27]
     sgIDs['z2_res256_feedback_noz']  = [1485,1112,688,607,529,193,187,47]
+    sgIDs['z2_res256_feedback_nofb'] = [1635,1309,793,664,566,211,173,65]
     sgIDs['z2_res256_axes']          = list([0,2],[0,1],[0,2],[0,2],[1,2],[0,2],[1,2],[0,1])
     
     ; 512^3 z=3 (~same mass spacing as z2, but randomly selected at z=3 for run=tracer)
@@ -36,6 +38,14 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
     sgIDs['z3_res512_gadget']   = [4398,3194,2061,1593,1275,742,573,154] ; matched from tracer
     sgIDs['z3_res512_feedback'] = [4451,3067,1801,1453,1135,671,468,151] ; matched from tracer
     sgIDs['z3_res512_axes']     = list([0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1])
+    
+    if keyword_set(simParams) then begin
+      key  = 'z' + str(fix(simParams.redshift)) + '_res' + str(simParams.res) + '_' + simParams.run
+      keyAxes = 'z' + str(fix(simParams.redshift)) + '_res' + str(simParams.res) + '_axes'
+      if ~sgIDs.HasKey(key) then message,'Error: Unknown request.'
+      
+      return, { gcIDs : sgIDs[key], axes : sgIDs[keyAxes] }
+    endif
     
     keyA = 'z' + str(fix(sPa.redshift)) + '_res' + str(sPa.res) + '_' + sPa.run
     keyG = 'z' + str(fix(sPg.redshift)) + '_res' + str(sPg.res) + '_' + sPg.run
@@ -56,6 +66,7 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
   sgIDs['z2_h314_res256_gadget']   = 278
   sgIDs['z2_h314_res256_feedback'] = 154
   sgIDs['z2_h314_res256_feedback_noz'] = 187
+  sgIDs['z2_h314_res256_feedback_nofb'] = 173
   
   sgIDs['z2_h314_res128_tracer']   = 50
   sgIDs['z2_h314_res128_gadget']   = 71
@@ -84,6 +95,7 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
   sgIDs['z2_h304_res256_gadget']   = 673
   sgIDs['z2_h304_res256_feedback'] = 464
   sgIDs['z2_h304_res256_feedback_noz'] = 485
+  sgIDs['z2_h304_res256_feedback_nofb'] = 535
   
   sgIDs['z2_h304_res128_tracer']   = 150
   sgIDs['z2_h304_res128_gadget']   = 217
@@ -104,8 +116,10 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
   sgIDs['z3_h304_res128_feedback'] = 117
   
   ; z2.301
+  sgIDs['z2_h301_res512_tracer']   = 1948
   sgIDs['z2_h301_res512_gadget']   = 2289
   sgIDs['z2_h301_res512_arepo']    = 2034
+  sgIDs['z2_h301_res512_feedback'] = 1963  
   
   ; z2.130 (low mass example for paper)
   sgIDs['z2_h130_res512_tracer']   = 5611
@@ -125,6 +139,15 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, haloID=haloID, mosaicIDs=mosaicIDs
   sgIDs['z2_h64_res512_gadget']    = 5498
   sgIDs['z2_h64_res512_arepo']     = 5097
 
+  ; single simulation requested?
+  if keyword_set(simParams) then begin
+    key = 'z' + str(fix(simParams.redshift)) + '_h' + str(haloID) + '_res' + str(simParams.res) + $
+          '_' + simParams.run
+    if ~sgIDs.HasKey(key) then message,'Error: Unknown request.'
+    
+    return, sgIDs[key]
+  endif
+  
   ; make key and pull the requested subgroup ID out
   keyA = 'z' + str(fix(sPa.redshift)) + '_h' + str(haloID) + '_res' + str(sPa.res) + '_' + sPa.run
   keyG = 'z' + str(fix(sPg.redshift)) + '_h' + str(haloID) + '_res' + str(sPg.res) + '_' + sPg.run
@@ -148,14 +171,14 @@ pro rematch
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function loadGroupCat
 
-  sP1 = simParams(res=512,run='gadget',redshift=2.0)
-  sP2 = simParams(res=256,run='gadget',redshift=2.0)
+  sP1 = simParams(res=512,run='feedback',redshift=2.0)
+  sP2 = simParams(res=256,run='feedback_noFB',redshift=2.0)
 
   gc1 = loadGroupCat(sP=sP1,/skipIDs)
   gc2 = loadGroupCat(sP=sP2,/skipIDs)
 
   ;known1gcIDs = [3664,2920,1812,1459,1210,620,496,137]
-  known1gcIDs = [6369,5151,3338,2824,2538,1117,981,266]
+  known1gcIDs = [5750,4622,2940,2384,2131,834,676,105]
   
   foreach gcID,known1gcIDs do begin
     ; find closest spatial match
@@ -356,18 +379,10 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
         subgroupPIDs[start:start+gc.subGroupLenType[partType,gcID]-1] = $
           gc.IDs[gc.subGroupOffsetType[partType,gcID] : gc.subGroupOffsetType[partType,gcID] + $
           gc.subGroupLenType[partType,gcID] - 1]
-          
-        ;added = gc.IDs[gc.subGroupOffsetType[partType,gcID] : gc.subGroupOffsetType[partType,gcID] + $
-        ;  gc.subGroupLenType[partType,gcID] - 1]
-        ;w = where(added eq 36345,count)
-        ;if count gt 0 then stop
         
         start += gc.subGroupLenType[partType,gcID]
       endif
     endforeach
-    
-    ;w = where(subgroupPIDs eq 36345,count)
-    ;stop
 
     if start ne n_elements(subgroupPIDs) then message,'Error: Failed to locate all of this partType.'
     if min(subgroupPIDs) lt 0 then stop ; check 32 bit long overflow

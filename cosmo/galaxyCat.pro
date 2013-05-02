@@ -1,15 +1,15 @@
 ; galaxyCat.pro
 ; gas accretion project - gas selections of interest (galaxy/halo catalogs)
-; dnelson mar.2013
+; dnelson apr.2013
 
 ; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
 ;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)
 ;              if snap is specified, create only for one snapshot number or return previously saved
 ;              results for that snapshot
 ; Note: the gal/gmem catalogs have the same size (and indexing) as the subgroups
-; galaxyOnly=1 : calculate on the fly and return for galaxy only (don't save)
+; skipSave=1 : calculate on the fly and return galaxy/stellar IDs only (don't save)
 
-function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
+function galaxyCat, sP=sP, skipSave=skipSave
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -236,19 +236,11 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
       calcMatch,ids,galaxyIDs,ind1,ind2,count=countCheck
       if countCheck ne n_elements(ids) then message,'Error: Failed to locate all gal.'
 
-      ; immediate return for galaxy only (accretionRates)?
-      if keyword_set(galaxyOnly) then begin
-        r = {galaxyLen:galaxyLen, galaxyOff:galaxyOff, galaxyIDs:galaxyIDs}
-        return, r
-      endif
-      
       ; save galaxy catalog
-      save,galaxyLen,galaxyOff,galaxyIDs,filename=saveFilename1
-      print,'Saved: '+strmid(saveFilename1,strlen(sP.derivPath))+' ['+str(countGal)+'/'+str(countMatch)+']'
-    
-      galaxyLen = !NULL
-      galaxyOff = !NULL
-      galaxyIDs = !NULL
+      if ~keyword_set(skipSave) then begin
+        save,galaxyLen,galaxyOff,galaxyIDs,filename=saveFilename1
+        print,'Saved: '+strmid(saveFilename1,strlen(sP.derivPath))+' ['+str(countGal)+'/'+str(countMatch)+']'
+      endif
       
     endif
     
@@ -286,12 +278,10 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
       if countCheck ne n_elements(ids_groupmem) then message,'Error: Failed to locate all gmem.'
       
       ; save group membership catalog
-      save,groupmemLen,groupmemOff,groupmemIDs,filename=saveFilename2    
-      print,'Saved: '+strmid(saveFilename2,strlen(sP.derivPath))+' ['+str(countGmem)+'/'+str(countMatch)+']'    
-    
-      groupmemLen = !NULL
-      groupmemOff = !NULL
-      groupmemIDs = !NULL
+      if ~keyword_set(skipSave) then begin
+        save,groupmemLen,groupmemOff,groupmemIDs,filename=saveFilename2    
+        print,'Saved: '+strmid(saveFilename2,strlen(sP.derivPath))+' ['+str(countGmem)+'/'+str(countMatch)+']'
+      endif
     
     endif
     
@@ -328,11 +318,19 @@ function galaxyCat, sP=sP, galaxyOnly=galaxyOnly
       if countCheck ne n_elements(ids_stars) then message,'Error: Failed to locate all stars.'
 
       ; save stellar catalog
-      save,stellarLen,stellarOff,stellarIDs,filename=saveFilename3
-      print,'Saved: '+strmid(saveFilename3,strlen(sP.derivPath))+' ['+str(countStars)+'/'+str(countMatch)+']'
+      if ~keyword_set(skipSave) then begin
+        save,stellarLen,stellarOff,stellarIDs,filename=saveFilename3
+        print,'Saved: '+strmid(saveFilename3,strlen(sP.derivPath))+' ['+str(countStars)+'/'+str(countMatch)+']'
+      endif
     endif
 
   endfor ;snapRange
+  
+  ; immediate return for galaxy only (accretionRates)?
+  if keyword_set(skipSave) then begin
+    r = {galaxyIDs:galaxyIDs, stellarIDs:stellarIDs}
+    return, r
+  endif
   
   ; if just one snap requested and just calculated, return it now
   if snapRange[0] eq snapRange[1] then begin

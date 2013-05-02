@@ -10,12 +10,12 @@ pro plotPreBin
 
   ; config
   sgSelect   = 'pri'
-  redshift   = 2.0 ;redshifts  = [2.0,3.0]
-  res        = 128
+  redshift   = 3.0 ;redshifts  = [2.0,3.0]
+  res        = 256
   
   timeWindows = list(250.0,500.0,1000.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
-  accModes = list('all','smooth','clumpy','stripped') ;,'recycled'
-  runs = list('gadget') ;list('tracer','gadget')
+  accModes = list('all','smooth','clumpy','stripped','recycled') ;,'recycled'
+  runs = list('feedback') ;list('tracer','gadget')
   
   ;foreach redshift,redshifts do begin
     foreach timeWindow,timeWindows do begin
@@ -121,13 +121,13 @@ pro plotByMethod
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  runs       = ['feedback','feedback_noZ']
+  runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   sgSelect   = 'pri'
   accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
   timeWindow = 1000.0 ; consider accretion over this past time range (Myr)
                       ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0 ; plot Tmax/Tvir=1
-  res        = 256
+  res        = 512
   redshift   = 2.0
   
   lines   = [1,0,2] ; tvircur,tviracc,const5.5
@@ -533,9 +533,9 @@ pro plotByMode
   ; config
   sgSelect   = 'pri'
   redshift   = 2.0
-  res        = 256
+  res        = 512
   timeWindow = 1000.0
-  runs       = ['feedback','feedback_noZ']
+  runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   accModes   = ['all','smooth','clumpy','stripped','recycled']
   
   ; plot config
@@ -553,11 +553,12 @@ pro plotByMode
   ; load
   foreach run,runs,i do begin
     sP  = mod_struct(sP, 'sP'+str(i), simParams(res=res,run=run,redshift=redshift))
+    mbv_mode = {}
     
     ; make for all the accretion modes
     foreach accMode,accModes,j do begin
-      if accMode eq 'recycled' and sP.(i).gfmWinds eq 0 then continue ; skip recycled for nonWinds
-      mbv_mode = mod_struct(mbv_mode, 'res'+str(j), $
+      if accMode eq 'recycled' and sP.(i).gfmWinds eq 0 then continue ; skip recycled for nonWinds     
+      mbv_mode = mod_struct(mbv_mode, 'mode'+str(j), $
         haloMassBinValues(sP=sP.(i),sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow))
     endforeach
     
@@ -716,7 +717,6 @@ pro plotByMode
         cgPlot,mbv.(i).(j).logMassBinCen,smooth(mbv.(i).(j).coldMedian.gmem_tVirAcc[virInd,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=lines[j],/overplot
 
-    
     ; legend
     legend,accModes,linestyle=lines,box=0,linesize=0.4,/top,/left,charsize=!p.charsize-0.2
       
@@ -812,7 +812,7 @@ pro plotByTimeWindow
   accMode  = 'smooth'
   redshift = 2.0
   res      = 512
-  runs     = ['gadget','tracer','feedback']
+  runs     = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   tws      = list(250.0,500.0,1000.0,'all')
   
   ; plot config
@@ -828,6 +828,7 @@ pro plotByTimeWindow
   ; load
   foreach run,runs,i do begin
     sP  = mod_struct(sP, 'sP'+str(i), simParams(res=res,run=run,redshift=redshift))
+    mbv_tw = {}
     
     ; make for all the timeWindows
     foreach timeWindow,tws,j do $
@@ -1024,7 +1025,7 @@ pro plotByRes
   ; config
   sgSelect    = 'pri'
   accMode     = 'smooth'
-  redshift    = 3.0
+  redshift    = 2.0
   timeWindow  = 1000.0 ; Myr
   resolutions = [512,256,128]
   runs        = ['gadget','tracer','feedback']
@@ -1044,6 +1045,7 @@ pro plotByRes
   ; load
   foreach run,runs,i do begin
     sP  = mod_struct(sP, 'sP'+str(i), simParams(res=resolutions[0],run=run,redshift=redshift))
+    mbv_res = {}
     
     ; make for all the resolutions
     foreach res,resolutions,j do begin
@@ -1418,7 +1420,7 @@ pro plotHotColdMassRatio
   foreach res,[128,256,512] do begin
   
     ; config
-    redshift = 3.0
+    redshift = 2.0
     sPa = simParams(res=res,run='feedback',redshift=redshift)
     sPg = simParams(res=res,run='gadget',redshift=redshift)
 

@@ -76,6 +76,31 @@ function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose
   return,snapNum
 end
 
+; gasMassesFromIDs(): return individual gas cell/particle masses given input ID list
+  
+function gasMassesFromIDs, search_ids, sP=sP
+
+  h = loadSnapshotHeader(sP=sP)
+
+  if sP.trMCPerCell eq 0 then begin
+    ; SPH case: all particles have constant mass
+    massPerPart = sP.targetGasMass
+    masses = replicate(massPerPart,h.nPartTot[partTypeNum('gas')])
+  endif else begin
+    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    
+    idIndexMap = getIDIndexMap(ids,minid=minid)
+    ids = !NULL
+    ids_ind = idIndexMap[search_ids-minid]
+    idIndexMap = !NULL
+    
+    masses = loadSnapshotSubset(sP=sP,partType='gas',field='mass',inds=ids_ind)
+  endelse
+  
+  return, masses
+  
+end
+
 ; mergerTreeChild(): construct a Child array given a Parent array
 ; 
 ; childPrev : if specified, compose the two mappings such that the returned Child points not at the
@@ -287,17 +312,32 @@ end
   
 ; rhoTHisto(): make mass-weighted density-temperature 2d histogram
 
-function rhoTHisto, dens_in, temp_in, mass=mass, nbins=nbins, plot=plot
+pro rhoTHisto
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
-
+  
   ; config
-  if not keyword_set(nbins) then nbins = 20
-  dens = alog10(rhoRatioToCrit(dens_in))
-  temp = alog10(temp_in)
+  nbins = 40  
+  sP = simParams(res=256,run='feedback_noFB',redshift=2.0)
+  
   rMinMax = [-2.0,8.0]
   tMinMax = [3.0,7.0]
+  
+  ; load
+  u_in    = loadSnapshotSUbset(sP=sP,partType='gas',field='u')
+  ne_in   = loadSnapshotSUbset(sP=sP,partType='gas',field='nelec')
+  temp_in = convertUtoTemp(u_in,ne_in)
+  
+  u_in  = !NULL
+  ne_in = !NULL
+  
+  dens_in = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
+  mass    = loadSnapshotSUbset(sP=sP,partType='gas',field='mass')
+  
+  ; prepare data
+  dens = alog10(rhoRatioToCrit(dens_in,sP=sP))
+  temp = alog10(temp_in)
   
   ; calculate bin sizes
   binSizeRho  = (rMinMax[1]-rMinMax[0]) / nbins
@@ -312,18 +352,15 @@ function rhoTHisto, dens_in, temp_in, mass=mass, nbins=nbins, plot=plot
                         max=[rMinMax[1]+binSizeRho*0.49,tMinMax[1]+binSizeTemp*0.49])
   
   ; plot
-  if keyword_set(plot) then begin
+  start_PS,'test2.eps'
     ; color table
-    loadct, 2, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
+    loadColorTable,'helix'
       
-    tvim,h2rt,pcharsize=!p.charsize-1.0,scale=1,clip=[10,100],$;,/c_map
+    tvim,h2rt,scale=1,clip=[10,100],$;,/c_map
          xtitle="log ("+textoidl("\rho / \rho_{crit}")+")",ytitle="log (T [K])",$
-         stitle="Total Mass ("+textoidl("M_{sun}")+")",barwidth=0.5,lcharsize=!p.charsize-1.5,$
-         xrange=[-2.0,8.0],yrange=[3.0,7.0],$;xrange=rMinMax,yrange=tMinMax,$
-         /rct;,nodata=0,rgb_nodata=[1.0,1.0,1.0] ;display zeros as white not black
-  endif
-  
-  return,h2rt
+         stitle="Total Mass ("+textoidl("M_{sun}")+")",barwidth=0.5,lcharsize=!p.charsize-1.0,$
+         xrange=rMinMax,yrange=tMinMax,/rct;,nodata=0,rgb_nodata=[1.0,1.0,1.0] ;display zeros as white not black
+  end_PS
 
 end
 
@@ -426,15 +463,14 @@ pro exportParticlesAscii
   forward_function simParams, loadSnapshotSubset
 
   partType = 'gas'
-  fileName = '128fb.gas.txt'
-  sP = simParams(res=128,run='feedback',redshift=0.0)
+  fileName = '512fb.gas.txt'
+  sP = simParams(res=512,run='tracer',redshift=0.0)
   
   pos  = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
   dens = loadSnapshotSubset(sP=sP,partType=partType,field='dens')
   u    = loadSnapshotSubset(sP=sP,partType=partType,field='u')
   
   print,n_elements(u)
-  stop
   
   outBuf = fltarr(5,n_elements(u))
   outBuf[0,*] = pos[0,*]

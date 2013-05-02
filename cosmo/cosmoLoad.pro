@@ -1002,7 +1002,7 @@ end
 
 ; getSnapFilelist(): take input path and snapshot number and find snapshot filename
 
-function getSnapFilelist, fileBase, snapNum=m, subBox=subBox
+function getSnapFilelist, fileBase, snapNum=m, subBox=subBox, checkExists=checkExists
 
   sbstr = ''
   if keyword_set(subBox) then sbstr = 'subbox_'
@@ -1049,6 +1049,9 @@ function getSnapFilelist, fileBase, snapNum=m, subBox=subBox
     ff = file_search(f+".*hdf5")
     return, f + '.' + str(indgen(n_elements(ff))) + '.hdf5'
   endif
+
+  ; if we are checking for existence, we have failed, return false, otherwise throw an error
+  if keyword_set(checkExists) then return, ['-1']
 
   message,'Error: Failed to find snapshot.'
 end

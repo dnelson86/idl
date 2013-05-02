@@ -330,8 +330,8 @@ float ngb_treefind (float xyz[3], float hguess)
       iter++;
       if (iter>1000)
        {
-        printf("too many iterations...\n");
-        exit(1);
+        printf("CalcHSML: too many iterations...\n");
+        return hguess; //exit(1);
        }
 
       numngb = ngb_treefind_variable (xyz, hguess);

@@ -1,6 +1,6 @@
 ; timeScales.pro
 ; cooling times of halo gas vs. dynamical/hubble timescales
-; dnelson mar.2013
+; dnelson apr.2013
 
 ; coolingTime(): calculate primordial network cooling times for all halo gas
 
@@ -10,7 +10,7 @@ function coolingTime, sP=sP
   units = getUnits()
   
   ; set saveFilename and check for existence
-  saveFilename = sP.derivPath + 'coolTime.gmem' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
+  saveFilename = sP.derivPath + 'coolTime.halo.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
   if file_test(saveFilename) then begin
     restore,saveFilename
     return,r
@@ -18,30 +18,26 @@ function coolingTime, sP=sP
   
   ; load galaxy/group member catalogs for gas ids to search for
   h = loadSnapshotHeader(sP=sP)
-  galcat = galaxyCat(sP=sP)
+  galHaloCat = galaxyHaloCat(sP=sP)
   
   ; load gas ids and match to catalog
   ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
 
-  calcMatch,galcat.groupmemIDs,ids,galcat_ind,ids_gmem_ind,count=countGmem
-  ids_gmem_ind = ids_gmem_ind[calcSort(galcat_ind)]
-  
+  idIndexMap = getIDIndexMap(ids,minid=minid)
   ids = !NULL
-  galcat_ind = !NULL
+  
+  ids_halo_ind = idIndexMap[galHaloCat.fullhaloIDs-minid]
+  idIndexMap = !NULL
 
   ; save structure
-  r = { temp : fltarr(countGmem), dens : fltarr(countGmem), coolTime : fltarr(countGmem) }
+  countHalo = n_elements(ids_halo_ind)
+  r = { temp : fltarr(countHalo), dens : fltarr(countHalo), coolTime : fltarr(countHalo) }
   
   ; load u,dens,nelec
-  u = loadSnapshotSubset(sP=sP,partType='gas',field='u')
-  u = u[ids_gmem_ind]
+  u     = loadSnapshotSubset(sP=sP,partType='gas',field='u',inds=ids_halo_ind)
+  dens  = loadSnapshotSubset(sP=sP,partType='gas',field='dens',inds=ids_halo_ind)
+  nelec = loadSnapshotSubset(sP=sP,partType='gas',field='ne',inds=ids_halo_ind)
 
-  dens = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
-  dens = dens[ids_gmem_ind]
-
-  nelec = loadSnapshotSubset(sP=sP,partType='gas',field='ne')
-  nelec = nelec[ids_gmem_ind]
-  
   ; calculate a temperature to save
   r.temp = convertUtoTemp(u,nelec,/log)
   r.dens = dens
@@ -64,7 +60,7 @@ function coolingTime, sP=sP
   
 end
 
-; enclosedMass(): calculate the total enclosed mass (all particle types) for each gas parent in galaxy/halo catalog
+; enclosedMass(): calculate the total enclosed mass (all particle types) for each gas parent in galHaloCat
 
 function enclosedMass, sP=sP
 
@@ -74,7 +70,7 @@ function enclosedMass, sP=sP
   partTypes = ['dm','gas','star','bh'] ; count mass in each of these particle types
   
   ; set saveFilename and check for existence
-  saveFilename = sP.derivPath + 'massEnc.gmem.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
+  saveFilename = sP.derivPath + 'massEnc.halo.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
   if file_test(saveFilename) then begin
     restore,saveFilename
     return,massEnc
@@ -82,7 +78,7 @@ function enclosedMass, sP=sP
   
   ; load galaxy/group member catalogs for gas ids to search for
   h = loadSnapshotHeader(sP=sP)
-  galcat = galaxyCat(sP=sP)
+  galHaloCat = galaxyHaloCat(sP=sP)
   
   ; load subhalo catalog for mostBoundParticleID and for priParentIDs
   gc = loadGroupCat(sP=sP,/readIDs)
@@ -91,10 +87,7 @@ function enclosedMass, sP=sP
   subgroupCen = subgroupPosByMostBoundID(sP=sP)
     
   ; save array
-  massEnc = fltarr(n_elements(galcat.groupmemIDs))
-  
-  ; load radii of target gas parents
-  galcatRadii = galaxyCatRadii(sP=sP)
+  massEnc = fltarr(n_elements(galHaloCat.fullhaloIDs))
   
   ; loop over each particle type to consider
   foreach partType,partTypes,j do begin
@@ -117,10 +110,8 @@ function enclosedMass, sP=sP
     pos = pos[*,ids_ind]
     
     ; load masses
-    if partType ne 'dm' then begin
-      mass = loadSnapshotSubset(sP=sP,partType=partType,field='mass')
-      mass = mass[ids_ind]
-    endif
+    if partType ne 'dm' then $
+      mass = loadSnapshotSubset(sP=sP,partType=partType,field='mass',inds=ids_ind)
     
     ; now process each halo
     wMask = intarr(n_elements(gc_IDs_ind))
@@ -158,12 +149,13 @@ function enclosedMass, sP=sP
         ptMass = [0,ptMass]
       endif
       
-      ; gmem
-      if galcat.groupMemLen[gc.groupFirstSub[i]] gt 0 then begin
+      ; fullhalo
+      if galHaloCat.fullhaloLen[gc.groupFirstSub[i]] gt 0 then begin
         ; match target gas parent radii and this particle type radii
-        target_inds = lindgen(galcat.groupMemLen[gc.groupFirstSub[i]]) + galcat.groupmemOff[gc.groupFirstSub[i]]
-        ptMatch = value_locate(ptRad,galcatRadii.gmem_sec[target_inds])
-    
+        target_inds = lindgen(galHaloCat.fullhaloLen[gc.groupFirstSub[i]]) + $
+                      galHaloCat.fullhaloOff[gc.groupFirstSub[i]]
+        ptMatch = value_locate(ptRad,galHaloCat.fullhaloRad[target_inds])
+
         ; add enclosed mass contribution
         w = where(ptMatch ge 0,count)
         if count gt 0 then massEnc[target_inds[w]] += ptMass[ptMatch[w]]
@@ -197,34 +189,32 @@ function loadFitTimescales, sP=sP, gcIDList=gcIDList, accTimesRepTR=accTimesRepT
   h  = loadSnapshotHeader(sP=sP)
   
   ; get indices for gas in halo(s)
-  galcat = galaxyCat(sP=sP)
-  inds = galcatINDList(sP=sP, galcat=galcat, gcIDList=gcIDList)
+  galHaloCat = galaxyHaloCat(sP=sP)
+  inds = galHaloCatINDList(sP=sP, galHaloCat=galHaloCat, gcIDList=gcIDList)
 
   ; load cooling time (Gyr) and radius (ckpc) for each gas cell
   ct = coolingTime(sP=sP)
 
-  coolTime = ct.coolTime[inds.gmem]
+  coolTime = ct.coolTime[inds]
   
-  curTemp = ct.temp[inds.gmem]
-  curDens = ct.dens[inds.gmem]
-  
-  gasRadii = galaxyCatRadii(sP=sP)
-  
-  gasVRad  = gasRadii.gmem_vrad_pri[inds.gmem]
-  gasRadii = gasRadii.gmem_sec[inds.gmem]
+  curTemp = ct.temp[inds]
+  curDens = ct.dens[inds]
+   
+  gasVRad  = galHaloCat.fullhaloVRad[inds]
+  gasRadii = galHaloCat.fullhaloRad[inds]
 
   ct = !NULL
   
   ; for normalizing radii and vel
-  gasRvir  = galcatParentProperties(sP=sP,/rVir,parNorm='pri')
-  gasRvir  = gasRvir.gmem[inds.gmem]
+  gasRvir = galHaloCatParentProperties(sP=sP,/rVir)
+  gasRvir = gasRvir[inds]
   
-  gasVcirc = galcatParentProperties(sP=sP,/vCirc,parNorm='pri')
-  gasVcirc = gasVcirc.gmem[inds.gmem]
+  gasVcirc = galHaloCatParentProperties(sP=sP,/vCirc)
+  gasVcirc = gasVcirc[inds]
   
   ; estimate dynamical timescale using total enclosed mass at each gas cell
   encMass = enclosedMass(sP=sP)
-  encMass = encMass[inds.gmem] ; code units
+  encMass = encMass[inds] ; code units
   
   meanDensEnc = codeDensToPhys( 3*encMass / (4 * !pi * gasRadii^3.0), scalefac=h.time ) ; code units (physical)
   
@@ -264,23 +254,7 @@ function loadFitTimescales, sP=sP, gcIDList=gcIDList, accTimesRepTR=accTimesRepT
   radVrad = fitRadProfile(radii=gasRadii/gasRvir,vals=gasVRad,range=radFitRange,radBins=15)
   
   ; calculate average hot halo gas mass
-  if sP.trMCPerCell eq 0 then begin
-    ; SPH case: all particles have constant mass
-    massPerPart = sP.targetGasMass
-    masses = replicate(massPerPart,h.nPartTot[partTypeNum('gas')])
-  endif else begin
-    ids_gmem = galcat.groupmemIDs[inds.gmem]
-  
-    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    calcMatch,ids,ids_gmem,ids_ind,ids_gmem_ind,count=countMatch
-    if countMatch ne n_elements(inds.gmem) then message,'error'
-    ids = !NULL
-    ids_ind = ids_ind[calcSort(ids_gmem_ind)]
-  
-    masses = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
-    masses = masses[ids_ind]
-  endelse
-  
+  masses = gasMassesFromIDs(galHaloCat.fullhaloIDs[inds], sP=sP)  
   mass_hot = total(masses) / n_elements(gcIDList) * units.HubbleParam
 
   ; profile fitting
@@ -310,23 +284,23 @@ function loadFitTimescales, sP=sP, gcIDList=gcIDList, accTimesRepTR=accTimesRepT
     ar = accretionRates(sP=sP)
     
     ; replicate parent indices (duplicates) of all tracers of requested halos only
-    inds_tr = replicate_var(ar.galcat_gmem_cc,subset_inds=inds.gmem)
+    inds_tr = replicate_var(ar.child_counts,subset_inds=inds)
 
     ; convert accSnap -> accSnapOffset -> Gyr elapsed for hot gas to galaxy accretion
     redshifts = snapNumToRedshift(sP=sP,/all)
     ages      = redshiftToAgeFlat(redshifts)
     
-    w = where(ar.accSnap_gmem[inds_tr.child_inds] ne -1,count)
-    accTime = ages[ar.accSnap_gmem[inds_tr.child_inds[w]]] - (ages[sP.snap])[0]
+    w = where(ar.accSnap[inds_tr.child_inds] ne -1,count)
+    accTime = ages[ar.accSnap[inds_tr.child_inds[w]]] - (ages[sP.snap])[0]
     ar = !NULL
     
     ; replicate all properties which are currently one per gas cell, only for those with known accTime
 
     ; cannot here take e.g. coolTime[parInds] since parInds are global (all gmem), but coolTime is
     ; already the inds.gmem subset for a single halo, a mass range, etc, so do a value_locate approach
-    parInds = value_locate(inds.gmem,inds_tr.parent_inds[w])
+    parInds = value_locate(inds,inds_tr.parent_inds[w])
     
-    if ~array_equal(inds.gmem[parInds],inds_tr.parent_inds[w]) then message,'Error: Not 1-to-1 in locate.'
+    if ~array_equal(inds[parInds],inds_tr.parent_inds[w]) then message,'Error: Not 1-to-1 in locate.'
 
     coolTime = coolTime[parInds]
     dynTime  = dynTime [parInds]
@@ -349,7 +323,7 @@ function loadFitTimescales, sP=sP, gcIDList=gcIDList, accTimesRepTR=accTimesRepT
 
   r = {coolTime:coolTime, dynTime:dynTime, hubbleTime:hubbleTime, accTime:accTime, $
        gasRadii:gasRadii, gasVRad:gasVRad, gasRvir:gasRvir, gasVcirc:gasVcirc, $
-       curTemp:curTemp, curDens:curDens, nGas:n_elements(inds.gmem), $
+       curTemp:curTemp, curDens:curDens, nGas:n_elements(inds), $
        virTemp_halo:virTemp_halo, coolTime_halo:coolTime_halo, dynTime_halo:dynTime_halo, $
        radCt:radCt, radDt:radDt, radDens:radDens, radTemp:radTemp, radVRad:radVRad, $
        mass_hot:mass_hot, masses:masses, x:x, $
@@ -386,42 +360,21 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
   gcIDList = gcIDList(gc=gc,select=sgSelect)
   h  = loadSnapshotHeader(sP=sP)
   
-  galcat = galaxyCat(sP=sP)
-  gcMasses = codeMassToLogMsun(gc.subgroupMass[gcIDList])
+  galHaloCat = galaxyHaloCat(sP=sP)
+  gcMasses   = codeMassToLogMsun(gc.subgroupMass[gcIDList])
   
   gmem_hotmasses = fltarr(n_elements(gcIDList))                     
   
   ; gas mass
-  if sP.trMCPerCell ne 0 then begin
-    ; SPH case: all particles have constant mass
-    massPerPart = sP.targetGasMass
-    mass = replicate(massPerPart,h.nPartTot[partTypeNum('gas')])
-  endif else begin
-    ; load gas ids to match to gmem ids
-    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    calcMatch,ids,galcat.groupmemIDs,ids_ind,galcat_ind,count=countGmem
-    if countGmem ne n_elements(galcat.groupmemIDs) then message,'Error: Failed to find all gmem ids.'
-    
-    ids_ind = ids_ind[calcSort(galcat_ind)]
-    ids = !NULL
-    galcat_ind = !NULL
-    
-    ; load gas masses and take gmem subset
-    mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
-    mass = mass[ids_ind]
-    ids_ind = !NULL
-  endelse
+  mass = gasMassesFromIDs(galHaloCat.fullhaloIDs, sP=sP)
   
   ; load cooling time (Gyr) and radius (ckpc) for each gas cell
   coolTime = coolingTime(sP=sP)
   coolTime = coolTime.coolTime
   
-  gasRadii = galaxyCatRadii(sP=sP)
-  gasRadii = gasRadii.gmem_sec
-  
   ; estimate dynamical timescale using total enclosed mass at each gas cell
   encMass = enclosedMass(sP=sP)
-  meanDensEnc = codeDensToPhys( 3*encMass / (4 * !pi * gasRadii^3.0), scalefac=h.time ) 
+  meanDensEnc = codeDensToPhys( 3*encMass / (4 * !pi * galHaloCat.fullhaloRad^3.0), scalefac=h.time ) 
   dynTime = sqrt( 3*!pi / (32 * float(units.G) * meanDensEnc) ) ; Gyr
   
   ; age of universe
@@ -445,9 +398,9 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
   for i=0L,n_elements(gcIDList)-1 do begin
     ; indices for this halo
     gcInd = gcIDList[i]
-    if galcat.groupmemLen[gcInd] eq 0 then continue
+    if galHaloCat.fullhaloLen[gcInd] eq 0 then continue
        
-    inds = lindgen(galcat.groupmemLen[gcInd]) + galcat.groupmemOff[gcInd]
+    inds = lindgen(galHaloCat.fullhaloLen[gcInd]) + galHaloCat.fullhaloOff[gcInd]
     
     ; get gas in this halo
     loc_coolTime = coolTime[inds]
@@ -460,7 +413,7 @@ function timescaleFracsVsHaloMass, sP=sP, sgSelect=sgSelect
     gmem_hotmasses[i] = loc_massTot
     
     ; enforce a minimum number of gas elements in gmem (leave as NaN, skip in median)
-    if galcat.groupmemLen[gcInd] lt minNumGasInHalo then continue
+    if galHaloCat.fullhaloLen[gcInd] lt minNumGasInHalo then continue
     
     ; count
     for j=0,nCuts-1 do begin
