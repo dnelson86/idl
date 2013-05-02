@@ -7,8 +7,8 @@
 pro makeArepoFoFBsub
 
   ; config
-  res = 256
-  run = 'tracer'
+  res = 512
+  run = 'gadget'
   ;f = '10'
   
   sP = simParams(res=res,run=run)
@@ -17,11 +17,11 @@ pro makeArepoFoFBsub
   print,snapZ
 
   ;snapRange = [290,314,1]
-  snaps = [310]
+  snaps = [239]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 32 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
+  nProcs    = 64 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
                  ;               256^3=4 (n32tile4 PartAllocFactor=2.5 MaxMemSize=7900)
                  ;               512^3=16 (n64tile4 PartAllocFactor=1.5 though n32tile4 ok until z=2)
   ptile     = 4 ; span[ptile=X]
@@ -54,7 +54,7 @@ pro makeArepoFoFBsub
     
     ; write header
     printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q nancy'
+    printf,lun,'#BSUB -q keck'
     printf,lun,'#BSUB -J fof_' + str(snap) + ''
     printf,lun,'#BSUB -n ' + str(nProcs)
     printf,lun,'#BSUB -R "' + selectStr + 'span[ptile=' + str(ptile) + ']"' ;rusage[mem=31000]

@@ -96,154 +96,26 @@ pro sphMapBox
   
 end
 
-; plotSphmapDensQuant(): plot side by side projection results from CalcSphMap
-
-pro plotSphmapDensQuant, map=sphmap, config=config, top=top, bottom=bottom
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  highmass = 1
-  
-  if highmass eq 1 then clipFacs = [0.10,400.0,1.05,280.0]
-  if highmass eq 0 then clipFacs = [1.5,255.0,1.0,255.0]
-  
-  ; dens: color map and rescale
-  w = where(sphmap.dens_out le 0.0,count,comp=wc)
-
-  sphmap.dens_out = alog10(sphmap.dens_out)
-  if highmass eq 1 then begin
-    if count gt 0 then sphmap.dens_out[w] = 0.0
-    sphmap.dens_out = sphmap.dens_out-clipFacs[0]
-  endif
-  if highmass eq 0 then begin
-    if count gt 0 then sphmap.dens_out[w] = 0.0
-    sphmap.dens_out = sphmap.dens_out-clipFacs[0]*min(sphmap.dens_out)
-  endif
-  
-  w = where(sphmap.dens_out lt 0.0,count)
-  if count gt 0 then sphmap.dens_out[w] = 0.0
-  
-  sphmap.dens_out = sphmap.dens_out*clipFacs[1] / (max(sphmap.dens_out)-min(sphmap.dens_out)) < 255 ; 0-255
-
-  ; temp
-  w = where(sphmap.quant_out eq 0.0,count,comp=wc)
-  if count gt 0 then sphmap.quant_out[w] = min(sphmap.quant_out[wc])
-  
-  sphmap.quant_out = alog10(sphmap.quant_out)
-  sphmap.quant_out = sphmap.quant_out-clipFacs[2]*min(sphmap.quant_out)
-  
-  w = where(sphmap.quant_out lt 0.0,count)
-  if count gt 0 then sphmap.quant_out[w] = 0.0
-  
-  sphmap.quant_out = sphmap.quant_out*clipFacs[3] / (max(sphmap.quant_out)-min(sphmap.quant_out)) < 255 ;0-255
-
-  ; box
-  xMinMax = [config.boxCen[0]-config.boxSizeImg[0]/2.0,config.boxCen[0]+config.boxSizeImg[0]/2.0]
-  yMinMax = [config.boxCen[1]-config.boxSizeImg[1]/2.0,config.boxCen[1]+config.boxSizeImg[1]/2.0]
-  
-  plotPath = '/n/home07/dnelson/coldflows/'
-  
-  ; plot position (normalized)
-  posLeft = [0.0,0.0,0.5,1.0]
-  if keyword_set(top) then posLeft = [0.0,0.5,0.5,1.0]
-  if keyword_set(bottom) then posLeft = [0.0,0.0,0.5,0.5]
-  posRight = posLeft + [0.5,0.0,0.5,0.0]
-  
-  if ~keyword_set(top) and ~keyword_set(bottom) then $
-  start_PS, plotPath + strmid(config.saveFilename,0,strlen(config.saveFilename)-4)+'.eps', xs=8, ys=4
-  
-    !p.charsize = 0.8
-    loadColorTable,'helix'
-
-    ; density
-    cgPlot, /nodata, xMinMax, yMinMax, pos=posLeft, xs=5, ys=5, /noerase
-    tv, sphmap.dens_out,posLeft[0],posLeft[1],/normal,xsize=0.5
-    
-    ; circle at virial radius
-    tvcircle,config.haloVirRad,0,0,cgColor('white'),thick=0.6,/data
-    
-    ; scale bar
-    if ~keyword_set(bottom) then begin
-      len = 200.0 ;kpc
-      ;xpos = [config.boxCen[0]-config.boxSizeImg[0]*0.5,config.boxCen[0]-config.boxSizeImg[0]*0.5+len]
-      ;ypos = replicate(config.boxCen[1]+config.boxSizeImg[1]*0.48,2)
-      
-      xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+len]
-      ypos = replicate(yMinMax[1]*0.93,2)
-      
-      cgText,mean(xpos),ypos*0.9,string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('white')
-      loadct,0,/silent
-      oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
-      loadColorTable,'helix'
-    endif
-          
-    if keyword_set(bottom) then $
-      cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('light gray'),/overplot
-          
-    ; mass weighted temperature
-    ;loadColorTable,'blue-red'
-    loadct,33,/silent
-    cgPlot, /nodata, xMinMax, yMinMax, pos=posRight, xs=5, ys=5, /noerase
-    tv, sphmap.quant_out,posRight[0],posRight[1],/normal,xsize=0.5
-
-    ; circle at virial radius
-    tvcircle,config.haloVirRad,0,0,cgColor('white'),thick=0.6,/data    
-    
-    ; redshift and halo mass
-    if ~keyword_set(bottom) then begin
-      cgText,0.99,0.98,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
-             color=cgColor('white'),/normal
-      cgText,0.99,0.96,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
-             color=cgColor('white'),/normal
-    endif
-    
-    ; simulation name
-    if keyword_set(top) then cgText,0.5,0.96,"GADGET",charsize=!p.charsize+0.5,$
-      alignment=0.5,/normal,color=cgColor('white')
-    if keyword_set(bottom) then cgText,0.5,0.46,"AREPO",charsize=!p.charsize+0.5,$
-      alignment=0.5,/normal,color=cgColor('white')    
-            
-    ; quantity name
-    if keyword_set(bottom) then begin
-      cgText,0.015,0.02,"density",charsize=!p.charsize+0.3,alignment=0.0,/normal,color=cgColor('white')
-      cgText,0.985,0.02,"temperature",charsize=!p.charsize+0.3,alignment=1.0,/normal,color=cgColor('white')
-    endif
-      
-    ; dividing line
-    ;cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('light gray'),/overplot
-    
-    if keyword_set(bottom) then $
-      cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('light gray'),/overplot
-            
-    ; colorbars
-    !x.thick = 1.0
-    !y.thick = 1.0
-        
-    if config.barType eq '1bar' then begin
-      ; one colorbar (centered)
-      pos = [0.02,0.35,0.076,0.65]
-      fac = 1.0
-      if keyword_set(bottom) then fac = 0.5
-      pos *= [fac,1,fac,1]
-      colorbar,position=pos,divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
-      cgText,textoidl("\rho_{gas}")+","+textoidl("T_{gas}"),0.5,0.04*fac,alignment=0.5,/normal,color=cgColor('black')
-    endif
-            
-  if ~keyword_set(top) and ~keyword_set(bottom) then $            
-  end_PS, pngResize=60, /deletePS
-
-end
-
 ; plotScatterAndSphmap(): plot side by side projection results from CalcSphMap
 
-pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left, right=right
+pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
+                          left=left, right=right, one=one, two=two, three=three
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
-  if ~keyword_set(left) and ~keyword_set(right) then message,'Error: Only for comparison.'
+  if ~keyword_set(left) and ~keyword_set(right) and ~keyword_set(one) and $
+     ~keyword_set(two) and ~keyword_set(three) then message,'error'
   
+  ; 2 col, 3 rows
   if keyword_set(left) then leftOffset = 0.0
   if keyword_set(right) then leftOffset = 0.5
+  if keyword_set(left) or keyword_set(right) then pWidth = 0.5
+  
+  ; 3 col, 3 rows
+  if keyword_set(one) then leftOffset = 0.0
+  if keyword_set(two) then leftOffset = 0.333
+  if keyword_set(three) then leftOffset = 0.666
+  if keyword_set(one) or keyword_set(two) or keyword_set(three) then pWidth = 0.333
 
   ; UPPER TWO PANELS - scatter
 
@@ -251,14 +123,14 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
     yMinMax = [-config.boxSizeScat[1]/2.0,config.boxSizeScat[1]/2.0]  
   
     ; plot position (normalized)
-    posTop = [leftOffset,0.666,leftOffset+0.5,1.0]
-    posBottom = [leftOffset,0.333,leftOffset+0.5,0.666]
+    posTop = [leftOffset,0.666,leftOffset+pWidth,1.0]
+    posBottom = [leftOffset,0.333,leftOffset+pWidth,0.666]
   
     !p.thick = 2.0
     !p.charsize = 0.8
   
     ; fill with black background
-    if ~keyword_set(right) then $
+    if ~keyword_set(right) and ~keyword_set(two) and ~keyword_set(three) then $
       cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('black')
   
     ; color table and establish temperature -> color mapping
@@ -278,9 +150,8 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
              line=0,color=scatter.cinds_left[i]
                
     ; dividing lines
-    cgPlot,xMinMax,[yMinMax[0],yMinMax[0]],line=0,thick=1.0,color=cgColor('light gray'),/overplot
-    if keyword_set(right) then $
-      cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('light gray'),/overplot
+    cgPlot,xMinMax,[yMinMax[0],yMinMax[0]],line=0,thick=1.0,color=cgColor('dark gray'),/overplot
+    cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('dark gray'),/overplot
                
     ; cold gas / dark matter (right panel)
     cgPlot, /nodata, xMinMax, yMinMax, pos=posBottom, xs=5, ys=5, /noerase
@@ -294,7 +165,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
              [scatter.pos_right[config.axes[1],i],scatter.pos2_right[config.axes[1],i]],$
              line=0,color=scatter.cinds_right[i]
   
-    if ~keyword_set(right) then begin
+    if ~keyword_set(right) and ~keyword_set(two) and ~keyword_set(three) then begin
       len = 100.0 ;kpc
       
       xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+len]
@@ -307,8 +178,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
     endif
     
     ; dividing lines
-    if keyword_set(right) then $
-      cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('light gray'),/overplot
+    cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('dark gray'),/overplot
     
     ; colorbars
     xthick = !x.thick
@@ -371,20 +241,20 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
   yMinMax = [config.boxCen[1]-config.boxSizeImg[1]/2.0,config.boxCen[1]+config.boxSizeImg[1]/2.0]
   
   ; plot position (normalized)
-  posBottom = [leftOffset,0.0,leftOffset+0.5,0.333]
+  posBottom = [leftOffset,0.0,leftOffset+pWidth,0.333]
   
   ; output image
   loadColorTable,config.ctNameMap
   
   cgPlot, /nodata, xMinMax, yMinMax, pos=posBottom, xs=5, ys=5, /noerase
-  tv, sphmap.quant_out,posBottom[0],posBottom[1],/normal,xsize=0.5 ; mass-weighted temp
+  tv, sphmap.quant_out,posBottom[0],posBottom[1],/normal,xsize=pWidth ; mass-weighted temp
   ;tv, sphmap.dens_out,posTop[0],posTop[1],/normal,xsize=0.5 ; density
 
   ; circle at virial radius
   tvcircle,config.haloVirRad,0,0,cgColor('white'),thick=0.8,/data    
   
   ; scale bar
-  if ~keyword_set(right) then begin
+  if ~keyword_set(right) and ~keyword_set(two) and ~keyword_set(three) then begin
     len = 200.0 ;kpc
     
     xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+len]
@@ -397,273 +267,114 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, left=left,
   endif
   
   ; redshift and halo mass
-  if ~keyword_set(left) then begin
-    cgText,0.99,0.98,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
+  if ~keyword_set(left) and ~keyword_set(one) and ~keyword_set(two) then begin
+    cgText,0.99,0.666-0.02,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
            color=cgColor('white'),/normal
-    cgText,0.99,0.96,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
+    cgText,0.99,0.666-0.04,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
            color=cgColor('white'),/normal
   endif
   
   ; simulation name
-  if keyword_set(left) then cgText,0.25,0.97,config.sP.simName,charsize=!p.charsize+0.5,$
+  cgText,mean(posTop[[0,2]]),0.97,config.sP.simName,charsize=!p.charsize+0.5,$
     alignment=0.5,/normal,color=cgColor('white')
-  if keyword_set(right) then cgText,0.75,0.97,config.sP.simName,charsize=!p.charsize+0.5,$
-    alignment=0.5,/normal,color=cgColor('white')    
           
   ; quantity name
-  if keyword_set(right) then begin
+  if keyword_set(right) or keyword_set(three) then begin
     cgText,0.99,0.676,"all gas",charsize=!p.charsize+0.3,alignment=1.0,/normal,color=cgColor('white')
     cgText,0.99,0.343,"cold gas",charsize=!p.charsize+0.3,alignment=1.0,/normal,color=cgColor('white')
-    cgText,0.99,0.01,"projected temperature",charsize=!p.charsize+0.3,alignment=1.0,/normal,color=cgColor('white')
+    cgText,0.99,0.01,"projected temperature",charsize=!p.charsize+0.3,alignment=1.0,/normal,color=cgColor('gray')
   endif
     
   ; dividing lines
-  cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('light gray'),/overplot
-  if keyword_set(right) then $
-    cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('light gray'),/overplot
+  cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('dark gray'),/overplot
+  cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('dark gray'),/overplot
           
-end
-
-; sphMapHalos: run sph kernel density projection on gas particles/cells with boxes centered on halos
-
-pro sphMapHalos;, sP=sP, gcIDs=gcIDs, coldOnly=coldOnly
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  sP = simParams(res=512,run='tracer',redshift=2.0)
-  
-  haloID = 304 ;z2.304 z2.301 z2.130 z2.64
-  gcID = getMatchedIDs(sPa=sP,sPg=sP,haloID=haloID)
-  gcIDs = [gcID.a]
-  
-  if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
-
-  ; config
-  sizeFac  = 5.0       ; times rvir
-  nPixels  = [800,800] ; px
-  axisPair = [0,1]
-  
-  ; loop over all non-background subhalos and image
-  foreach gcID, gcIDs do begin
-  
-	  cutout = cosmoVisCutout(sP=sP,gcInd=gcID,sizeFac=sizeFac)
-    
-    saveFilename = 'map.'+sP.saveTag+str(sP.res)+'.'+str(sP.snap)+'.h'+str(gcID)+$
-                   '.axes'+str(axisPair[0])+str(axisPair[1])+'.sav'
-               
-    ; get box center (we have relative positions centered around origin)
-    boxCenImg = [0,0,0]
-    
-    print,'['+string(gcID,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
-          str(axisPair[1])+'] with '+str(cutout.boxSizeImg[0])+$
-          ' kpc box around subhalo center ['+str(boxCenImg[0])+' '+str(boxCenImg[1])+' '+str(boxCenImg[2])+']'
-
-    ; calculate projection using sph kernel (boxsize=0 for non-periodic)
-    sphmap = calcSphMap(cutout.loc_pos,cutout.loc_hsml,cutout.loc_mass,cutout.loc_temp,$
-                        boxSizeImg=cutout.boxSizeImg,boxSizeSim=0,boxCen=boxCenImg,$
-                        nPixels=nPixels,axes=axisPair,ndims=3)
-  
-    ; plot
-    config = {saveFilename:saveFilename,sizeFac:sizeFac,nPixels:nPixels,axes:axisPair,$
-              gcID:gcID,haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
-              boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,sP:sP,bartype:'1bar'}
-  
-    plotSphmapDensQuant, map=sphmap, config=config
-  
-  endforeach ;gcIDs
-  stop
-end
-
-; sphMapHaloComp(): compare density/temperature of arepo/gadget in 2x2 panels
-
-pro sphMapHaloComp
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  sPa = simParams(res=512,run='tracer',redshift=2.0)
-  sPg = simParams(res=512,run='gadget',redshift=2.0)
-  
-  ; config
-  sizeFac  = 5.0       ; times rvir
-  nPixels  = [800,800] ; px
-  axisPair = [0,1]
-  hsmlFacs = 4*[1.0,2.0] ; arepo gadget, [1.0,2.0] highmass
-  
-  haloID = 130 ;z2.304 z2.301 z2.130 z2.64
-  gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)
-  
-  saveFilename = 'map.'+sPa.saveTag+str(sPa.res)+'.'+str(sPa.snap)+'.h'+str(gcID.a)+$
-                 '.'+sPg.saveTag+str(sPg.res)+'.h'+str(gcID.g)+'.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
-                 
-  start_PS, sPa.plotPath + saveFilename, xs=8, ys=8   
-  
-  ; GADGET
-  cutout = cosmoVisCutout(sP=sPg,gcInd=gcID.g,sizeFac=sizeFac)
-
-  ; enhance hsml and make boxsize smaller
-  cutout.loc_hsml *= hsmlFacs[0]
-  cutout.boxSizeImg *= 0.95
-  
-  ; get box center (we have relative positions centered around origin)
-  boxCenImg = [0,0,0]
-  
-  print,'['+string(gcID.g,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
-        str(axisPair[1])+'] with '+str(cutout.boxSizeImg[0])+$
-        ' kpc box around subhalo center ['+str(cutout.boxCen[0])+' '+str(cutout.boxCen[1])+' '+str(cutout.boxCen[2])+']'
-
-  ; calculate projection using sph kernel
-  sphmap = calcSphMap(cutout.loc_pos,cutout.loc_hsml,cutout.loc_mass,cutout.loc_temp,$
-                      boxSizeImg=cutout.boxSizeImg,boxSizeSim=0,boxCen=boxCenImg,$
-                      nPixels=nPixels,axes=axisPair,ndims=3)
-
-  ; plot
-  config = {saveFilename:'',sizeFac:sizeFac,nPixels:nPixels,axes:axisPair,$
-            gcID:gcID.g,haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
-            boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,sP:sPg,bartype:'none'}
-
-  plotSphmapDensQuant, map=sphmap, config=config, /top
-  
-  ; AREPO
-  cutout = cosmoVisCutout(sP=sPa,gcInd=gcID.a,sizeFac=sizeFac)
-  
-  ; enhance hsml and make boxsize smaller
-  cutout.loc_hsml *= hsmlFacs[1]
-  cutout.boxSizeImg *= 0.95
- 
-  ; get box center (we have relative positions centered around origin)
-  boxCenImg = [0,0,0]
-  
-  print,'['+string(gcID.a,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
-        str(axisPair[1])+'] with '+str(cutout.boxSizeImg[0])+$
-        ' kpc box around subhalo center ['+str(cutout.boxCen[0])+' '+str(cutout.boxCen[1])+' '+str(cutout.boxCen[2])+']'
-
-  ; calculate projection using sph kernel
-  sphmap = calcSphMap(cutout.loc_pos,cutout.loc_hsml,cutout.loc_mass,cutout.loc_temp,$
-                      boxSizeImg=cutout.boxSizeImg,boxSizeSim=0,boxCen=boxCenImg,$
-                      nPixels=nPixels,axes=axisPair,ndims=3)
-
-  ; plot
-  config = {saveFilename:'',sizeFac:sizeFac,nPixels:nPixels,axes:axisPair,$
-            gcID:gcID.a,haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
-            boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,sP:sPa,bartype:'none'}
-
-  plotSphmapDensQuant, map=sphmap, config=config, /bottom
-  
-  end_PS, pngResize=60;, /deletePS
-
 end
 
 ; sphScatterAndMapHaloComp(): compare scatterplots and density/temperature of arepo/gadget in 3x2 panels
 
-pro sphScatterAndMapHaloComp, redshift=redshift
+pro sphScatterAndMapHaloComp
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  sPa = simParams(res=256,run='gadget',redshift=redshift)
-  sPg = simParams(res=256,run='tracer',redshift=redshift)
-  
   ; config
+  redshift = 2.0
+  res      = 256
+  runs     = ['feedback','feedback_noZ','feedback_noFB'] ;['gadget','tracer','feedback'] ; two or three supported
+  
   sizeFacMap  = 5.0       ; times rvir
   sizeFacScat = 3.5       ; times rvir
   nPixels  = [800,800]    ; px
   axisPair = [0,1]        ; xy
-  hsmlFacs = 4*[1.0,2.0]  ; arepo gadget, [1.0,2.0] highmass
+  hsmlFacs = 4*(512/res)*[1.0,2.0]  ; arepo gadget, [1.0,2.0] highmass
   tempCut  = 5.0           ; log K
   fieldMinMax  = [4.0,7.0] ; log K
   
   haloID = 304 ;z2.304 z2.301 z2.130 z2.64
-  gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)
-
-  saveFilename = 'sc.map.'+sPa.saveTag+str(sPa.res)+'.'+str(sPa.snap)+'.h'+str(gcID.a)+$
-                 '.'+sPg.saveTag+str(sPg.res)+'.h'+str(gcID.g)+'.axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
+  
+  ; load runs
+  runsStr = ''
+  gcIDs = []
+  foreach run,runs,i do begin
+    sP = mod_struct(sP, 'sP'+str(i), simParams(res=res,run=run,redshift=redshift))
+    gcIDs = [ gcIDs, ( getMatchedIDs(sPa=sP.(i),sPg=sP.(i),haloID=haloID) ).a ]
+    runsStr += sP.(i).saveTag + '.' + str(sP.(i).snap) + '.h' + str(gcIDs[i]) + '-'
+  endforeach
+  
+  numRuns = n_tags(sP)
+  
+  saveFilename = 'sc.map.'+str(sP.(0).res)+'.'+runsStr+'axes'+str(axisPair[0])+str(axisPair[1])+'.eps'
                  
-  start_PS, sPa.plotPath + saveFilename, xs=6, ys=9  
+  start_PS, sP.(0).plotPath + saveFilename, xs=3*numRuns, ys=3*3 
   
-  ; GADGET
-  cutout = cosmoVisCutout(sP=sPg,gcInd=gcID.g,sizeFac=sizeFacMap)
+  ; loop over runs
+  for i=0,numRuns-1 do begin
+    ; spatial cutout
+    cutout = cosmoVisCutout(sP=sP.(i),gcInd=gcIDs[i],sizeFac=sizeFacMap)
 
-  ; enhance hsml and make boxsize smaller
-  cutout.loc_hsml *= hsmlFacs[0]
-  cutout.boxSizeImg *= 0.95
+    ; enhance hsml and make boxsize smaller
+    cutout.loc_hsml *= hsmlFacs[0]
+    cutout.boxSizeImg *= 0.95
   
-  ; get box center (we have relative positions centered around origin)
-  boxCenImg = [0,0,0]
+    ; get box center (we have relative positions centered around origin)
+    boxCenImg = [0,0,0]
   
-  print,'['+string(gcID.g,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
-        str(axisPair[1])+'] with '+str(cutout.boxSizeImg[0])+$
-        ' kpc box around subhalo center ['+str(cutout.boxCen[0])+' '+str(cutout.boxCen[1])+' '+str(cutout.boxCen[2])+']'
+    print,'['+string(gcIDs[i],format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
+         str(axisPair[1])+'] with '+str(cutout.boxSizeImg[0])+$
+          ' kpc box around subhalo center ['+str(cutout.boxCen[0])+' '+str(cutout.boxCen[1])+' '+str(cutout.boxCen[2])+']'
 
-  ; calculate projection using sph kernel
-  sphmap = calcSphMap(cutout.loc_pos,cutout.loc_hsml,cutout.loc_mass,cutout.loc_temp,$
-                      boxSizeImg=cutout.boxSizeImg,boxSizeSim=0,boxCen=boxCenImg,$
-                      nPixels=nPixels,axes=axisPair,ndims=3)
+    ; calculate projection using sph kernel
+    sphmap = calcSphMap(cutout.loc_pos,cutout.loc_hsml,cutout.loc_mass,cutout.loc_temp,$
+                        boxSizeImg=cutout.boxSizeImg,boxSizeSim=0,boxCen=boxCenImg,$
+                        nPixels=nPixels,axes=axisPair,ndims=3)
                       
-  cutout2 = cosmoVisCutout(sP=sPg,gcInd=gcID.g,sizeFac=sizeFacScat)
+    cutout2 = cosmoVisCutout(sP=sP.(i),gcInd=gcIDs[i],sizeFac=sizeFacScat)
 
-  ; make scatter points  
-  colorinds = (cutout2.loc_temp-fieldMinMax[0])*205.0 / (fieldMinMax[1]-fieldMinMax[0]) ;0-205
-  colorinds = fix(colorinds + 50.0) > 0 < 255 ;50-255  
+    ; make scatter points  
+    colorinds = (cutout2.loc_temp-fieldMinMax[0])*205.0 / (fieldMinMax[1]-fieldMinMax[0]) ;0-205
+    colorinds = fix(colorinds + 50.0) > 0 < 255 ;50-255  
 
-  ; second/right panel cutout
-  wSecond = where(cutout2.loc_temp le tempCut,nCutoutSecond,comp=wComp)
+    ; second/right panel cutout
+    wSecond = where(cutout2.loc_temp le tempCut,nCutoutSecond,comp=wComp)
    
-  loc_pos_second   = cutout2.loc_pos[*,wSecond]
-  loc_pos2_second  = cutout2.loc_pos2[*,wSecond]
-  colorinds_second = colorinds[wSecond]
+    loc_pos_second   = cutout2.loc_pos[*,wSecond]
+    loc_pos2_second  = cutout2.loc_pos2[*,wSecond]
+    colorinds_second = colorinds[wSecond]
   
-  scatter = {pos_left:cutout2.loc_pos,pos2_left:cutout2.loc_pos2,pos_right:loc_pos_second,$
-             pos2_right:loc_pos2_second,cinds_left:colorinds,cinds_right:colorinds_second}  
+    scatter = {pos_left:cutout2.loc_pos,pos2_left:cutout2.loc_pos2,pos_right:loc_pos_second,$
+               pos2_right:loc_pos2_second,cinds_left:colorinds,cinds_right:colorinds_second}  
              
-  ; plot
-  config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:fieldMinMax,$
-            gcID:gcID.g,haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
-            boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,boxSizeScat:cutout2.boxSizeImg,$
-            ctNameScat:'helix',ctNameMap:'blue-red2',sP:sPg,bartype:'none'}
-            
-  plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, /left
-  
-  ; AREPO
-  cutout = cosmoVisCutout(sP=sPa,gcInd=gcID.a,sizeFac=sizeFacMap)
-  
-  ; enhance hsml and make boxsize smaller
-  cutout.loc_hsml *= hsmlFacs[1]
-  cutout.boxSizeImg *= 0.95
- 
-  ; get box center (we have relative positions centered around origin)
-  boxCenImg = [0,0,0]
-  
-  print,'['+string(gcID.a,format='(i4)')+'] Mapping ['+str(axisPair[0])+' '+$
-        str(axisPair[1])+'] with '+str(cutout.boxSizeImg[0])+$
-        ' kpc box around subhalo center ['+str(cutout.boxCen[0])+' '+str(cutout.boxCen[1])+' '+str(cutout.boxCen[2])+']'
+    ; plot
+    config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:fieldMinMax,$
+              gcID:gcIDs[i],haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
+              boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,boxSizeScat:cutout2.boxSizeImg,$
+              ctNameScat:'helix',ctNameMap:'blue-red2',sP:sP.(i),bartype:'none'}
 
-  ; calculate projection using sph kernel
-  sphmap = calcSphMap(cutout.loc_pos,cutout.loc_hsml,cutout.loc_mass,cutout.loc_temp,$
-                      boxSizeImg=cutout.boxSizeImg,boxSizeSim=0,boxCen=boxCenImg,$
-                      nPixels=nPixels,axes=axisPair,ndims=3)
-
-  cutout2 = cosmoVisCutout(sP=sPa,gcInd=gcID.a,sizeFac=sizeFacScat)
-         
-  ; make scatter points  
-  colorinds = (cutout2.loc_temp-fieldMinMax[0])*205.0 / (fieldMinMax[1]-fieldMinMax[0]) ;0-205
-  colorinds = fix(colorinds + 50.0) > 0 < 255 ;50-255  
-
-  ; second/right panel cutout
-  wSecond = where(cutout2.loc_temp le tempCut,nCutoutSecond,comp=wComp)
-   
-  loc_pos_second   = cutout2.loc_pos[*,wSecond]
-  loc_pos2_second  = cutout2.loc_pos2[*,wSecond]
-  colorinds_second = colorinds[wSecond]
+    plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
+      left=(i eq 0 and numRuns eq 2), right=(i eq 1 and numRuns eq 2), $
+      one=(i eq 0 and numRuns eq 3), two=(i eq 1 and numRuns eq 3), three=(i eq 2 and numRuns eq 3)
   
-  scatter = {pos_left:cutout2.loc_pos,pos2_left:cutout2.loc_pos2,pos_right:loc_pos_second,$
-             pos2_right:loc_pos2_second,cinds_left:colorinds,cinds_right:colorinds_second}  
-       
-  ; plot
-  config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:fieldMinMax,$
-            gcID:gcID.a,haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
-            boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,boxSizeScat:cutout2.boxSizeImg,$
-            ctNameScat:'helix',ctNameMap:'blue-red2',sP:sPa,bartype:'1bar'}
-       
-  plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, /right
+  endfor
   
   end_PS, pngResize=60;, /deletePS
 

@@ -379,7 +379,7 @@ function getIDIndexMap, ids, minid=minid
   if n_elements(ids) gt 2e9 then message,'Error: Going to overrun arr, switch to long64.'
   
   ; Paul's direct indexing approach (fastest)  
-  arr = ulonarr(maxid-minid+1)
+  arr = lonarr(maxid-minid+1)
   arr[ids-minid] = lindgen(n_elements(ids))
   
   ; C-style loop approach (good for sparse IDs)
@@ -878,6 +878,7 @@ end
 
 @mergerTree
 @galaxyCat
+@galaxyHaloCat
 @accretionMode
 @accretionTimes
 @accretionVel
@@ -886,10 +887,11 @@ end
 @timeScalesPlot
 
 @accretionRates
-;@accretionTraj
+@accretionTraj
 ;@accretionTrajVis
 @cosmoVis
 @cosmoVisMap
+@cosmoVisMovie
 ;@cosmoVisTry
 ;@cosmoOverDens
 ;@haloCompProj

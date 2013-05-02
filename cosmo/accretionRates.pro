@@ -1,6 +1,6 @@
 ; accretionRates.pro
-; halo cooling project - future accretion history of hot halo gas onto the central galaxy
-; dnelson mar.2013
+; halo cooling project - future accretion history of galHaloCat gas onto the central galaxy
+; dnelson apr.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionRates(): description
@@ -12,20 +12,20 @@ function accretionRates, sP=sP, restart=restart
   units = getUnits()
   
   dynFac = 2.0 ; how many dynamical times to track forward for
-
+  
   ; load galaxy/group member catalogs at zMin for gas ids to search for
   gc = loadGroupCat(sP=sP,/skipIDs)
-  galcat = galaxyCat(sP=sP)
+  galHaloCat = galaxyHaloCat(sP=sP)
   
   ; target halo list
-  galcat_ind = galcatINDList(galcat=galcat) ;all (pri+sec)
-  galcat_gmem_ids = galcat.groupmemIDs[galcat_ind.gmem]
+  galcat_ind = galHaloCatINDList(galHaloCat=galHaloCat) ;all (pri+sec)
+  galcat_ids = galHaloCat.fullhaloIDs[galcat_ind]
   galcat_ind = !NULL
   
   ; load dynamical times of this halo gas
-  ts = loadFitTimescales(sP=sP, gcIDList=lindgen(n_elements(galcat.galaxyLen))) ; gcIDList=all
+  ts = loadFitTimescales(sP=sP, gcIDList=lindgen(n_elements(galHaloCat.fullhaloLen))) ; gcIDList=all
   maxDynTime = float(max(ts.dynTime,/nan))
-  galcat_gmem_tdyn = ts.dynTime
+  galcat_tdyn = ts.dynTime
   ts = !NULL
   
   ; determine snapshot range
@@ -71,25 +71,25 @@ function accretionRates, sP=sP, restart=restart
             string(redshifts[minSnap],format='(f4.2)')+'].'
         
       ; load all tracer children of gas_ids_gmem parents
-      galcat_gmem_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=galcat_gmem_ids, child_counts=galcat_gmem_cc)
+      galcat_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=galcat_ids, child_counts=child_counts)
     
       ; convert tracer children indices to tracer IDs
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-      galcat_gmem_trids = tr_ids[galcat_gmem_trids]
+      galcat_trids = tr_ids[galcat_trids]
       tr_ids = !NULL
     
       ; replicate tdyn at target redshift for each tracer
-      galcat_gmem_tr_tdyn = galcat_gmem_tdyn[replicate_var(galcat_gmem_cc)]
-      galcat_gmem_tdyn = !NULL
+      galcat_tr_tdyn = galcat_tdyn[replicate_var(child_counts)]
+      galcat_tdyn = !NULL
     
       ; list of indices into galcat_gmem_trids that we still search for (start as complete index list)
-      galcat_gmem_tr_src = lindgen(n_elements(galcat_gmem_trids))
-      galcat_gmem_tr_mask = intarr(n_elements(galcat_gmem_trids)) ; debugging only
+      galcat_tr_src = lindgen(n_elements(galcat_trids))
+      galcat_tr_mask = intarr(n_elements(galcat_trids)) ; debugging only
     
       ; store the main arrays as a structure so we can write them directly
-      r = {accSnap_gmem      : intarr(n_elements(galcat_gmem_trids))-1  ,$
-           galcat_gmem_cc    : galcat_gmem_cc                           ,$
-           dynFac            : dynFac                                    }    
+      r = {accSnap      : intarr(n_elements(galcat_trids))-1  ,$ ; TODO, change to float (scalefactor)
+           child_counts : child_counts                        ,$
+           dynFac       : dynFac                               }    
       
     endif else begin
       ; restart
@@ -104,7 +104,7 @@ function accretionRates, sP=sP, restart=restart
       ; save restart?
       if m mod 5 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
-        save,r,m,galcat_gmem_trids,galcat_gmem_tr_tdyn,galcat_gmem_tr_src,galcat_gmem_tr_mask,$
+        save,r,m,galcat_trids,galcat_tr_tdyn,galcat_tr_src,galcat_tr_mask,$
              filename=resFilename
         print,' --- Done! ---'
       endif
@@ -113,92 +113,96 @@ function accretionRates, sP=sP, restart=restart
       h = loadSnapshotHeader(sP=sP)
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
         
-      calcMatch,galcat_gmem_trids[galcat_gmem_tr_src],tr_ids,galcat_ind,trids_gmem_ind,count=countGmem
-      trids_gmem_ind  = trids_gmem_ind[sort(galcat_ind)] ; rearrange trids_gmem_ind to be ordered as galcat_gmem_trids
+      idIndexMap = getIDIndexMap(tr_ids,minid=minid)
+      tr_ids = !NULL
       
-      tr_ids     = !NULL
-      galcat_ind = !NULL
-      
-      if countGmem ne n_elements(galcat_gmem_tr_src) then message,'Error: Tracer id match counts'
+      trids_ind = idIndexMap[ galcat_trids[galcat_tr_src]-minid ]
+      idIndexMap = !NULL
       
       ; load tracer parents IDs, take those only of the tracers we are searching for
       tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentid')
-      tr_parids_gmem  = tr_parids[trids_gmem_ind]
+      tr_parids = tr_parids[trids_ind]
       
-      tr_parids       = !NULL
-      trids_gmem_ind  = !NULL
+      trids_ind  = !NULL
       
       ; load galaxy catalog at this redshift
-      loc_galcat = galaxyCat(sP=sP, /galaxyOnly)
+      loc_galcat = galaxyCat(sP=sP, /skipSave)
       
       ; --- for each each possible parent particle type, match child tracers and save times ---
-      ; note: we never actually find any in stars in sims.tracers, I assume since the snapshot spacing is fine enough
-      parPartTypes = ['gas','stars']
-      if sP.gfmWinds then parPartTypes = ['gas','stars','BHs']
+      parPartTypes = ['gas','stars'] ; 'BHs' (no BHs in galaxyCat yet)
       
       accFound = lonarr(n_elements(parPartTypes))
       
       foreach partType,parPartTypes,k do begin
+        if h.nPartTot[partTypeNum(partType)] eq 0 then continue ; no particles of this type in snapshot
+        
         ; load parent IDs and convert tracer parent IDs -> indices (for those tracers with this partType parent now)
         par_ids = loadSnapshotSubset(sP=sP,partType=partType,field='ids')
-        if n_elements(par_ids) eq 0 then continue ; no particles of this type in snapshot
         
         ; note: tr_parids_gal,gmem,stars are NOT UNIQUE, use a value_locate approach (not match)
         sort_inds = calcSort(par_ids)
         
         ; gmem
-        gmem_ind = value_locate(par_ids[sort_inds],tr_parids_gmem)
+        gmem_ind = value_locate(par_ids[sort_inds],tr_parids)
         gmem_ind = sort_inds[gmem_ind>0]
-        w = where(par_ids[gmem_ind] eq tr_parids_gmem,countGmem_inPar)
+        w = where(par_ids[gmem_ind] eq tr_parids,countGmem_inPar)
         
         if countGmem_inPar eq 0 then continue ; no tracers have parents of this type
         
-        tr_parids_gmem_inPar = gmem_ind[w] ; particle indices for this snapshot
-        galcat_gmem_ind_inPar = w ; indices into galcat_gmem_tr_src array
+        tr_parids_inPar = gmem_ind[w] ; particle indices for this snapshot
+        galcat_ind_inPar = w ; indices into galcat_gmem_tr_src array
         
-        ; note: now we have par_ids[tr_parids_gmem_inPar] = tr_parids_gmem[galcat_gmem_ind_inPar]
+        ; note: now we have par_ids[tr_parids_inPar] = tr_parids[galcat_ind_inPar]
         
         ; determine which of these matched parents is in a galaxy at this snapshot
-        gmem_parids = par_ids[tr_parids_gmem_inPar]
+        parids = par_ids[tr_parids_inPar]
         
-        ; note: gmem_parids are NOT UNIQUE, use value_locate approach (not match)
-        sort_inds = calcSort(loc_galcat.galaxyIDs)
+        ; note: parids are NOT UNIQUE, use value_locate approach (not match)
+        if partType eq 'gas'   then galcatIDs = loc_galcat.galaxyIDs
+        if partType eq 'stars' then galcatIDs = loc_galcat.stellarIDs
         
-        gmem_ind = value_locate(loc_galcat.galaxyIDs[sort_inds],gmem_parids)
+        sort_inds = calcSort(galcatIDs)
+        
+        gmem_ind = value_locate(galcatIDs[sort_inds],parids)
         gmem_ind = sort_inds[gmem_ind>0]
         
-        w = where(loc_galcat.galaxyIDs[gmem_ind] eq gmem_parids,countMatch)
+        w = where(galcatIDs[gmem_ind] eq parids,countMatch)
         
-        ; note: now we have loc_galcat.galaxyIDs[gmem_ind[w]] = gmem_parids[w]
+        ; note: now we have loc_galcat.galaxyIDs[gmem_ind[w]] = parids[w]
         if countMatch eq 0 then continue ; no parents are in galaxies
                 
         ; mark accretion time for those located tracers
-        insert_inds = galcat_gmem_tr_src[galcat_gmem_ind_inPar[w]]
+        insert_inds = galcat_tr_src[galcat_ind_inPar[w]]
         
-        r.accSnap_gmem[insert_inds] = sP.snap
-        galcat_gmem_tr_mask[insert_inds] += 1
+	  ; TODO, change accSnap to scale factor, interpolate to the (rho,temp) cut line
+	  ; by taking the distance before and the distance after
+	  ; will require loading rho,temp at each snapshot (add this to loc_galcat to avoid!)
+	  ; and keeping track of the previous distance for each tracer, similar to accretionTimes()
+		
+        r.accSnap[insert_inds] = sP.snap
+        galcat_tr_mask[insert_inds] += 1
         
         accFound[k] = countMatch
       endforeach ; parPartTypes
       
       ; update search list, restrict each tracer to dynFac*tdyn maximum search time
-      galcat_gmem_tr_src = where( (r.accSnap_gmem eq -1) and $
-                                  (galcat_gmem_tr_tdyn ge (ages[m]-curAge)/dynFac) ,$
-                                  count)
+      galcat_tr_src = where( (r.accSnap eq -1) and $
+                             (galcat_tr_tdyn ge (ages[m]-curAge)/dynFac) ,$
+                             count)
       
       ; sanity checks
-      countMask    = total(galcat_gmem_tr_mask) ; number found
-      countSrcList = n_elements(galcat_gmem_tr_src) ; number remaining (not yet found)
-      countOrig    = n_elements(r.accSnap_gmem)
+      countMask    = total(galcat_tr_mask) ; number found
+      countSrcList = n_elements(galcat_tr_src) ; number remaining (not yet found)
+      countOrig    = n_elements(r.accSnap)
     
       print,'['+string(m,format='(i3)')+'] Found: '+$
-        string(float(countMask*100)/n_elements(r.accSnap_gmem),format='(f4.1)')+$
+        string(float(countMask*100)/n_elements(r.accSnap),format='(f4.1)')+$
         '% Remain: '+string(countSrcList,format='(i9)')+' ThisSnapFound: ['+string(accFound[0],format='(i8)')+' gas, '+$
         string(accFound[1],format='(i8)')+' stars]' ; '+string(accFound[2])+' BHs]'
     
       if countOrig-countMask lt countSrcList then message,'Error'
-      if max(galcat_gmem_tr_mask) gt 1 then message,'Error: Mask exceeds one.'
-      if max(galcat_gmem_tr_mask[galcat_gmem_tr_src]) gt 0 then message,'Error: Active search list has nonzero mask.'
+      if max(galcat_tr_mask) gt 1 then message,'Error: Mask exceeds one.'
+      if max(galcat_tr_mask[galcat_tr_src]) gt 0 then message,'Error: Active search list has nonzero mask.'
     
     endfor ;m
     
@@ -240,16 +244,16 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
   ; load
   ar     = accretionRates(sP=sP)
   gc     = loadGroupCat(sP=sP,/skipIDs)
-  galcat = galaxyCat(sP=sP)
+  galHaloCat = galaxyHaloCat(sP=sP)
   
   ; target halo list (and make mask)
   gcIDList = gcIDList(gc=gc,select=sgSelect)
   
-  gcIDMask = bytarr(n_elements(galcat.galaxyLen))
+  gcIDMask = bytarr(n_elements(galHaloCat.fullhaloLen))
   gcIDMask[gcIDList] = 1B
   
   ; halo count and halo masses for median binning
-  nHalosTot = n_elements(galcat.galaxyLen)
+  nHalosTot = n_elements(galHaloCat.fullhaloLen)
   gcMasses  = codeMassToLogMsun(gc.subgroupMass[gcIDList])
   
   ; time in Gyr back to subsequent snapshots
@@ -281,7 +285,7 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
         windowsGyr           : windowsGyr                                              }
   
   offset_tr   = 0L ; we don't have an offset table for the tracer inds, so walk all gcIDLIst in order
-  offset_gmem = 0L ; as is done in galcatINDList(), same to get primary indices and skip secondary gmem
+  offset_halo = 0L ; as is done in galcatINDList(), same to get primary indices and skip secondary gmem
   gcSelectInd = 0L ; walk through gcIDList
   
   ; loop over all halos
@@ -290,13 +294,13 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
       print,'gcID = '+string(gcID,format='(i6)')+' '+str(float(gcID)*100/nHalosTot)+'%'
     
     ; indices for this halo
-    if galcat.groupmemLen[gcID] eq 0 then continue ; no gmem gas in this halo
+    if galHaloCat.fullhaloLen[gcID] eq 0 then continue ; no gmem gas in this halo
        
-    inds = lindgen(galcat.groupmemLen[gcID]) + offset_gmem
-    offset_gmem += galcat.groupmemLen[gcID]
+    inds = lindgen(galHaloCat.fullhaloLen[gcID]) + offset_halo
+    offset_halo += galHaloCat.fullhaloLen[gcID]
     
     ; replicate child_counts for tracer indices
-    tot_children_tr = total(ar.galcat_gmem_cc[inds],/int)
+    tot_children_tr = total(ar.child_counts[inds],/int)
     
     if tot_children_tr eq 0 then continue ; although have parents, they have no children
     
@@ -306,7 +310,7 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
     if gcIDMask[gcID] eq 0B then continue ; don't want to process this halo
     
     ; get child tracers in this halo
-    loc_accSnapOffset = ar.accSnap_gmem[inds_tr]
+    loc_accSnapOffset = ar.accSnap[inds_tr]
     w = where(loc_accSnapOffset ne -1,count)
     if count eq 0 then continue ; no accretion times found for any children
     
@@ -326,8 +330,8 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
     
   endfor
   
-  if offset_gmem ne n_elements(ar.galcat_gmem_cc) then message,'Error: Bad gmem indexing.'
-  if offset_tr ne n_elements(ar.accSnap_gmem) then message,'Error: Bad tracer indexing.'
+  if offset_halo ne n_elements(ar.child_counts) then message,'Error: Bad gmem indexing.'
+  if offset_tr ne n_elements(ar.accSnap) then message,'Error: Bad tracer indexing.'
   
   ; convert (numPart / Gyr) to (msun (h^-1) / yr)
   r.gmem_accRate_halo *= (massPerPart * float(units.UnitMass_in_Msun)) / 1e9
@@ -337,10 +341,6 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
 
   ct       = coolingTime(sP=sP)
   encMass  = enclosedMass(sP=sP)
-  gasRadii = galaxyCatRadii(sP=sP)
-  
-  gasVRad  = gasRadii.gmem_vrad_pri
-  gasRadii = gasRadii.gmem_sec
   
   ; estimate dynamical timescale using total enclosed mass at each gas cell
   h = loadSnapshotHeader(sP=sP)
@@ -353,25 +353,10 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
   meanDensEnc = !NULL
   
   ; need masses for mass accretion rates
-  if sP.trMCPerCell eq 0 then begin
-    ; SPH case: all particles have constant mass
-    massPerPart = sP.targetGasMass
-    masses = replicate(massPerPart,h.nPartTot[partTypeNum('gas')])
-  endif else begin
-    ids_gmem = galcat.groupmemIDs
-  
-    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    calcMatch,ids,ids_gmem,ids_ind,ids_gmem_ind,count=countMatch
-    if countMatch ne n_elements(ids_gmem) then message,'error'
-    ids = !NULL
-    ids_ind = ids_ind[sort(ids_gmem_ind)]
-  
-    masses = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
-    masses = masses[ids_ind]
-  endelse
+  masses = gasMassesFromIDs(galHaloCat.fullhaloIDs, sP=sP)
   
   ; loop over halos a second time
-  offset_gmem = 0L ; as is done in galcatINDList(), same to get primary indices and skip secondary gmem
+  offset_halo = 0L ; as is done in galcatINDList(), same to get primary indices and skip secondary gmem
   gcSelectInd = 0L ; walk through gcIDList
   
   tables = interpLambdaSD93()
@@ -381,10 +366,10 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
       print,'gcID = '+string(gcID,format='(i6)')+' '+str(float(gcID)*100/nHalosTot)+'%'
     
     ; indices for this halo
-    if galcat.groupmemLen[gcID] eq 0 then continue ; no gmem gas in this halo
+    if galHaloCat.fullhaloLen[gcID] eq 0 then continue ; no gmem gas in this halo
     
-    inds = lindgen(galcat.groupmemLen[gcID]) + offset_gmem
-    offset_gmem += galcat.groupmemLen[gcID]
+    inds = lindgen(galHaloCat.fullhaloLen[gcID]) + offset_halo
+    offset_halo += galHaloCat.fullhaloLen[gcID]
     
     if gcIDMask[gcID] eq 0B then continue ; don't want to process this halo
     
@@ -393,8 +378,8 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
     loc_curTemp  = ct.temp[inds]
     loc_curDens  = ct.dens[inds]
     loc_dynTime  = dynTime[inds]
-    loc_gasRad   = gasRadii[inds]
-    loc_gasVRad  = gasVRad[inds]
+    loc_gasRad   = galHaloCat.fullhaloRad[inds]
+    loc_gasVRad  = galHaloCat.fullhaloVRad[inds]
     loc_masses   = masses[inds]
     
     ; halo properties
@@ -461,7 +446,7 @@ function binAccretionRates, sP=sP, sgSelect=sgSelect
     
   endfor
   
-  if offset_gmem ne n_elements(galcat.groupmemIDs) then message,'Error: Bad gmem indexing.'
+  if offset_halo ne n_elements(galHaloCat.fullhaloIDs) then message,'Error: Bad halo indexing.'
   
   ; convert (codeMass / Gyr) to (msun (h^-1) / yr)
   r.t_accRate_halo *= (float(units.UnitMass_in_Msun) / 1e9)

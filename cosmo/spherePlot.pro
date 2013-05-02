@@ -461,7 +461,7 @@ pro plotHaloShellValComp
   endforeach ;radInds
   
 end
-
+  
 ; plot2Halo3ValComp(): compare two matched halos with three values each (2 column)
 
 pro plot2Halo3ValComp

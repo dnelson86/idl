@@ -438,7 +438,7 @@ pro plotTmaxHistos
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  runs       = ['feedback','feedback_noZ']
+  runs       = ['feedback','feedback_noZ','feedback_noFB']
   redshift   = 2.0
   res        = 256
   sgSelect   = 'pri'
@@ -478,7 +478,7 @@ pro plotTmaxHistos
     ; plot (1) - 3x2 mass bins separated out and each panel with gadget+arepo, GAL vs. gmem (VIR)
     start_PS, sP.(0).plotPath + 'tmax_3x2_gal_tviracc.'+plotStr+'.eps', /big
       !p.thick += 1
-      xrange = [-2.2,1.2]
+      xrange = [-2.2,1.4]
       yrange = [6e-4,1.0]
       
       xtickv = [-2.0,-1.0,0.0,1.0]
@@ -520,7 +520,7 @@ pro plotTmaxHistos
         cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.0,alignment=0.5
             
         if j eq 0 then $
-          legend,simNames,textcolors=simColors,box=0,position=[-2.2,0.2],charsize=!p.charsize-0.27
+          legend,simNames,textcolors=simColors,box=0,position=[xrange[0],0.2],charsize=!p.charsize-0.27
       
       endfor
       
@@ -537,7 +537,7 @@ pro plotTmaxHistos
     ; plot (2) - 3x2 mass bins separated out and each panel with gadget+arepo, BOTH vs. gmem (VIR)
     start_PS, sP.(0).plotPath + 'tmax_3x2_both_tviracc.'+plotStr+'.eps', /big
       !p.thick += 1
-      xrange = [-2.2,1.2]
+      xrange = [-2.2,1.4]
       yrange = [6e-4,1.0]
       
       xtickv = [-2.0,-1.0,0.0,1.0]
@@ -579,7 +579,7 @@ pro plotTmaxHistos
         cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.0,alignment=0.5
             
         if j eq 0 then $
-          legend,simNames,textcolors=simColors,box=0,position=[-2.2,0.2],charsize=!p.charsize-0.27
+          legend,simNames,textcolors=simColors,box=0,position=[xrange[0],0.2],charsize=!p.charsize-0.27
       
       endfor
       
@@ -629,7 +629,7 @@ pro plotTmaxHistos
         cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.0,alignment=0.5
             
         if j eq 0 then $
-          legend,simNames,textcolors=simColors,box=0,position=[-2.2,0.2],charsize=!p.charsize-0.27
+          legend,simNames,textcolors=simColors,box=0,position=[xrange[1],0.2],/right,charsize=!p.charsize-0.27
       
       endfor
       
@@ -645,6 +645,124 @@ pro plotTmaxHistos
   
   endforeach ; accModes
   stop
+end
+
+; plotTmaxHisto2Db(): one row 3x1
+
+pro plotTmaxHisto2Db
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
+  ; config
+  runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
+  sgSelect   = 'pri'
+  timeWindow = 1000.0 ; Myr
+  redshift   = 2.0
+  res        = 512
+  accModes   = ['smooth'] ;['all','smooth','clumpy','stripped']  
+  
+  ; plot config
+  exp    = 0.5   ; gamma exponent for non-linear color scaling
+  ndivs  = 5     ; number of divisions on colorbar   
+  Tc_val = 5.5   ; log(K) for constant temp line
+  lines  = [1,2] ; Tc,Tvir line styles
+  colors = ['black','black'] ; Tc,Tvir line colors
+  cInd   = 1     ; color index for simName labels
+  
+  ; loop over requested accretion modes
+  foreach accMode,accModes do begin
+   
+    ; load
+    sP1 = simParams(res=res,run=runs[0],redshift=redshift)
+    sP2 = simParams(res=res,run=runs[1],redshift=redshift)
+    sP3 = simParams(res=res,run=runs[2],redshift=redshift)
+    hh1 = binTmaxHisto2D(sP=sP1,sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow)
+    hh2 = binTmaxHisto2D(sP=sP2,sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow)
+    hh3 = binTmaxHisto2D(sP=sP3,sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow)
+  
+    plotStr = accMode+'.'+sP1.plotPrefix+'.'+sP2.plotPrefix+'.'+sP3.plotPrefix+'.'+$
+      str(res)+'_'+str(sP1.snap)
+  
+    ; plot (1) - two runs side by side (gal tmax)
+    start_PS, sP1.plotPath + 'temp2d_comp_tmax_both.'+plotStr+'.eps', xs=14.0, ys=4.5
+          
+      loadColorTable, 'helix', /reverse      
+      ytitle = textoidl('log ( T_{max} ) [K]')
+      
+      ; first run histogram
+      h2mt = hh1.h2_tmax_gal
+      yrange = [hh1.mmTemp[0],(round(hh1.mmTemp[1])*10)/10]
+      
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
+           xtitle="",ytitle=ytitle,$
+           barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=hh1.mmMass,yrange=yrange,$
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.08,0.18,0.34,0.94]
+           
+      ; temp lines and legend
+      tvir_vals = alog10(codeMassToVirTemp(10.0^hh1.mmMass/units.UnitMass_in_Msun,sP=sP1))
+      
+      cgPlot,hh1.mmMass+[0.1,-0.1],[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
+      cgPlot,hh1.mmMass+[0.05,-0.05],tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
+      cgText,hh1.mmMass[0]+0.15,Tc_val+0.15,sP1.simName,color=sP1.colors[cInd],charsize=!p.charsize-0.2
+           
+      legend,textoidl(['T_c = 5.5','T_{vir }(z='+str(fix(redshift))+')']),linestyle=lines,$
+        linesize=0.3,position=[9.05,6.85],box=0,spacing=!p.charsize+0.5
+        
+      ; second run histogram
+      h2mt = hh2.h2_tmax_gal
+      yrange = [hh2.mmTemp[0],(round(hh2.mmTemp[1])*10)/10]
+      
+      loadColorTable, 'helix', /reverse
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
+           xtitle="",ytitle="",$
+           barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=hh2.mmMass,yrange=yrange,$
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.36,0.18,0.62,0.94],$
+           ytickname=replicate(' ',10),/noerase
+           
+      ; colorbar
+      barvals = findgen(ndivs+1)/ndivs*(max(h2mt^exp)-min(h2mt^exp)) + min(h2mt^exp)
+      ticknames = textoidl(str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)')))
+      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
+      
+      loadColorTable, 'helix', /reverse
+      cgColorbar,bottom=1,range=minmax(h2mt),position=[0.91,0.18,0.935,0.94],$
+         /vertical,/right,title="",$
+         divisions=ndivs,ticknames=ticknames,ncolors=255,charsize=!p.charsize-0.2
+           
+      ; temp lines
+      tvir_vals = alog10(codeMassToVirTemp(10.0^hh2.mmMass/units.UnitMass_in_Msun,sP=sP2))
+      
+      cgPlot,hh2.mmMass+[0.1,-0.1],[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
+      cgPlot,hh2.mmMass+[0.05,-0.05],tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
+      cgText,hh2.mmMass[0]+0.15,Tc_val+0.15,sP2.simName,color=sP2.colors[cInd],charsize=!p.charsize-0.2
+           
+      ; third run histogram
+      h2mt = hh3.h2_tmax_gal
+      yrange = [hh3.mmTemp[0],(round(hh3.mmTemp[1])*10)/10]
+      
+      loadColorTable, 'helix', /reverse
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
+           xtitle="",ytitle="",$
+           barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=hh3.mmMass,yrange=yrange,$
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.64,0.18,0.90,0.94],$
+           ytickname=replicate(' ',10),/noerase
+           
+      ; temp lines
+      tvir_vals = alog10(codeMassToVirTemp(10.0^hh3.mmMass/units.UnitMass_in_Msun,sP=sP3))
+      
+      cgPlot,hh3.mmMass+[0.1,-0.1],[Tc_val,Tc_val],line=lines[0],color=cgColor(colors[0]),/overplot
+      cgPlot,hh3.mmMass+[0.05,-0.05],tvir_vals,line=lines[1],color=cgColor(colors[1]),/overplot
+      cgText,hh3.mmMass[0]+0.15,Tc_val+0.15,sP3.simName,color=sP3.colors[cInd],charsize=!p.charsize-0.2
+           
+      ; labels
+      cgText,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),(0.08+0.89)/2,0.04,alignment=0.5,/normal
+      cgText,textoidl("M_{gas,tr} [_{ }log h^{-1} M_{sun }]"),0.98,(0.18+0.94)/2,alignment=0.5,orientation=90,/normal
+                
+    end_PS
+
+  endforeach    
+  
 end
 
 ; plotTmaxHisto2D(): plot 2D histogram of Tmax vs. halo mass (e.g. fig 8 of vdv11a)

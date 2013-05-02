@@ -556,7 +556,7 @@ pro cosmoTrajMovieGasDM, split=split
   
   ; config
   sP = simParams(res=256,run='gadget',redshift=0.0)
-  plotPath = sP.plotPath + 'frames.256.h0/
+  plotPath = sP.plotPath + 'frames.256.h0/'
   
   ; view configuration
   boxCen   = [0,0]

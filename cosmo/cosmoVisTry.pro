@@ -10,8 +10,8 @@ pro scatterPlotBox
 
   ; config
   res      = 256
-  run      = 'feedback'
-  redshift = 2.0
+  run      = 'tracer'
+  redshift = 4.0
   partType = 'gas' ;tracervel, tracermc, dm
 
   ; plot config
@@ -57,7 +57,7 @@ pro scatterPlotBox
     
     cgPlot,[0],[0],xrange=xrange,yrange=yrange,/xs,/ys
     plots,pos[axes[0],wSlice],pos[axes[1],wSlice],psym=3
-  end_PS, pngResize=68;, /deletePS
+  end_PS, pngResize=50, /deletePS
 
   stop
 end
