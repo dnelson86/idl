@@ -1,9 +1,9 @@
 ; maxTemps.pro
-; gas accretion project - past temperature history of gas
-; dnelson mar.2013
+; gas accretion project - past temperature/entropy history of gas
+; dnelson jun.2013
 
 ; -----------------------------------------------------------------------------------------------------
-; maxTemps(): find maximum temperature for gas particles in galaxy/group member catalogs at redshift
+; maxTemps(): find maximum temperature/ent for gas particles in galaxy/group member catalogs at redshift
 ;             through the redshift range (redshift,zStart] where zStart is typically the start of 
 ;             the simulation
 ;
@@ -12,12 +12,22 @@
 
 function maxTemps, sP=sP, zStart=zStart, restart=restart, $
                    loadByGas=loadByGas, $ ; load options
-                   loadAllTrGal=loadAllTrGal, loadAllTrGmem=loadAllTrGmem, loadAllTrStars=loadAllTrStars
+                   loadAllTrGal=loadAllTrGal, loadAllTrGmem=loadAllTrGmem, loadAllTrStars=loadAllTrStars, $
+                   entropy=entropy, density=density ; same procedure, but with entropy/density not temp
 
   forward_function cosmoTracerChildren, cosmoTracerVelParents
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
-
+  
+  ; which field?
+  fieldTag = 'maxtemp.'
+  if keyword_set(entropy) then fieldTag = 'maxent.'
+  if keyword_set(density) then fieldTag = 'maxdens.'
+  
+  loadTag = 'tracer_maxtemp'
+  if keyword_set(entropy) then loadTag = 'tracer_maxent'
+  if keyword_set(density) then loadTag = 'tracer_maxdens'
+  
   ; set minimum snapshot (maxmimum redshift)
   if not keyword_set(zStart) then zStart = snapNumToRedshift(snap=0,sP=sP)
   minSnap = redshiftToSnapnum(zStart,sP=sP)
@@ -35,7 +45,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
     
     ; load the condensed results (one per gas particle in galcat)
     if keyword_set(loadByGas) then begin
-      saveFilename = sP.derivPath+'maxtemp.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
+      saveFilename = sP.derivPath+fieldTag+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
                      str(minSnap)+'-'+str(maxSnap)+'.sav'
       
       if not file_test(saveFilename) then message,'Error: Specified maxTemps not found!'
@@ -45,7 +55,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
     
     ; load the results for all MC tracers (galaxy)
     if keyword_set(loadAllTrGal) then begin
-      saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.gal.'+sP.savPrefix+str(sP.res)+'.'+$
+      saveFilename = sP.derivPath + fieldTag+sP.saveTag+'.gal.'+sP.savPrefix+str(sP.res)+'.'+$
                      str(minSnap)+'-'+str(maxSnap)+'.sav'
                      
       if not file_test(saveFilename) then message,'Error: Specified maxTemps gal not found!'
@@ -55,7 +65,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
     
     ; load the results for all MC tracers (groupmem)
     if keyword_set(loadAllTrGmem) then begin
-        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + fieldTag+sP.saveTag+'.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
                         str(minSnap)+'-'+str(maxSnap)+'.sav'
                      
       if not file_test(saveFilename) then message,'Error: Specified maxTemps gmem not found!'
@@ -65,7 +75,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
     
     ; load the results for all MC tracers (stars)
     if keyword_set(loadAllTrStars) then begin
-        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.stars.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + fieldTag+sP.saveTag+'.stars.'+sP.savPrefix+str(sP.res)+'.'+$
                         str(minSnap)+'-'+str(maxSnap)+'.sav'
                      
       if not file_test(saveFilename) then message,'Error: Specified maxTemps stars not found!'
@@ -74,12 +84,12 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
     endif
   endif
   
-  resFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.restart.'+sP.savPrefix+str(sP.res)+'.'+$
+  resFilename = sP.derivPath + fieldTag+sP.saveTag+'.restart.'+sP.savPrefix+str(sP.res)+'.'+$
                         str(minSnap)+'-'+str(maxSnap)+'.sav'
                         
   ; check for maxTempsAll save (in this case we don't have to loop over any snapshots, but load directly)
   maxTempsAllFlag = 0
-  maxTempsAllSaveFilename = sP.derivPath + 'maxTempAll.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+str(maxSnap)+'.sav'
+  maxTempsAllSaveFilename = sP.derivPath + fieldTag+'All.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+str(maxSnap)+'.sav'
 
   if file_test(maxTempsAllSaveFilename) then maxTempsAllFlag = 1
   
@@ -90,7 +100,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
   ; ---------------
   if sP.trMCPerCell eq 0 then begin
   
-    print,'Calculating new maxtemp using ( SPH Particles ) res = '+str(sP.res)+$
+    print,'Calculating new '+fieldTag+' using ( SPH Particles ) res = '+str(sP.res)+$
       ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
       
     if ~file_test(resFilename) then begin ; no restart  
@@ -146,32 +156,78 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       ids        = !NULL
       galcat_ind = !NULL
       
-      ; load u,nelec to calculate temperatures
-      u     = loadSnapshotSubset(sP=sP,partType='gas',field='u')
-      nelec = loadSnapshotSubset(sP=sP,partType='gas',field='ne')
+      ; temp
+      if ~keyword_set(entropy) and ~keyword_set(density) then begin
+        ; load u,nelec to calculate temperatures
+        u = loadSnapshotSubset(sP=sP,partType='gas',field='u')
+        
+        u_gal  = u[ids_gal_ind]
+        u_gmem = u[ids_gmem_ind]
+        if countStars gt 0 then u_stars = u[ids_stars_ind]
+        u = !NULL
+        
+        nelec = loadSnapshotSubset(sP=sP,partType='gas',field='ne')
       
-      u_gal  = u[ids_gal_ind]
-      u_gmem = u[ids_gmem_ind]
-      if countStars gt 0 then u_stars = u[ids_stars_ind]
-      u = !NULL
+        nelec_gal  = nelec[ids_gal_ind]
+        nelec_gmem = nelec[ids_gmem_ind]
+        if countStars gt 0 then nelec_stars = nelec[ids_stars_ind]
+        nelec = !NULL
+       
+        temp_gal  = convertUtoTemp(u_gal,nelec_gal,/log)
+        temp_gmem = convertUtoTemp(u_gmem,nelec_gmem,/log)
+        if countStars gt 0 then temp_stars = convertUtoTemp(u_stars,nelec_stars,/log)
       
-      nelec_gal  = nelec[ids_gal_ind]
-      nelec_gmem = nelec[ids_gmem_ind]
-      if countStars gt 0 then nelec_stars = nelec[ids_stars_ind]
-      nelec = !NULL
+        ; load gas SFR and select off the effective EOS (SFR must be zero)
+        sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
       
-      temp_gal  = convertUtoTemp(u_gal,nelec_gal,/log)
-      temp_gmem = convertUtoTemp(u_gmem,nelec_gmem,/log)
-      if countStars gt 0 then temp_stars = convertUtoTemp(u_stars,nelec_stars,/log)
+        sfr_gal  = sfr[ids_gal_ind]
+        sfr_gmem = sfr[ids_gmem_ind]
+        if countStars gt 0 then sfr_stars = sfr[ids_stars_ind]
       
-      ; load gas SFR and select off the effective EOS (SFR must be zero)
-      sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
+        sfr = !NULL
+      endif
       
-      sfr_gal  = sfr[ids_gal_ind]
-      sfr_gmem = sfr[ids_gmem_ind]
-      if countStars gt 0 then sfr_stars = sfr[ids_stars_ind]
+      ; entropy
+      if keyword_set(entropy) then begin
+        ; load u,dens to calculate ent
+        u = loadSnapshotSubset(sP=sP,partType='gas',field='u')
+        
+        u_gal  = u[ids_gal_ind]
+        u_gmem = u[ids_gmem_ind]
+        if countStars gt 0 then u_stars = u[ids_stars_ind]
+        u = !NULL
+        
+        dens = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
+        
+        dens_gal  = dens[ids_gal_ind]
+        dens_gmem = dens[ids_gmem_ind]
+        if countStars gt 0 then dens_stars = dens[ids_stars_ind]
+        dens = !NULL
+        
+        temp_gal  = calcEntropyCGS(u_gal,dens_gal,sP=sP,/log)
+        temp_gmem = calcEntropyCGS(u_gmem,dens_gmem,sP=sP,/log)
+        if countStars gt 0 then temp_stars = calcEntropyCGS(u_stars,dens_stars,sP=sP,/log)
+        
+        ; set sfr to zero to allow new max entropy to be saved
+        sfr_gal  = replicate(0.0,n_elements(ids_gal_ind))
+        sfr_gmem = replicate(0.0,n_elements(ids_gmem_ind))
+        if countStars gt 0 then sfr_stars = replicate(0.0,n_elements(ids_stars_ind))
+      endif
       
-      sfr = !NULL
+      ; density
+      if keyword_set(density) then begin
+        dens = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
+        
+        dens_gal  = dens[ids_gal_ind]
+        dens_gmem = dens[ids_gmem_ind]
+        if countStars gt 0 then dens_stars = dens[ids_stars_ind]
+        dens = !NULL
+        
+        ; set sfr to zero to allow new max density to be saved
+        sfr_gal  = replicate(0.0,n_elements(ids_gal_ind))
+        sfr_gmem = replicate(0.0,n_elements(ids_gmem_ind))
+        if countStars gt 0 then sfr_stars = replicate(0.0,n_elements(ids_stars_ind))
+      endif
       
       ; replace existing values if current snapshot has higher temps (enforce off effective EOS)
       w1 = where(temp_gal gt r.maxTemps_gal and sfr_gal eq 0.0,count1)
@@ -199,7 +255,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       ; SAVE?
       if sP.snap eq maxSnap then begin
         ; set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.SPH.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + fieldTag+'SPH.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
@@ -218,7 +274,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
   ; ------------------------
   if sP.trMCPerCell gt 0 then begin
   
-    print,'Calculating new maxtemp using ( TracerMC ) res = '+str(sP.res)+$
+    print,'Calculating new '+fieldTag+' using ( TracerMC ) res = '+str(sP.res)+$
       ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
     if maxTempsAllFlag eq 1 then print,'Using ['+maxTempsAllSaveFilename+']'
       
@@ -304,25 +360,33 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         galcat_ind = !NULL
         
         ; load tracer maximum temperature and sub-snapshot time at this snapshot
-        tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp')
+        tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerMC',field=loadTag)
         
         ; tracerMC maxtemp field changed to Kelvin in recent code, tracerVEL still in unit system
-        w = where(tr_maxtemp eq 0,count)
-        if count gt 0 then tr_maxtemp[w] = 1.0
-        tr_maxtemp = alog10(tr_maxtemp)
-        w = !NULL
+        ; convert temp/dens to log
+        if ~keyword_set(entropy) then tr_maxtemp = mylog10(tr_maxtemp)
+        
+        ; convert entropy to log(cgs)
+        if keyword_set(entropy) then tr_maxtemp = convertTracerEntToCGS(tr_maxtemp,/log,sP=sP)
         
         temp_gal   = tr_maxtemp[trids_gal_ind]
         temp_gmem  = tr_maxtemp[trids_gmem_ind]
         temp_stars = tr_maxtemp[trids_stars_ind]
         tr_maxtemp = !NULL
         
-        tr_maxtemp_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp_time')
+        ; sub-snapshot timing?
+        if sP.trMCFields[7] ge 0 then begin
+          tr_maxtemp_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field=loadTag+'_time')
         
-        temp_time_gal   = tr_maxtemp_time[trids_gal_ind]
-        temp_time_gmem  = tr_maxtemp_time[trids_gmem_ind]
-        temp_time_stars = tr_maxtemp_time[trids_stars_ind]
-        tr_maxtemp_time = !NULL
+          temp_time_gal   = tr_maxtemp_time[trids_gal_ind]
+          temp_time_gmem  = tr_maxtemp_time[trids_gmem_ind]
+          temp_time_stars = tr_maxtemp_time[trids_stars_ind]
+          tr_maxtemp_time = !NULL
+        endif else begin
+          temp_time_gal   = replicate(snapNumToRedshift(sP=sP,/time), n_elements(trids_gal_ind))
+          temp_time_gmem  = replicate(snapNumToRedshift(sP=sP,/time), n_elements(trids_gmem_ind))
+          temp_time_stars = replicate(snapNumToRedshift(sP=sP,/time), n_elements(trids_stars_ind))
+        endelse
         
         ; replace existing values if current snapshot has higher temps (galaxy members)
         w1 = where(temp_gal gt rtr_gal.maxTemps,count1)
@@ -405,7 +469,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       ; SAVE?
       if sP.snap eq maxSnap then begin
         ; (1) full tracer information (galaxy members) - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.gal.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + fieldTag+sP.saveTag+'.gal.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
@@ -418,7 +482,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         endelse
         
         ; (2) full tracer information (group members) - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + fieldTag+sP.saveTag+'.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
@@ -431,7 +495,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         endelse
         
         ; (2) full tracer information (group members) - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.stars.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + fieldTag+sP.saveTag+'.stars.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
@@ -444,7 +508,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         endelse
         
         ; (3) values condensed to gas parents - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + fieldTag+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
                        
         if file_test(saveFilename) then begin
@@ -564,7 +628,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
   ; ---------------------
   if sP.trMCPerCell eq -1 then begin
   
-    print,'Calculating new maxtemp using ( TracerVEL ) res = '+str(sP.res)+$
+    print,'Calculating new '+fieldTag+' using ( TracerVEL ) res = '+str(sP.res)+$
       ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
 
     print,'NOTE: no stars for tracerVEL'
@@ -640,13 +704,31 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       galcat_ind = !NULL
       
       ; load tracer maximum temperature and sub-snapshot time at this snapshot
-      tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxtemp')
+      tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerVel',field=loadTag)
       
-      temp_gal  = codeTempToLogK(tr_maxtemp[trids_gal_ind]) ; tracer output still in unit system
-      temp_gmem = codeTempToLogK(tr_maxtemp[trids_gmem_ind])
+      ; temp
+      if ~keyword_set(entropy) and ~keyword_set(density) then begin
+        temp_gal  = codeTempToLogK(tr_maxtemp[trids_gal_ind]) ; tracer output still in unit system
+        temp_gmem = codeTempToLogK(tr_maxtemp[trids_gmem_ind])
+      endif
+      
+      ; entropy
+      if keyword_set(entropy) then begin
+        temp_gal  = convertTracerEntToCGS(tr_maxtemp[trids_gal_ind],/log,sP=sP)
+        temp_gmem = convertTracerEntToCGS(tr_maxtemp[trids_gmem_ind],/log,sP=sP)
+      endif
+      
+      ; density
+      if keyword_set(density) then begin
+        tr_maxtemp = mylog10(tr_maxtemp)
+        
+        temp_gal  = tr_maxtemp[trids_gal_ind]
+        temp_gmem = tr_maxtemp[trids_gmem_ind]
+      endif
+      
       tr_maxtemp = !NULL
       
-      tr_maxtemp_time = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxtemp_time')
+      tr_maxtemp_time = loadSnapshotSubset(sP=sP,partType='tracerVel',field=loadTag+'_time')
       
       temp_time_gal  = tr_maxtemp_time[trids_gal_ind]
       temp_time_gmem = tr_maxtemp_time[trids_gmem_ind]
@@ -674,7 +756,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
       ; SAVE?
       if sP.snap eq maxSnap then begin
         ; (1) full tracer information (galaxy members) - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.trVel.gal.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + fieldTag+'trVel.gal.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
@@ -687,7 +769,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         endelse
         
         ; (2) full tracer information (group members) - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.trVel.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + fieldTag+'trVel.gmem.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
@@ -700,7 +782,7 @@ function maxTemps, sP=sP, zStart=zStart, restart=restart, $
         endelse
         
         ; (3) values condensed to gas parents - set savefilename
-        saveFilename = sP.derivPath + 'maxtemp.trVel.'+sP.savPrefix+str(sP.res)+'.'+$
+        saveFilename = sP.derivPath + fieldTag+'trVel.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
         if file_test(saveFilename) then begin
@@ -799,7 +881,7 @@ pro maxTempsAll, sP=sP
   maxSnap = sP.snap - 1
   
   ; search for pre-existing maxTempAll save
-  results = file_search(sP.derivPath+'maxTempAll.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.*.sav')
+  results = file_search(sP.derivPath+'maxtemp.All.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.*.sav')
   
   if results[0] ne '' then begin
     ; use maximum previous save that is less than our maxSnap
@@ -820,7 +902,7 @@ pro maxTempsAll, sP=sP
   snapRange = [minSnap,maxSnap]
   
   ; set save filename and check existence
-  saveFilename = sP.derivPath + 'maxTempAll.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+str(maxSnap)+'.sav'
+  saveFilename = sP.derivPath + 'maxtemp.All.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+str(maxSnap)+'.sav'
 
   if file_test(saveFilename) then message,'Error: Save file already exists.'
 
@@ -843,7 +925,7 @@ pro maxTempsAll, sP=sP
                    maxTempTime   : fltarr(nTracers)   }
     endif else begin
       ; starting with a previous save, just load rtr_all
-      loadFilename = sP.derivPath + 'maxTempAll.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+str(prevSaveSnap)+'.sav'
+      loadFilename = sP.derivPath + 'maxtemp.All.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+str(prevSaveSnap)+'.sav'
       restore,loadFilename,/verbose
     endelse
     
@@ -868,12 +950,7 @@ pro maxTempsAll, sP=sP
       ; load tracer maximum temperature and sub-snapshot time at this snapshot
       tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp')
       
-      ; tracerMC maxtemp field in Kelvin
-      w = where(tr_maxtemp eq 0,count)
-      if count gt 0 then tr_maxtemp[w] = 1.0
-      tr_maxtemp = alog10(tr_maxtemp)
-      w = !NULL
-      
+      tr_maxtemp = mylog10(tr_maxtemp) ; tracerMC maxtemp field in Kelvin, convert to log
       tr_maxtemp = tr_maxtemp[ind_tr_ids] ; ind_tr_ids same as sort(tr_ids)
       
       ; replace existing values if current snapshot has higher temps (galaxy members)

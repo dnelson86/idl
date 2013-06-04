@@ -22,21 +22,21 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
     ; 512^3 z=2
     sgIDs['z2_res512_tracer']   = [5611,4518,2874,2389,2058,1037,816,252]
     sgIDs['z2_res512_gadget']   = [6369,5151,3338,2824,2538,1117,981,266]
-    sgIDs['z2_res512_feedback'] = [5750,4622,2940,2384,2131,834,676,105]
+    sgIDs['z2_res512_feedback'] = [5751,4678,2910,2400,2233,1040,639,252]
     sgIDs['z2_res512_axes']     = list([0,2],[0,1],[0,2],[0,2],[1,2],[0,2],[1,2],[0,1])
     
     ; 256^3 z=2 (matched from 512)
     sgIDs['z2_res256_tracer']        = [1527,1229,733,605,539,203,169,28]
     sgIDs['z2_res256_gadget']        = [1888,1565,983,845,758,330,278,74]
-    sgIDs['z2_res256_feedback']      = [1467,1132,692,582,519,218,154,27]
-    sgIDs['z2_res256_feedback_noz']  = [1485,1112,688,607,529,193,187,47]
-    sgIDs['z2_res256_feedback_nofb'] = [1635,1309,793,664,566,211,173,65]
+    sgIDs['z2_res256_feedback']      = [1502,1107,694,559,517,235,160,51]
+    sgIDs['z2_res256_feedback_noz']  = [1545,1162,770,647,560,219,200,60]
+    sgIDs['z2_res256_feedback_nofb'] = [1604,1257,778,637,543,196,162,58]
     sgIDs['z2_res256_axes']          = list([0,2],[0,1],[0,2],[0,2],[1,2],[0,2],[1,2],[0,1])
     
     ; 512^3 z=3 (~same mass spacing as z2, but randomly selected at z=3 for run=tracer)
     sgIDs['z3_res512_tracer']   = [3664,2920,1812,1459,1210,620,496,137]
     sgIDs['z3_res512_gadget']   = [4398,3194,2061,1593,1275,742,573,154] ; matched from tracer
-    sgIDs['z3_res512_feedback'] = [4451,3067,1801,1453,1135,671,468,151] ; matched from tracer
+    sgIDs['z3_res512_feedback'] = [4434,2962,1735,1409,1238,651,447,134] ; matched from tracer
     sgIDs['z3_res512_axes']     = list([0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1])
     
     if keyword_set(simParams) then begin
@@ -60,84 +60,90 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z2_h314_res512_tracer']   = 816
   sgIDs['z2_h314_res512_gadget']   = 981
   sgIDs['z2_h314_res512_arepo']    = 879 ;had as 927 in comparison project?
-  sgIDs['z2_h314_res512_feedback'] = 676
+  sgIDs['z2_h314_res512_feedback'] = 639
   
   sgIDs['z2_h314_res256_tracer']   = 169
   sgIDs['z2_h314_res256_gadget']   = 278
-  sgIDs['z2_h314_res256_feedback'] = 154
-  sgIDs['z2_h314_res256_feedback_noz'] = 187
-  sgIDs['z2_h314_res256_feedback_nofb'] = 173
+  sgIDs['z2_h314_res256_feedback'] = 160
+  sgIDs['z2_h314_res256_feedback_noz'] = 200
+  sgIDs['z2_h314_res256_feedback_nofb'] = 162
   
   sgIDs['z2_h314_res128_tracer']   = 50
   sgIDs['z2_h314_res128_gadget']   = 71
-  sgIDs['z2_h314_res128_feedback'] = 48
+  sgIDs['z2_h314_res128_feedback'] = 56
   
   ; z3 h314 (tracked back)
   sgIDs['z3_h314_res512_tracer']   = 183
   sgIDs['z3_h314_res512_gadget']   = 211
-  sgIDs['z3_h314_res512_feedback'] = 199
+  sgIDs['z3_h314_res512_feedback'] = 184
   
   sgIDs['z3_h314_res256_tracer']   = 46
   sgIDs['z3_h314_res256_gadget']   = 51
-  sgIDs['z3_h314_res256_feedback'] = 47
+  sgIDs['z3_h314_res256_feedback'] = 45
   
   sgIDs['z3_h314_res128_tracer']   = 16
   sgIDs['z3_h314_res128_gadget']   = 19
-  sgIDs['z3_h314_res128_feedback'] = 14
+  sgIDs['z3_h314_res128_feedback'] = 10
     
   ; z2.304 (four filaments aligned in a plus pattern, high mass example for paper)
   sgIDs['z2_h304_res512_tracer']   = 2004
   sgIDs['z2_h304_res512_gadget']   = 2342
   sgIDs['z2_h304_res512_arepo']    = 2132
-  sgIDs['z2_h304_res512_feedback'] = 2029
+  sgIDs['z2_h304_res512_feedback'] = 2020
   
   sgIDs['z2_h304_res256_tracer']   = 510
   sgIDs['z2_h304_res256_gadget']   = 673
-  sgIDs['z2_h304_res256_feedback'] = 464
-  sgIDs['z2_h304_res256_feedback_noz'] = 485
-  sgIDs['z2_h304_res256_feedback_nofb'] = 535
+  sgIDs['z2_h304_res256_feedback'] = 458
+  sgIDs['z2_h304_res256_feedback_noz'] = 518
+  sgIDs['z2_h304_res256_feedback_nofb'] = 524
   
   sgIDs['z2_h304_res128_tracer']   = 150
   sgIDs['z2_h304_res128_gadget']   = 217
-  sgIDs['z2_h304_res128_feedback'] = 144
+  sgIDs['z2_h304_res128_feedback'] = 151
   
-  ; z3 h304 (tracked back)
+  ; z3 h304 (tracked back from z=2)
   sgIDs['z3_h304_res512_tracer']   = 1669
   sgIDs['z3_h304_res512_gadget']   = 1902
   sgIDs['z3_h304_res512_arepo']    = 1657
-  sgIDs['z3_h304_res512_feedback'] = 1643
+  sgIDs['z3_h304_res512_feedback'] = 1621
   
   sgIDs['z3_h304_res256_tracer']   = 271
   sgIDs['z3_h304_res256_gadget']   = 533
-  sgIDs['z3_h304_res256_feedback'] = 390
+  sgIDs['z3_h304_res256_feedback'] = 385
   
   sgIDs['z3_h304_res128_tracer']   = 91
   sgIDs['z3_h304_res128_gadget']   = 162
-  sgIDs['z3_h304_res128_feedback'] = 117
+  sgIDs['z3_h304_res128_feedback'] = 100
+  
+  ; z0 h304 (tracked forward from z=2)
+  sgIDs['z0_h304_res256_tracer']   = 1310
+  sgIDs['z0_h304_res256_gadget']   = 0
+  sgIDs['z0_h304_res256_feedback'] = 1379
   
   ; z2.301
   sgIDs['z2_h301_res512_tracer']   = 1948
   sgIDs['z2_h301_res512_gadget']   = 2289
   sgIDs['z2_h301_res512_arepo']    = 2034
-  sgIDs['z2_h301_res512_feedback'] = 1963  
+  sgIDs['z2_h301_res512_feedback'] = 2076
   
   ; z2.130 (low mass example for paper)
   sgIDs['z2_h130_res512_tracer']   = 5611
   sgIDs['z2_h130_res512_gadget']   = 6369
   sgIDs['z2_h130_res512_arepo']    = 5966
-  sgIDs['z2_h130_res512_feedback'] = 6091
+  sgIDs['z2_h130_res512_feedback'] = 5755
   
   sgIDs['z2_h130_res256_tracer']   = 1527
   sgIDs['z2_h130_res256_gadget']   = 1888
-  sgIDs['z2_h130_res256_feedback'] = 1467
+  sgIDs['z2_h130_res256_feedback'] = 1502
   
   sgIDs['z2_h130_res128_tracer']   = 619
   sgIDs['z2_h130_res128_gadget']   = 802
-  sgIDs['z2_h130_res128_feedback'] = 579
+  sgIDs['z2_h130_res128_feedback'] = 604
   
   ; z2.64
   sgIDs['z2_h64_res512_gadget']    = 5498
   sgIDs['z2_h64_res512_arepo']     = 5097
+  sgIDs['z2_h64_res512_feedback']  = 5363
 
   ; single simulation requested?
   if keyword_set(simParams) then begin
@@ -172,13 +178,12 @@ pro rematch
   forward_function loadGroupCat
 
   sP1 = simParams(res=512,run='feedback',redshift=2.0)
-  sP2 = simParams(res=256,run='feedback_noFB',redshift=2.0)
+  sP2 = simParams(res=256,run='feedback_noz',redshift=2.0)
 
   gc1 = loadGroupCat(sP=sP1,/skipIDs)
   gc2 = loadGroupCat(sP=sP2,/skipIDs)
 
-  ;known1gcIDs = [3664,2920,1812,1459,1210,620,496,137]
-  known1gcIDs = [5750,4622,2940,2384,2131,834,676,105]
+  known1gcIDs = [5751]
   
   foreach gcID,known1gcIDs do begin
     ; find closest spatial match

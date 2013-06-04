@@ -742,37 +742,54 @@ end
     
 function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
     
-    origSnap = sP.snap
-    if endSnap ge sP.snap then message,'Error: Ending snap is not earlier.'
+    step = -1 ; back in snapshots, back in time
+    if endSnap gt sP.snap then step = 1 ; forward in snapshots
     
     ; try to trace back to this snapshot for new halo center position
     failSnap = -1
-    sgCenters = fltarr(3,sP.snap-endSnap+1) ; xyz ckpc
-    gcIDs     = lonarr(sP.snap-endSnap+1)
-    times     = fltarr(sP.snap-endSnap+1) ; Gyr age
+    sgCenters = fltarr( 3,abs( sP.snap-endSnap-step) ) ; xyz ckpc
+    gcIDs     = lonarr( abs(sP.snap-endSnap-step) )
+    snaps     = intarr( abs(sP.snap-endSnap-step) )
+    times     = fltarr( abs(sP.snap-endSnap-step) ) ; Gyr age
     
     gcIDcur = gcID ; starting halo ID
     startSnap = sP.snap ; starting snapshot number
-    
-    for m=startSnap,endSnap,-1 do begin
-      gcIDs[startSnap-m] = gcIDcur
-      print,m,gcIDcur,failSnap
-      sP.snap = m
+
+    for m=startSnap,endSnap,step do begin
+      ind = abs(startSnap-m) ; index to store this snapshot result in
+      
+      gcIDs[ind] = gcIDcur
+      print,m,ind,gcIDcur,failSnap
+      
+      ; record times for possible extrapolation
+      h = loadSnapshotHeader(sP=sP)
+      times[ind] = redshiftToAgeFlat(1/h.time-1)
+      snaps[ind] = m
+      
+      sP.snap = m + 1 * (step eq 1) ; want to load one snapshot ahead if moving forward
+      
+      if sP.snap gt endSnap then continue ; end early if moving forward, we are done
       
       ; haven't failed yet, keep recording positions
       if failSnap eq -1 then begin
         sgcen = subgroupPosByMostBoundID(sP=sP)
-        sgCenters[*,startSnap-m] = sgcen[*,gcIDcur]
-        
-        ; record times for possible extrapolation
-        h = loadSnapshotHeader(sP=sP)
-        times[startSnap-m] = redshiftToAgeFlat(1/h.time-1)
-      
-        ; load most massive progenitor and move index
+        sgCenters[*,ind] = sgcen[*,gcIDcur]
+              
+        ; load most massive progenitor
         Parent = mergerTree(sP=sP)
         
-        if Parent[gcIDcur] eq -1 then failSnap = sP.snap
-        gcIDcur = Parent[gcIDcur]
+        ; if going backwards, directly move index
+        if step eq -1 then begin
+          gcIDcur = Parent[gcIDcur]
+          if gcIDcur eq -1 then failSnap = sP.snap
+        endif
+        
+        ; if going forwards, find which child has this parent
+        if step eq 1 then begin
+          gcIDcur = ( where(Parent eq gcIDcur,count) )[0]
+          if count eq 0 then failSnap = sP.snap
+        endif
+                
       endif
     endfor
     
@@ -801,8 +818,8 @@ function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
       endelse
     endelse
     
-    sP.snap = origSnap
-    return,{sgCenters:sgCenters,haloPosEnd:haloPos,gcIDs:gcIDs}
+    sP.snap = startSnap
+    return,{sgCenters:sgCenters,haloPosEnd:haloPos,gcIDs:gcIDs,snaps:snaps,times:times}
 end
 
 ; plotHaloTracking(): plot fraction of successful halo adaptive tracking vs redshift

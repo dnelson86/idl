@@ -74,6 +74,13 @@ function shuffle, array, seed=seed
   return,array[sort(randomu(iseed,n_elements(array)))]
 end
 
+function mylog10, x ; leave zeros as zero, instead of converting to NaN
+  w = where(x eq 0,count)
+  if count gt 0 then x[w] = 1.0
+  x = alog10(x)
+  return, x
+end
+
 ; general algorithms
 ; ------------------
 
@@ -459,6 +466,7 @@ function binHisto2D, xx=xx, yy=yy, wt=wt, xmm=xmm, ymm=ymm, xbs=xbs, ybs=ybs
       yBin = [binCenY[j]-ybs/2,binCenY[j]+ybs/2]
       
       w = where(xx ge xBin[0] and xx lt xBin[1] and yy ge yBin[0] and yy lt yBin[1],count)
+      
       if count gt 0 then r.h2[i,j] = total(wt[w])
     
     endfor
@@ -907,6 +915,7 @@ end
 @binVsHaloMass
 @plotVsHaloMass
 @plotRadProfiles
+@recycledMaterial
 
 @tracersVel_Cosmo
 ;@tracersVel_Halos

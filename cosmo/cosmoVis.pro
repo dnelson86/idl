@@ -736,8 +736,8 @@ pro mosaicHalosComp, redshift=redshift
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  sPg = simParams(res=256,run='feedback',redshift=redshift)
-  sPa = simParams(res=256,run='feedback_noZ',redshift=redshift)
+  sPg = simParams(res=512,run='tracer',redshift=redshift)
+  sPa = simParams(res=512,run='feedback',redshift=redshift)
   
   ; get list of matched IDs for good comparison
   mag = getMatchedIDs(sPa=sPa,sPg=sPg,/mosaicIDs)
