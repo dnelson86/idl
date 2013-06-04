@@ -835,29 +835,46 @@ end
 ;                 return properties for each gas element/tracer (may or may not depend on parent halo)
 ;                 at the redshift specified by sP.snap (may or may not depend on previous time)
 ;
+; select=''     : 'pri', 'sec' or 'all', the type of subgroups to select
+; gcIDList=[]   : alternatively, an explicit list of subgroups to select
+;
 ; rVirNorm=1    : radial distances normalized by r_vir of either primary or secondary parent
 ;  parNorm      : either 'pri' or 'sec' if rVirNorm requested
 ; virTemp=1     : current virial temperatures of parent halos
 ; parMass=1     : total mass (dm+baryonic) of parent halos (from catalog)
 ; curTemp=1     : current temperature of each element
+;
 ; maxPastTemp=1 : maximum past previous temperature of each element
 ; maxTempTime=1 : time when maximum past previous temperature was reached (in redshift)
+; maxPastEnt=1  : maximum past entropy
+; maxEntTime=1  : ...
+; maxPastDens=1 : maximum past density
+; maxDensTime=1 : ...
 ;  trPopMin,trPopMean,trPopMax : return the respective statistic for each gas cell for the tracers
-; elemIDs=1     : ids of each element (either SPH particles or tracers)
-; 
-; curSingleVal=1  : current single quantity (e.g. mass, density) returned without manipulation
+;
+; elemIDs=1       : ids of each element (either SPH particles or tracers)
+;
+; tracksFluid=1   : temp,dens,ent history of each tracer (trMC only)
+;
+; curSingleVal=1  : current single quantity (e.g. mass, density) returned without manipulation (gas, or replicated)
 ;  singleValField : field name in snapshot file for the above
+; curTracerVal=1    : as above, but individual value for each tracer (e.g. wind_counter)
+; singleTracerField : ...
 ;
 ; mergerTreeSubset    : return values only for the subset of halos tracked in the merger tree subset
 ; accretionTimeSubset : return values only for the subset of particles/tracers with recorded accretion times
 ;  accTime,accTvir : time of accretion (in redshift) or virial temp of parent halo at time of accretion
 ;  accMode : return values only for one accretionMode (all,smooth,bclumpy,sclumpy,smooth)
 
-function gcSubsetProp, sP=sP, select=select, $
+function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
            rVirNorm=rVirNorm, virTemp=virTemp, parMass=parMass, $
-           curTemp=curTemp, maxPastTemp=maxPastTemp, maxTempTime=maxTempTime, elemIDs=elemIDs, $
-           trPopMin=trPopMin, trPopMax=trPopMax, trPopMean=trPopMean, $ ; for maxPastTemp/maxTempTime only
+           curTemp=curTemp, maxPastTemp=maxPastTemp, maxTempTime=maxTempTime, $
+           maxPastEnt=maxPastEnt, maxEntTime=maxEntTime, $
+           maxPastDens=maxPastDens, maxDensTime=maxDensTime, $
+           trPopMin=trPopMin, trPopMax=trPopMax, trPopMean=trPopMean, $ ; for maxPastXX/maxXXTime only
+           elemIDs=elemIDs, tracksFluid=tracksFluid, $
            curSingleVal=curSingleVal, singleValField=singleValField, $
+           curTracerVal=curTracerVal, singleTracerField=singleTracerField, $ ; trMC only
            parNorm=parNorm, $ ; for rVirNorm,virTemp,parMass only
            mergerTreeSubset=mergerTreeSubset, accretionTimeSubset=accretionTimeSubset,$
            accTime=accTime,accTvir=accTvir,accMode=accMode ; for accretionTimeSubset only
@@ -865,7 +882,7 @@ function gcSubsetProp, sP=sP, select=select, $
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; check combinations of input options for validity
-  if keyword_set(mergerTreeSubset) and select ne 'pri' then $
+  if keyword_set(mergerTreeSubset) then if keyword_set(select) then if select ne 'pri' then $
     print,'Warning: The merger tree subset actually contains only pri subgroups.'
   if (keyword_set(accTime) or keyword_set(accTvir)) and ~keyword_set(accretionTimeSubset) then $
     message,'Error: Can only return accretion time or Tvir at accretion time for atS.'
@@ -875,13 +892,22 @@ function gcSubsetProp, sP=sP, select=select, $
     message,'Error: Can only return accretion mode subsets of the accretionTime subset.'
   if keyword_set(elemIDs) and (keyword_set(trPopMin) or keyword_set(trPopMean) or keyword_set(trPopMax)) then $
     message,'Error: Cannot return pop stats of unique element IDs.'
+  if (~keyword_set(select) and ~keyword_set(gcIDList)) or (keyword_set(select) and keyword_set(gcIDList)) then $
+    message,'Error: Should specific either group type of explicit list of groups.'
     
   ; default behavior: return 1 value per tracer for tracer sims, 1 value per gas particle for sph
   allTR = 0 ; sph
   if sP.trMCPerCell ne 0 then allTR = 1
   
+  ; check input options vs. simulation type
+  if keyword_set(curTracerVal) and sP.trMCPerCell le 0 then message,'Error: curTracerVal is trMC only.'
+  if keyword_set(tracksFluid) and sP.trMCPerCell le 0 then message,'ERror: tracksFluid is trMC only.'
+  if keyword_set(elemIDs) and sP.trMCPerCell eq -1 then message,'Error: Not implemented.'
+  
+  ; ----- selection subset -----
+  
   ; select primary,secondary,or all subhalos subject to minimum number of particles
-  gcIDList = gcIDList(sP=sP,select=select)
+  if ~keyword_set(gcIDList) then gcIDList = gcIDList(sP=sP,select=select)
 
   ; subset subgroup id list by only those with good merger histories
   if keyword_set(mergerTreeSubset) then begin
@@ -917,6 +943,9 @@ function gcSubsetProp, sP=sP, select=select, $
 
     ; tracer case: handle only after we have child counts (after expansion or in allTR for maxTemps)
   endif
+  
+  ; load galaxy catalog to change INDs to gas IDs, or for element IDs
+  galcat = galaxyCat(sP=sP)
   
   ; ----- values -----
   
@@ -988,9 +1017,6 @@ function gcSubsetProp, sP=sP, select=select, $
     idsIndMap = getIDIndexMap(ids,minid=minid)
     ids = !NULL
     
-    ; load galaxy catalog to change INDs to gas IDs
-    galcat = galaxyCat(sP=sP)
-    
     ; load gas u and restrict to subset of galaxy cat
     u       = loadSnapshotSubset(sP=sP,partType='gas',field='u')
     u_gal   = u[idsIndMap[galcat.galaxyIDs[galcatInds.gal]-minid]]
@@ -1010,8 +1036,6 @@ function gcSubsetProp, sP=sP, select=select, $
     temp_gmem  = convertUtoTemp(u_gmem,nelec_gmem,/log)
     temp_stars = fltarr(n_elements(galcat.stellarIDs[galcatInds.stars])) ; zeros, stars have no current temperature
      
-    galcat = !NULL
-     
     r = {gal:temp_gal,gmem:temp_gmem,stars:temp_stars}
   endif
   
@@ -1024,25 +1048,40 @@ function gcSubsetProp, sP=sP, select=select, $
     ; load gas densities
     singleVal = loadSnapshotSubset(sP=sP,partType='gas',field=singleValField)
     
-    ; load galaxy catalog to change INDs to gas IDs
-    galcat = galaxyCat(sP=sP)
-
     ; restrict to subgroup type / merger tree / accretion time subset
     val_gal   = singleVal[idsIndMap[galcat.galaxyIDs[galcatInds.gal]-minid]]
     val_gmem  = singleVal[idsIndMap[galcat.groupmemIDs[galcatInds.gmem]-minid]]
     val_stars = fltarr(n_elements(galcat.stellarIDs[galcatInds.stars])) ; zeros, stars don't have the same values as gas
     
-    galcat = !NULL & density = !NULL & idsIndMap = !NULL
+    density = !NULL & idsIndMap = !NULL
     
     r = {gal:val_gal,gmem:val_gmem,stars:val_stars}
   endif
   
+  if keyword_set(curTracerVal) then begin
+    ; load some tracer field, single value per MC tracer
+    tr_field  = loadSnapshotSubset(sP=sP,partType='tracerMC',field=singleTracerField)
+    tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
+      
+    field_gal   = tr_field[cosmoTracerChildren(sP=sP,gasIDs=galcat.galaxyIDs[galcatInds.gal],tr_parids=tr_parids,/getInds)]
+    field_gmem  = tr_field[cosmoTracerChildren(sP=sP,gasIDs=galcat.groupmemIDs[galcatInds.gmem],tr_parids=tr_parids,/getInds)]
+    field_stars = tr_field[cosmoTracerChildren(sP=sP,starIDs=galcat.stellarIDs[galcatInds.stars],tr_parids=tr_parids,/getInds)]
+      
+    tr_field = !NULL
+    tr_parids = !NULL
+      
+    r = {gal:field_gal,gmem:field_gmem,stars:field_stars}
+      
+    field_gal = !NULL & field_gmem = !NULL & field_stars = !NULL
+      
+    ; take accretionTime subset of mtS of all tracers and return
+    if keyword_set(accretionTimeSubset) then begin
+      r = { gal:r.gal[accTimeInds.gal], gmem:r.gmem[accTimeInds.gmem], stars:r.stars[acctimeInds.stars] }
+    endif
+    return,r
+  endif
+  
   if keyword_set(elemIDs) then begin
-    if sP.trMCPerCell eq -1 then message,'Error: Not implemented.'
-    
-    ; load galaxy catalog for element IDs
-    galcat = galaxyCat(sP=sP)
-    
     ; if all tracers requested, find children of all the gas IDs in the groupcat
     if keyword_set(allTR) then begin
       tr_ids    = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
@@ -1072,21 +1111,70 @@ function gcSubsetProp, sP=sP, select=select, $
           stars : galcat.stellarIDs[galcatInds.stars]  }
   endif
   
-  if keyword_set(maxPastTemp) or keyword_set(maxTempTime) then begin
+  if keyword_set(tracksFluid) then begin
+    ; make indices for mergerTreeSubset
+    maxt_gal   = maxTemps(sP=sP,/loadAllTRGal)
+    maxt_gmem  = maxTemps(sP=sP,/loadAllTRGmem)
+    maxt_stars = maxTemps(sP=sP,/loadAllTRStars)
+      
+    galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList,$
+                   child_counts={gal:maxt_gal.child_counts,gmem:maxt_gmem.child_counts,stars:maxt_stars.child_counts})
+                       
+    maxt_gal = !NULL & maxt_gmem = !NULL & maxt_stars = !NULL
+    
+    ; take accretionTime subset of mtS? if so modify indices now
+    if keyword_set(accretionTimeSubset) then begin
+      galcatInds = { gal   : galcatInds.gal[accTimeInds.gal]    ,$
+                     gmem  : galcatInds.gmem[accTimeInds.gmem]  ,$
+                     stars : galcatInds.stars[acctimeInds.stars] }
+    endif
+    
+    ; all tracers requested, load directly and immediately return
+    ; (could modify this to be like maxPastTemp when sph/trVel added to tracksFluid)
+    tracks_gal   = tracksFluid(sP=sP,/loadAllTRGal)
+    tracks_gmem  = tracksFluid(sP=sP,/loadAllTRGmem)
+    tracks_stars = tracksFluid(sP=sP,/loadAllTRStars)
+           
+    ; return temps (logK), entropy (log CGS), or density (log code)
+    r = {gal   : { temp : tracks_gal.temp[*,galcatInds.gal] ,$
+                   ent  : tracks_gal.ent[*,galcatInds.gal]  ,$
+                   dens : tracks_gal.dens[*,galcatInds.gal] ,$
+                   flag : tracks_gal.flag[*,galcatInds.gal]  }      ,$
+         gmem  : { temp : tracks_gmem.temp[*,galcatInds.gmem] ,$
+                   ent  : tracks_gmem.ent[*,galcatInds.gmem]  ,$
+                   dens : tracks_gmem.dens[*,galcatInds.gmem] ,$
+                   flag : tracks_gmem.flag[*,galcatInds.gmem]  }    ,$
+         stars : { temp : tracks_stars.temp[*,galcatInds.stars] ,$
+                   ent  : tracks_stars.ent[*,galcatInds.stars]  ,$
+                   dens : tracks_stars.dens[*,galcatInds.stars] ,$
+                   flag : tracks_stars.flag[*,galcatInds.stars]  }  ,$
+         rr    : tracks_gal.rr                                       }
+        
+    tracks_gal = !NULL & tracks_gmem = !NULL & tracks_stars = !NULL
+      
+    return,r
+  endif
+  
+  if keyword_set(maxPastTemp) or keyword_set(maxTempTime) or $
+     keyword_set(maxPastEnt)  or keyword_set(maxEntTime)  or $
+     keyword_set(maxPastDens) or keyword_set(maxDensTime) then begin
+     
     ; if all tracers requested, load directly and immediately return
     if keyword_set(allTR) then begin
-      maxt_gal   = maxTemps(sP=sP,/loadAllTRGal)
-      maxt_gmem  = maxTemps(sP=sP,/loadAllTRGmem)
-      maxt_stars = maxTemps(sP=sP,/loadAllTRStars)
+      maxt_gal   = maxTemps(sP=sP,entropy=keyword_set(maxPastEnt),density=keyword_set(maxPastDens),/loadAllTRGal)
+      maxt_gmem  = maxTemps(sP=sP,entropy=keyword_set(maxPastEnt),density=keyword_set(maxPastDens),/loadAllTRGmem)
+      maxt_stars = maxTemps(sP=sP,entropy=keyword_set(maxPastEnt),density=keyword_set(maxPastDens),/loadAllTRStars)
       
       ; make indices for mergerTreeSubset
       galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList,$
                      child_counts={gal:maxt_gal.child_counts,gmem:maxt_gmem.child_counts,stars:maxt_stars.child_counts})
                        
-      ; return temps (logK) or times (converted to redshift)
-      if keyword_set(maxPastTemp) then $
+      ; return temps (logK), entropy (log CGS), or density (log code)
+      if keyword_set(maxPastTemp) or keyword_set(maxPastEnt) or keyword_set(maxPastDens) then $
         r = {gal:maxt_gal.maxTemps[galcatInds.gal],gmem:maxt_gmem.maxTemps[galcatInds.gmem],stars:maxt_stars.maxTemps[galcatInds.stars]}
-      if keyword_set(maxTempTime) then $
+        
+      ; or return times (converted to redshift)
+      if keyword_set(maxTempTime) or keyword_set(maxEntTime) or keyword_set(maxDensTime) then $
         r = {gal:1/maxt_gal.maxTempTime[galcatInds.gal]-1,gmem:1/maxt_gmem.maxTempTime[galcatInds.gmem]-1,stars:1/maxt_stars.maxTempTime[galcatInds.stars]-1}
       
       maxt_gal = !NULL & maxt_gmem = !NULL & maxt_stars = !NULL
@@ -1100,10 +1188,10 @@ function gcSubsetProp, sP=sP, select=select, $
     
     ; otherwise, load maximum past temperature per gas particle
     ; (or statistics for the child population of each gas cell)
-    maxt = maxTemps(sP=sP,/loadByGas)
+    maxt = maxTemps(sP=sP,entropy=keyword_set(maxPastEnt),density=keyword_set(maxPastDens),/loadByGas)
 
     ; restrict maxPastTemp to subset of galaxycat (tracers)
-    if keyword_set(maxPastTemp) then begin
+    if keyword_set(maxPastTemp) or keyword_set(maxPastEnt) or keyword_set(maxPastDens) then begin
       if keyword_set(trPopMax) then begin
         val_gal   = maxt.maxTemps_gal[galcatInds.gal]
         val_gmem  = maxt.maxTemps_gmem[galcatInds.gmem]
@@ -1122,7 +1210,7 @@ function gcSubsetProp, sP=sP, select=select, $
     endif
     
     ; restrict maxTempTime to subset of galaxycat (and convert to redshift)
-    if keyword_set(maxTempTime) then begin
+    if keyword_set(maxTempTime) or keyword_set(maxEntTime) or keyword_set(maxDensTime) then begin
       if keyword_set(trPopMax) then begin
         val_gal   = 1/maxt.maxTempTime_gal[galcatInds.gal]-1
         val_gmem  = 1/maxt.maxTempTime_gmem[galcatInds.gmem]-1
@@ -1142,13 +1230,19 @@ function gcSubsetProp, sP=sP, select=select, $
     
     ; restrict temps/times to subset of galaxy cat (sph)
     if sP.trMCPerCell eq 0 then begin
-      if keyword_set(maxPastTemp) then val_gal   = maxt.maxTemps_gal[galcatInds.gal]
-      if keyword_set(maxPastTemp) then val_gmem  = maxt.maxTemps_gmem[galcatInds.gmem]
-      if keyword_set(maxPastTemp) then val_stars = maxt.maxTemps_stars[galcatInds.stars]
+      if keyword_set(maxPastTemp) or keyword_set(maxPastEnt) or keyword_set(maxPastDens) then $
+        val_gal   = maxt.maxTemps_gal[galcatInds.gal]
+      if keyword_set(maxPastTemp) or keyword_set(maxPastEnt) or keyword_set(maxPastDens) then $
+        val_gmem  = maxt.maxTemps_gmem[galcatInds.gmem]
+      if keyword_set(maxPastTemp) or keyword_set(maxPastEnt) or keyword_set(maxPastDens) then $
+        val_stars = maxt.maxTemps_stars[galcatInds.stars]
       
-      if keyword_set(maxTempTime) then val_gal   = 1/maxt.maxTempTime_gal[galcatInds.gal]-1
-      if keyword_set(maxTempTime) then val_gmem  = 1/maxt.maxTempTime_gmem[galcatInds.gmem]-1
-      if keyword_set(maxTempTime) then val_stars = 1/maxt.maxTempTime_stars[galcatInds.stars]-1
+      if keyword_set(maxTempTime) or keyword_set(maxEntTime) or keyword_set(maxDensTime) then $
+        val_gal   = 1/maxt.maxTempTime_gal[galcatInds.gal]-1
+      if keyword_set(maxTempTime) or keyword_set(maxEntTime) or keyword_set(maxDensTime) then $
+        val_gmem  = 1/maxt.maxTempTime_gmem[galcatInds.gmem]-1
+      if keyword_set(maxTempTime) or keyword_set(maxEntTime) or keyword_set(maxDensTime) then $
+        val_stars = 1/maxt.maxTempTime_stars[galcatInds.stars]-1
     endif
     
     maxt = !NULL
@@ -1156,7 +1250,8 @@ function gcSubsetProp, sP=sP, select=select, $
     r = {gal:val_gal,gmem:val_gmem,stars:val_stars}
   endif
   
-  ; tracer expansion if requested
+  ; ----- tracer expansion if requested -----
+  
   if keyword_set(allTR) then begin
     ; load child counts for both galaxy members and group members
     rtr = maxTemps(sP=sP,/loadAllTRGal)

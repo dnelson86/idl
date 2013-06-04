@@ -338,7 +338,7 @@ pro timescaleVRadStack
     
     ; load gas timescales and best model fits
     ts = loadFitTimescales(sP=sP,gcIDList=gcIDList)
-    stop
+
     ; radial fit
     cgPlot,ts.radVrad.binCen,ts.radVrad.radMedian,line=2,color=cgColor('black'),/overplot
                 

@@ -299,8 +299,8 @@ pro sphScatterAndMapHaloComp
 
   ; config
   redshift = 2.0
-  res      = 256
-  runs     = ['feedback','feedback_noZ','feedback_noFB'] ;['gadget','tracer','feedback'] ; two or three supported
+  res      = 512
+  runs     = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB'] ; two or three supported
   
   sizeFacMap  = 5.0       ; times rvir
   sizeFacScat = 3.5       ; times rvir

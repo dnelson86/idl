@@ -7,8 +7,14 @@
 function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  if ~sP.gfmWinds and accMode eq 'recycled' then message,'Error: Request recycled on non-winds run.'
   units = getUnits()
+  
+  if ~sP.gfmWinds and accMode eq 'recycled' then message,'Error: Request recycled on non-winds run.'
+  
+  if sP.gfmWinds eq 1 and (accMode eq 'smooth' or accMode eq 'stripped' or accMode eq 'clumpy') then begin
+    print,'Switching [' + accMode + '] to [' + accMode + '_rec] for GFM run.'
+    accMode = accMode + '_rec'
+  endif
   
   ; current time
   h = loadSnapshotHeader(sP=sP)

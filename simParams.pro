@@ -21,8 +21,6 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        plotPrefix:   '',$    ; plot prefix for simulation (make unique, e.g. 'GR')
        boxSize:      0.0,$   ; boxsize of simulation, kpc
        targetGasMass:0.0,$   ; refinement/derefinement target, equal to SPH gas mass in equivalent run
-       trMassConst:  0.0,$   ; mass per tracerMC under equal mass assumption (=TargetGasMass/trMCPerCell)
-       trMCPerCell:  0,$     ; starting number of monte carlo tracers per cell (copied from f input, 0=none)
        gravSoft:     0.0,$   ; gravitational softening length (ckpc)
        snapRange:    [0,0],$ ; snapshot range of simulation
        groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
@@ -32,6 +30,11 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        res:          0,$     ; copied from input
        run:          '',$    ; copied from input
        redshift:     -1.0,$  ; copied from input
+       $
+       $ ; tracers
+       trMassConst:  0.0,$        ; mass per tracerMC under equal mass assumption (=TargetGasMass/trMCPerCell)
+       trMCPerCell:  0,$          ; starting number of monte carlo tracers per cell (copied from f input, 0=none)
+       trMCFields:   intarr(13),$ ; which TRACER_MC_STORE_WHAT fields did we save, and in what indices
        $
        $ ; analysis parameters:
        minNumGasPart: 0,$    ; minimum number of gas particles required to use subgroup (unused)
@@ -70,16 +73,17 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.snap = snap
  
   ; sims.feedback (Velocity + f=5 Monte Carlo) 128,256,512 @ 20Mpc w/ fiducial Illustris parameters
-  if (run eq 'feedback') or (run eq 'feedback_noz') or (run eq 'feedback_nofb') then begin
+  if (run eq 'feedback') or (run eq 'feedback_noz') or (run eq 'feedback_nofb') or (run eq 'feedback_nogfm') then begin
     r.minNumGasPart  = -1 ; no additional cut
     r.trMCPerCell    = 5
+    r.trMCFields     = [0,1,2,3,4,5,6,7,8,9,-1,-1,-1] ; up to and including WIND_COUNTER (=512, 10 of 13)
     r.gfmNumElements = 9
     r.gfmWinds       = 1
     
     if res eq 128 or res eq 256 or res eq 512 then begin 
       r.boxSize       = 20000.0
       r.snapRange     = [0,133]
-      r.groupCatRange = [5,133] ; z6=5, z5=14, z4=21, z3=36, z2=60, z1=81
+      r.groupCatRange = [5,133] ; z6=5, z5=14, z4=21, z3=36, z2=60, z1=81, z0=130
     endif else begin
       message,'res error'
     endelse
@@ -113,6 +117,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     ; if noZ or noFB runs, modify details and paths
     if run eq 'feedback_noz' then begin
       if res ne 256 then stop ; only 256 exists
+      r.trMCFields     = [0,1,2,3,4,5,6,7,8,9,-1,-1,-1]
       
       r.simPath    = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noZ/output/'
       r.arepoPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noZ/'
@@ -128,6 +133,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
 	
     if run eq 'feedback_nofb' then begin
       if res ne 256 then stop ; only 256 exists
+      r.trMCFields     = [0,1,2,3,4,5,6,7,8,-1,-1,-1,-1] ; up to and including LST (=256, 9 of 13)
       
       r.gfmWinds   = 0
       r.simPath    = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noFB/output/'
@@ -144,6 +150,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     
     if run eq 'feedback_nogfm' then begin
       if res ne 256 then stop ; only 256 exists
+      r.trMCFields     = [0,1,2,3,4,5,6,7,-1,-1,-1,-1,-1] ; up to and including LST (=128, 8 of 13)
       
       r.gfmWinds   = 0
       r.simPath    = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noGFM/output/'
@@ -168,14 +175,15 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   if (run eq 'gadget') then begin
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 0  ; none (SPH)
+    r.trMCFields    = intarr(13)-1 ; none (SPH)
     
     if keyword_set(f) then stop ; shouldn't be specified
     if res ne 128 and res ne 256 and res ne 512 then stop ; only resolutions that exist now
   
     if res eq 128 or res eq 256 or res eq 512 then begin 
       r.boxSize       = 20000.0
-      r.snapRange     = [0,313]
-      r.groupCatRange = [50,313]
+      r.snapRange     = [0,314]
+      r.groupCatRange = [50,314]
     endif
   
     if res eq 128 then r.targetGasMass = 4.76446157e-03
@@ -209,13 +217,14 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   if (run eq 'gadgetold') then begin
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 0  ; none (SPH)
+    r.trMCFields    = intarr(13)-1 ; none (SPH)
     
     if keyword_set(f) then stop ; shouldn't be specified
     if res ne 512 then stop ; only 512
   
     r.boxSize       = 20000.0
-    r.snapRange     = [0,313]
-    r.groupCatRange = [50,313]
+    r.snapRange     = [0,314]
+    r.groupCatRange = [50,314]
     r.targetGasMass = 7.44447120e-05
     r.gravSoft      = 1.0
     
@@ -262,12 +271,17 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 10
     
+    if res eq 128 or res eq 256 then $
+      r.trMCFields    = [0,1,5,2,-1,3,4,-1,-1,-1,-1,-1,-1] ; even older code version than tracer.512, indices specified manually in Config.sh
+    if res eq 512 then $
+      r.trMCFields    = [0,1,4,2,-1,3,5,-1,-1,-1,-1,-1,-1] ; up to and including ENTMAX but in older code, ordering permuted (6 vals, CAREFUL)
+    
     if res ne 128 and res ne 256 and res ne 512 then stop
     
     if res eq 128 or res eq 256 or res eq 512 then begin 
       r.boxSize       = 20000.0
-      r.snapRange     = [0,313]
-      r.groupCatRange = [50,313]
+      r.snapRange     = [0,314]
+      r.groupCatRange = [50,314]
     endif
     
     if res eq 128 then r.targetGasMass = 4.76446157e-03
@@ -284,7 +298,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.arepoPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/'
     r.savPrefix  = 'N'
     r.saveTag    = 'trMC'
-	r.simName    = 'AREPO'
+    r.simName    = 'AREPO'
     r.plotPrefix = 'trMC'
     r.plotPath   = '/n/home07/dnelson/coldflows/'
     r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
@@ -328,6 +342,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   if (run eq 'arepo') then begin
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 0 ; no actual tracers ;, but flag as non-sph
+    r.trMCFields    = intarr(13)-1 ; none
     
     if keyword_set(f) then stop ; shouldn't be specified
     if res ne 128 and res ne 256 and res ne 512 then stop

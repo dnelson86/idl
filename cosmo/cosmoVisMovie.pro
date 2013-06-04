@@ -223,10 +223,10 @@ pro makeProgressionPanels
   units = getUnits()
   
   ; config
-  sP  = simParams(res=512,run='feedback',redshift=2.0)
+  sP  = simParams(res=256,run='feedback',redshift=0.0)
   
   ; best match in sP2 is found for each sP snap, comment out sP2 to not make a comparison
-  sP2 = simParams(res=512,run='tracer',redshift=2.0)
+  sP2 = simParams(res=256,run='tracer',redshift=0.0)
 
   haloID        = 304 ; z2.314 z2.304 z2.301 z2.130 z2.64
   redshiftStart = 2.0 ; when to start (can differ from sP.redshift, which is where the halo is targeted)
@@ -240,13 +240,13 @@ pro makeProgressionPanels
   ctName           = 'helix'
   
   ; use which field and minmax for color mapping? cut value for right panel?
-  ;colorField = 'temp'     & fieldMinMax  = [4.0,7.0] & secondCutVal = 5.0
+  colorField = 'temp'     & fieldMinMax  = [4.0,7.0] & secondCutVal = 5.0
   ;colorField = 'entropy'  & fieldMinMax  = [5.0,9.0] & secondCutVal = 7.5 ; log(CGS)
   ;colorField = 'metal'     & fieldMinMax = [-4.0,-1.0] & secondCutVal = -2.5 ; log(Z/Zsun)
   ;colorField = 'vrad'      & fieldMinMax = [-400,400] & secondCutVal = -200.0 ; km/s
-  colorField = 'vradnorm'  & fieldMinMax = [-3.0,3.0] & secondCutVal = -1.0 ; vrad/v200
+  ;colorField = 'vradnorm'  & fieldMinMax = [-3.0,3.0] & secondCutVal = -1.0 ; vrad/v200
   
-  subtitles = ['all gas','inflow'] ;['low entr'], ['cold gas']
+  subtitles = ['all gas','cold gas'] ;['low entr'], ['cold gas'], ['inflow']
   
   ; get snapshot times
   cutoutTimes = snapNumToRedshift(sP=sP,/all)
@@ -257,12 +257,12 @@ pro makeProgressionPanels
   numSnaps = sP.snap - minSnap + 1
   
   ; get list of tracked halo indices
-  gcID     = ( getMatchedIDs(sPa=sP,sPg=sP,haloID=haloID) ).a
+  gcID     = getMatchedIDs(simParams=sP,haloID=haloID)
   gcIDList = trackedHaloInds(sP=sP,gcID=gcID,minZ=redshiftStart,maxZ=redshiftEnd)
 
   sP2tag = ''
   if n_elements(sP2) gt 0 then begin
-    gcID2     = ( getMatchedIDs(sPa=sP2,sPg=sP2,haloID=haloID) ).a
+    gcID2     = getMatchedIDs(simParams=sP2,haloID=haloID)
     gcIDList2 = trackedHaloInds(sP=sP2,gcID=gcID2,minZ=redshiftStart,maxZ=redshiftEnd)
     sP2tag    = '.'+sP2.saveTag+'.'+str(sP2.res)
   endif

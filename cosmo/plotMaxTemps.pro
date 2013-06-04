@@ -1,24 +1,35 @@
 ; plotMaxTemps.pro
 ; gas accretion project - plots related to maximum past temperature of the gas
-; dnelson oct.2012
+; dnelson jun.2013
 
 ; binTmaxHistos()
 
-function binTmaxHistos, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW
+function binTmaxHistos, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW, $
+                        entropy=entropy
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
+  if sP.gfmWinds eq 1 and (accMode eq 'smooth' or accMode eq 'stripped' or accMode eq 'clumpy') then begin
+    print,'Switching [' + accMode + '] to [' + accMode + '_rec] for GFM run.'
+    accMode = accMode + '_rec'
+  endif
+  
+  fieldTag = 'binTemp.'
+  if keyword_set(entropy) then fieldTag = 'binEnt.'
+  
   ; config
   binSizeLog = 0.15 / (sP.res/128)
-  massBins   = [9.0,9.5,10.0,10.5,11.0,11.5,12.0] ; log(M)  
+  massBins   = [9.0,9.5,10.0,10.5,11.0,11.5,12.0] ; log(M)
   
   mmRatio = [-2.2,1.2]-[0.0,0.0001] ; log(tmax/tvir)
   mmTemp  = [3.8,7.2]-[0.0,0.0001]  ; log(tmax [K])
+  mmEnt   = [4.0,10.0]-[0.0,0.0001] ; log(cgs)
   
   nMassBins  = n_elements(massBins)-1
   nRatioBins = ceil((mmRatio[1]-mmRatio[0])/binSizeLog)
   nTempBins  = ceil((mmTemp[1]-mmTemp[0])/binSizeLog)
+  nEntBins   = ceil((mmEnt[1]-mmEnt[0])/binSizeLog)
   
   ; current time
   h = loadSnapshotHeader(sP=sP)
@@ -37,7 +48,7 @@ function binTmaxHistos, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW
   endelse
 
   ; check if save exists
-  saveFilename = sP.derivPath + 'binnedVals/binTemp.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
+  saveFilename = sP.derivPath + 'binnedVals/' + fieldTag + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
     str(sP.snap) + '.mb' + str(n_elements(massBins)) + '.' + sgSelect + '.' + accMode + $
     '_tw' + str(TW) + '.sav'
   
@@ -96,23 +107,27 @@ function binTmaxHistos, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW
     ; make a count of those falling in the time window
     w_gmem = where(curtime - loc_atime_gmem le timeWindow,nloc)
     loc_atime_gmem = !NULL
-    
-  ;print,'gal ',n_elements(w_gal),n_elements(wAm.gal)
-  ;print,'gmem ',n_elements(w_gmem),n_elements(wAm.gmem)
-  ;print,'stars ',n_elements(w_stars),n_elements(wAm.stars) 
   
   w   = !NULL
   at  = !NULL
   wAm = !NULL
   r_crossing_time = !NULL
   
-  ; load temps and do TW subsets
-  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  accTvir = { gal : accTvir.gal[w_gal], gmem : accTvir.gmem[w_gmem], stars : accTvir.stars[w_stars] }
+  ; binTemp: load temps and do TW subsets
+  if ~keyword_set(entropy) then begin
+    accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    accTvir = { gal : accTvir.gal[w_gal], gmem : accTvir.gmem[w_gmem], stars : accTvir.stars[w_stars] }
 
-  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
-  maxTemp = { gal : maxTemp.gal[w_gal], gmem : maxTemp.gmem[w_gmem], stars : maxTemp.stars[w_stars] }
-
+    maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
+    maxTemp = { gal : maxTemp.gal[w_gal], gmem : maxTemp.gmem[w_gmem], stars : maxTemp.stars[w_stars] }
+  endif
+  
+  ; binEnt: load max entropy and do subsets
+  if keyword_set(entropy) then begin
+    maxEnt = gcSubsetProp(sP=sP,select=sgSelect,/maxPastEnt,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
+    maxEnt = { gal : maxEnt.gal[w_gal], gmem : maxEnt.gmem[w_gmem], stars : maxEnt.stars[w_stars] }
+  endif
+  
   ; load parent halo masses so we can make halo massbins
   parentMass = gcSubsetProp(sP=sP,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
   parentMass = { gal : parentMass.gal[w_gal], gmem : parentMass.gmem[w_gmem], stars : parentMass.stars[w_stars] }
@@ -121,7 +136,10 @@ function binTmaxHistos, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW
   w_gmem  = !NULL
   w_stars = !NULL
   
-  ; return array
+  ; binTemp
+  ; --------
+  if ~keyword_set(entropy) then begin
+  
   r = { massBins           : massBins                     ,$
         binSizeLog         : binSizeLog                   ,$
         binLocRatio        : fltarr(nRatioBins)           ,$
@@ -145,7 +163,6 @@ function binTmaxHistos, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW
         hBothGlobalTmax         : fltarr(nTempBins)       ,$
         hGmemGlobalTmax         : fltarr(nTempBins)        }
         
-  ; bin
   for j=0,n_elements(massBins)-2 do begin
   
     w_gal   = where(parentMass.gal gt massBins[j] and parentMass.gal le massBins[j+1],count1)
@@ -153,81 +170,98 @@ function binTmaxHistos, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW
     w_stars = where(parentMass.stars gt massBins[j] and parentMass.stars le massBins[j+1],count3)
     
     if count1 eq 0 or count2 eq 0 or count3 eq 0 then begin
-      print,'WARNING' ; empty
+      print,'WARNING: Empty halo mass bin.' ; empty
       continue
     endif
     
-    ; log(tmax/tviracc)
+    ; binTemp: log(tmax/tviracc)
     vals = [10.0^maxTemp.gal[w_gal]/10.0^accTvir.gal[w_gal]]
-    hist = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1],loc=loc)    
-    if n_elements(loc) ne nRatioBins then message,'error'
-    r.hGalTmaxTviracc[j,*] = hist
+    r.hGalTmaxTviracc[j,*] = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1])
     
     vals = [10.0^maxTemp.stars[w_stars]/10.0^accTvir.stars[w_stars]]
-    hist = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1],loc=loc)  
-    if n_elements(loc) ne nRatioBins then message,'error'
-    r.hStarsTmaxTviracc[j,*] = hist
+    r.hStarsTmaxTviracc[j,*] = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1])
     
     r.hBothTmaxTviracc[j,*] = r.hGalTmaxTviracc[j,*] + r.hStarsTmaxTviracc[j,*]
     
     vals = [10.0^maxTemp.gmem[w_gmem]/10.0^accTvir.gmem[w_gmem]]
-    hist = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1],loc=loc)    
-    if n_elements(loc) ne nRatioBins then message,'error'
-    r.hGmemTmaxTviracc[j,*] = hist
+    r.hGmemTmaxTviracc[j,*] = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1])
   
-    ; log(tmax)
-    hist = histogram(maxTemp.gal[w_gal],binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1],loc=loc)
-    if n_elements(loc) ne nTempBins then message,'error'
-    r.hGalTmax[j,*] = hist
-  
-    hist = histogram(maxTemp.stars[w_stars],binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1],loc=loc)
-    if n_elements(loc) ne nTempBins then message,'error'
-    r.hStarsTmax[j,*] = hist
+    ; binTemp: log(tmax)
+    r.hGalTmax[j,*]   = histogram(maxTemp.gal[w_gal],binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1])
+    r.hStarsTmax[j,*] = histogram(maxTemp.stars[w_stars],binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1])
+    r.hBothTmax[j,*]  = r.hGalTmax[j,*] + r.hStarsTmax[j,*]
+    r.hGmemTmax[j,*]  = histogram(maxTemp.gmem[w_gmem],binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1])
     
-    r.hBothTmax[j,*] = r.hGalTmax[j,*] + r.hStarsTmax[j,*]
-    
-    hist = histogram(maxTemp.gmem[w_gmem],binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1],loc=loc)
-    if n_elements(loc) ne nTempBins then message,'error'
-    r.hGmemTmax[j,*] = hist
   endfor
   
-  ; bin global tmax/tviracc
+  ; binTemp: global tmax/tviracc
   vals = [10.0^maxTemp.gal/10.0^accTvir.gal]
-  hist = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1],loc=loc) 
-  if n_elements(loc) ne nRatioBins then message,'error'
-  r.hGalGlobalTmaxTviracc[*] = hist
+  r.hGalGlobalTmaxTviracc[*] = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1])
   
   vals = [10.0^maxTemp.stars/10.0^accTvir.stars]
-  hist = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1],loc=loc)  
-  if n_elements(loc) ne nRatioBins then message,'error'
-  r.hStarsGlobalTmaxTviracc[*] = hist
+  r.hStarsGlobalTmaxTviracc[*] = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1])
   
   r.hBothGlobalTmaxTviracc[*] = r.hGalGlobalTmaxTviracc[*] + r.hStarsGlobalTmaxTviracc[*]
   
   vals = [10.0^maxTemp.gmem/10.0^accTvir.gmem]
-  hist = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1],loc=loc)   
-  if n_elements(loc) ne nRatioBins then message,'error'
-  r.hGmemGlobalTmaxTviracc[*] = hist
+  r.hGmemGlobalTmaxTviracc[*] = histogram(alog10(vals),binsize=binsizeLog,min=mmRatio[0],max=mmRatio[1],loc=loc)
   
   r.binLocRatio = loc + binSizeLog*0.5 ; save ratio midbins
   
-  ; bin global tmax
-  hist = histogram(maxTemp.gal,binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1],loc=loc)
-  if n_elements(loc) ne nTempBins then message,'error'
-  r.hGalGlobalTmax[*] = hist
-  
-  hist = histogram(maxTemp.stars,binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1],loc=loc)
-  if n_elements(loc) ne nTempBins then message,'error'
-  r.hStarsGlobalTmax[*] = hist
-  
-  r.hBothGlobalTmax[*] = r.hGalGlobalTmax[*] + r.hStarsGlobalTmax[*]
-  
-  hist = histogram(maxTemp.gmem,binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1],loc=loc)
-  if n_elements(loc) ne nTempBins then message,'error'
-  r.hGmemGlobalTmax[*] = hist
+  ; binTemp: global tmax
+  r.hGalGlobalTmax[*]   = histogram(maxTemp.gal,binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1])
+  r.hStarsGlobalTmax[*] = histogram(maxTemp.stars,binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1])
+  r.hBothGlobalTmax[*]  = r.hGalGlobalTmax[*] + r.hStarsGlobalTmax[*]
+  r.hGmemGlobalTmax[*]  = histogram(maxTemp.gmem,binsize=binsizeLog,min=mmTemp[0],max=mmTemp[1],loc=loc)
   
   r.binLocTemp = loc + binSizeLog*0.5 ; save temp [K] midbins
+        
+  endif ; binTemp
+        
+  ; binEnt: return array
+  if keyword_set(entropy) then begin
+  
+  r = { massBins            : massBins                    ,$
+        binSizeLog          : binSizeLog                  ,$
+        binLocEnt           : fltarr(nEntBins)            ,$
+        hGalEntMax          : fltarr(nMassBins,nEntBins)  ,$
+        hStarsEntMax        : fltarr(nMassBins,nEntBins)  ,$
+        hBothEntMax         : fltarr(nMassBins,nEntBins)  ,$
+        hGmemEntMax         : fltarr(nMassBins,nEntBins)  ,$
+        hGalGlobalEntMax    : fltarr(nEntBins)            ,$
+        hStarsGlobalEntMax  : fltarr(nEntBins)            ,$
+        hBothGlobalEntMax   : fltarr(nEntBins)            ,$
+        hGmemGlobalEntMax   : fltarr(nEntBins)             }
+        
+  for j=0,n_elements(massBins)-2 do begin
+  
+    w_gal   = where(parentMass.gal gt massBins[j] and parentMass.gal le massBins[j+1],count1)
+    w_gmem  = where(parentMass.gmem gt massBins[j] and parentMass.gmem le massBins[j+1],count2)
+    w_stars = where(parentMass.stars gt massBins[j] and parentMass.stars le massBins[j+1],count3)
+    
+    if count1 eq 0 or count2 eq 0 or count3 eq 0 then begin
+      print,'WARNING: Empty halo mass bin.' ; empty
+      continue
+    endif
+    
+    ; binEnt: log(entmax)
+    r.hGalEntMax[j,*]   = histogram(maxEnt.gal[w_gal],binsize=binsizeLog,min=mmEnt[0],max=mmEnt[1])
+    r.hStarsEntMax[j,*] = histogram(maxEnt.stars[w_stars],binsize=binsizeLog,min=mmEnt[0],max=mmEnt[1])
+    r.hBothEntMax[j,*]  = r.hGalEntMax[j,*] + r.hStarsEntMax[j,*]
+    r.hGmemEntMax[j,*]  = histogram(maxEnt.gmem[w_gmem],binsize=binsizeLog,min=mmEnt[0],max=mmEnt[1])
+    
+  endfor
+  
+  ; binTemp: global tmax
+  r.hGalGlobalEntMax[*]   = histogram(maxEnt.gal,binsize=binsizeLog,min=mmEnt[0],max=mmEnt[1])
+  r.hStarsGlobalEntMax[*] = histogram(maxEnt.stars,binsize=binsizeLog,min=mmEnt[0],max=mmEnt[1])
+  r.hBothGlobalEntMax[*]  = r.hGalGlobalEntMax[*] + r.hStarsGlobalEntMax[*]
+  r.hGmemGlobalEntMax[*]  = histogram(maxEnt.gmem,binsize=binsizeLog,min=mmEnt[0],max=mmEnt[1],loc=loc)
+  
+  r.binLocEnt = loc + binSizeLog*0.5 ; save temp [K] midbins
 
+  endif ;binEnt
+        
   ; save
   save,r,filename=saveFilename
   print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
@@ -242,6 +276,11 @@ function binTmaxHisto2D, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=T
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
+  
+  if sP.gfmWinds eq 1 and (accMode eq 'smooth' or accMode eq 'stripped' or accMode eq 'clumpy') then begin
+    print,'Switching [' + accMode + '] to [' + accMode + '_rec] for GFM run.'
+    accMode = accMode + '_rec'
+  endif
   
   ; config
   binSizeRatio = 0.15 / (sP.res/128)
@@ -412,12 +451,12 @@ function binTmaxHisto2D, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=T
   if sP.trMCPerCell eq 0 then massWt = sP.targetGasMass * units.UnitMass_in_Msun
   if sP.trMCPerCell eq -1 then message,'error'
   
-  r.h2_tmax_gal *= massWt & r.h2_tmax_stars *= massWt & r.h2_tmax_gmem *= massWt
+  r.h2_tmax_gal    *= massWt & r.h2_tmax_stars    *= massWt & r.h2_tmax_gmem    *= massWt
   r.h2_tvircur_gal *= massWt & r.h2_tvircur_stars *= massWt & r.h2_tvircur_gmem *= massWt
   r.h2_tviracc_gal *= massWt & r.h2_tviracc_stars *= massWt & r.h2_tviracc_gmem *= massWt
   
   ; form composite histograms
-  r.h2_tmax_both = r.h2_tmax_gal + r.h2_tmax_stars
+  r.h2_tmax_both    = r.h2_tmax_gal    + r.h2_tmax_stars
   r.h2_tvircur_both = r.h2_tvircur_gal + r.h2_tvircur_stars
   r.h2_tviracc_both = r.h2_tviracc_gal + r.h2_tviracc_stars
   
@@ -438,12 +477,13 @@ pro plotTmaxHistos
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  runs       = ['feedback','feedback_noZ','feedback_noFB']
+  runs       = ['feedback','feedback_noZ','feedback_noFB'] ;['gadget','tracer','feedback']
   redshift   = 2.0
   res        = 256
   sgSelect   = 'pri'
   timeWindow = 1000.0 ; Myr
   accModes   = ['smooth'] ;['all','smooth','clumpy','stripped']
+  entropy    = 0 ; do temp or entropy plots?
   
   ; plot config
   lines   = [0,1] ; gal,gmem
@@ -459,7 +499,8 @@ pro plotTmaxHistos
     foreach run,runs,i do begin
       sP  = mod_struct(sP, 'sP'+str(i), simParams(res=res,run=run,redshift=redshift))
       bth = mod_struct(bth, 'bth'+str(i), $
-        binTmaxHistos(sP=sP.(i),sgSelect=sgSelect,accMode=accMode,timeWindow=timeWindow))
+        binTmaxHistos(sP=sP.(i),sgSelect=sgSelect,accMode=accMode,$
+                      timeWindow=timeWindow,entropy=entropy))
     endforeach
     
     ; strings
@@ -475,6 +516,17 @@ pro plotTmaxHistos
 
     plotStr += str(res) + '_' + str(sP.(0).snap) + '_tw' + twStr + '_am-' + accMode
     
+    x0 = 0.15 & x1 = 0.42 & x2 = 0.69 & x3 = 0.96
+    y0 = 0.15 & y1 = 0.55 & y2 = 0.95
+    pos = list( [x0,y1,x1,y2] ,$ ; ul
+                [x1,y1,x2,y2] ,$ ; uc
+                [x2,y1,x3,y2] ,$ ; ur
+                [x0,y0,x1,y1] ,$ ; ll
+                [x1,y0,x2,y1] ,$ ; lc
+                [x2,y0,x3,y1] )  ; lr
+    
+    if entropy eq 0 then begin
+    
     ; plot (1) - 3x2 mass bins separated out and each panel with gadget+arepo, GAL vs. gmem (VIR)
     start_PS, sP.(0).plotPath + 'tmax_3x2_gal_tviracc.'+plotStr+'.eps', /big
       !p.thick += 1
@@ -482,15 +534,6 @@ pro plotTmaxHistos
       yrange = [6e-4,1.0]
       
       xtickv = [-2.0,-1.0,0.0,1.0]
-      
-      x0 = 0.15 & x1 = 0.42 & x2 = 0.69 & x3 = 0.96
-      y0 = 0.15 & y1 = 0.55 & y2 = 0.95
-      pos = list( [x0,y1,x1,y2] ,$ ; ul
-                  [x1,y1,x2,y2] ,$ ; uc
-                  [x2,y1,x3,y2] ,$ ; ur
-                  [x0,y0,x1,y1] ,$ ; ll
-                  [x1,y0,x2,y1] ,$ ; lc
-                  [x2,y0,x3,y1] )  ; lr
       
       for j=0,n_elements(bth.(0).massBins)-2 do begin
         
@@ -542,15 +585,6 @@ pro plotTmaxHistos
       
       xtickv = [-2.0,-1.0,0.0,1.0]
       
-      x0 = 0.15 & x1 = 0.42 & x2 = 0.69 & x3 = 0.96
-      y0 = 0.15 & y1 = 0.55 & y2 = 0.95
-      pos = list( [x0,y1,x1,y2] ,$ ; ul
-                  [x1,y1,x2,y2] ,$ ; uc
-                  [x2,y1,x3,y2] ,$ ; ur
-                  [x0,y0,x1,y1] ,$ ; ll
-                  [x1,y0,x2,y1] ,$ ; lc
-                  [x2,y0,x3,y1] )  ; lr
-      
       for j=0,n_elements(bth.(0).massBins)-2 do begin
         
         if j eq 0 or j eq 3 then ytickname = '' else ytickname = replicate(' ',10)
@@ -594,7 +628,7 @@ pro plotTmaxHistos
     end_PS
     
     ; plot (3) - 3x2 mass bins separated out and each panel with gadget+arepo, GAL vs. gmem (CONST)
-    start_PS, sP.(0).plotPath + 'tmax_3x2.'+plotStr+'.eps', /big
+    start_PS, sP.(0).plotPath + 'tmax_3x2_gal_tmax.'+plotStr+'.eps', /big
       !p.thick += 1
       xrange = [3.8,7.2]
       yrange = [6e-4,1.0]
@@ -642,6 +676,60 @@ pro plotTmaxHistos
       cgText,mean([x0,x3]),0.05,textoidl("log ( T_{max} )"),alignment=0.5,/normal
       
     end_PS
+    
+    endif else begin ; entropy=0
+    
+    ; plot (1) - 3x2 mass bins separated out and each panel with gadget+arepo, GAL vs. gmem
+    start_PS, sP.(0).plotPath + 'entMax_3x2_gal_tmax.'+plotStr+'.eps', /big
+      !p.thick += 1
+      xrange = [5.0,11.0]
+      yrange = [6e-4,1.0]
+      
+      xtickv = [6.0,8.0,10.0]
+      
+      for j=0,n_elements(bth.(0).massBins)-2 do begin
+        
+        if j eq 0 or j eq 3 then ytickname = '' else ytickname = replicate(' ',10)
+        if j ge 3 then xtickname = '' else xtickname = replicate(' ',10)
+        if j gt 0 then noerase = 1 else noerase = 0
+        
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,pos=pos[j],$
+          ytitle="",xtitle="",xticks=2,xtickv=xtickv,xtickname=xtickname,ytickname=ytickname,noerase=noerase       
+        
+        cgPlot,[0,0],[8e-4,0.25],line=2,color=cgColor('black'),thick=!p.thick-0.0,/overplot
+        
+        for i=0,n_tags(sP)-1 do begin
+          ; gal
+          hist = bth.(i).hGalEntMax[j,*]
+          cgPlot,bth.(i).binLocEnt,float(hist)/total(hist),line=lines[0],color=sP.(i).colors[cInd],/overplot
+
+          ; gmem
+          hist = bth.(i).hGmemEntMax[j,*]
+          cgPlot,bth.(i).binLocEnt,float(hist)/total(hist),line=lines[1],color=sP.(i).colors[cInd],/overplot
+        endfor
+        
+        ; legends
+        massBinStr = string(bth.(0).massBins[j],format='(f4.1)') + ' < log(M) < ' + $
+                     string(bth.(0).massBins[j+1],format='(f4.1)')
+  
+        cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.0,alignment=0.5
+            
+        if j eq 0 then $
+          legend,simNames,textcolors=simColors,box=0,position=[xrange[1],0.2],/right,charsize=!p.charsize-0.27
+      
+      endfor
+      
+      legend,['central galaxy','halo atmosphere'],linestyle=[0,1],$
+        color=cgColor('dark gray'),textcolors=['dark gray','dark gray'],$
+        linesize=0.25,box=0,position=[0.08,0.09],/normal,charsize=!p.charsize-0.2
+      
+      ; axis labels
+      cgText,0.05,mean([y0,y2]),"Gas Mass Fraction",alignment=0.5,orientation=90.0,/normal
+      cgText,mean([x0,x3]),0.05,textoidl("log ( S_{max} ) [K cm^{2 }]"),alignment=0.5,/normal
+      
+    end_PS
+    
+    endelse
   
   endforeach ; accModes
   stop
@@ -655,12 +743,12 @@ pro plotTmaxHisto2Db
   units = getUnits()
   
   ; config
-  runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
+  runs       = ['feedback','feedback_noZ','feedback_noFB'] ;['gadget','tracer','feedback']
   sgSelect   = 'pri'
   timeWindow = 1000.0 ; Myr
   redshift   = 2.0
-  res        = 512
-  accModes   = ['smooth'] ;['all','smooth','clumpy','stripped']  
+  res        = 256
+  accModes   = ['smooth'] ;['all','smooth','clumpy','stripped','recycled']  
   
   ; plot config
   exp    = 0.5   ; gamma exponent for non-linear color scaling
@@ -684,20 +772,22 @@ pro plotTmaxHisto2Db
     plotStr = accMode+'.'+sP1.plotPrefix+'.'+sP2.plotPrefix+'.'+sP3.plotPrefix+'.'+$
       str(res)+'_'+str(sP1.snap)
   
-    ; plot (1) - two runs side by side (gal tmax)
-    start_PS, sP1.plotPath + 'temp2d_comp_tmax_both.'+plotStr+'.eps', xs=14.0, ys=4.5
+    ; plot (1) - three runs side by side (gal tmax)
+    start_PS, sP1.plotPath + 'temp2d_comp_tmax_gal.'+plotStr+'.eps', xs=14.0, ys=4.5
           
       loadColorTable, 'helix', /reverse      
       ytitle = textoidl('log ( T_{max} ) [K]')
       
-      ; first run histogram
-      h2mt = hh1.h2_tmax_gal
+      ; color range (same for all three panels, NOT used)
+      ;crange = minmax([hh1.h2_tmax_gal,hh2.h2_tmax_gal,hh3.h2_tmax_gal]) * [2.0,0.7]
+      
+      ; first run histograms
+      h2mt = hh1.h2_tmax_gal ;hh1.h2_tviracc_gal
       yrange = [hh1.mmTemp[0],(round(hh1.mmTemp[1])*10)/10]
       
-      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
-           xtitle="",ytitle=ytitle,$
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,xtitle="",ytitle=ytitle,$;range=crange^exp,$
            barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=hh1.mmMass,yrange=yrange,$
-           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.08,0.18,0.34,0.94]
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.09,0.18,0.35,0.94]
            
       ; temp lines and legend
       tvir_vals = alog10(codeMassToVirTemp(10.0^hh1.mmMass/units.UnitMass_in_Msun,sP=sP1))
@@ -714,22 +804,11 @@ pro plotTmaxHisto2Db
       yrange = [hh2.mmTemp[0],(round(hh2.mmTemp[1])*10)/10]
       
       loadColorTable, 'helix', /reverse
-      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
-           xtitle="",ytitle="",$
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,xtitle="",ytitle="",$;range=crange^exp,$
            barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=hh2.mmMass,yrange=yrange,$
-           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.36,0.18,0.62,0.94],$
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.39,0.18,0.65,0.94],$
            ytickname=replicate(' ',10),/noerase
-           
-      ; colorbar
-      barvals = findgen(ndivs+1)/ndivs*(max(h2mt^exp)-min(h2mt^exp)) + min(h2mt^exp)
-      ticknames = textoidl(str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)')))
-      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
-      
-      loadColorTable, 'helix', /reverse
-      cgColorbar,bottom=1,range=minmax(h2mt),position=[0.91,0.18,0.935,0.94],$
-         /vertical,/right,title="",$
-         divisions=ndivs,ticknames=ticknames,ncolors=255,charsize=!p.charsize-0.2
-           
+
       ; temp lines
       tvir_vals = alog10(codeMassToVirTemp(10.0^hh2.mmMass/units.UnitMass_in_Msun,sP=sP2))
       
@@ -742,11 +821,20 @@ pro plotTmaxHisto2Db
       yrange = [hh3.mmTemp[0],(round(hh3.mmTemp[1])*10)/10]
       
       loadColorTable, 'helix', /reverse
-      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,clip=-1,$
-           xtitle="",ytitle="",$
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,xtitle="",ytitle="",$;range=crange^exp,$
            barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=hh3.mmMass,yrange=yrange,$
-           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.64,0.18,0.90,0.94],$
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.69,0.18,0.95,0.94],$
            ytickname=replicate(' ',10),/noerase
+           
+      ; colorbar
+      ;barvals = findgen(ndivs+1)/ndivs*(crange[1]^exp-crange[0]^exp) + crange[0]^exp
+      ;ticknames = textoidl(str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)')))
+      ;ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
+      
+      ;loadColorTable, 'helix', /reverse
+      ;cgColorbar,bottom=1,range=minmax(h2mt),position=[0.91,0.18,0.935,0.94],$
+      ;   /vertical,/right,title="",$
+      ;   divisions=ndivs,ticknames=ticknames,ncolors=255,charsize=!p.charsize-0.2
            
       ; temp lines
       tvir_vals = alog10(codeMassToVirTemp(10.0^hh3.mmMass/units.UnitMass_in_Msun,sP=sP3))
@@ -756,12 +844,83 @@ pro plotTmaxHisto2Db
       cgText,hh3.mmMass[0]+0.15,Tc_val+0.15,sP3.simName,color=sP3.colors[cInd],charsize=!p.charsize-0.2
            
       ; labels
-      cgText,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),(0.08+0.89)/2,0.04,alignment=0.5,/normal
-      cgText,textoidl("M_{gas,tr} [_{ }log h^{-1} M_{sun }]"),0.98,(0.18+0.94)/2,alignment=0.5,orientation=90,/normal
+      cgText,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),(0.09+0.95)/2,0.04,alignment=0.5,/normal
+      ;cgText,textoidl("M_{gas,tr} [_{ }log h^{-1} M_{sun }]"),0.98,(0.18+0.94)/2,alignment=0.5,orientation=90,/normal
                 
     end_PS
 
+    ; plot (2) - three runs side by side (gal tmax / tviracc)
+    start_PS, sP1.plotPath + 'temp2d_comp_tmax_tviracc_gal.'+plotStr+'.eps', xs=14.0, ys=4.5
+          
+      loadColorTable, 'helix', /reverse      
+      ytitle = textoidl('log ( T_{max} / T_{vir,acc} )')
+      
+      ; color range (same for all three panels, NOT used)
+      ;crange = minmax([hh1.h2_tmax_gal,hh2.h2_tmax_gal,hh3.h2_tmax_gal]) * [2.0,0.7]
+      
+      ; first run histograms
+      h2mt = hh1.h2_tviracc_gal
+      yrange = [hh1.mmRatio[0],(round(hh1.mmRatio[1])*10)/10]
+      
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,xtitle="",ytitle=ytitle,$;range=crange^exp,$
+           barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=hh1.mmMass,yrange=yrange,$
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.09,0.18,0.35,0.94]
+           
+      ; temp lines
+      tvir_vals = alog10(10.0^Tc_val / codeMassToVirTemp(10.0^hh1.mmMass/units.UnitMass_in_Msun,sP=sP1))
+      
+      cgPlot,hh1.mmMass,tvir_vals,line=lines[0],color=cgColor(colors[1]),/overplot
+      cgPlot,hh1.mmMass+[0.1,-0.1],[0.0,0.0],line=lines[1],color=cgColor(colors[1]),/overplot
+      cgText,hh1.mmMass[0]+0.15,yrange[0]+0.15,sP1.simName,color=sP1.colors[cInd],charsize=!p.charsize-0.2
+           
+      ; second run histogram
+      h2mt = hh2.h2_tviracc_gal
+      yrange = [hh2.mmRatio[0],(round(hh2.mmRatio[1])*10)/10]
+      
+      loadColorTable, 'helix', /reverse
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,xtitle="",ytitle="",$;range=crange^exp,$
+           barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=hh2.mmMass,yrange=yrange,$
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.39,0.18,0.65,0.94],$
+           ytickname=replicate(' ',10),/noerase
+
+      ; temp lines
+      tvir_vals = alog10(10.0^Tc_val / codeMassToVirTemp(10.0^hh2.mmMass/units.UnitMass_in_Msun,sP=sP2))
+      
+      cgPlot,hh2.mmMass,tvir_vals,line=lines[0],color=cgColor(colors[1]),/overplot
+      cgPlot,hh2.mmMass+[0.1,-0.1],[0.0,0.0],line=lines[1],color=cgColor(colors[1]),/overplot
+      cgText,hh2.mmMass[0]+0.15,yrange[0]+0.15,sP2.simName,color=sP2.colors[cInd],charsize=!p.charsize-0.2
+           
+      ; third run histogram
+      h2mt = hh3.h2_tviracc_gal
+      yrange = [hh3.mmRatio[0],(round(hh3.mmRatio[1])*10)/10]
+      
+      loadColorTable, 'helix', /reverse
+      tvim,h2mt^exp,pcharsize=!p.charsize,scale=0,xtitle="",ytitle="",$;range=crange^exp,$
+           barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=hh3.mmMass,yrange=yrange,$
+           xticks=3,xtickv=[9.0,10.0,11.0,12.0],position=[0.69,0.18,0.95,0.94],$
+           ytickname=replicate(' ',10),/noerase
+           
+      ; temp lines
+      tvir_vals = alog10(10.0^Tc_val / codeMassToVirTemp(10.0^hh3.mmMass/units.UnitMass_in_Msun,sP=sP3))
+      
+      cgPlot,hh3.mmMass,tvir_vals,line=lines[0],color=cgColor(colors[1]),/overplot
+      cgPlot,hh3.mmMass+[0.1,-0.1],[0.0,0.0],line=lines[1],color=cgColor(colors[1]),/overplot
+      cgText,hh3.mmMass[0]+0.15,yrange[0]+0.15,sP3.simName,color=sP3.colors[cInd],charsize=!p.charsize-0.2
+           
+      ; legend
+      legend,textoidl(['T_c = 5.5','T_{vir }(z='+str(fix(redshift))+')']),linestyle=lines,$
+        linesize=0.3,position=[12.0,-1.35],box=0,spacing=!p.charsize+0.5,/right
+           
+      ; labels
+      cgText,textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]"),(0.09+0.95)/2,0.04,alignment=0.5,/normal
+                
+    end_PS
+    
+    
+    
   endforeach    
+  
+  stop
   
 end
 
@@ -801,7 +960,7 @@ pro plotTmaxHisto2D
     plotStr = accMode+'.'+sP1.plotPrefix+'.'+sP2.plotPrefix+'.'+str(res)+'_'+str(sP1.snap)
   
     ; plot (1) - two runs side by side (gal tmax)
-    start_PS, sP1.plotPath + 'temp2d_comp_tmax_both.'+plotStr+'.eps', xs=9.0, ys=4.0
+    start_PS, sP1.plotPath + 'temp2d_comp_tmax_gal.'+plotStr+'.eps', xs=9.0, ys=4.0
           
       loadColorTable, 'helix', /reverse      
       ytitle = textoidl('log ( T_{max} ) [K]')
@@ -860,7 +1019,7 @@ pro plotTmaxHisto2D
     end_PS
     
     ; plot (2) - two runs side by side (gal tviracc)
-    start_PS, sP1.plotPath + 'temp2d_comp_tviracc_both.'+plotStr+'.eps', xs=9.0, ys=4.0
+    start_PS, sP1.plotPath + 'temp2d_comp_tviracc_gal.'+plotStr+'.eps', xs=9.0, ys=4.0
           
       loadColorTable, 'helix', /reverse      
       ytitle = textoidl('log ( T_{max} / T_{vir,acc} )')

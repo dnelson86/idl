@@ -1,6 +1,6 @@
 ; accretionMode.pro
 ; gas accretion project - past substructure history of gas elements
-; dnelson apr.2013
+; dnelson jun.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionMode(): for eaching gas particle/tracer with a recorded accretion time, starting at some 
@@ -400,11 +400,13 @@ function accretionMode, sP=sP
       tr_parids      = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
       
       ; gal: find recycled and override bracketSnap using earliest rvir crossing
+      ; changed june 2013: so that 'secondary' modes for recycled tracers are consistent, 
+      ; make the determination at the latest rvir crossing as normal
       galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, tr_parids=tr_parids, gasIDs=galcat.galaxyIDs[mt.galcatSub.gal])
       w = where(tr_windcounter[galcat_trinds[gal_w_at]] gt 0,count1)
       if count1 gt 0 then begin
         r.accMode_gal[w] = 10
-        bracketSnap.gal[w] = value_locate(snapTimes,at.accTime_gal[-1,gal_w_at[w]])
+        ;bracketSnap.gal[w] = value_locate(snapTimes,at.accTime_gal[-1,gal_w_at[w]])
       endif
       
       ; gmem
@@ -412,7 +414,7 @@ function accretionMode, sP=sP
       w = where(tr_windcounter[galcat_trinds[gmem_w_at]] gt 0,count2)
       if count2 gt 0 then begin
         r.accMode_gmem[w] = 10
-        bracketSnap.gmem[w] = value_locate(snapTimes,at.accTime_gmem[-1,gmem_w_at[w]])
+        ;bracketSnap.gmem[w] = value_locate(snapTimes,at.accTime_gmem[-1,gmem_w_at[w]])
       endif
       
       ; stars
@@ -420,7 +422,7 @@ function accretionMode, sP=sP
       w = where(tr_windcounter[galcat_trinds[stars_w_at]] gt 0,count3)
       if count3 gt 0 then begin
         r.accMode_stars[w] = 10
-        bracketSnap.stars[w] = value_locate(snapTimes,at.accTime_stars[-1,stars_w_at[w]])
+        ;bracketSnap.stars[w] = value_locate(snapTimes,at.accTime_stars[-1,stars_w_at[w]])
       endif
       
       tr_parids = !NULL
@@ -749,6 +751,12 @@ function accModeInds, at=at, sP=sP, accMode=accMode, mask=mask
       gmem_w  = gmem_w[where(am.accMode_gmem eq 1,count_gmem)]
       stars_w = stars_w[where(am.accMode_stars eq 1,count_stars)]
     endif
+    if accMode eq 'smooth_rec' then begin
+      gal_w   = gal_w[where(am.accMode_gal eq 1 or am.accMode_gal eq 11,count_gal)]
+      gmem_w  = gmem_w[where(am.accMode_gmem eq 1 or am.accMode_gmem eq 11,count_gmem)]
+      stars_w = stars_w[where(am.accMode_stars eq 1 or am.accMode_stars eq 11,count_stars)]
+    endif
+    
     if accMode eq 'bclumpy' then begin
       gal_w   = gal_w[where(am.accMode_gal eq 3,count_gal)]
       gmem_w  = gmem_w[where(am.accMode_gmem eq 3,count_gmem)]
@@ -759,17 +767,33 @@ function accModeInds, at=at, sP=sP, accMode=accMode, mask=mask
       gmem_w  = gmem_w[where(am.accMode_gmem eq 2,count_gmem)]
       stars_w = stars_w[where(am.accMode_stars eq 2,count_stars)]
     endif
+    
     if accMode eq 'clumpy' then begin
       gal_w   = gal_w[where(am.accMode_gal eq 2 or am.accMode_gal eq 3,count_gal)]
       gmem_w  = gmem_w[where(am.accMode_gmem eq 2 or am.accMode_gmem eq 3,count_gmem)]
       stars_w = stars_w[where(am.accMode_stars eq 2 or am.accMode_stars eq 3,count_stars)]
     endif
+    if accMode eq 'clumpy_rec' then begin
+      gal_w   = gal_w[where(am.accMode_gal eq 2 or am.accMode_gal eq 3 or $
+                            am.accMode_gal eq 12 or am.accMode_gal eq 13,count_gal)]
+      gmem_w  = gmem_w[where(am.accMode_gmem eq 2 or am.accMode_gmem eq 3 or $
+                             am.accMode_gmem eq 12 or am.accMode_gmem eq 13,count_gmem)]
+      stars_w = stars_w[where(am.accMode_stars eq 2 or am.accMode_stars eq 3 or $
+                              am.accMode_stars eq 12 or am.accMode_stars eq 13,count_stars)]
+    endif
+    
     if accMode eq 'stripped' then begin
       gal_w   = gal_w[where(am.accMode_gal eq 4,count_gal)]
       gmem_w  = gmem_w[where(am.accMode_gmem eq 4,count_gmem)]
       stars_w = stars_w[where(am.accMode_stars eq 4,count_stars)]
     endif
-    if accMode eq 'recycled' then begin
+    if accMode eq 'stripped_rec' then begin
+      gal_w   = gal_w[where(am.accMode_gal eq 4 or am.accMode_gal eq 14,count_gal)]
+      gmem_w  = gmem_w[where(am.accMode_gmem eq 4 or am.accMode_gmem eq 14,count_gmem)]
+      stars_w = stars_w[where(am.accMode_stars eq 4 or am.accMode_stars eq 14,count_stars)]
+    endif
+    
+    if accMode eq 'recycled' then begin ; recycled+any other mode
       gal_w   = gal_w[where(am.accMode_gal ge 10,count_gal)]
       gmem_w  = gmem_w[where(am.accMode_gmem ge 10,count_gmem)]
       stars_w = stars_w[where(am.accMode_stars ge 10,count_stars)]

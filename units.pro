@@ -284,6 +284,40 @@ function convertCoolingRatetoCGS, coolrate, h=h
   return, coolrate_cgs
 end
 
+; convertTracerEntToCGS(): fix cosmological/unit system in TRACER_MC.MaxEnt
+
+function convertTracerEntToCGS, ent, gamma=gamma, log=log, sP=sP
+
+  forward_function snapNumToRedshift
+  units = getUnits()
+  
+  ; adiabatic index default (valid for ComparisonProject)
+  if not keyword_set(gamma) then gamma = 5.0/3.0
+  
+  atime = snapNumToRedshift(sP=sP,/time)
+  a3inv = 1.0 / (atime*atime*atime)
+  
+  ; NOTE: dens=dens*a3inv but in the tracers only converted in dens^gamma not in the pressure
+  ; have to make this adjustment in loading tracers
+  ; for SFR, for gas and tracers, Pressure = GAMMA_MINUS1 * localSphP[i].Density * localSphP[i].Utherm;
+  ; for TRACER_MC, EntMax = SphP.Pressure / pow(SphP.Density * All.cf_a3inv, GAMMA);
+  
+  ; fix Pressure
+  ent *= a3inv * float(units.UnitPressure_in_cgs / units.boltzmann)
+  
+  ; fix Density
+  ent /= float(units.UnitDensity_in_cgs/units.mass_proton)^gamma
+  
+  ; convert to log(entropy) if requested
+  if keyword_set(log) then begin
+    w = where(ent eq 0.0,count)
+    if (count ne 0) then ent[w] = 1.0
+    ent = alog10(ent)
+  endif
+  
+  return, ent ; [K cm^2]
+end
+
 ; calcEntropyCGS(): calculate entropy as P/rho^gamma (rho is converted from comoving to physical)
 
 function calcEntropyCGS, u, dens, gamma=gamma, log=log, sP=sP
@@ -296,10 +330,8 @@ function calcEntropyCGS, u, dens, gamma=gamma, log=log, sP=sP
   
   atime = snapNumToRedshift(sP=sP,/time)
   a3inv = 1.0 / (atime*atime*atime)
-  
-  ; NOTE: dens=dens*a3inv but in the tracers only converted in dens^gamma not in the pressure
-  ; should make this adjustment in loading tracers, we do not match this definition here
-  
+
+  ; cosmological and unit system conversions
   pressure = (gamma-1.0) * u * dens * a3inv * float(units.UnitPressure_in_cgs / units.boltzmann) ; [K/cm^3]
   entropy  = pressure / ( (dens * float(units.UnitDensity_in_cgs/units.mass_proton)*a3inv)^gamma ) ; [K cm^2]
   

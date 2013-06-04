@@ -377,36 +377,36 @@ pro redshift_axis, xRange, yRange, ylog=ylog, sP=sP, dotted=dotted, zTicknames=z
   yTextOff = (yRange[1]-yRange[0]) / 50.0 * logFac
 
   if (not keyword_set(zTicknames)) then $
-    zTicknames = ['30','6','4','3','2','1','0.5','0.25','0']
+    zTicknames = ['30','6','5','4','3','2','1','0.5','0.25','0']
   nZ = n_elements(zTicknames)
   
   zXPos = fltarr(nZ)
   
   ; plot "maximum" redshift label
   if (xRange[0] le 0.0) then $
-    fsc_text,0.0,yRange[1]+yTextOff,zTicknames[0],alignment=0.5
+    cgText,0.0,yRange[1]+yTextOff,zTicknames[0],alignment=0.5
   
   ; skip z=30 (highest) at t=0
   for i=1,nZ-1 do begin
-    if (sP.snap ne -1) then begin ;x-axis in snapshot number
+    if sP.snap eq -1 then begin ;x-axis in snapshot number
       zXPos[i] = redshiftToSnapNum(float(zTicknames[i]),sP=sP)
     endif else begin ;x-axis in time [gyr]
-      zXPos[i] = redshiftToAge(float(zTicknames[i]))
+      zXPos[i] = redshiftToAgeFlat(float(zTicknames[i]))
     endelse
     
     ; plot tick mark and label if inside plotrange
     if (zXPos[i] ge xRange[0] and zXPos[i] le xRange[1]) then begin
-      fsc_plot,[zXPos[i],zXPos[i]],[yRange[1],yRange[1]-yTickLen],/overplot
-      fsc_text,zXPos[i],yRange[1]+yTextOff,zTicknames[i],alignment=0.5
+      cgPlot,[zXPos[i],zXPos[i]],[yRange[1],yRange[1]-yTickLen],/overplot
+      cgText,zXPos[i],yRange[1]+yTextOff,zTicknames[i],alignment=0.5
     endif
     
     ; plot vertical dotted line at each redshift mark if requested
     if keyword_set(dotted) then $
-      fsc_plot,[zXPos[i],zXPos[i]],yRange,line=dotted,/overplot,thick=!p.thick-0.5
+      cgPlot,[zXPos[i],zXPos[i]],yRange,line=dotted,/overplot,thick=!p.thick-0.5
   endfor
   
-  fsc_plot,xRange,[yRange[1],yRange[1]],/overplot
-  fsc_text,0.5,0.94,"Redshift",/normal
+  cgPlot,xRange,[yRange[1],yRange[1]],/overplot
+  ;cgText,0.5,0.94,"Redshift",/normal
 
 end
 
@@ -432,7 +432,7 @@ pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted
   
   ; plot "maximum" redshift label
   if (xRange[0] le 0.0) then $
-    fsc_text,0.0,yRange[1]+yTextOff,zTicknames[0],alignment=0.5
+    cgText,0.0,yRange[1]+yTextOff,zTicknames[0],alignment=0.5
   
   ; skip t=0 (highest) at z=inf (?)
   for i=1,nZ-1 do begin
@@ -441,17 +441,17 @@ pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted
     
     ; plot tick mark and label if inside plotrange
     if (zXPos[i] le xRange[0] and zXPos[i] ge xRange[1]) then begin
-      fsc_plot,[zXPos[i],zXPos[i]],[yRange[1],yRange[1]-yTickLen],/overplot
-      fsc_text,zXPos[i],yRange[1]+yTextOff,zTicknames[i],alignment=0.5
+      cgPlot,[zXPos[i],zXPos[i]],[yRange[1],yRange[1]-yTickLen],/overplot
+      cgText,zXPos[i],yRange[1]+yTextOff,zTicknames[i],alignment=0.5
     endif
     
     ; plot vertical dotted line at each redshift mark if requested
     if keyword_set(dotted) then $
-      fsc_plot,[zXPos[i],zXPos[i]],yRange,line=dotted,/overplot,thick=!p.thick-0.5
+      cgPlot,[zXPos[i],zXPos[i]],yRange,line=dotted,/overplot,thick=!p.thick-0.5
   endfor
   
-  fsc_plot,xRange,[yRange[1],yRange[1]],/overplot
-  fsc_text,(xRange[0]-xRange[1])/2.0,yRange[1]+yTextOff*5.0,"Time [Gyr]",alignment=0.5
+  cgPlot,xRange,[yRange[1],yRange[1]],/overplot
+  cgText,(xRange[0]-xRange[1])/2.0,yRange[1]+yTextOff*5.0,"Time [Gyr]",alignment=0.5
 
 end
 

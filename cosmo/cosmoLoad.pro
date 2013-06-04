@@ -1595,8 +1595,6 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     if (partType ne 3 and partType ne 2) then message,'Error: Fluid quantities are tracerMC/Vel only!'
   endif
   
-  if field eq 'tracer_maxent' then print,'WARNING: a3inv factor!' ; temp warning
-  
   if (fieldName eq '') then begin
     print,'ERROR: Requested field -- ' + strlowcase(field) + ' -- not recognized!'
     stop
@@ -1726,20 +1724,22 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
           'velz': fN = 2
           'cmz' : fN = 2
           
-          'tracer_maxtemp'         : fN = 0
-          'tracer_maxtemp_time'    : fN = 1
-          'tracer_maxtemp_dens'    : fN = 2
-          'tracer_maxdens'         : fN = 3
-          'tracer_maxdens_time'    : fN = 4
-          'tracer_maxmachnum'      : fN = 5
-          'tracer_maxent'          : fN = 6
-          'tracer_maxent_time'     : fN = 7
-          'tracer_laststartime'    : fN = 8
-          'tracer_windcounter'     : fN = 9
-          'tracer_exchcounter'     : fN = 10
-          'tracer_exchdist'        : fN = 11
-          'tracer_exchdisterr'     : fN = 12
+          'tracer_maxtemp'         : fN = sP.trMCFields[0]
+          'tracer_maxtemp_time'    : fN = sP.trMCFields[1]
+          'tracer_maxtemp_dens'    : fN = sP.trMCFields[2]
+          'tracer_maxdens'         : fN = sP.trMCFields[3]
+          'tracer_maxdens_time'    : fN = sP.trMCFields[4]
+          'tracer_maxmachnum'      : fN = sP.trMCFields[5]
+          'tracer_maxent'          : fN = sP.trMCFields[6]
+          'tracer_maxent_time'     : fN = sP.trMCFields[7]
+          'tracer_laststartime'    : fN = sP.trMCFields[8]
+          'tracer_windcounter'     : fN = sP.trMCFields[9]
+          'tracer_exchcounter'     : fN = sP.trMCFields[10]
+          'tracer_exchdist'        : fN = sP.trMCFields[11]
+          'tracer_exchdisterr'     : fN = sP.trMCFields[12]
         endcase
+        
+        if fN eq -1 then message,'Error: Apparently requested trMC field we did not save!'
         
         ; multiDimSlice not yet unified with inds/indRange
         if keyword_set(inds) or keyword_set(indRange) then message,'Error: no multidim yet with inds.'
