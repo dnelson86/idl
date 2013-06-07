@@ -906,6 +906,9 @@ function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
   
   ; ----- selection subset -----
   
+  if keyword_set(gcIDList) and keyword_set(accretionTimeSubset) then $
+    message,'Error: since we take accModeInds must subset all of galcat, not just one/few halos.'
+  
   ; select primary,secondary,or all subhalos subject to minimum number of particles
   if ~keyword_set(gcIDList) then gcIDList = gcIDList(sP=sP,select=select)
 
@@ -1112,21 +1115,14 @@ function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
   endif
   
   if keyword_set(tracksFluid) then begin
-    ; make indices for mergerTreeSubset
-    maxt_gal   = maxTemps(sP=sP,/loadAllTRGal)
-    maxt_gmem  = maxTemps(sP=sP,/loadAllTRGmem)
-    maxt_stars = maxTemps(sP=sP,/loadAllTRStars)
-      
-    galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList,$
-                   child_counts={gal:maxt_gal.child_counts,gmem:maxt_gmem.child_counts,stars:maxt_stars.child_counts})
-                       
-    maxt_gal = !NULL & maxt_gmem = !NULL & maxt_stars = !NULL
+    ; make indices for mergerTreeSubset (tracksFluid stored only for mtS)  
+    mtsInds = mergerTreeINDList(sP=sP,galcat=galcat,gcIDList=gcIDList)
     
     ; take accretionTime subset of mtS? if so modify indices now
     if keyword_set(accretionTimeSubset) then begin
-      galcatInds = { gal   : galcatInds.gal[accTimeInds.gal]    ,$
-                     gmem  : galcatInds.gmem[accTimeInds.gmem]  ,$
-                     stars : galcatInds.stars[acctimeInds.stars] }
+      mtsInds = { gal   : mtsInds.gal[accTimeInds.gal]    ,$
+                  gmem  : mtsInds.gmem[accTimeInds.gmem]  ,$
+                  stars : mtsInds.stars[acctimeInds.stars] }
     endif
     
     ; all tracers requested, load directly and immediately return
@@ -1134,20 +1130,23 @@ function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
     tracks_gal   = tracksFluid(sP=sP,/loadAllTRGal)
     tracks_gmem  = tracksFluid(sP=sP,/loadAllTRGmem)
     tracks_stars = tracksFluid(sP=sP,/loadAllTRStars)
-           
+
     ; return temps (logK), entropy (log CGS), or density (log code)
-    r = {gal   : { temp : tracks_gal.temp[*,galcatInds.gal] ,$
-                   ent  : tracks_gal.ent[*,galcatInds.gal]  ,$
-                   dens : tracks_gal.dens[*,galcatInds.gal] ,$
-                   flag : tracks_gal.flag[*,galcatInds.gal]  }      ,$
-         gmem  : { temp : tracks_gmem.temp[*,galcatInds.gmem] ,$
-                   ent  : tracks_gmem.ent[*,galcatInds.gmem]  ,$
-                   dens : tracks_gmem.dens[*,galcatInds.gmem] ,$
-                   flag : tracks_gmem.flag[*,galcatInds.gmem]  }    ,$
-         stars : { temp : tracks_stars.temp[*,galcatInds.stars] ,$
-                   ent  : tracks_stars.ent[*,galcatInds.stars]  ,$
-                   dens : tracks_stars.dens[*,galcatInds.stars] ,$
-                   flag : tracks_stars.flag[*,galcatInds.stars]  }  ,$
+    r = {gal   : { temp : tracks_gal.temp[*,mtsInds.gal] ,$
+                   ent  : tracks_gal.ent[*,mtsInds.gal]  ,$
+                   dens : tracks_gal.dens[*,mtsInds.gal] ,$
+                   rad  : tracks_gal.rad[*,mtsInds.gal] ,$
+                   flag : tracks_gal.flag[*,mtsInds.gal]  }      ,$
+         gmem  : { temp : tracks_gmem.temp[*,mtsInds.gmem] ,$
+                   ent  : tracks_gmem.ent[*,mtsInds.gmem]  ,$
+                   dens : tracks_gmem.dens[*,mtsInds.gmem] ,$
+                   rad  : tracks_gmem.rad[*,mtsInds.gmem] ,$
+                   flag : tracks_gmem.flag[*,mtsInds.gmem]  }    ,$
+         stars : { temp : tracks_stars.temp[*,mtsInds.stars] ,$
+                   ent  : tracks_stars.ent[*,mtsInds.stars]  ,$
+                   dens : tracks_stars.dens[*,mtsInds.stars] ,$
+                   rad  : tracks_stars.rad[*,mtsInds.stars] ,$
+                   flag : tracks_stars.flag[*,mtsInds.stars]  }  ,$
          rr    : tracks_gal.rr                                       }
         
     tracks_gal = !NULL & tracks_gmem = !NULL & tracks_stars = !NULL
