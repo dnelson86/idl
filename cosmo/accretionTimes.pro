@@ -597,7 +597,7 @@ function accretionTimes, sP=sP, restart=restart
           stars_pri = periodicDists( $
             reform(mt.hPos[mt.maxSnap-m,*,gcIndOrigTr.stars[galcat_stars_ind_inPar]]),tr_pos_stars,sP=sP)
           stars_pri /= mt.hVirRad[mt.maxSnap-m,gcIndOrigTr.stars[galcat_stars_ind_inPar]]
-          pos_stars = !NULL
+          tr_pos_stars = !NULL
         endif
       
       ; loop over each critical radius (and include an additional 1.0rvir for 'first' crossing)
