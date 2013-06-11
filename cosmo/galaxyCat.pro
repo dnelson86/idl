@@ -1,6 +1,6 @@
 ; galaxyCat.pro
 ; gas accretion project - gas selections of interest (galaxy/halo catalogs)
-; dnelson apr.2013
+; dnelson jun.2013
 
 ; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
 ;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)
@@ -862,6 +862,8 @@ end
 ; singleTracerField : ...
 ;
 ; mergerTreeSubset    : return values only for the subset of halos tracked in the merger tree subset
+;  jun2013: this option removed, since the mtS is exactly all primary halos, and this function only works
+;           with exactly that selection, in the case that we want the atS
 ; accretionTimeSubset : return values only for the subset of particles/tracers with recorded accretion times
 ;  accTime,accTvir : time of accretion (in redshift) or virial temp of parent halo at time of accretion
 ;  accMode : return values only for one accretionMode (all,smooth,bclumpy,sclumpy,smooth)
@@ -876,24 +878,24 @@ function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
            curSingleVal=curSingleVal, singleValField=singleValField, $
            curTracerVal=curTracerVal, singleTracerField=singleTracerField, $ ; trMC only
            parNorm=parNorm, $ ; for rVirNorm,virTemp,parMass only
-           mergerTreeSubset=mergerTreeSubset, accretionTimeSubset=accretionTimeSubset,$
+           accretionTimeSubset=accretionTimeSubset, $
            accTime=accTime,accTvir=accTvir,accMode=accMode ; for accretionTimeSubset only
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; check combinations of input options for validity
-  if keyword_set(mergerTreeSubset) then if keyword_set(select) then if select ne 'pri' then $
-    print,'Warning: The merger tree subset actually contains only pri subgroups.'
+  if keyword_set(accretionTimeSubset) then if select ne 'pri' then $
+    message,'Error: The atS (mtS) contains only pri subgroups (select must be pri).'
   if (keyword_set(accTime) or keyword_set(accTvir)) and ~keyword_set(accretionTimeSubset) then $
     message,'Error: Can only return accretion time or Tvir at accretion time for atS.'
-  if keyword_set(accretionTimeSubset) and ~keyword_set(mergerTreeSubset) then $
-    message,'Error: Can only subselect the mtS with the atS.'
   if keyword_set(accMode) and ~keyword_set(accretionTimeSubset) then $
     message,'Error: Can only return accretion mode subsets of the accretionTime subset.'
   if keyword_set(elemIDs) and (keyword_set(trPopMin) or keyword_set(trPopMean) or keyword_set(trPopMax)) then $
     message,'Error: Cannot return pop stats of unique element IDs.'
   if (~keyword_set(select) and ~keyword_set(gcIDList)) or (keyword_set(select) and keyword_set(gcIDList)) then $
-    message,'Error: Should specific either group type of explicit list of groups.'
+    message,'Error: Should specify either group type OR explicit list of groups.'
+  if keyword_set(gcIDList) and keyword_set(accretionTimeSubset) then $
+    message,'Error: since we take accModeInds must subset all of galcat, not just one/few halos.'
     
   ; default behavior: return 1 value per tracer for tracer sims, 1 value per gas particle for sph
   allTR = 0 ; sph
@@ -901,32 +903,13 @@ function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
   
   ; check input options vs. simulation type
   if keyword_set(curTracerVal) and sP.trMCPerCell le 0 then message,'Error: curTracerVal is trMC only.'
-  if keyword_set(tracksFluid) and sP.trMCPerCell le 0 then message,'ERror: tracksFluid is trMC only.'
+  if keyword_set(tracksFluid) and sP.trMCPerCell le 0 then message,'Error: tracksFluid is trMC only.'
   if keyword_set(elemIDs) and sP.trMCPerCell eq -1 then message,'Error: Not implemented.'
   
   ; ----- selection subset -----
-  
-  if keyword_set(gcIDList) and keyword_set(accretionTimeSubset) then $
-    message,'Error: since we take accModeInds must subset all of galcat, not just one/few halos.'
-  
-  ; select primary,secondary,or all subhalos subject to minimum number of particles
+   
+  ; select primary,secondary,or all subhalos
   if ~keyword_set(gcIDList) then gcIDList = gcIDList(sP=sP,select=select)
-
-  ; subset subgroup id list by only those with good merger histories
-  if keyword_set(mergerTreeSubset) then begin
-    mt = mergerTreeSubset(sP=sP)
-    
-    ; use intersection of (pri,sec,all) list and tracked list
-    calcMatch,gcIDList,mt.galcatIDList,ind1,ind2,count=count
-    if count eq 0 then message,'Error: mtS and gcIDList intersection empty.'
-    ;print,'gcSubsetProp intersect',n_elements(gcIDList),n_elements(mt.galcatIDList),count
-    
-    gcIDList = gcIDList[ind1]
-    
-    mt   = !NULL
-    ind1 = !NULL
-    ind2 = !NULL
-  endif
   
   ; select galaxycat indices corresponding to the list of subgroup ids
   galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList) ;identical to mt.galcatSub if mtS
@@ -954,9 +937,9 @@ function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
   
   if keyword_set(accTime) then begin
     ;convert scale factors -> redshift
-    r = { gal   : 1/at.AccTime_gal[0,accTimeInds.gal]-1    ,$
-          gmem  : 1/at.AccTime_gmem[0,accTimeInds.gmem]-1  ,$
-          stars : 1/at.AccTime_stars[0,accTimeInds.stars]-1 } 
+    r = { gal   : 1/at.AccTime_gal[sP.atIndMode,accTimeInds.gal]-1    ,$
+          gmem  : 1/at.AccTime_gmem[sP.atIndMode,accTimeInds.gmem]-1  ,$
+          stars : 1/at.AccTime_stars[sP.atIndMode,accTimeInds.stars]-1 } 
     return,r
   endif
   
@@ -1115,7 +1098,7 @@ function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
   endif
   
   if keyword_set(tracksFluid) then begin
-    ; make indices for mergerTreeSubset (tracksFluid stored only for mtS)  
+    ; make indices for accretionTreeSubset (tracksFluid stored only for mtS/atS)  
     mtsInds = mergerTreeINDList(sP=sP,galcat=galcat,gcIDList=gcIDList)
     
     ; take accretionTime subset of mtS? if so modify indices now
@@ -1164,7 +1147,7 @@ function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
       maxt_gmem  = maxTemps(sP=sP,entropy=keyword_set(maxPastEnt),density=keyword_set(maxPastDens),/loadAllTRGmem)
       maxt_stars = maxTemps(sP=sP,entropy=keyword_set(maxPastEnt),density=keyword_set(maxPastDens),/loadAllTRStars)
       
-      ; make indices for mergerTreeSubset
+      ; make indices for accretionTreeSubset
       galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList,$
                      child_counts={gal:maxt_gal.child_counts,gmem:maxt_gmem.child_counts,stars:maxt_stars.child_counts})
                        

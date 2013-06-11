@@ -16,15 +16,15 @@ pro makeArepoFoFBsub
   snapZ = redshiftToSnapNum([6.0,5.0,4.0,3.0,2.0,1.0,0.0],sP=sP)
   print,snapZ
 
-  snapRange = [272,272,1]
+  snapRange = [272,278,3]
   ;snaps = [257]
 
   ; job config
   spawnJobs = 1 ; execute bsub?
-  nProcs    = 128 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
+  nProcs    = 64 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
                  ;               256^3=4 (n32tile4 PartAllocFactor=2.5 MaxMemSize=7900)
                  ;               512^3=16 (n64tile4 PartAllocFactor=1.5 though n32tile4 ok until z=2)
-  ptile     = 4 ; span[ptile=X]
+  ptile     = 2 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
   excludeHosts = ['hero0103','hero2205','hero0410','hero2413','hero1004'] ;leave empty otherwise

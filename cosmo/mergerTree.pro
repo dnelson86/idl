@@ -612,7 +612,7 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
 
 end
 
-; mergerTreeINDList(): return a list of indices into the mergerTreeSubset/accretionTimes/Traj catalog 
+; mergerTreeINDList(): return a list of indices into the accretionTimeSubset/Traj catalog 
 ;                      for a subset of the members defined by the subgroup ID list gcIDList
 
 function mergerTreeINDList, sP=sP, galcat=galcat, mt=mt, gcIDList=gcIDList

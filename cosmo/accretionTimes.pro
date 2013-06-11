@@ -1,12 +1,13 @@
 ; accretionTimes.pro
 ; gas accretion project - past radial history of gas elements (virial radius crossing)
-; dnelson mar.2013
+; dnelson jun.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionTimes(): for each gas particle/tracer, starting at some redshift, track backwards in time
 ;                   with respect to the tracked parent halos (using mergerTree) and determine the
 ;                   time when the particle radius = the virial radius (and record the virial temp of
-;                   the parent halo at that time)
+;                   the parent halo at that time). jun2013 change: use earliest of each rVirFac 
+;                   crossing, instead of most recent (propagates into accretionMode)
 ; -----------------------------------------------------------------------------------------------------
 
 function accretionTimes, sP=sP, restart=restart
@@ -16,12 +17,12 @@ function accretionTimes, sP=sP, restart=restart
   units = getUnits()
 
   ; first, walk back through the merger tree and find primary subhalos with good parent histories
-  nVirFacs = n_elements(sP.rVirFacs) + 1 ; extra for the 'first' rvir crossing, instead of the 'last' (most recent)
+  nVirFacs = n_elements(sP.rVirFacs)
   mt = mergerTreeSubset(sP=sP,/verbose)
   snapRange = [mt.maxSnap,mt.minSnap]
   
   ; set saveFilename and check for existence
-  saveFilename = sP.derivPath + 'accTimesAda.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
+  saveFilename = sP.derivPath + 'accTimes.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
                  str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'  
   
   if file_test(saveFilename) then begin
@@ -29,7 +30,7 @@ function accretionTimes, sP=sP, restart=restart
     return, r
   endif
   
-  resFilename = sP.derivPath + 'accTimesAda.'+sP.saveTag+'.restart.'+sP.savPrefix+str(sP.res)+'.'+$
+  resFilename = sP.derivPath + 'accTimes.'+sP.saveTag+'.restart.'+sP.savPrefix+str(sP.res)+'.'+$
                 str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'
   
   ; load galaxy/group member catalogs at zMin for gas ids to search for
@@ -297,11 +298,6 @@ function accretionTimes, sP=sP, restart=restart
           if countStars gt 0 then accCount.stars[k] += count_stars
         endelse
         
-        ; update mask for particles we no longer search for
-        accMask.gal[k,gal_w]   = 1B
-        accMask.gmem[k,gmem_w] = 1B
-        if countStars gt 0 then accMask.stars[k,galcat_stars_ind[stars_w]] = 1B
-
       endforeach
       
       ; adaptive: update mask, mark all children of halos whose tracking ends at this snapshot
@@ -600,37 +596,25 @@ function accretionTimes, sP=sP, restart=restart
           tr_pos_stars = !NULL
         endif
       
-      ; loop over each critical radius (and include an additional 1.0rvir for 'first' crossing)
-      foreach rVirFac,[sP.rVirFacs,1.0],k do begin
+      ; loop over each critical radius
+      foreach rVirFac,sP.rVirFacs,k do begin
         ; for particles who are still within r_vir, check if they have passed beyond
         count_gal   = 0
         count_gmem  = 0
         count_stars = 0
         
-        if k eq n_elements(sP.rVirFacs) then begin
-          ; for the last iteration, take 1.0rvir and do not use accMask (record last/highest redshift crossing)
-          if countGal_inPar gt 0 then $
-            gal_w  = where(gal_pri ge rVirFac and prevRad.gal[galcat_gal_ind_inPar] lt rVirFac,count_gal)
-            
-          if countGmem_inPar gt 0 then $
-            gmem_w = where(gmem_pri ge rVirFac and prevRad.gmem[galcat_gmem_ind_inPar] lt rVirFac,count_gmem)
-            
-          if countStars_inPar gt 0 then $
-            stars_w = where(stars_pri ge rVirFac and prevRad.stars[galcat_stars_ind_inPar] lt rVirFac,count_stars)
-        endif else begin
-          ; take rVirFac and use accMask (record first/lowest redshift crossing)
-          if countGal_inPar gt 0 then $
-            gal_w  = where(gal_pri ge rVirFac and prevRad.gal[galcat_gal_ind_inPar] lt rVirFac and $
-                           accMask.gal[k,galcat_gal_ind_inPar] eq 0B,count_gal)
+        ; take rVirFac and use accMask (skip if past the end of halo tracking)
+        if countGal_inPar gt 0 then $
+          gal_w  = where(gal_pri ge rVirFac and prevRad.gal[galcat_gal_ind_inPar] lt rVirFac and $
+                         accMask.gal[k,galcat_gal_ind_inPar] eq 0B,count_gal)
                        
-          if countGmem_inPar gt 0 then $
-            gmem_w = where(gmem_pri ge rVirFac and prevRad.gmem[galcat_gmem_ind_inPar] lt rVirFac and $
-                           accMask.gmem[k,galcat_gmem_ind_inPar] eq 0B,count_gmem)
+        if countGmem_inPar gt 0 then $
+          gmem_w = where(gmem_pri ge rVirFac and prevRad.gmem[galcat_gmem_ind_inPar] lt rVirFac and $
+                         accMask.gmem[k,galcat_gmem_ind_inPar] eq 0B,count_gmem)
           
-          if countStars_inPar gt 0 then $
-            stars_w = where(stars_pri ge rVirFac and prevRad.stars[galcat_stars_ind_inPar] lt rVirFac and $
-                            accMask.stars[k,galcat_stars_ind_inPar] eq 0B,count_stars)
-        endelse
+        if countStars_inPar gt 0 then $
+          stars_w = where(stars_pri ge rVirFac and prevRad.stars[galcat_stars_ind_inPar] lt rVirFac and $
+                          accMask.stars[k,galcat_stars_ind_inPar] eq 0B,count_stars)
         
           print,' ['+string(m,format='(i3)')+'] ['+str(k)+'] r='+string(rVirFac,format='(f4.2)')+$
             ' '+strpad(partType,5)+' accNowCounts '+string(count_gal,format='(i7)')+' ('+$
@@ -716,10 +700,6 @@ function accretionTimes, sP=sP, restart=restart
             accCount.stars[k] += count_stars
           endelse
         
-          ; update mask for particles we no longer search for
-          if countGal_inPar   gt 0 then accMask.gal[k,galcat_gal_ind_inPar[gal_w]]       = 1B
-          if countGmem_inPar  gt 0 then accMask.gmem[k,galcat_gmem_ind_inPar[gmem_w]]    = 1B
-          if countStars_inPar gt 0 then accMask.stars[k,galcat_stars_ind_inPar[stars_w]] = 1B
         endforeach
       
         ; adaptive: update mask, mark all children of halos whose tracking ends at this snapshot
@@ -752,7 +732,7 @@ function accretionTimes, sP=sP, restart=restart
     print,'[-] (rhot) found accretion times for ['+$
       str(accCount.galRT)+' of '+str(n_elements(galcat_gal_trids))+$
       '] gal, ['+str(accCount.starsRT)+' of '+str(n_elements(galcat_stars_trids))+'] stars'
-    foreach rVirFac,[sP.rVirFacs,1.0],k do $
+    foreach rVirFac,sP.rVirFacs,k do $
     print,'['+str(k)+'] r='+string(rVirFac,format='(f4.2)')+' found accretion times for ['+$
       str(accCount.gal[k])+' of '+str(n_elements(galcat_gal_trids))+$
       '] gal, ['+str(accCount.gmem[k])+' of '+str(n_elements(galcat_gmem_trids))+'] gmem'+$
@@ -908,9 +888,6 @@ function accretionTimes, sP=sP, restart=restart
           accCount.gmem[k] += count_gmem
         endelse
         
-        ; update mask for particles we no longer search for
-        accMask.gal[k,gal_w]   = 1B
-        accMask.gmem[k,gmem_w] = 1B
       endforeach
       
       ; adaptive: update mask, mark all children of halos whose tracking ends at this snapshot

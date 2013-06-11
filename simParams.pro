@@ -45,6 +45,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        rVirFacs:      [1.0,0.75,0.5,0.25,0.15,0.05,0.01],$ ; search for accretion times across these fractions of the virial radius
        radIndHaloAcc: 0,$     ; 1.0 rvir crossing for halo accretion
        radIndGalAcc:  4,$     ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
+       atIndMode:     0,$     ; use first 1.0 rvir crossing to determine mode
        mapNotMatch:   1,$ ; use idIndexMap instead of match() approach in analysis, whenever possible
        TcutVals:      [5.3,5.5,5.7],$ ; log(K) for constant threshold comparisons
        TvirVals:      [1.0,0.8,0.4],$ ; T/Tvir coefficients for variable threshold comparisons
@@ -107,9 +108,9 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.plotPath   = '/n/home07/dnelson/coldflows/'
     r.derivPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
     
-    r.colors = [getColor24(['ff'x,'40'x,'40'x]), $ ; red, light to dark
-                getColor24(['ff'x,'00'x,'00'x]), $
-                getColor24(['a6'x,'00'x,'00'x])]
+    r.colors = [getColor24(['3e'x,'41'x,'e8'x]), $ ; blue, light to dark
+                getColor24(['15'x,'1a'x,'ac'x]), $
+                getColor24(['08'x,'0b'x,'74'x])]
     
     ; if f=-1 use velocity tracers
     if keyword_set(f) then message,'Error' ; no velocity tracers
@@ -143,9 +144,9 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
       r.plotPrefix = 'feNoFB'
       r.derivPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noFB/data.files/'
       
-      r.colors = [getColor24(['3e'x,'41'x,'e8'x]), $ ; blue, light to dark
-                  getColor24(['15'x,'1a'x,'ac'x]), $
-                  getColor24(['08'x,'0b'x,'74'x])]
+      r.colors = [getColor24(['ff'x,'40'x,'40'x]), $ ; red, light to dark
+                  getColor24(['ff'x,'00'x,'00'x]), $
+                  getColor24(['a6'x,'00'x,'00'x])]
     endif
     
     if run eq 'feedback_nogfm' then begin
@@ -303,9 +304,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.plotPath   = '/n/home07/dnelson/coldflows/'
     r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
     
-    r.colors = [getColor24(['00'x,'eb'x,'00'x]), $ ; green, light to dark
-                getColor24(['00'x,'bd'x,'00'x]), $
-                getColor24(['00'x,'90'x,'00'x])]
+    ; originally: 00eb00,00bd00,009000 for gas accretion paper
+    r.colors = [getColor24(['00'x,'ab'x,'33'x]), $ ; green, light to dark
+                getColor24(['00'x,'7d'x,'23'x]), $
+                getColor24(['00'x,'90'x,'13'x])]
     
     ; if f=-1 use velocity tracers
     if keyword_set(f) then begin

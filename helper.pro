@@ -762,9 +762,9 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig
             ;/dejavusans ;requires idl8.2 
             ;font=1,tt_font='Helvetica'
  
-  !p.charsize  = 1.4
+  !p.charsize  = 1.1 ; 1.4 for gas accretion paper
   ;!p.charthick = 1.4
-  !p.thick    = 5.0
+  !p.thick    = 4.0 ; 5.0 for gas accretion paper
   
   ; make axis lines thicker
   !x.thick += 1.0
@@ -777,7 +777,7 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig
   
   ; make default custom psym (8) a filled circle
   plotsym,0,/fill
-  !p.symsize = 0.7
+  !p.symsize = 0.6
             
 end
 
@@ -812,6 +812,86 @@ pro save_eps, p, plotName, width=width, height=height, savePDF=savePDF, savePNG=
     p->save, plotName, page_size=[width,height]
   endif
 
+end
+
+; plot_pos(): get some pre-defined plot positioning numbers
+
+function plot_pos, rows=rows, cols=cols, total=total, gap=gap
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  if ~keyword_set(total) and ~keyword_set(rows) and ~keyword_set(cols) then $
+    message,'Error: Must specify at least one.'
+  if keyword_set(total) and (keyword_set(rows) or keyword_set(cols)) then $
+    message,'Error: Not both.'
+  if (keyword_set(rows) and ~keyword_set(cols)) or (~keyword_set(rows) and keyword_set(cols)) then $
+    message,'Error: rows and cols must go together.'
+    
+  ; only total number of plots set? make a reasonable row/col arrangement
+  if keyword_set(total) then begin
+    ; one row
+    if total eq 2 or total eq 3 or total eq 5 then begin
+      rows = 1 & cols = total
+    endif
+    
+    ; two rows
+    if total eq 4 or total eq 6 then begin
+      rows = 2 & cols = total/2
+    endif
+    
+    ; three rows
+    if total eq 9 or total eq 15 then begin
+      rows = 3 & cols = total/3
+    endif
+    
+    ; four rows
+    if total eq 8 or total eq 12 then begin
+      rows = 4 & cols = total/4
+    endif
+  endif
+  
+  if keyword_set(gap) then begin
+    ; gap: spacing between all plots such that all axes and axes labels can be drawn
+    if rows eq 2 and cols eq 2 then begin
+      ; 2x2
+      x0 = 0.10 & x1 = 0.46 & xoff = 0.49
+      y0 = 0.12 & y1 = 0.47 & yoff = 0.48
+                
+      pos = list( [x0,y0+yoff,x1,y1+yoff] ,$ ; UL
+                  [x0+xoff,y0+yoff,x1+xoff,y1+yoff] ,$ ; UR
+                  [x0,y0,x1,y1] ,$ ; LL
+                  [x0+xoff,y0,x1+xoff,y1] ) ; LR
+    endif
+    
+    if rows eq 4 and cols eq 2 then begin ;xs=9, ys=12
+      ; 4x2
+      x0 = 0.10 & x1 = 0.46 & xoff = 0.49
+      y0 = 0.06 & y1 = 0.24 & yoff = 0.24
+      
+      pos = list( [x0,y0+3*yoff,x1,y1+3*yoff] ,$ ; top left
+                  [x0+xoff,y0+3*yoff,x1+xoff,y1+3*yoff] ,$ ; top right
+                  [x0,y0+2*yoff,x1,y1+2*yoff] ,$ ; second row left
+                  [x0+xoff,y0+2*yoff,x1+xoff,y1+2*yoff] ,$ ; second row right
+                  [x0,y0+1*yoff,x1,y1+1*yoff] ,$ ; third row left
+                  [x0+xoff,y0+1*yoff,x1+xoff,y1+1*yoff] ,$ ; third row right
+                  [x0,y0,x1,y1] ,$ ; bottom left
+                  [x0+xoff,y0,x1+xoff,y1] ) ; bottom right
+      
+    endif
+  endif else begin
+    ; no gap: boxgrid configuration as in gas accretion paper plots
+    if rows eq 4 and cols eq 1 then begin ;xs=6, ys=12
+      x0 = 0.14 & x1 = 0.94
+      y0 = 0.05 & y1 = 0.27 & yoff = 0.22
+      
+      pos = list( [x0,y0+3*yoff,x1,y1+3*yoff] ,$ ; top
+                  [x0,y0+2*yoff,x1,y1+2*yoff] ,$ ; second row
+                  [x0,y0+1*yoff,x1,y1+1*yoff] ,$ ; third row
+                  [x0,y0,x1,y1]                ) ; bottom
+    endif
+  endelse
+
+  if n_elements(pos) eq 0 then message,'Error: Requested plot config not yet set.'
+  return, pos
 end
 
 ; multithreading
@@ -915,7 +995,11 @@ end
 @binVsHaloMass
 @plotVsHaloMass
 @plotRadProfiles
+
+; new feedback project analysis
+@plotVsRedshift
 @recycledMaterial
+@tracksFluid
 
 @tracersVel_Cosmo
 ;@tracersVel_Halos

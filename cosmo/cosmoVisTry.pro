@@ -113,15 +113,15 @@ pro scatterMapPastPosComp
     gcIndOrig = !NULL & at = !NULL & mt = !NULL
     
     ; load max temps, current tvir, tvir at accretion
-    accTvir = gcSubsetProp(sP=sPg,select='pri',/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-    maxTemp = gcSubsetProp(sP=sPg,select='pri',/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    accTvir = gcSubsetProp(sP=sPg,select='pri',/accTvir,/accretionTimeSubset,accMode=accMode)
+    maxTemp = gcSubsetProp(sP=sPg,select='pri',/maxPastTemp,/accretionTimeSubset,accMode=accMode)
     
     accTvir = accTvir.gal[ww]
     maxTemp = maxTemp.gal[ww]
     ratio   = 10.0^maxTemp / 10.0^accTvir
     
     ; load galcat and make gas ID list
-    galIDs = gcSubsetProp(sP=sPg,select='pri',/elemIDs,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    galIDs = gcSubsetProp(sP=sPg,select='pri',/elemIDs,/accretionTimeSubset,accMode=accMode)
     galIDs = galIDs.gal[ww]
     wAm = !NULL
     
@@ -254,8 +254,8 @@ pro scatterMapPastPosComp
     gcIndOrig = !NULL & mt = !NULL & wAm = !NULL
     
     ; load max temps, current tvir, tvir at accretion
-    accTvir = gcSubsetProp(sP=sPa,select='pri',/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-    maxTemp = gcSubsetProp(sP=sPa,select='pri',/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    accTvir = gcSubsetProp(sP=sPa,select='pri',/accTvir,/accretionTimeSubset,accMode=accMode)
+    maxTemp = gcSubsetProp(sP=sPa,select='pri',/maxPastTemp,/accretionTimeSubset,accMode=accMode)
 
     accTvir = accTvir.gal[ww]
     maxTemp = maxTemp.gal[ww]

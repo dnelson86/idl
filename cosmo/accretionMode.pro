@@ -39,9 +39,9 @@ function accretionMode, sP=sP
   endif
   
   ; select those particles/tracers with recorded accretion times
-  gal_w_at   = where(at.AccTime_gal[0,*] ne -1,count_gal)
-  gmem_w_at  = where(at.AccTime_gmem[0,*] ne -1,count_gmem)
-  stars_w_at = where(at.AccTime_stars[0,*] ne -1,count_stars)
+  gal_w_at   = where(at.AccTime_gal[sP.atIndMode,*] ne -1,count_gal)
+  gmem_w_at  = where(at.AccTime_gmem[sP.atIndMode,*] ne -1,count_gmem)
+  stars_w_at = where(at.AccTime_stars[sP.atIndMode,*] ne -1,count_stars)
   
   nTotSearch = n_elements(gal_w_at) + n_elements(gmem_w_at) + n_elements(stars_w_at)
   
@@ -70,9 +70,9 @@ function accretionMode, sP=sP
     snapTimes = snapNumToRedshift(sP=sP,/all,/time)
     snapTimes = snapTimes[where(snapTimes ne -1)]
 
-    bracketSnap.gal   = value_locate(snapTimes,at.accTime_gal[0,gal_w_at])
-    bracketSnap.gmem  = value_locate(snapTimes,at.accTime_gmem[0,gmem_w_at])
-    bracketSnap.stars = value_locate(snapTimes,at.accTime_stars[0,stars_w_at])
+    bracketSnap.gal   = value_locate(snapTimes,at.accTime_gal[sP.atIndMode,gal_w_at])
+    bracketSnap.gmem  = value_locate(snapTimes,at.accTime_gmem[sP.atIndMode,gmem_w_at])
+    bracketSnap.stars = value_locate(snapTimes,at.accTime_stars[sP.atIndMode,stars_w_at])
     
     w = where(bracketSnap.gal eq -1 or bracketSnap.gal eq n_elements(snapTimes)-1,count)
     if count gt 0 then message,'Error: Bad gal bracketing.'
@@ -379,9 +379,9 @@ function accretionMode, sP=sP
     snapTimes = snapNumToRedshift(sP=sP,/all,/time)
     snapTimes = snapTimes[where(snapTimes ne -1)]
 
-    bracketSnap.gal   = value_locate(snapTimes,at.accTime_gal[0,gal_w_at])
-    bracketSnap.gmem  = value_locate(snapTimes,at.accTime_gmem[0,gmem_w_at])
-    bracketSnap.stars = value_locate(snapTimes,at.accTime_stars[0,stars_w_at])
+    bracketSnap.gal   = value_locate(snapTimes,at.accTime_gal[sP.atIndMode,gal_w_at])
+    bracketSnap.gmem  = value_locate(snapTimes,at.accTime_gmem[sP.atIndMode,gmem_w_at])
+    bracketSnap.stars = value_locate(snapTimes,at.accTime_stars[sP.atIndMode,stars_w_at])
     
     ; store the main arrays as a structure so we can write them directly
     r = {accMode_gal       : intarr(n_elements(galcatSub.gal))  ,$
@@ -400,13 +400,10 @@ function accretionMode, sP=sP
       tr_parids      = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
       
       ; gal: find recycled and override bracketSnap using earliest rvir crossing
-      ; changed june 2013: so that 'secondary' modes for recycled tracers are consistent, 
-      ; make the determination at the latest rvir crossing as normal
       galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, tr_parids=tr_parids, gasIDs=galcat.galaxyIDs[mt.galcatSub.gal])
       w = where(tr_windcounter[galcat_trinds[gal_w_at]] gt 0,count1)
       if count1 gt 0 then begin
         r.accMode_gal[w] = 10
-        ;bracketSnap.gal[w] = value_locate(snapTimes,at.accTime_gal[-1,gal_w_at[w]])
       endif
       
       ; gmem
@@ -414,7 +411,6 @@ function accretionMode, sP=sP
       w = where(tr_windcounter[galcat_trinds[gmem_w_at]] gt 0,count2)
       if count2 gt 0 then begin
         r.accMode_gmem[w] = 10
-        ;bracketSnap.gmem[w] = value_locate(snapTimes,at.accTime_gmem[-1,gmem_w_at[w]])
       endif
       
       ; stars
@@ -422,7 +418,6 @@ function accretionMode, sP=sP
       w = where(tr_windcounter[galcat_trinds[stars_w_at]] gt 0,count3)
       if count3 gt 0 then begin
         r.accMode_stars[w] = 10
-        ;bracketSnap.stars[w] = value_locate(snapTimes,at.accTime_stars[-1,stars_w_at[w]])
       endif
       
       tr_parids = !NULL
@@ -737,9 +732,9 @@ function accModeInds, at=at, sP=sP, accMode=accMode, mask=mask
   if n_elements(at) eq 0 or n_elements(accMode) eq 0 then message,'Error: Inputs'
   if ~sP.gfmWinds and accMode eq 'recycled' then message,'Error: Request recycled on non-winds run.'
   
-  gal_w   = where(at.AccTime_gal[0,*] ne -1,count_gal)
-  gmem_w  = where(at.AccTime_gmem[0,*] ne -1,count_gmem)
-  stars_w = where(at.AccTime_stars[0,*] ne -1,count_stars)
+  gal_w   = where(at.AccTime_gal[sP.atIndMode,*] ne -1,count_gal)
+  gmem_w  = where(at.AccTime_gmem[sP.atIndMode,*] ne -1,count_gmem)
+  stars_w = where(at.AccTime_stars[sP.atIndMode,*] ne -1,count_stars)
   
   ; select on accretion mode by modifying gal_w, gmem_w, and stars_w
   if accMode ne 'all' then begin
@@ -804,9 +799,9 @@ function accModeInds, at=at, sP=sP, accMode=accMode, mask=mask
   
   ; make mask to combine selection with additional selections, if requested
   if keyword_set(mask) then begin
-    galMask   = bytarr(n_elements(at.accTime_gal[0,*]))
-    gmemMask  = bytarr(n_elements(at.accTime_gmem[0,*]))
-    starsMask = bytarr(n_elements(at.accTime_stars[0,*]))
+    galMask   = bytarr(n_elements(at.accTime_gal[sP.atIndMode,*]))
+    gmemMask  = bytarr(n_elements(at.accTime_gmem[sP.atIndMode,*]))
+    starsMask = bytarr(n_elements(at.accTime_stars[sP.atIndMode,*]))
     
     galMask[gal_w]     = 1B
     gmemMask[gmem_w]   = 1B
