@@ -446,7 +446,7 @@ pro velSingleHalo
                         stars : av.alphaDistOffset.stars[w_stars] - av.alphaDistOffset.stars[w_stars[0]] }
       
     ; load maxtemps
-    maxTemp = gcSubsetProp(sP=sP,select='pri',/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    maxTemp = gcSubsetProp(sP=sP,select='pri',/maxPastTemp,/accretionTimeSubset,accMode=accMode)
     
     maxTemps = { gal : maxTemp.gal[w_gal], stars : maxTemp.stars[w_stars] }
 

@@ -71,14 +71,14 @@ function haloMassBinValues, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindo
   gcIndOrig = !NULL
   
   ; load max temps, current tvir, tvir at accretion
-  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/accretionTimeSubset,accMode=accMode)
+  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/accretionTimeSubset,accMode=accMode)
+  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/accretionTimeSubset,accMode=accMode)
   
   ; load current temps and current SFR
-  curTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  curTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp,/accretionTimeSubset,accMode=accMode)
   curSFR  = gcSubsetProp(sP=sP,select=sgSelect,/curSingleVal,singleValField='sfr',$
-                         /mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+                         /accretionTimeSubset,accMode=accMode)
 
   ; load group cat for subgroup masses
   gc = loadGroupCat(sP=sP,/skipIDs)
@@ -758,8 +758,8 @@ function haloMassBinAngMom, sP=sP, sgSelect=sgSelect, accMode=accMode
   ;gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sP,/compactMtS)
   
   ; get maxtemp and tviracc for hot/cold separation
-  accTvirAtS = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  maxTempAtS = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  accTvirAtS = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/accretionTimeSubset,accMode=accMode)
+  maxTempAtS = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/accretionTimeSubset,accMode=accMode)
 
   ; place these in mtS sized arrays
   accTvir = { gal  : fltarr(n_elements(wAm.galMask))  + !values.f_nan ,$
@@ -776,7 +776,7 @@ function haloMassBinAngMom, sP=sP, sgSelect=sgSelect, accMode=accMode
   maxTempAtS = !NULL
 
   ; get parent mass of each gas element (all of mtS since accretion time enforced later)
-  parMasses = gcSubsetProp(sP=sP,select=sgSelect,/parMass,/mergerTreeSubset)
+  parMasses = gcSubsetProp(sP=sP,select=sgSelect,/parMass,/accretionTimeSubset)
 
   ; load accretionTraj and accretionTrajVel (also all of mtS)
   atj = accretionTraj(sP=sP)
@@ -1083,8 +1083,8 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
   gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sP,/compactMtS)
   
   ; get maxtemp and tviracc for hot/cold separation
-  accTvirAtS = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
-  maxTempAtS = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  accTvirAtS = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/accretionTimeSubset,accMode=accMode)
+  maxTempAtS = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/accretionTimeSubset,accMode=accMode)
 
   ; place these in mtS sized arrays
   accTvir = { gal  : fltarr(n_elements(gcIndOrig.gal))  + !values.f_nan ,$
@@ -1101,17 +1101,17 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
   maxTempAtS = !NULL
 
   ; get parent mass of each gas element (all of mtS since accretion time enforced later)
-  parMasses = gcSubsetProp(sP=sP,select=sgSelect,/parMass,/mergerTreeSubset)
+  parMasses = gcSubsetProp(sP=sP,select=sgSelect,/parMass,/accretionTimeSubset)
 
   ; convert (k=0) r=rvir accretion times to nearest snap
   snapTimes = snapNumToRedshift(snap=0,/time,/all,sP=sP)
   snapTimes = snapTimes[where(snapTimes ge 0)] ; remove -1
     
-  accSnap = {gal  : intarr(n_elements(at.accTime_gal[0,*]))   ,$
-             gmem : intarr(n_elements(at.accTime_gmem[0,*]))   }
+  accSnap = {gal  : intarr(n_elements(at.accTime_gal[sP.atIndMode,*]))   ,$
+             gmem : intarr(n_elements(at.accTime_gmem[sP.atIndMode,*]))   }
              
-  accSnap.gal[wAm.gal]   = value_locate(snapTimes,at.accTime_gal[0,wAm.gal]) 
-  accSnap.gmem[wAm.gmem] = value_locate(snapTimes,at.accTime_gmem[0,wAm.gmem])
+  accSnap.gal[wAm.gal]   = value_locate(snapTimes,at.accTime_gal[sP.atIndMode,wAm.gal]) 
+  accSnap.gmem[wAm.gmem] = value_locate(snapTimes,at.accTime_gmem[sP.atIndMode,wAm.gmem])
 
   if n_elements(gcIndOrig.gal) ne n_elements(parMasses.gal) or $
      n_elements(gcIndOrig.gal) ne n_elements(wAm.galMask) then message,'Error: Data error.'
@@ -1122,14 +1122,14 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
   ; each accDt now stores the scale factor when that particle crossed the radius of interest
   ; convert to delta time (Myr) since crossing rvir
   for k=1,n_elements(at.rVirFacs)-1 do begin
-    gal_w  = where(wAm.galMask eq 1B and at.accTime_gal[0,*] ne -1 and at.accTime_gal[k,*] ne -1,$
+    gal_w  = where(wAm.galMask eq 1B and at.accTime_gal[sP.atIndMode,*] ne -1 and at.accTime_gal[k,*] ne -1,$
                    count_gal,comp=gal_wc,ncomp=countc_gal)
-    gmem_w = where(wAm.gmemMask eq 1B and at.accTime_gmem[0,*] ne -1 and at.accTime_gmem[k,*] ne -1,$
+    gmem_w = where(wAm.gmemMask eq 1B and at.accTime_gmem[sP.atIndMode,*] ne -1 and at.accTime_gmem[k,*] ne -1,$
                    count_gmem,comp=gmem_wc,ncomp=countc_gmem)
 
     if count_gal gt 0 then begin
       ; for r=rvir, convert scale factor to redshift to age of universe in Gyr
-      galAgeRvir  = redshiftToAgeFlat(1/reform(at.accTime_gal[0,gal_w])-1)
+      galAgeRvir  = redshiftToAgeFlat(1/reform(at.accTime_gal[sP.atIndMode,gal_w])-1)
       
       ; for r=rVirFac, convert scale factor to redshift to age of universe in Gyr
       galAgeRfac  = redshiftToAgeFlat(1/reform(at.accTime_gal[k,gal_w])-1)
@@ -1154,7 +1154,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
     
     if count_gmem gt 0 then begin
       ; repeat for gmem
-      gmemAgeRvir = redshiftToAgeFlat(1/reform(at.accTime_gmem[0,gmem_w])-1)
+      gmemAgeRvir = redshiftToAgeFlat(1/reform(at.accTime_gmem[sP.atIndMode,gmem_w])-1)
       gmemAgeRfac = redshiftToAgeFlat(1/reform(at.accTime_gmem[k,gmem_w])-1)
   
       dt_gmem = (gmemAgeRfac - gmemAgeRvir)
@@ -1216,7 +1216,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
     for k=1,n_elements(at.rVirFacs)-1 do begin
       ; hot gal
       w_gal = where(parMasses.gal gt logMassBins[i] and parMasses.gal le logMassBins[i+1] and $
-                    at.accTime_gal[0,*] ne -1 and at.accTime_gal[k,*] ne -1 and $
+                    at.accTime_gal[sP.atIndMode,*] ne -1 and at.accTime_gal[k,*] ne -1 and $
                     maxTemp.gal gt accTvir.gal and wAm.galMask eq 1B,count_gal)   
       if count_gal gt 0 then begin
         binnedVals.hotMode.mean_gal[k,i]   = mean(at.accTime_gal[k,w_gal])
@@ -1226,7 +1226,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
       
       ; hot gmem
       w_gmem = where(parMasses.gmem gt logMassBins[i] and parMasses.gmem le logMassBins[i+1] and $
-                     at.accTime_gmem[0,*] ne -1 and at.accTime_gmem[k,*] ne -1 and $
+                     at.accTime_gmem[sP.atIndMode,*] ne -1 and at.accTime_gmem[k,*] ne -1 and $
                      maxTemp.gmem gt accTvir.gmem and wAm.gmemMask eq 1B,count_gmem)
       if count_gmem gt 0 then begin
         binnedVals.hotMode.mean_gmem[k,i]   = mean(at.accTime_gmem[k,w_gmem])
@@ -1247,7 +1247,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
       
       ; cold gal
       w_gal = where(parMasses.gal gt logMassBins[i] and parMasses.gal le logMassBins[i+1] and $
-                    at.accTime_gal[0,*] ne -1 and at.accTime_gal[k,*] ne -1 and $
+                    at.accTime_gal[sP.atIndMode,*] ne -1 and at.accTime_gal[k,*] ne -1 and $
                     maxTemp.gal le accTvir.gal and wAm.galMask eq 1B,count_gal)   
       if count_gal gt 0 then begin
         binnedVals.coldMode.mean_gal[k,i]   = mean(at.accTime_gal[k,w_gal])
@@ -1257,7 +1257,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
       
       ; cold gmem
       w_gmem = where(parMasses.gmem gt logMassBins[i] and parMasses.gmem le logMassBins[i+1] and $
-                     at.accTime_gmem[0,*] ne -1 and at.accTime_gmem[k,*] ne -1 and $
+                     at.accTime_gmem[sP.atIndMode,*] ne -1 and at.accTime_gmem[k,*] ne -1 and $
                      maxTemp.gmem le accTvir.gmem and wAm.gmemMask eq 1B,count_gmem)
       if count_gmem gt 0 then begin
         binnedVals.coldMode.mean_gmem[k,i]   = mean(at.accTime_gmem[k,w_gmem])
@@ -1286,14 +1286,14 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
       xtitle=textoidl("\Delta t_{acc} / \tau_{circ}"),ytitle="Fraction"
       
     for k=1,n_elements(at.rVirFacs)-1 do begin
-      w = where(at.accTime_gal[0,*] ne -1 and at.accTime_gal[k,*] ne -1 and wAm.galMask eq 1B,count)
+      w = where(at.accTime_gal[sP.atIndMode,*] ne -1 and at.accTime_gal[k,*] ne -1 and wAm.galMask eq 1B,count)
       if count gt 1 then begin
         hist = histogram(at.accTime_gal[k,w],binsize=binsize,loc=loc)
         cgplot,loc+binsize*0.5,hist/float(total(hist)),line=0,color=getColor(k),/overplot
         cgplot,[mean(at.accTime_gal[k,w]),mean(at.accTime_gal[k,w])],[0.8,1.0],line=0,color=getColor(k),/overplot
         cgplot,[median(at.accTime_gal[k,w]),median(at.accTime_gal[k,w])],[0.5,0.7],line=0,color=getColor(k),/overplot
       endif
-      w = where(at.accTime_gmem[0,*] ne -1 and at.accTime_gmem[k,*] ne -1 and wAm.gmemMask eq 1B,count)
+      w = where(at.accTime_gmem[sP.atIndMode,*] ne -1 and at.accTime_gmem[k,*] ne -1 and wAm.gmemMask eq 1B,count)
       if count gt 1 then begin
         hist = histogram(at.accTime_gmem[k,w],binsize=binsize,loc=loc)
         cgplot,loc+binsize*0.5,hist/float(total(hist)),line=1,color=getColor(k),/overplot
@@ -1312,7 +1312,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
       xtitle=textoidl("\Delta t_{acc} / \tau_{circ}"),ytitle="Fraction"
       
     for k=1,n_elements(at.rVirFacs)-1 do begin
-      w = where(at.accTime_gal[0,*] ne -1 and at.accTime_gal[k,*] ne -1 and wAm.galMask eq 1B and $
+      w = where(at.accTime_gal[sP.atIndMode,*] ne -1 and at.accTime_gal[k,*] ne -1 and wAm.galMask eq 1B and $
                 maxTemp.gal le accTvir.gal,count)
       if count gt 1 then begin
         hist = histogram(at.accTime_gal[k,w],binsize=binsize,loc=loc)
@@ -1320,7 +1320,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
         cgplot,[mean(at.accTime_gal[k,w]),mean(at.accTime_gal[k,w])],[0.8,1.0],line=0,color=getColor(k),/overplot
         cgplot,[median(at.accTime_gal[k,w]),median(at.accTime_gal[k,w])],[0.5,0.7],line=0,color=getColor(k),/overplot
       endif
-      w = where(at.accTime_gmem[0,*] ne -1 and at.accTime_gmem[k,*] ne -1 and wAm.gmemMask eq 1B,count)
+      w = where(at.accTime_gmem[sP.atIndMode,*] ne -1 and at.accTime_gmem[k,*] ne -1 and wAm.gmemMask eq 1B,count)
       if count gt 1 then begin
         hist = histogram(at.accTime_gmem[k,w],binsize=binsize,loc=loc)
         cgplot,loc+binsize*0.5,hist/float(total(hist)),line=1,color=getColor(k),/overplot
@@ -1339,7 +1339,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
       xtitle=textoidl("\Delta t_{acc} / \tau_{circ}"),ytitle="Fraction"
       
     for k=1,n_elements(at.rVirFacs)-1 do begin
-      w = where(at.accTime_gal[0,*] ne -1 and at.accTime_gal[k,*] ne -1 and wAm.galMask eq 1B and $
+      w = where(at.accTime_gal[sP.atIndMode,*] ne -1 and at.accTime_gal[k,*] ne -1 and wAm.galMask eq 1B and $
                 maxTemp.gal gt accTvir.gal,count)
       if count gt 1 then begin
         hist = histogram(at.accTime_gal[k,w],binsize=binsize,loc=loc)
@@ -1347,7 +1347,7 @@ function haloMassBinDeltaAccTime, sP=sP, sgSelect=sgSelect, accMode=accMode
         cgplot,[mean(at.accTime_gal[k,w]),mean(at.accTime_gal[k,w])],[0.8,1.0],line=0,color=getColor(k),/overplot
         cgplot,[median(at.accTime_gal[k,w]),median(at.accTime_gal[k,w])],[0.5,0.7],line=0,color=getColor(k),/overplot
       endif
-      w = where(at.accTime_gmem[0,*] ne -1 and at.accTime_gmem[k,*] ne -1 and wAm.gmemMask eq 1B,count)
+      w = where(at.accTime_gmem[sP.atIndMode,*] ne -1 and at.accTime_gmem[k,*] ne -1 and wAm.gmemMask eq 1B,count)
       if count gt 1 then begin
         hist = histogram(at.accTime_gmem[k,w],binsize=binsize,loc=loc)
         cgplot,loc+binsize*0.5,hist/float(total(hist)),line=1,color=getColor(k),/overplot

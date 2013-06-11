@@ -253,9 +253,6 @@ function gcIDList, sP=sP, gc=gc, select=select, massRange=massRange
     gc = loadGroupCat(sP=sP,/skipIDs)
   endif
 
-  ; require a minimum number of gas particles in (subfind) group to include
-  ;if sP.minNumGasPart gt 0 then stop ; don't always have access to sP here
-
   prevGrNr   = -1
   valGCids   = []
 

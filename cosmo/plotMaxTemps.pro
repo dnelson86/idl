@@ -115,21 +115,21 @@ function binTmaxHistos, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=TW
   
   ; binTemp: load temps and do TW subsets
   if ~keyword_set(entropy) then begin
-    accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+    accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/accretionTimeSubset,accMode=accMode)
     accTvir = { gal : accTvir.gal[w_gal], gmem : accTvir.gmem[w_gmem], stars : accTvir.stars[w_stars] }
 
-    maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
+    maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/accretionTimeSubset,accMode=accMode)  
     maxTemp = { gal : maxTemp.gal[w_gal], gmem : maxTemp.gmem[w_gmem], stars : maxTemp.stars[w_stars] }
   endif
   
   ; binEnt: load max entropy and do subsets
   if keyword_set(entropy) then begin
-    maxEnt = gcSubsetProp(sP=sP,select=sgSelect,/maxPastEnt,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
+    maxEnt = gcSubsetProp(sP=sP,select=sgSelect,/maxPastEnt,/accretionTimeSubset,accMode=accMode)  
     maxEnt = { gal : maxEnt.gal[w_gal], gmem : maxEnt.gmem[w_gmem], stars : maxEnt.stars[w_stars] }
   endif
   
   ; load parent halo masses so we can make halo massbins
-  parentMass = gcSubsetProp(sP=sP,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  parentMass = gcSubsetProp(sP=sP,select=sgSelect,/parMass,/accretionTimeSubset,accMode=accMode)
   parentMass = { gal : parentMass.gal[w_gal], gmem : parentMass.gmem[w_gmem], stars : parentMass.stars[w_stars] }
   
   w_gal   = !NULL
@@ -378,17 +378,17 @@ function binTmaxHisto2D, sP=sP, sgSelect=sgSelect, accMode=accMode, timeWindow=T
   r_crossing_time = !NULL
   
   ; load temps and do TW subsets
-  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/accretionTimeSubset,accMode=accMode)
   accTvir = { gal : accTvir.gal[w_gal], gmem : accTvir.gmem[w_gmem], stars : accTvir.stars[w_stars] }
 
-  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/accretionTimeSubset,accMode=accMode)
   curTvir = { gal : curTvir.gal[w_gal], gmem : curTvir.gmem[w_gmem], stars : curTvir.stars[w_stars] }
 
-  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)  
+  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/accretionTimeSubset,accMode=accMode)  
   maxTemp = { gal : maxTemp.gal[w_gal], gmem : maxTemp.gmem[w_gmem], stars : maxTemp.stars[w_stars] }
 
   ; load parent halo masses so we can make halo massbins
-  parentMass = gcSubsetProp(sP=sP,select=sgSelect,/parMass,/mergerTreeSubset,/accretionTimeSubset,accMode=accMode)
+  parentMass = gcSubsetProp(sP=sP,select=sgSelect,/parMass,/accretionTimeSubset,accMode=accMode)
   parentMass = { gal : parentMass.gal[w_gal], gmem : parentMass.gmem[w_gmem], stars : parentMass.stars[w_stars] }
   
   w_gal   = !NULL
@@ -477,13 +477,13 @@ pro plotTmaxHistos
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  runs       = ['feedback','feedback_noZ','feedback_noFB'] ;['gadget','tracer','feedback']
+  runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   redshift   = 2.0
-  res        = 256
+  res        = 512
   sgSelect   = 'pri'
   timeWindow = 1000.0 ; Myr
   accModes   = ['smooth'] ;['all','smooth','clumpy','stripped']
-  entropy    = 0 ; do temp or entropy plots?
+  entropy    = 1 ; do temp or entropy plots?
   
   ; plot config
   lines   = [0,1] ; gal,gmem
@@ -682,10 +682,10 @@ pro plotTmaxHistos
     ; plot (1) - 3x2 mass bins separated out and each panel with gadget+arepo, GAL vs. gmem
     start_PS, sP.(0).plotPath + 'entMax_3x2_gal_tmax.'+plotStr+'.eps', /big
       !p.thick += 1
-      xrange = [5.0,11.0]
-      yrange = [6e-4,1.0]
+      xrange = [5.5,9.5]
+      yrange = [6e-4,0.5]
       
-      xtickv = [6.0,8.0,10.0]
+      xtickv = [6.0,7.0,8.0,9.0]
       
       for j=0,n_elements(bth.(0).massBins)-2 do begin
         
@@ -694,7 +694,8 @@ pro plotTmaxHistos
         if j gt 0 then noerase = 1 else noerase = 0
         
         cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,pos=pos[j],$
-          ytitle="",xtitle="",xticks=2,xtickv=xtickv,xtickname=xtickname,ytickname=ytickname,noerase=noerase       
+          ytitle="",xtitle="",xticks=n_elements(xtickv)-1,xtickv=xtickv,$
+          xtickname=xtickname,ytickname=ytickname,noerase=noerase       
         
         cgPlot,[0,0],[8e-4,0.25],line=2,color=cgColor('black'),thick=!p.thick-0.0,/overplot
         
@@ -715,7 +716,7 @@ pro plotTmaxHistos
         cgText,mean(xrange),yrange[1]*0.4,massBinStr,charsize=!p.charsize-0.0,alignment=0.5
             
         if j eq 0 then $
-          legend,simNames,textcolors=simColors,box=0,position=[xrange[1],0.2],/right,charsize=!p.charsize-0.27
+          legend,simNames,textcolors=simColors,box=0,position=[xrange[1],0.1],/right,charsize=!p.charsize-0.27
       
       endfor
       

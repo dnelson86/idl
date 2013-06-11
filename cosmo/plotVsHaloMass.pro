@@ -4,22 +4,26 @@
 
 ; plotPreBin():
 
-pro plotPreBin
+pro plotPreBin, sP=sP
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
   sgSelect   = 'pri'
-  redshift   = 2.0 ;redshifts  = [2.0,3.0]
-  res        = 512
-  
+  redshift   = sP.redshift ;2.0 ;redshifts  = [2.0,3.0]
+  res        = sP.res ;256
+  run        = sP.run
+
   timeWindows = list(250.0,500.0,1000.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
-  accModes = list('smooth_rec') ;list('all','smooth','smooth_rec','clumpy','stripped','recycled')
-  runs = list('feedback') ;list('feedback')
+  
+  if run eq 'feedback' then $
+    accModes = list('all','smooth','smooth','clumpy','stripped','recycled')
+  if run eq 'gadget' or run eq 'tracer' then $
+    accModes = list('all','smooth','smooth','clumpy','stripped')
   
   ;foreach redshift,redshifts do begin
     foreach timeWindow,timeWindows do begin
-      foreach run,runs do begin
+      ;foreach run,runs do begin
         foreach accMode,accModes do begin
           print,run,res,timeWindow,accMode
           sP = simParams(res=res,run=run,redshift=redshift)
@@ -28,7 +32,7 @@ pro plotPreBin
           th   = binTmaxHistos(sP=sP,sgSelect=sgSelect,timeWindow=timeWindow,accMode=accMode)
           h2   = binTmaxHisto2D(sP=sP,sgSelect=sgSelect,timeWindow=timeWindow,accMode=accMode)
         endforeach
-      endforeach
+      ;endforeach
     endforeach
   ;endforeach
   
@@ -114,17 +118,17 @@ pro markPlots
 end
 
 ; plotByMethod(): plot the "cold mode fraction" and accretion rates vs halo mass in a few different ways
-;                 using the mergerTreeSubset with accretionTimes and accretionModes
+;                 with accretionTimes and accretionModes
 
 pro plotByMethod
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  runs       = ['feedback','feedback_noZ','feedback_noFB'] ;['gadget','tracer','feedback']
+  runs       = ['tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   sgSelect   = 'pri'
   accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
-  timeWindow = 1000.0 ; consider accretion over this past time range (Myr)
+  timeWindow = 500.0 ; consider accretion over this past time range (Myr)
                       ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0 ; plot Tmax/Tvir=1
   res        = 256
@@ -137,6 +141,7 @@ pro plotByMethod
 
   xrange = [10.0,12.0]
   yrange = [0.0,1.025]
+  yrange_rate = [0.01,20.0]
   
   ; load
   foreach run,runs,i do begin
@@ -247,9 +252,7 @@ pro plotByMethod
   end_PS
   
   ; --- accretion rates ---
-  
-  yrange = [0.01,20.0]
-  yrange_stars = 0.1*yrange
+  if accMode eq 'all' then yrange_rate *= [2,5]
   
   ; plot (1) - both/gmem, variable*const
   start_PS, sP.(0).plotPath + 'accRateByMethod.both-gmem.const.' + plotStr + '.eps', /big
@@ -262,7 +265,7 @@ pro plotByMethod
                 [x1,y0,x2,y1]  ) ; lr
    
     ; ul: hot both
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",xtickname=replicate(' ',10),pos=pos[0]
     
     for i=0,n_tags(sP)-1 do $
@@ -274,7 +277,7 @@ pro plotByMethod
     legend,simNames,textcolors=simColors,box=0,/top,/left,charsize=!p.charsize-0.2
     
     ; ur: cold both
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),pos=pos[1],/noerase
     
     for i=0,n_tags(sP)-1 do $
@@ -283,7 +286,7 @@ pro plotByMethod
         color=sP.(i).colors[cInd],line=j,/overplot
     
     ; ll: hot gmem
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",pos=pos[2],/noerase
     
     for i=0,n_tags(sP)-1 do $
@@ -292,7 +295,7 @@ pro plotByMethod
         color=sP.(i).colors[cInd],line=j,/overplot
 
     ; lr: cold gmem
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",ytickname=replicate(' ',10),pos=pos[3],xticks=3,xtickv=[10.5,11.0,11.5,12.0],/noerase
     
     for i=0,n_tags(sP)-1 do $
@@ -327,7 +330,7 @@ pro plotByMethod
                 [x1,y0,x2,y1]  ) ; lr
    
     ; ul: hot both
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",xtickname=replicate(' ',10),pos=pos[0]
     
     for i=0,n_tags(sP)-1 do $
@@ -339,7 +342,7 @@ pro plotByMethod
     legend,simNames,textcolors=simColors,box=0,/top,/left,charsize=!p.charsize-0.2
     
     ; ur: cold both
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),pos=pos[1],/noerase
     
     for i=0,n_tags(sP)-1 do $
@@ -348,7 +351,7 @@ pro plotByMethod
         color=sP.(i).colors[cInd],line=j,/overplot
     
     ; ll: hot gmem
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",pos=pos[2],/noerase
     
     for i=0,n_tags(sP)-1 do $
@@ -357,7 +360,7 @@ pro plotByMethod
         color=sP.(i).colors[cInd],line=j,/overplot
     
     ; lr: cold gmem
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",ytickname=replicate(' ',10),pos=pos[3],xticks=3,xtickv=[10.5,11.0,11.5,12.0],/noerase
     
     for i=0,n_tags(sP)-1 do $
@@ -666,7 +669,6 @@ pro plotByMode
   ; --- accretion rates ---
 
   yrange = [0.01,20.0]
-  yrange_stars = 0.1*yrange
 
   ; plot (1) - accretion rate galaxy/halo atmosphere variable*tvir
   start_PS, sP.(0).plotPath + 'accRateByMode.both-gmem.tvir.'+plotStr+'.eps', /big
@@ -809,10 +811,10 @@ pro plotByTimeWindow
 
   ; config
   sgSelect = 'pri'
-  accMode  = 'smooth'
+  accMode  = 'all'
   redshift = 2.0
-  res      = 256
-  runs     = ['feedback','feedback_noZ','feedback_noFB'] ;['gadget','tracer','feedback']
+  res      = 512
+  runs     = ['tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   tws      = list(250.0,500.0,1000.0,'all')
   
   ; plot config
@@ -943,7 +945,6 @@ pro plotByTimeWindow
   ; --- accretion rates ---
   
   yrange = [0.01,20.0]
-  yrange_stars = 0.1*yrange
 
   ; plot (2) - accretion rate both/gmem variable*tvir
   start_PS, sP.(0).plotPath + 'accRateByTW.both-gmem.'+plotStr+'.eps', /big
@@ -1178,7 +1179,6 @@ pro plotByRes
   ; --- accretion rates ---
   
   yrange = [0.01,20.0]
-  yrange_stars = 0.1*yrange
   
   ; plot (2) - 3x2 panel split by definition type, both hot/cold (resolution lines)
   start_PS, sP.(0).plotPath + 'accRateByRes.both.3x2.'+plotStr+'.eps',/big
