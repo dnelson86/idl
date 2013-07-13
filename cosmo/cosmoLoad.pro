@@ -1171,7 +1171,7 @@ function readStrategyIO, inds=inds, indRange=indRange, $
   nBlocks = 0
   blockStart = []
   blockLen   = []
-  prevBlock = ulong64(0)
+  prevBlock = long64(-2) ; starting prevBlock+1 should not be a possibly valid starting block
   count = 0
       
   ; search for contiguous id blocks
