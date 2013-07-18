@@ -81,6 +81,13 @@ function mylog10, x ; leave zeros as zero, instead of converting to NaN
   return, x
 end
 
+pro reportMemory
+  mem = memory()
+  high_GB = string( float(mem[3]) / (1024L^3), format='(f5.2)')
+  cur_GB  = string( float(mem[0]) / (1024L^3), format='(f5.2)')
+  print,'Memory highwater: ['+high_GB+'] GB, current: ['+cur_GB+'] GB. ('+str(mem[1])+' '+str(mem[2])+')'
+end
+
 ; general algorithms
 ; ------------------
 
@@ -255,6 +262,34 @@ function removeIntersectionFromB, A, B, union=union
       print,'Warning: removeIntersectionFromB returning unmodified.'
       return, B
     endelse
+end
+
+; intersection(): return intersection of A and B
+; xor=1: only values in either A or B, but not both, are returned
+
+function intersection, A, B, ret_xor=ret_xor
+
+  array = [A, B]
+  array = array(sort(array))
+
+  if keyword_set(ret_xor) then begin
+    samp1 = intarr(n_elements(array))
+    samp2 = samp1
+    
+    i1 = where(array ne shift(array, -1),count)
+    if count gt 0 then samp1[i1]=1
+    i2 = where(array ne shift(array,  1),count)
+    if count gt 0 then samp2[i2]=1
+    
+    indices = where(samp1 eq samp2, count)
+  
+  endif else begin
+    indices = where(array eq shift(array, -1), count)
+  endelse
+  
+  if count gt 0 then return, array[indices]
+  return, -1
+
 end
 
 ; getIDIndexMapSparse(): return an array which maps ID->indices within dense, disjoint subsets which are 
@@ -877,6 +912,10 @@ function plot_pos, rows=rows, cols=cols, total=total, gap=gap
                   [x0+xoff,y0,x1+xoff,y1] ) ; bottom right
       
     endif
+    
+    if rows eq 1 and cols eq 3 then begin ;xs=9, ys=4 (2d maxtemp histo for 3 runs)
+    
+    endif
   endif else begin
     ; no gap: boxgrid configuration as in gas accretion paper plots
     if rows eq 4 and cols eq 1 then begin ;xs=6, ys=12
@@ -887,6 +926,17 @@ function plot_pos, rows=rows, cols=cols, total=total, gap=gap
                   [x0,y0+2*yoff,x1,y1+2*yoff] ,$ ; second row
                   [x0,y0+1*yoff,x1,y1+1*yoff] ,$ ; third row
                   [x0,y0,x1,y1]                ) ; bottom
+    endif
+    
+    if rows eq 2 and cols eq 3 then begin ;/big, e.g. plotValMaxHistos
+      x0 = 0.15 & x1 = 0.42 & x2 = 0.69 & x3 = 0.96
+      y0 = 0.15 & y1 = 0.55 & y2 = 0.95
+      pos = list( [x0,y1,x1,y2] ,$ ; ul
+                  [x1,y1,x2,y2] ,$ ; uc
+                  [x2,y1,x3,y2] ,$ ; ur
+                  [x0,y0,x1,y1] ,$ ; ll
+                  [x1,y0,x2,y1] ,$ ; lc
+                  [x2,y0,x3,y1] )  ; lr
     endif
   endelse
 
@@ -970,7 +1020,7 @@ end
 @accretionMode
 @accretionTimes
 @accretionVel
-@maxTemps
+@maxVals
 @timeScales
 @timeScalesPlot
 
@@ -991,7 +1041,7 @@ end
 ;@filamentSearchPlot
 
 @plotGalCat
-@plotMaxTemps
+@plotMaxVals
 @binVsHaloMass
 @plotVsHaloMass
 @plotRadProfiles

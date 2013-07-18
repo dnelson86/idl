@@ -14,7 +14,7 @@ function mergerTree, sP=sP, makeNum=makeNum
   ; config
   partMatchFracTol = 0.6   ; 60% minimum match between particle members of the specified type
   massDiffFracTol  = 0.4   ; 40% agreement in total mass or better
-  positionDiffTol  = 100.0 ; 200kpc maximum separation
+  positionDiffTol  = 100.0 ; 100kpc maximum separation
   minSubgroupLen   = 100   ; do not try to match subgroups with less than N total particles (for speed)
 
   ptNum = partTypeNum('dm') ; use dark matter particles (only) for matching
@@ -318,14 +318,12 @@ function mergerTreeAdaptiveSubset, sP=sP, verbose=verbose
   gcIndOrig = galCatRepParentIDs(galcat=galcat,gcIDList=galcatIDList)
   
   ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
-  placeMap = getIDIndexMap(galcatIDList,minid=minid)
-  gcIndOrig.gal   = placeMap[gcIndOrig.gal-minid]
-  gcIndOrig.gmem  = placeMap[gcIndOrig.gmem-minid]
-  gcIndOrig.stars = placeMap[gcIndOrig.stars-minid]
-  placeMap = !NULL
+  placeMap  = getIDIndexMap(galcatIDList,minid=minid)
+  gcIndOrig = placeMap[gcIndOrig-minid]
+  placeMap  = !NULL
   
   ; get the subset of the galcat indices in sgIDList
-  galcatSub = galcatINDList(galcat=galcat,gcIDList=galcatIDList)
+  galcatSub = galcatINDList(sP=sP,galcat=galcat,gcIDList=galcatIDList)
   
   r = {galcatIDList:galcatIDList,gcIndOrig:gcIndOrig,galcatSub:galcatSub,$
        hPos:hPos,hVel:hVel,hPosSm:hPosSm,hVelSm:hVelSm,$
@@ -335,160 +333,23 @@ function mergerTreeAdaptiveSubset, sP=sP, verbose=verbose
   ; save
   save,r,filename=saveFilename
   print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
-
-  sP.snap = maxSnap ; restore sP.snap  
   
   return,r
 end
 
-; mergerTreeSubset(): walk the merger tree from sP.snap back to some min snap and return the subset of the 
-;                     subgroups at sP.snap that are well-connected all the way back. also calculate
-;                     a few properties for these subgroups back in time (r_vir,T_vir,position) and 
-;                     the subset of the galaxycat at maxSnap that we can track back using this selection
-;
-; NOTE: minSnap is decided here (change will require recalculation of all accretionTimes/accretionModes)
+; mergerTreeSubset(): replaced with adaptive approach
 
 function mergerTreeSubset, sP=sP, verbose=verbose
 
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-  
-  ; --------------------------------------------------------------------------------------------------
-  ; switch to new adaptive mtS
-  ;print,'Note: mergerTreeAdaptiveSubset'
-  mt = mergerTreeAdaptiveSubset(sP=sP,verbose=verbose)
-  return,mt
-  ; --------------------------------------------------------------------------------------------------
-  
-  ; config
-  maxSnap = sP.snap
-  minSnap = redshiftToSnapnum(4.0,sP=sP)
-  
-  smoothKer = 3 ; 1,3,5 number of snapshots
-  units = getUnits()
-  
-  ; set saveFilename and check for existence
-  saveFilename = sP.derivPath + 'mTreeSub.'+sP.savPrefix+str(sP.res)+'.'+$
-                 str(maxSnap)+'-'+str(minSnap)+'.sK'+str(smoothKer)+'.sav'  
+  return, mergerTreeAdaptiveSubset(sP=sP,verbose=verbose)
 
-  if file_test(saveFilename) then begin
-    restore, saveFilename
-    return, r
-  endif
-
-  print,'Walking merger tree for halo selection...'
-
-  numBack = maxSnap - minSnap
-  
-  for i=0,numBack+floor(smoothKer/2.0)-1 do begin
-    ; load
-    h = loadSnapshotHeader(sP=sP)
-    gc = loadGroupCat(sP=sP,/skipIDs)
-    subgroupCen = subgroupPosByMostBoundID(sP=sP)
-
-    ; on first snapshot select primary halos and allocate arrays
-    if i eq 0 then begin
-      gcIDs = gcIDList(gc=gc,select='pri')
-
-      gcIDPlace = lindgen(n_elements(gcIDs)) ; initial placement in ascending order of ID
-      
-      times     = fltarr(numBack+floor(smoothKer/2.0))
-      hPos      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDPlace))
-      hVel      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDPlace))
-      hMass     = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
-      hVirRad   = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
-      hVirTemp  = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
-      noParMask = bytarr(n_elements(gcIDPlace))
-    endif
-  
-    ; which gcIDs still valid?
-    wPar = where(gcIDs ne -1,ncomp=count,comp=wNoPar)
-    
-    noParMask[wNoPar] = 1B ; mark halos with no parents
-    gcIDs[wNoPar] = 0 ; from this point on, will contain incorrect values, must use noParMask to select
-    
-    wPar = where(noParMask eq 0B,nleft)
-    wPar10 = where(noParMask eq 0B and hMass[0,*] ge 1.0,nleft10)
-    tot10 = where(hMass[0,*] ge 1.0,ntot10)
-    
-    if keyword_set(verbose) then $
-      print,' ['+string(sP.snap,format='(i3)')+'] remaining: '+string(nleft,format='(i5)')+' ('+$
-        string(float(nleft)/n_elements(gcIDs)*100,format='(f4.1)')+'%) massive: '+string(nleft10,format='(i5)')+' ('+$
-        string(float(nleft10)/ntot10*100,format='(f4.1)')+'%)'
-     
-    ; store
-    times[i] = h.time
-    hPos[i,*,gcIDPlace]   = subgroupCen[*,gcIDs]
-    hVel[i,*,gcIDPlace]   = gc.subgroupVel[*,gcIDs]
-    hMass[i,gcIDPlace]    = gc.subgroupMass[gcIDs]
-    hVirRad[i,gcIDPlace]  = gc.group_r_crit200[gc.subgroupGrNr[gcIDs]]
-    hVirTemp[i,gcIDPlace] = alog10(codeMassToVirTemp(gc.subgroupMass[gcIDs],sP=sP))
-
-    ; load mergerTree and change subgroup IDs to parents at the prior snapshot
-    Parent = mergerTree(sP=sP)
-    
-    gcIDs = Parent[gcIDs] ; change to parent IDs
-    
-    sP.snap -= 1
-  endfor
-  
-  ; use subgroup ID list comprised only of those with good parent histories (indices in gcIDs)
-  galcatIDList = where(noParMask eq 0B)
-  
-  Parent = !NULL
-  gcIDs  = !NULL
-  gcIDPlace = !NULL
-  noParMask = !NULL
-  subgroupCen = !NULL
-  
-  ; created smoothed estimates of pos(t), vel(t), mass(t),  r_vir(t) and T_vir(t) for only those kept halos
-  hPos     = hPos[*,*,galcatIDList] ; don't smooth positions or velocities here
-  hVel     = hVel[*,*,galcatIDList]
-  hMass    = smooth(hMass[*,galcatIDList],[1,smoothKer])
-  hVirRad  = smooth(hVirRad[*,galcatIDList],[1,smoothKer])
-  hVirTemp = smooth(hVirTemp[*,galcatIDList],[1,smoothKer])
-  print,'smooth ker warning'
-  
-  ; load galaxy/group member catalogs at zMin for gas ids to search for
-  sP.snap = maxSnap
-  galcat = galaxyCat(sP=sP)
-  
-  ; replicate parent IDs (of PRIMARY/parent)
-  gc = loadGroupCat(sP=sP,/skipIDs)
-  priParentIDs = gcIDList(gc=gc,select='pri') ; this is the starting gcIDs from above
-  
-  ; transform galcatIDList from indices to IDs
-  galcatIDList = priParentIDs[galcatIDList]
-  
-  ; replicated galcat parent IDs for each galcatSub member
-  gcIndOrig = galCatRepParentIDs(galcat=galcat,priParentIDs=priParentIDs,gcIDList=galcatIDList)
-  
-  ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
-  placeMap = getIDIndexMap(galcatIDList,minid=minid)
-  gcIndOrig.gal = placeMap[gcIndOrig.gal-minid]
-  gcIndOrig.gmem = placeMap[gcIndOrig.gmem-minid]
-  placeMap = !NULL
-  
-  ; get the subset of the galcat indices in sgIDList
-  galcatSub = galcatINDList(galcat=galcat,gcIDList=galcatIDList)
-  
-  r = {galcatIDList:galcatIDList,gcIndOrig:gcIndOrig,galcatSub:galcatSub,$
-       hPos:hPos,hVel:hVel,hVirRad:hVirRad,hVirTemp:hVirTemp,hMass:hMass,$
-       times:times,minSnap:minSnap,maxSnap:maxSnap,smoothKer:smoothKer}
-       
-  ; save
-  save,r,filename=saveFilename
-  print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
-       
-  return,r
 end
 
 ; mergerTreeRepParentIDs(): wrapper which returns mt.gcIndOrig for SPH simulations and the similarly
 ;                           replicated galcat parent ID list for tracer simulations
 
 function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compactMtS, $
-                                 trids_gal=galcat_gal_trids, trids_gmem=galcat_gmem_trids, $ ; outputs
-                                 trids_stars=galcat_stars_trids, gc_gal_cc=galcat_gal_cc, $ ; outputs
-                                 gc_gmem_cc=galcat_gmem_cc, gc_stars_cc=galcat_stars_cc ; outputs
+                                 trids=galcat_trids, gc_cc=galcat_cc  ; outputs
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function cosmoTracerChildren, galaxyCat
@@ -502,55 +363,37 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
   
     ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
     if keyword_set(compactMtS) then begin
-      placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
-      gcIndOrig.gal   = placeMap[gcIndOrig.gal-minid]
-      gcIndOrig.gmem  = placeMap[gcIndOrig.gmem-minid]
-      gcIndOrig.stars = placeMap[gcIndOrig.stars-minid]
-      placeMap = !NULL
+      placeMap  = getIDIndexMap(mt.galcatIDList,minid=minid)
+      gcIndOrig = placeMap[gcIndOrig-minid]
+      placeMap  = !NULL
     endif
     
     return,gcIndOrig
   endif
 
   if sP.trMCPerCell gt 0 then begin
-    ids_gal   = galcat.galaxyIDs[mt.galcatSub.gal]
-    ids_gmem  = galcat.groupmemIDs[mt.galcatSub.gmem]
-    ids_stars = galcat.stellarIDs[mt.galcatSub.stars]
+    ids = galcat.ids[mt.galcatSub]
     
     ; locate tracer children (indices) of gas id subsets
-    tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
-    galcat_gal_trids   = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gal, $
-                                             tr_parids=tr_parids, child_counts=galcat_gal_cc)
-    galcat_gmem_trids  = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids_gmem, $
-                                             tr_parids=tr_parids, child_counts=galcat_gmem_cc)
-    galcat_stars_trids = cosmoTracerChildren(sP=sP, /getInds, starIDs=ids_stars, $
-                                             tr_parids=tr_parids, child_counts=galcat_stars_cc)
-     
-    tr_parids = !NULL
-    ids_gal   = !NULL
-    ids_gmem  = !NULL
-    ids_stars = !NULL
+    galcat_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids, tr_parids=tr_parids, child_counts=galcat_cc)
+
+    ids = !NULL
     
     ; convert tracer children indices to tracer IDs at this zMin if we are returning them
-    if keyword_set(galcat_gal_trids) then begin
+    if keyword_set(galcat_trids) then begin
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-      galcat_gal_trids   = tr_ids[galcat_gal_trids]
-      galcat_gmem_trids  = tr_ids[galcat_gmem_trids]
-      galcat_stars_trids = tr_ids[galcat_stars_trids]
-      tr_ids   = !NULL
+      galcat_trids = tr_ids[galcat_trids]
+      tr_ids = !NULL
     endif
     
     ; create a gcIndOrig for the tracers
-    gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,$
-                                     child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc,stars:galcat_stars_cc}) 
+    gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,child_counts=galcat_cc) 
                   
     ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
     if keyword_set(compactMtS) then begin
-      placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
-      gcIndOrigTr.gal   = placeMap[gcIndOrigTr.gal-minid]
-      gcIndOrigTr.gmem  = placeMap[gcIndOrigTr.gmem-minid]
-      gcIndOrigTr.stars = placeMap[gcIndOrigTr.stars-minid]
-      placeMap = !NULL
+      placeMap    = getIDIndexMap(mt.galcatIDList,minid=minid)
+      gcIndOrigTr = placeMap[gcIndOrigTr-minid]
+      placeMap    = !NULL
     endif
     
     return,gcIndOrigTr
@@ -561,49 +404,31 @@ function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compact
     gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
 
     ; match galcat IDs to gas_ids
-    if sP.mapNotMatch then begin
-      idIndexMap = getIDIndexMap(gas_ids,minid=minid)
-          
-      inds_gal   = idIndexMap[galcat.galaxyIDs[mt.galcatSub.gal] - minid]
-      inds_gmem  = idIndexMap[galcat.groupmemIDs[mt.galcatSub.gmem] - minid]
-      idIndexMap = !NULL
-    endif else begin
-      calcMatch,galcat.galaxyIDs[mt.galcatSub.gal],gas_ids,galcat_ind,ids_gal_ind,count=countGal
-      inds_gal = ids_gal_ind[sort(galcat_ind)]
-      calcMatch,galcat.groupmemIDs[mt.galcatSub.gmem],gas_ids,galcat_ind,ids_gmem_ind,count=countGmem
-      inds_gmem = ids_gmem_ind[sort(galcat_ind)]
-      ; no stars
-      
-      if countGal ne n_elements(mt.galcatSub.gal) or countGmem ne n_elements(mt.galcatSub.gmem) then $
-        message,'Error: Failed to locate all of galcat in gas_ids (overflow64?).'
-    endelse
+    idIndexMap = getIDIndexMap(gas_ids,minid=minid)
+    ids_ind    = idIndexMap[galcat.ids[mt.galcatSub] - minid]
+    idIndexMap = !NULL
     
     gas_ids = !NULL
     
     ; locate tracer children (indices) of gas id subsets
-    galcat_gal_trids  = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gal,child_counts=galcat_gal_cc)
-    galcat_gmem_trids = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=inds_gmem,child_counts=galcat_gmem_cc)
+    galcat_trids = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=ids_ind,child_counts=galcat_cc)
     
-    inds_gal  = !NULL
-    inds_gmem = !NULL
+    ids_ind  = !NULL
     
     ; convert tracer children indices to tracer IDs at this zMin if we are returning them
     if keyword_set(galcat_gal_trids) then begin
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
-      galcat_gal_trids  = tr_ids[galcat_gal_trids]
-      galcat_gmem_trids = tr_ids[galcat_gmem_trids]
-      tr_ids   = !NULL
+      galcat_trids  = tr_ids[galcat_trids]
+      tr_ids = !NULL
     endif
     
     ; create a gcIndOrig for the tracers
-    gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,$
-                                     child_counts={gal:galcat_gal_cc,gmem:galcat_gmem_cc}) 
+    gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,child_counts=galcat_cc) 
                   
     ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
     if keyword_set(compactMtS) then begin
       placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
-      gcIndOrigTr.gal = placeMap[gcIndOrigTr.gal-minid]
-      gcIndOrigTr.gmem = placeMap[gcIndOrigTr.gmem-minid]
+      gcIndOrigTr = placeMap[gcIndOrigTr-minid]
       placeMap = !NULL
     endif
     
@@ -629,55 +454,33 @@ function mergerTreeINDList, sP=sP, galcat=galcat, mt=mt, gcIDList=gcIDList
   if count ne n_elements(gcIDList) then message,'Error: Not all gcIDs found in mergerTreeSubset.'
   
   ; make mask for requested subgroup IDs
-  gcIDMask = bytarr(n_elements(galcat.galaxyLen))
+  gcIDMask = bytarr(galcat.nGroups)
   if keyword_set(gcIDList) then gcIDMask[gcIDList] = 1B  
   if ~keyword_set(gcIDList) then gcIDMask[*] = 1B
   
   if sP.trMCPerCell eq 0 then begin
     ; normal indices return (handle zeros which will happen for individual halo ID requests at low masses)
     ; note: must handle the -1 return inside the calling function
-    tots = { gal   : total(galcat.galaxyLen[gcIDList],/int)   ,$
-             gmem  : total(galcat.groupmemLen[gcIDList],/int) ,$
-             stars : total(galcat.stellarLen[gcIDList],/int)   }
+    tots = total(galcat.len[gcIDList],/int)
+    if tots eq 0 then message,'Fix me.'
   
-    if tots.gal eq 0 or tots.gmem eq 0 or tots.stars eq 0 then message,'Fix me.'
+    r = ulonarr(tots)
   
-    r = {gal  : ulonarr(tots.gal) , gmem : ulonarr(tots.gmem), stars : ulonarr(tots.stars) }
-  
-    offsetGal  = 0L
-    offsetGmem = 0L
-    offsetStars = 0L
-  
-    offsetGal_mt  = 0L
-    offsetGmem_mt = 0L
-    offsetStars_mt = 0L
+    offset    = 0L
+    offset_mt = 0L
   
     ; (1) make list for gas cells/particles
     foreach gcID,mt.galcatIDList do begin
-      ; galaxy
-      if galcat.galaxyLen[gcID] gt 0 and gcIDMask[gcID] eq 1B then begin
-        galInds    = ulindgen(galcat.galaxyLen[gcID]) + offsetGal_mt
-        r.gal[offsetGal:offsetGal+galcat.galaxyLen[gcID]-1] = galInds
-        offsetGal += galcat.galaxyLen[gcID]
+
+      if galcat.len[gcID] gt 0 and gcIDMask[gcID] eq 1B then begin
+        galInds = ulindgen(galcat.len[gcID]) + offset_mt
+        
+        r[ offset:offset+galcat.len[gcID]-1 ] = galInds
+        
+        offset += galcat.len[gcID]
       endif
     
-      ; group member
-      if galcat.groupmemLen[gcID] gt 0 and gcIDMask[gcID] eq 1B then begin
-        gmemInds    = ulindgen(galcat.groupmemLen[gcID]) + offsetGmem_mt
-        r.gmem[offsetGmem:offsetGmem+galcat.groupmemLen[gcID]-1] = gmemInds
-        offsetGmem += galcat.groupmemLen[gcID]
-      endif
-      
-      ; stars
-      if galcat.stellarLen[gcID] gt 0 and gcIDMask[gcID] eq 1B then begin
-        starsInds    = ulindgen(galcat.stellarLen[gcID]) + offsetStars_mt
-        r.stars[offsetStars:offsetStars+galcat.stellarLen[gcID]-1] = starsInds
-        offsetStars += galcat.stellarLen[gcID]
-      endif
-    
-      offsetGal_mt   += galcat.galaxyLen[gcID]
-      offsetGmem_mt  += galcat.groupmemLen[gcID]
-      offsetStars_mt += galcat.stellarLen[gcID]
+      offset_mt += galcat.len[gcID]
     endforeach
   
     return,r
@@ -685,95 +488,40 @@ function mergerTreeINDList, sP=sP, galcat=galcat, mt=mt, gcIDList=gcIDList
   endif ; sP.trMCPerCell eq 0
   
   ; (2) make list including child counts if simulation has a tracer type
-  ; load child counts
-  maxt_gal = maxTemps(sP=sP,/loadAllTRGal)
-  child_counts_gal = maxt_gal.child_counts
-  maxt_gal = !NULL
+  maxt = maxVals(sP=sP)  ; load child counts
+  child_counts = maxt.child_counts
+  maxt = !NULL
   
-  maxt_gmem = maxTemps(sP=sP,/loadAllTRGmem)
-  child_counts_gmem   = maxt_gmem.child_counts
-  maxt_gmem = !NULL
-  
-  maxt_stars = maxTemps(sP=sP,/loadAllTRStars)
-  child_counts_stars   = maxt_stars.child_counts
-  maxt_stars = !NULL
-    
-  if n_elements(child_counts_gal) ne total(galcat.galaxyLen,/int) or $
-     n_elements(child_counts_gmem) ne total(galcat.groupmemLen,/int) or $
-     n_elements(child_counts_stars) ne total(galcat.stellarLen,/int) then $
-     message,'Error: Child_counts gal/gmem/stars should have same size as full galcat subset.'
+  if n_elements(child_counts) ne total(galcat.len,/int) then $
+     message,'Error: Child_counts should have same size as full galcat subset.'
 
-  if total(child_counts_gal,/int) gt 2e9 or total(child_counts_gmem,/int) gt 2e9 or $
-     total(child_counts_stars,/int) gt 2e9 then stop ; consider lon64/removing /int
+  if total(child_counts,/int) gt 2e9 then stop ; consider lon64/removing /int
 
   ; get normal-galcat indices for this selection, use to allocate rcc
   rr = galcatINDList(sP=sP,gcIDList=gcIDList)
-  rcc = { gal   : ulonarr(total(child_counts_gal[rr.gal],/int))    ,$
-          gmem  : ulonarr(total(child_counts_gmem[rr.gmem],/int))  ,$
-          stars : ulonarr(total(child_counts_stars[rr.stars],/int)) }
+  rcc = ulonarr(total(child_counts[rr],/int))
   rr = !NULL
        
-  offsetGal   = 0L
-  offsetGmem  = 0L
-  offsetStars = 0L
-  
-  offsetGal_all   = 0UL
-  offsetGmem_all  = 0UL
-  offsetStars_all = 0UL
+  offset     = 0L
+  offset_all = 0UL
   
   foreach gcID,mt.galcatIDList do begin
-    ; galaxy
-    if galcat.galaxyLen[gcID] gt 0 then begin
+
+    if galcat.len[gcID] gt 0 then begin
       ; calculate total number of children in this subgroup
-      tot_children_gal  = total(child_counts_gal[galcat.galaxyOff[gcID]:$
-                                                 galcat.galaxyOff[gcID]+galcat.galaxyLen[gcID]-1],/int)
+      tot_children = total(child_counts[ galcat.off[gcID]:galcat.off[gcID]+galcat.len[gcID]-1 ],/int)
+      
       ; add indices only for specified galaxy IDs
-      if tot_children_gal gt 0 and gcIDMask[gcID] then begin
+      if tot_children gt 0 and gcIDMask[gcID] then begin
         ; calculate place and store indices
-        galInds = ulindgen(tot_children_gal) + offsetGal_all
-        rcc.gal[offsetGal:offsetGal+tot_children_gal-1] = galInds
+        galInds = ulindgen(tot_children) + offset_all
+        rcc[ offset:offset+tot_children-1 ] = galInds
   
-        offsetGal += tot_children_gal
+        offset += tot_children
       endif
       
       ; add child counts to indice array offset
-      offsetGal_all  += tot_children_gal
-    endif      
-                  
-    ; group member
-    if galcat.groupmemLen[gcID] gt 0 then begin
-      ; calculate total number of children in this subgroup             
-      tot_children_gmem = total(child_counts_gmem[galcat.groupmemOff[gcID]:$
-                                                  galcat.groupmemOff[gcID]+galcat.groupmemLen[gcID]-1],/int)
-            
-      ; add indices only for specified group member IDs
-      if tot_children_gmem gt 0 and gcIDMask[gcID] then begin
-        ; calculate place and store indices
-        gmemInds     = ulindgen(tot_children_gmem) + offsetGmem_all
-        rcc.gmem[offsetGmem:offsetGmem+tot_children_gmem-1] = gmemInds
-        
-        offsetGmem += tot_children_gmem
-      endif
-      
-      offsetGmem_all += tot_children_gmem
-    endif
-    
-    ; stars
-    if galcat.stellarLen[gcID] gt 0 then begin
-      ; calculate total number of children in this subgroup             
-      tot_children_stars = total(child_counts_stars[galcat.stellarOff[gcID]:$
-                                                    galcat.stellarOff[gcID]+galcat.stellarLen[gcID]-1],/int)
-            
-      ; add indices only for specified group member IDs
-      if tot_children_stars gt 0 and gcIDMask[gcID] then begin
-        ; calculate place and store indices
-        starsInds     = ulindgen(tot_children_stars) + offsetStars_all
-        rcc.stars[offsetStars:offsetStars+tot_children_stars-1] = starsInds
-        
-        offsetStars += tot_children_stars
-      endif
-      
-      offsetStars_all += tot_children_stars
+      offset_all  += tot_children
     endif
     
   endforeach
