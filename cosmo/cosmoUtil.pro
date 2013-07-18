@@ -382,6 +382,10 @@ pro redshift_axis, xRange, yRange, ylog=ylog, sP=sP, dotted=dotted, zTicknames=z
   
   zXPos = fltarr(nZ)
   
+  ; plot horizontal line along top xaxis
+  cgPlot,xRange,[yRange[1],yRange[1]],/overplot
+  ;cgText,0.5,0.94,"Redshift",/normal  
+  
   ; plot "maximum" redshift label
   if (xRange[0] le 0.0) then $
     cgText,0.0,yRange[1]+yTextOff,zTicknames[0],alignment=0.5
@@ -405,9 +409,6 @@ pro redshift_axis, xRange, yRange, ylog=ylog, sP=sP, dotted=dotted, zTicknames=z
       cgPlot,[zXPos[i],zXPos[i]],yRange,line=dotted,/overplot,thick=!p.thick-0.5
   endfor
   
-  cgPlot,xRange,[yRange[1],yRange[1]],/overplot
-  ;cgText,0.5,0.94,"Redshift",/normal
-
 end
 
 ; universeage_axis(): draw age of universe (elapsed) axis

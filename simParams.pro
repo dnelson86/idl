@@ -1,6 +1,6 @@
 ; simParams.pro
 ; return structure of simulation and analysis parameters with consistent information
-; dnelson apr.2013
+; dnelson jun.2013
 
 function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
 
@@ -10,6 +10,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
      print,'Error: simParams: arguments not specified.'
      exit
   endif
+  
+  print,'WARNING: sP.atIndMode changed to 0, check'
   
   run = strlowcase(run)
 
@@ -45,7 +47,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        rVirFacs:      [1.0,0.75,0.5,0.25,0.15,0.05,0.01],$ ; search for accretion times across these fractions of the virial radius
        radIndHaloAcc: 0,$     ; 1.0 rvir crossing for halo accretion
        radIndGalAcc:  4,$     ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
-       atIndMode:     0,$     ; use first 1.0 rvir crossing to determine mode
+       atIndMode:     -1,$     ; use first 1.0 rvir crossing to determine mode
        mapNotMatch:   1,$ ; use idIndexMap instead of match() approach in analysis, whenever possible
        TcutVals:      [5.3,5.5,5.7],$ ; log(K) for constant threshold comparisons
        TvirVals:      [1.0,0.8,0.4],$ ; T/Tvir coefficients for variable threshold comparisons
@@ -59,6 +61,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        $ ; GFM and other indications of optional snapshot fields
        gfmElements:   ['H','He','C','N','O','Ne','Mg','Si','Fe'] ,$
        gfmNumElements: 0, $ ; set to >=1 for GFM runs outputting abundances by metal
+       gfmBHs:         0, $ ; set to 1 for BLACK_HOLES
        gfmWinds:       0  $ ; set to 1 for GFM_WINDS
       }
 
@@ -73,6 +76,11 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   if n_elements(snap) gt 0 then $
     r.snap = snap
  
+  if (run eq 'illustris') or (run eq 'illustris_dm') then begin
+    
+  
+  endif
+ 
   ; sims.feedback (Velocity + f=5 Monte Carlo) 128,256,512 @ 20Mpc w/ fiducial Illustris parameters
   if (run eq 'feedback') or (run eq 'feedback_noz') or (run eq 'feedback_nofb') or (run eq 'feedback_nogfm') then begin
     r.minNumGasPart  = -1 ; no additional cut
@@ -80,6 +88,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     r.trMCFields     = [0,1,2,3,4,5,6,7,8,9,-1,-1,-1] ; up to and including WIND_COUNTER (=512, 10 of 13)
     r.gfmNumElements = 9
     r.gfmWinds       = 1
+    r.gfmBHs         = 1
     
     if res eq 128 or res eq 256 or res eq 512 then begin 
       r.boxSize       = 20000.0
@@ -214,59 +223,6 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     return,r
   endif
   
-  ; TEMP GADGET 512 old groups and data.files (corresponding to the halo comparison project / for vis)
-  if (run eq 'gadgetold') then begin
-    r.minNumGasPart = -1 ; no additional cut
-    r.trMCPerCell   = 0  ; none (SPH)
-    r.trMCFields    = intarr(13)-1 ; none (SPH)
-    
-    if keyword_set(f) then stop ; shouldn't be specified
-    if res ne 512 then stop ; only 512
-  
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,314]
-    r.groupCatRange = [50,314]
-    r.targetGasMass = 7.44447120e-05
-    r.gravSoft      = 1.0
-    
-    r.simPath    = '/n/home07/dnelson/sims.gadget/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_old/output/'
-    r.arepoPath  = '/n/home07/dnelson/sims.gadget/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_old/'
-    r.savPrefix  = 'G'
-    r.saveTag    = 'SPH'
-	r.simName    = 'GADGET'
-    r.plotPrefix = 'Gold'
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
-    r.derivPath  = '/n/home07/dnelson/sims.gadget/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_old/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
- 
-  ; shytest
-  if (run eq 'shytest') then begin
-    if res ne 128 then message,'error'
-    r.trMCPerCell   = 1
-    r.boxSize       = 20000.0
-    r.targetGasMass = 4.76446157e-03
-    r.trMassConst = r.targetGasMass / r.trMCPerCell
-
-    r.simPath    = '/n/home07/dnelson/sims.tracers/shytest/output/'
-    r.arepoPath  = '/n/home07/dnelson/sims.tracers/shytest/'
-    r.savPrefix  = 'ST'
-    r.saveTag    = 'sT'
-        r.simName    = 'SHYTEST'
-    r.plotPrefix = 'shy'
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
-    r.derivPath  = '/n/home07/dnelson/sims.tracers/shytest/data.files/'
-	
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-	
-    return,r
-  endif
- 
   ; sims.tracers (Velocity + f=10 Monte Carlo) 128,256,512 @ 20Mpc
   if (run eq 'tracer') or (run eq 'tracer_nouv') then begin
     r.minNumGasPart = -1 ; no additional cut
@@ -378,125 +334,6 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
     return,r
   endif
   
-  if (run eq 'dev.tracer') then begin
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,76]
-    r.groupCatRange = [25,76]
-    r.minNumGasPart = -1 ; no additional cut
-    r.trMCPerCell   = -1 ; velocity tracers
+  message,'simParams: ERROR.'
 
-    if keyword_set(f) then stop
-    if (res ne 128) then stop ; only 128 exists
-    
-    r.targetGasMass = 4.76446157e-03
-    r.trMassConst   = r.targetGasMass
-    
-    r.gravSoft      = 4.0
-
-    r.simPath    = '/n/scratch2/hernquist_lab/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/'
-    r.savPrefix  = 'D'
-    r.plotPrefix = 'D'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracer.nonrad') then begin
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-    r.minNumGasPart = -1 ; no additional cut
-    r.trMCPerCell   = -1 ; velocity tracers
-    
-    if keyword_set(f) then stop ; shouldn't be set
-    if (res ne 128) and (res ne 256) then stop ; only 128 and 256 exist
-  
-    if (res eq 128) then r.targetGasMass = 4.76446157e-03
-    if (res eq 256) then r.targetGasMass = 5.95556796e-04
-    
-    r.trMassConst   = r.targetGasMass
-    
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-  
-    r.simPath    = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/'
-    r.savPrefix  = 'N'
-    r.plotPrefix = 'N'
-    r.plotPath   = '/n/home07/dnelson/dev.tracer/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracer/cosmobox.'+str(res)+'_20Mpc_nonrad/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracerMC.nonrad') then begin ; DEV.ref
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-    
-    if not keyword_set(f) then stop
-    if (res ne 128) and (res ne 256) then stop ; only 128 and 256 exist
-    r.trMCPerCell = fix(f)
-  
-    if (res eq 128) then r.targetGasMass = 4.76446157e-03
-    if (res eq 256) then r.targetGasMass = 5.95556796e-04
-    
-    r.trMassConst = r.targetGasMass / float(r.trMCPerCell)
-    
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-  
-    r.simPath    = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.nonrad.ref/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.nonrad.ref/'
-    r.savPrefix  = 'N.f'+f
-    r.plotPrefix = 'N.f'+f
-    r.plotPath   = '/n/home07/dnelson/dev.tracerMC/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.nonrad.ref/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  if (run eq 'dev.tracerMC') then begin ; DEV coolSF.GFM.ref
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,38]
-    r.groupCatRange = [15,38]
-    
-    if not keyword_set(f) then stop
-    if (res ne 128) and (res ne 256) then stop ; only 128 and 256 exist
-    r.trMCPerCell = fix(f)
-  
-    if (res eq 128) then r.targetGasMass = 4.76446157e-03
-    if (res eq 256) then r.targetGasMass = 5.95556796e-04
-    
-    r.trMassConst = r.targetGasMass / float(r.trMCPerCell)
-    
-    if (res eq 128) then r.gravSoft = 4.0
-    if (res eq 256) then r.gravSoft = 2.0
-  
-    r.simPath    = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.coolSF.GFM.ref/output/'
-    r.arepoPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.coolSF.GFM.ref/'
-    r.savPrefix  = 'T.f'+f
-    r.plotPrefix = 'T.f'+f
-    r.plotPath   = '/n/home07/dnelson/dev.tracerMC/'
-    r.derivPath  = '/n/home07/dnelson/dev.tracerMC/cosmobox.'+str(res)+'_20Mpc.f'+str(f)+'.coolSF.GFM.ref/data.files/'
-    
-    ; if redshift passed in, convert to snapshot number and save
-    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
-    
-    return,r
-  endif
-  
-  print,'simParams: ERROR.'
-  stop
 end

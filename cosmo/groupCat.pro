@@ -465,7 +465,7 @@ function subgroupPosByMostBoundID, sP=sP
       sort_gc_ind = calcSort(gc_ind)
       ids_ind = ids_ind[sort_gc_ind]
       gc_ind  = gc_ind[sort_gc_ind]
-      
+
       pos = loadSnapshotSubset(sP=sP,partType=partType,field='pos',inds=ids_ind)
       groupCen[*,gc_ind] = pos
     endif

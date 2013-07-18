@@ -1,6 +1,6 @@
 ; LSF.pro
 ; automation and queue job related
-; dnelson jul.2012
+; dnelson jun.2013
 
 ; makeArepoFoFBsub(): write bsub file to invoke FoF/Subfind group finder post-processing
 
@@ -8,7 +8,7 @@ pro makeArepoFoFBsub
 
   ; config
   res = 512
-  run = 'tracer'
+  run = 'gadget'
   ;f = '10'
   
   sP = simParams(res=res,run=run)
@@ -16,7 +16,7 @@ pro makeArepoFoFBsub
   snapZ = redshiftToSnapNum([6.0,5.0,4.0,3.0,2.0,1.0,0.0],sP=sP)
   print,snapZ
 
-  snapRange = [272,278,3]
+  snapRange = [217,217,1]
   ;snaps = [257]
 
   ; job config
@@ -24,10 +24,10 @@ pro makeArepoFoFBsub
   nProcs    = 64 ; needed nodes: 128^3=0.5 (n4tile4 PartAllocFactor=2)
                  ;               256^3=4 (n32tile4 PartAllocFactor=2.5 MaxMemSize=7900)
                  ;               512^3=16 (n64tile4 PartAllocFactor=1.5 though n32tile4 ok until z=2)
-  ptile     = 2 ; span[ptile=X]
+  ptile     = 4 ; span[ptile=X]
   cmdCode   = 3 ; fof/substructure post process
   
-  excludeHosts = ['hero0103','hero2205','hero0410','hero2413','hero1004'] ;leave empty otherwise
+  excludeHosts = ['hero1015','hero0103','hero2205','hero0410','hero2413','hero1004'] ;leave empty otherwise
  
   paramFile = "param_fof.txt"
 
@@ -46,8 +46,8 @@ pro makeArepoFoFBsub
     selectStr = ''
     if n_elements(excludeHosts) gt 0 then begin
       selectStr = 'select['
-      for i=0,n_elements(excludeHosts)-1 do selectStr += 'hname!='+excludeHosts[i]+' '
-      selectStr = strmid(selectStr,0,strlen(selectStr)-1) + '] '
+      for i=0,n_elements(excludeHosts)-1 do selectStr += 'hname!='+excludeHosts[i]+' && '
+      selectStr = strmid(selectStr,0,strlen(selectStr)-4) + '] '
     endif
       
     openW, lun, jobFilename, /GET_LUN
@@ -220,7 +220,6 @@ pro runGasAccPaper
   resolutions = [128,256,512]
   runs        = ['gadget','tracer']
   
-  sgSelect    = 'pri'
   timeWindows = list('all',1000.0,250.0) ; Myr
   accModes    = ['all','smooth','clumpy','stripped']
   
@@ -237,7 +236,7 @@ pro runGasAccPaper
         x = galaxyCatRadii(sP=sP)
         
         ; primary analysis
-        x = maxTemps(sP=sP)
+        x = maxVals(sP=sP)
         x = mergerTree(sP=sP,makeNum=snap)
         x = mergerTreeAdaptiveSubset(sP=sP)
         x = accretionTimes(sP=sP)
@@ -246,7 +245,7 @@ pro runGasAccPaper
         ; binning for plots
         foreach timeWindow,timeWindows do begin
           foreach accMode,accModes do begin
-            x = haloMassBinValues(sP=sP,sgSelect=sgSelect,timeWindow=timeWindow,accMode=accMode)
+            x = haloMassBinValues(sP=sP,timeWindow=timeWindow,accMode=accMode)
           endforeach
         endforeach
         
