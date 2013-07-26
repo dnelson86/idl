@@ -1,6 +1,6 @@
 ; accretionTrajVis.pro
 ; particle trajectories with time (visualization routines)
-; dnelson apr.2012
+; dnelson jul.2013
 
 ; cosmoTrajMovieMatchedHalo(): load positions(time) and make interpolated images of tracer/sph positions
 ;                              from a cosmological box via accretionTraj() comparing a matched halo
@@ -29,26 +29,10 @@ pro cosmoTrajMovieMatchedHalo
     ; get the matched group catalog
     match = findMatchedHalos(sP1=sPa,sP2=sPg)
   
-    haloIDs_vel = []
-    haloIDs_ga  = []
-  
-    ; find intersection of matched halos with tracked halos in accretionTimes()
-    for i=0,match.nMatched-1 do begin
-      haloID_vel = match.wMatch[i]
-      haloID_ga = match.matchedInds[haloID_vel]
-      
-      ; this arepo halo is tracked?
-      w = where(mt_vel.galcatIDList eq haloID_vel,count)
-      if count eq 0 then continue
-      
-      ; the matched gadget halo is tracked?
-      w = where(mt_ga.galcatIDList eq haloID_ga,count)
-      if count eq 0 then continue
-      
-      haloIDs_vel = [haloIDs_vel,haloID_vel]
-      haloIDs_ga  = [haloIDs_ga,haloID_ga]
-    endfor
-      
+    haloIDs_vel = [match.wMatch]
+    haloIDs_ga  = [match.matchedInds[match.wMatch]]
+    print,'CHECK the above line (subset matchedInds?)'
+        
     ; load group catalog to find masses of these matched halos
     gc = loadGroupCat(sP=sPa,/skipIDs)
     haloMasses = codeMassToLogMsun(gc.subgroupMass[haloIDs_vel])
@@ -59,35 +43,19 @@ pro cosmoTrajMovieMatchedHalo
     haloID_ga  = haloIDs_ga[matchID]
     haloMass   = haloMasses[matchID]
 
-    ; load child counts for all members of galcat
-    maxt_vel_gal = maxTemps(sP=sPa,/loadAllTRGal)
-    cc_vel_gal   = maxt_vel_gal.child_counts
-    maxt_vel_gal = !NULL
-    
-    maxt_vel_gmem = maxTemps(sP=sPa,/loadAllTRGmem)
-    cc_vel_gmem   = maxt_vel_gmem.child_counts
-    maxt_vel_gmem = !NULL
-    
-    ;maxt_ga_gal = maxTemps(sP=sPg,/loadByGas)
-    ;cc_ga_gal   = maxt_ga_gal.child_counts
-    ;maxt_ga_gal = !NULL
-    
     ; get indices for the subset of the galaxycat corresponding to the matched halo in each sim
-    galcatSub_vel = galCatINDList(sP=sPa,gcIDList=[haloID_vel],$
-                               child_counts={gal:cc_vel_gal,gmem:cc_vel_gmem})          
+    galcatSub_vel = galCatINDList(sP=sPa,gcIDList=[haloID_vel],/trRep)          
     galcatSub_ga  = galCatINDList(sP=sPg,gcIDList=[haloID_ga])
   endif else begin
     ; make pseudo galcatSub which accesses all members of galaxycat
-    galcatSub_vel = { gal  : lindgen(n_elements(at_vel.relPos_gal[0,0,*]))  ,$
-                      gmem : lindgen(n_elements(at_vel.relPos_gmem[0,0,*]))  }
-    galcatSub_ga  = { gal  : lindgen(n_elements(at_ga.relPos_gal[0,0,*]))  ,$
-                      gmem : lindgen(n_elements(at_ga.relPos_gmem[0,0,*]))  }        
+    galcatSub_vel = lindgen(n_elements(at_vel.relPos[0,0,*]))
+    galcatSub_ga  = lindgen(n_elements(at_ga.relPos[0,0,*]))   
   endelse
 
   ; count
   nTrMC  = 0
-  nTrVel = n_elements(at_vel.relPos_gal[0,0,galcatSub_vel.gal])
-  nSph   = n_elements(at_ga.relPos_gal[0,0,galcatSub_ga.gal])
+  nTrVel = n_elements(at_vel.relPos[0,0,galcatSub_vel])
+  nSph   = n_elements(at_ga.relPos[0,0,galcatSub_ga])
 
   ; view configuration
   boxCen   = [0,0]
@@ -142,15 +110,15 @@ pro cosmoTrajMovieMatchedHalo
 
   print,'interp vel...'
   for i=0,nTrVel-1 do begin
-    velPos[0,i,*] = spline(mt_vel.times,at_vel.relPos_gal[*,axes[0],galcatSub_vel.gal[i]],frameTimesRev)
-    velPos[1,i,*] = spline(mt_vel.times,at_vel.relPos_gal[*,axes[1],galcatSub_vel.gal[i]],frameTimesRev)
+    velPos[0,i,*] = spline(mt_vel.times,at_vel.relPos[*,axes[0],galcatSub_vel[i]],frameTimesRev)
+    velPos[1,i,*] = spline(mt_vel.times,at_vel.relPos[*,axes[1],galcatSub_vel[i]],frameTimesRev)
   endfor
   
   print,'interp sph...'
   for i=0,nSph-1 do begin
     ; spline interpolate to reversed frameTimes (so they progress back in time like the data)
-    gaPos[0,i,*] = spline(mt_ga.times,at_ga.relPos_gal[*,axes[0],galcatSub_ga.gal[i]],frameTimesRev)
-    gaPos[1,i,*] = spline(mt_ga.times,at_ga.relPos_gal[*,axes[1],galcatSub_ga.gal[i]],frameTimesRev)
+    gaPos[0,i,*] = spline(mt_ga.times,at_ga.relPos[*,axes[0],galcatSub_ga[i]],frameTimesRev)
+    gaPos[1,i,*] = spline(mt_ga.times,at_ga.relPos[*,axes[1],galcatSub_ga[i]],frameTimesRev)
   endfor
   
   ; reverse positions so they progress forward in time
@@ -241,8 +209,8 @@ pro cosmoTrajMovieMatchedHalo
       endif
       
       ; simulation names
-      cgText,0.05,0.03,"Arepo",alignment=0.5,color=cgColor('dark orchid'),/normal,charsize=!p.charsize-0.4
-      cgText,0.95,0.03,"Gadget",alignment=0.5,color=cgColor('dark orchid'),/normal,charsize=!p.charsize-0.4
+      cgText,0.05,0.03,"AREPO",alignment=0.5,color=cgColor('dark orchid'),/normal,charsize=!p.charsize-0.4
+      cgText,0.95,0.03,"GADGET",alignment=0.5,color=cgColor('dark orchid'),/normal,charsize=!p.charsize-0.4
       
       ; dividing line
       cgPlot,[boxCen[0]-zoomSize/2.0,boxCen[0]-zoomSize/2.0],[boxCen[1]-zoomSize/2.4,boxCen[1]+zoomSize/2.0],$
@@ -294,12 +262,8 @@ pro cosmoTrajMovieHalo
   at  = accretionTraj(sP=sP)
   mt  = mergerTreeSubset(sP=sP)
 
-  ; load velocities and convert to kpc/Gyr
-  if useVels then begin
-    atv = accretionTraj(sP=sP,/getVel)
-    atv.vel_gal  *= (units.s_in_Gyr / units.kpc_in_km)
-    atv.vel_gmem *= (units.s_in_Gyr / units.kpc_in_km)
-  endif
+  ; convert velocities to kpc/Gyr
+  if useVels then at.relVel *= (units.s_in_Gyr / units.kpc_in_km)
   
   haloIDs = []
 
@@ -310,26 +274,21 @@ pro cosmoTrajMovieHalo
   
   ; choose halo(s)
   if n_elements(massBinLog) gt 0 then begin
-    mtHaloInd = where(haloMasses ge massBinLog[0] and haloMasses le massBinLog[1],count)
+    haloIDs = where(haloMasses ge massBinLog[0] and haloMasses le massBinLog[1],count)
     if count eq 0 then message,'Error: No halos in mass bin.'
     print,'Found ['+str(count)+'] halos in mass bin.'
     
-    haloIDs    = mt.galcatIDList[mtHaloInd]
     haloMasses = halomasses[mtHaloInd]
   endif else begin
-    haloIDs    = [mt.galcatIDList[mtHaloInd]]
+    haloIDs    = [mtHaloInd]
     haloMasses = haloMasses[mtHaloInd]
   endelse
   
-  ; get indices for the subset of the mergerTreeSubset corresponding to the selected halo(s)
-  mergerTreeSub = mergerTreeINDList(sP=sP,gcIDList=haloIDs)
-
   ; count
-  nPart = { gal  : n_elements(at.relPos_gal[0,0,mergerTreeSub.gal])   ,$
-            gmem : n_elements(at.relPos_gmem[0,0,mergerTreeSub.gmem])  }
+  nPart = n_elements(at.relPos[0,0,*])
 
   ; convert scale factor to redshift
-  mt.times  = 1/mt.times-1
+  mt.times = 1/mt.times-1
   
   if redshiftStart lt min(mt.times) then message,'Error: Requested redshiftStart beyond snapshot range.'
   if redshiftEnd gt max(mt.times) then message,'Error: Requested redshiftEnd beyond snapshot range.'
@@ -356,29 +315,21 @@ pro cosmoTrajMovieHalo
   rgb = fix(findgen(trailLenFrame)/(trailLenFrame-1) * 254)
   
   trailColorsGal  = lonarr(trailLenFrame)
-  trailColorsGmem = lonarr(trailLenFrame)
   
   for i=0,trailLenFrame-1 do begin
-    ;trailColorsGal[i]  = rgb[i] + rgb[i]*(256L) + fix(rgb[i]/ggTintFac)*(256L)^2 ; blue tint
-    ;trailColorsGmem[i] = rgb[i] + fix(rgb[i]/ggTintFac)*(256L) + rgb[i]*(256L)^2 ; green tint
-    trailColorsGal[i]  = rgb[i] + rgb[i]*(256L) + rgb[i]*(256L)^2 ; blue tint
-    trailColorsGmem[i] = rgb[i] + rgb[i]*(256L) + rgb[i]*(256L)^2 ; green tint
+    ;trailColors[i]  = rgb[i] + rgb[i]*(256L) + fix(rgb[i]/ggTintFac)*(256L)^2 ; blue tint
+    trailColors[i]  = rgb[i] + rgb[i]*(256L) + rgb[i]*(256L)^2 ; blue tint
   endfor
   
-  trailColorsGal = reverse(trailColorsGal)
-  trailColorsGmem = reverse(trailColorsGmem)
+  trailColors = reverse(trailColors)
   
   ; setup high temperature color trail
-  trailColorModGal  = lonarr(trailLenFrame)
-  trailColorModGMem = lonarr(trailLenFrame)
+  trailColorMod  = lonarr(trailLenFrame)
   
-  for i=0,trailLenFrame-1 do begin
-    trailColorModGal[i]  = fix(rgb[i]/ggTintFac*0.25) + rgb[i]*(256L) + fix(rgb[i]/ggTintFac)*(256L)^2
-    trailColorModGmem[i] = fix(rgb[i]/ggTintFac*0.25) + fix(rgb[i]/ggTintFac)*(256L) + rgb[i]*(256L)^2
-  endfor
+  for i=0,trailLenFrame-1 do $
+    trailColorMod[i] = fix(rgb[i]/ggTintFac*0.25) + rgb[i]*(256L) + fix(rgb[i]/ggTintFac)*(256L)^2
   
-  trailColorModGal  = reverse(trailColorModGal)
-  trailColorModGmem = reverse(trailColorModGmem)
+  trailColorMod = reverse(trailColorMod)
 
   ; spline interpolation of halo properties (single or mean)
   print,'interp halo...'
@@ -394,56 +345,32 @@ pro cosmoTrajMovieHalo
   endfor
 
   ; spline interpolation of axes[0],axes[1] coordinates and current temperatures
-  galPos   = fltarr(2,nPart.gal,nFrames)
-  gmemPos  = fltarr(2,nPart.gmem,nFrames)
-  galTemp  = fltarr(nPart.gal,nFrames)
-  gmemTemp = fltarr(nPart.gmem,nFrames) 
+  pos  = fltarr(2,nPart,nFrames)
+  temp = fltarr(nPart,nFrames)
 
+  print,'interp...'
+  
   if useVels then begin
     ; interpolate using velocities are known derivatives
-    print,'interp gal...'
-    for i=0,nPart.gal-1 do begin
-      mtInd = mergerTreeSub.gal[i]
-      galPos[0,i,*] = hermite(mt.times,at.relPos_gal[*,axes[0],mtInd],frameTimesRev,$
-                              fderiv=atv.vel_gal[*,axes[0],mtInd])
-      galPos[1,i,*] = hermite(mt.times,at.relPos_gal[*,axes[1],mtInd],frameTimesRev,$
-                              fderiv=atv.vel_gal[*,axes[1],mtInd])
-      galTemp[i,*]  = hermite(mt.times,at.curTemp_gal[*,mtInd],frameTimesRev)
-    endfor
-    
-    print,'interp gmem...'
-    for i=0,nPart.gmem-1 do begin
-      mtInd = mergerTreeSub.gmem[i]
-      gmemPos[0,i,*] = hermite(mt.times,at.relPos_gmem[*,axes[0],mtInd],frameTimesRev,$
-                              fderiv=atv.vel_gmem[*,axes[0],mtInd])
-      gmemPos[1,i,*] = hermite(mt.times,at.relPos_gmem[*,axes[1],mtInd],frameTimesRev,$
-                              fderiv=atv.vel_gmem[*,axes[1],mtInd])
-      gmemTemp[i,*]  = hermite(mt.times,at.curTemp_gmem[*,mtInd],frameTimesRev)
+    for i=0L,nPart-1 do begin
+      pos[0,i,*] = hermite(mt.times,at.relPos[*,axes[0],i],frameTimesRev,$
+                              fderiv=at.relVel[*,axes[0],i])
+      pos[1,i,*] = hermite(mt.times,at.relPos[*,axes[1],i],frameTimesRev,$
+                              fderiv=at.relVel[*,axes[1],i])
+      temp[i,*]  = hermite(mt.times,at.curTemp[*,i],frameTimesRev)
     endfor
   endif else begin
     ; interpolate without using known derivatives
-    print,'interp gal...'
-    for i=0,nPart.gal-1 do begin
-      mtInd = mergerTreeSub.gal[i]
-      galPos[0,i,*] = hermite(mt.times,at.relPos_gal[*,axes[0],mtInd],frameTimesRev)
-      galPos[1,i,*] = hermite(mt.times,at.relPos_gal[*,axes[1],mtInd],frameTimesRev)
-      galTemp[i,*]  = hermite(mt.times,at.curTemp_gal[*,mtInd],frameTimesRev)
-    endfor
-    
-    print,'interp gmem...'
-    for i=0,nPart.gmem-1 do begin
-      mtInd = mergerTreeSub.gmem[i]
-      gmemPos[0,i,*] = hermite(mt.times,at.relPos_gmem[*,axes[0],mtInd],frameTimesRev)
-      gmemPos[1,i,*] = hermite(mt.times,at.relPos_gmem[*,axes[1],mtInd],frameTimesRev)
-      gmemTemp[i,*]  = hermite(mt.times,at.curTemp_gmem[*,mtInd],frameTimesRev)
+    for i=0L,nPart-1 do begin
+      pos[0,i,*] = hermite(mt.times,at.relPos[*,axes[0],i],frameTimesRev)
+      pos[1,i,*] = hermite(mt.times,at.relPos[*,axes[1],i],frameTimesRev)
+      temp[i,*]  = hermite(mt.times,at.curTemp[*,i],frameTimesRev)
     endfor
   endelse
   
   ; reverse positions/temperatures so they progress forward in time
-  galPos   = reverse(galPos,3,/overwrite)
-  gmemPos  = reverse(gmemPos,3,/overwrite)
-  galTemp  = reverse(galTemp,2,/overwrite)
-  gmemTemp = reverse(gmemTemp,2,/overwrite)
+  pos  = reverse(pos,3,/overwrite)
+  temp = reverse(temp,2,/overwrite)
 
   print,'rendering frames...'
   ;frames = [0,300,600,900,1200]
@@ -498,24 +425,16 @@ pro cosmoTrajMovieHalo
       haloTvir_mean = interpHaloTvir[fn]
       if n_elements(haloIDs) gt 1 then haloTvir_mean = mean(interpHaloTvir[*,fn])
 
-      ; gal: to plot the trail, plots each particle path separately
-      w = where(alog10(10.0^galTemp[*,fn]/10.0^haloTvir_mean) ge tempLogFac,count,comp=wc,ncomp=countc)
+      ; to plot the trail, plots each particle path separately
+      w = where(alog10(10.0^temp[*,fn]/10.0^haloTvir_mean) ge tempLogFac,count,comp=wc,ncomp=countc)
+      
       if count gt 0 then $
         foreach i,w do for j=fnTrail,fn-1 do $
-          plots,galPos[0,i,j:(j+1)],galPos[1,i,j:(j+1)],color=trailColorModGal[j-fnTrail]
+          plots,pos[0,i,j:(j+1)],pos[1,i,j:(j+1)],color=trailColorMod[j-fnTrail]
       if countc gt 0 then $
         foreach i,wc do for j=fnTrail,fn-1 do $
-          plots,galPos[0,i,j:(j+1)],galPos[1,i,j:(j+1)],color=trailColorsGal[j-fnTrail]
+          plots,pos[0,i,j:(j+1)],pos[1,i,j:(j+1)],color=trailColors[j-fnTrail]
                 
-      ; gmem
-      w = where(alog10(10.0^gmemTemp[*,fn]/10.0^haloTvir_mean) ge tempLogFac,count,comp=wc,ncomp=countc)
-      if count gt 0 then $
-        foreach i,w do for j=fnTrail,fn-1 do $
-          plots,gmemPos[0,i,j:(j+1)],gmemPos[1,i,j:(j+1)],color=trailColorModGmem[j-fnTrail]
-      if countc gt 0 then $
-        foreach i,wc do for j=fnTrail,fn-1 do $
-          plots,gmemPos[0,i,j:(j+1)],gmemPos[1,i,j:(j+1)],color=trailColorsGmem[j-fnTrail]
-          
       ; scale bar
       len = 100.0 ;ckpc
       cgPlot,[boxCen[0]-zoomSize/2.1,boxCen[0]-zoomSize/2.1+len],[boxCen[1]+zoomSize/2.1,boxCen[1]+zoomSize/2.1],$
@@ -1005,14 +924,15 @@ pro cosmoTrajectoryGasDM
   redshiftEnd   = 0.0
   pssize = [6,6] ; inches
   
-  hInd = 26 ; z2.304 g2342 (mt26) a2132 (mt?)
+  haloID = 304 ;z2.304 z2.301 z2.130 z2.64
+  hInd = getMatchedIDs(simParams=sP,haloID=haloID)
   
   ; load mergerTreeSubset to find masses of tracked halos and for time sequence
   mt = mergerTreeSubset(sP=sP)
 
   ; load trajectories of chosen halo
   at = accretionTrajSingle(sP=sP,hInd=hInd)
-  stop
+
   mt.times  = 1/mt.times-1 ; convert scale factor to redshift
   
   if redshiftStart lt min(mt.times) then message,'Error: Requested redshiftStart beyond snapshot range.'

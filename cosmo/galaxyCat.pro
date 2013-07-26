@@ -1,6 +1,6 @@
 ; galaxyCat.pro
 ; gas accretion project - gas selections of interest (galaxy/halo catalogs)
-; dnelson jun.2013
+; dnelson jul.2013
 
 ; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
 ;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)
@@ -35,9 +35,9 @@ function galaxyCat, sP=sP, skipSave=skipSave
     ; skip if previous results exist
     saveFilename = sP.derivPath + 'galaxyCat.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
         
-    ; load ids of particles in all subfind groups
+    ; load ids of particles in all primary subfind groups
     gc = loadGroupCat(sP=sP,/readIDs)
-    gcPIDs = gcPIDList(gc=gc,select='all',partType='gas')
+    gcPIDs = gcPIDList(gc=gc,select='pri',partType='gas')
 
     ; load gas ids and match to catalog
     ; --------
@@ -52,7 +52,7 @@ function galaxyCat, sP=sP, skipSave=skipSave
     
     ; load star ids and match to catalog
     ; ---------
-    gcPIDs_stars = gcPIDList(gc=gc,select='all',partType='stars')
+    gcPIDs_stars = gcPIDList(gc=gc,select='pri',partType='stars')
     ids_stars = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
     calcMatch,gcPIDs_stars,ids_stars,gc_ind,ids_ind_stars,count=countMatch
     ids_ind_stars = ids_ind_stars[calcSort(gc_ind)] ; IMPORTANT! rearrange ids_ind_stars
@@ -83,7 +83,7 @@ function galaxyCat, sP=sP, skipSave=skipSave
     ; load BHs ids and match to catalog
     ; --------
     if sP.gfmBHs ne 0 then begin
-      gcPIDs_BHs = gcPIDList(gc=gc,select='all',partType='BHs')
+      gcPIDs_BHs = gcPIDList(gc=gc,select='pri',partType='BHs')
       ids_BHs = loadSnapshotSubset(sP=sP,partType='BHs',field='ids')
       calcMatch,gcPIDs_BHs,ids_BHs,gc_ind,ids_ind_BHs,count=countMatch
       ids_ind_BHs = ids_ind_BHs[calcSort(gc_ind)] ; IMPORTANT! rearrange ids_ind_BHs
@@ -119,46 +119,39 @@ function galaxyCat, sP=sP, skipSave=skipSave
   
     ; create PRIMARY parent -subgroup- ID list
     if gc.nSubgroupsTot ne total(gc.groupNsubs,/int) then message,'Error: Subgroup counts mismatch.'
-    parIDs = lonarr(gc.nSubgroupsTot)
-    offset = 0L
-      
-    for gID=0L,gc.nGroupsTot-1 do begin
-      if gc.groupNSubs[gID] gt 0 then begin
-        parIDs[offset:offset+gc.groupNSubs[gID]-1] = cmreplicate(gc.groupFirstSub[gID],gc.groupNSubs[gID])
-        offset += gc.groupNSubs[gID]
-      endif
-    endfor
   
     ; replicate group parent IDs (of PRIMARY/parent) to each member particle
     ptNum = { gas : partTypeNum('gas'), stars : partTypeNum('stars'), BHs : partTypeNum('BHs') }
-      
-    sgParIDs_gas   = lonarr(total(gc.subgroupLenType[ptNum.gas,*],/int))
-    sgParIDs_stars = lonarr(total(gc.subgroupLenType[ptNum.stars,*],/int))
+    
+    sgIDs_pri = gcIDList(gc=gc,select='pri')    
+    
+    sgParIDs_gas   = lonarr(total(gc.subgroupLenType[ptNum.gas,sgIDs_pri],/int))
+    sgParIDs_stars = lonarr(total(gc.subgroupLenType[ptNum.stars,sgIDs_pri],/int))
     
     if sP.gfmBHs ne 0 then $
-      sgParIDs_BHs = lonarr(total(gc.subgroupLenType[ptNum.BHs,*],/int))
+      sgParIDs_BHs = lonarr(total(gc.subgroupLenType[ptNum.BHs,sgIDs_pri],/int))
     
     offset = { gas : 0L, stars: 0L, BHs: 0L }
       
-    for sgID=0L,gc.nSubgroupsTot-1 do begin
+    foreach sgID,sgIDs_pri do begin
       if gc.subgroupLenType[ptNum.gas,sgID] gt 0 then begin
         sgParIDs_gas[offset.gas:offset.gas+gc.subgroupLenType[ptNum.gas,sgID]-1] = $
-          cmreplicate(parIDs[sgID],gc.subgroupLenType[ptNum.gas,sgID])
+          cmreplicate(sgID,gc.subgroupLenType[ptNum.gas,sgID])
         offset.gas += gc.subgroupLenType[ptNum.gas,sgID]
       endif
        
       if gc.subgroupLenType[ptNum.stars,sgID] gt 0 then begin
         sgParIDs_stars[offset.stars:offset.stars+gc.subgroupLenType[ptNum.stars,sgID]-1] = $
-          cmreplicate(parIDs[sgID],gc.subgroupLenType[ptNum.stars,sgID])
+          cmreplicate(sgID,gc.subgroupLenType[ptNum.stars,sgID])
         offset.stars += gc.subgroupLenType[ptNum.stars,sgID]
       endif
       
       if gc.subgroupLenType[ptNum.BHs,sgID] gt 0 then begin
         sgParIDs_BHs[offset.BHs:offset.BHs+gc.subgroupLenType[ptNum.BHs,sgID]-1] = $
-          cmreplicate(parIDs[sgID],gc.subgroupLenType[ptNum.BHs,sgID])
+          cmreplicate(sgID,gc.subgroupLenType[ptNum.BHs,sgID])
         offset.BHs += gc.subgroupLenType[ptNum.BHs,sgID]
       endif
-    endfor
+    endforeach
       
     ; if GFM_WINDS, restrict sgParIDs_stars to non-wind particles
     if sP.gfmWinds ne 0 then begin
@@ -207,8 +200,7 @@ function galaxyCat, sP=sP, skipSave=skipSave
     rad_pri /= par_rvir
     
     ; make stellar cut
-    wStars = where(rad_pri lt sP.radcut_rvir,countStars,$
-                   comp=wStarsComp,ncomp=wStarsComp_num)
+    wStars = where(rad_pri lt sP.radcut_rvir,countStars,comp=wStarsComp,ncomp=wStarsComp_num)
 
     if countGal eq 0 or countGmem eq 0 then begin
       print,'Warning: Empty galaxy cut or comp. Skipping: ' + strmid(saveFilename1,strlen(sP.derivPath))
@@ -252,7 +244,13 @@ function galaxyCat, sP=sP, skipSave=skipSave
           off   : lonarr(gc.nSubgroupsTot) ,$
           ids   : lon64arr(countTot)       ,$
           type  : intarr(countTot)         ,$
+          rad   : fltarr(countTot)         ,$
+          vrad  : fltarr(countTot)         ,$
           types : types                    ,$
+          trMC_cc   : -1                   ,$
+          trMC_ids  : -1                   ,$
+          trVel_cc  : -1                   ,$
+          trVel_ids : -1                   ,$
           countGal: countGal, countGmem: countGmem, countStars: countStars ,$
           countInter: countInter, countBHs: countBHs, countTot:countTot,$
           nGroups: gc.nSubgroupsTot }
@@ -301,11 +299,11 @@ function galaxyCat, sP=sP, skipSave=skipSave
     if countCheck ne n_elements(r.ids) then message,'Error: Count mismatch.'
     
     ; calculate which parent subgroup each belongs to, and rearrange in order of SG parent
-    par_inds = value_locate(gc.subgroupOffset,gc_ind)
+    gcIDs_pri = gcIDList(gc=gc,select='pri')
+    par_inds = gcIDs_pri[ value_locate(gc.subgroupOffset[gcIDs_pri],gc_ind) ]
       
     if min(par_inds) lt 0 or max(par_inds) ge n_elements(gc.subgroupOffset) then message,'Error'
     
-    print,'TODO: Change this to a stable sort (preserve order within each parent)'
     par_inds_sort = sort(par_inds)
     
     r.ids  = r.ids[par_inds_sort]
@@ -321,11 +319,66 @@ function galaxyCat, sP=sP, skipSave=skipSave
     
     ; calculate number of tracer children of each parent (trMC)
     if sP.trMCPerCell gt 0 then begin
-      galcat_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=r.ids, child_counts=galcat_cc)
-      r = mod_struct( r, 'ccMC', galcat_cc )
+      galcat_trids = cosmoTracerChildren(sP=sP, /getIDs, gasIDs=r.ids, child_counts=galcat_cc)
+      r = mod_struct( r, 'trMC_cc', galcat_cc )
+      r = mod_struct( r, 'trMC_ids', galcat_trids )
     endif
     
-    stop
+    if sP.trVelPerCell gt 0 then begin
+      galcat_trids = cosmoTracerVelChildren(sP=sP,/getIDs,gasIDs=r.ids,child_counts=galcat_cc)
+      r = mod_struct( r, 'trVel_cc', galcat_cc )
+      r = mod_struct( r, 'trVel_ids', galcat_trids )
+    endif
+    
+    ; calculate radius and radial velocity for each member
+    h = loadSnapshotHeader(sP=sP)
+    gcParIDs = galCatRepParentIDs(galcat=r)
+    
+    ; restrict gas particle positions to gal/gmem gas only
+    parTypes = ['gas','stars','BHs']
+    
+    foreach parType,parTypes do begin
+    
+      ; skip non-existent particle types
+      if h.nPartTot[partTypeNum(parType)] eq 0 then continue
+
+	  ; sub-match to parents of this type
+      ids_type = loadSnapshotSubset(sP=sP,partType=parType,field='ids')
+       
+      calcMatch,r.ids,ids_type,galcat_ind,ids_type_ind,count=countType
+      ids_type_ind = ids_type_ind[calcSort(galcat_ind)] ; rearrange indices to be in the order of r.ids
+      galcat_ind   = galcat_ind[calcSort(galcat_ind)]
+      
+      gcParIDs_type = gcParIDs[galcat_ind]
+      
+      if countType eq 0 then print,'Warning: Skipping parent type '+parType
+    
+      ids_type = !NULL
+    
+      ; calculate radial distances to parent
+      pos = loadSnapshotSubset(sP=sP,partType=parType,field='pos')
+      pos = pos[*,ids_type_ind]
+            
+      ; calulate radial vector of gas from group center
+      r.rad[galcat_ind] = periodicDists(subgroupCen[*,gcParIDs_type],pos,sP=sP)
+      
+      ; replace coordinates by relative coordinates (radial vectors) to direct parent
+      for i=0,2 do begin
+        pos_rel = reform(pos[i,*] - subgroupCen[i,gcParIDs_type])
+        correctPeriodicDistVecs, pos_rel, sP=sP
+        pos[i,*] = pos_rel
+      endfor
+    
+      ; load velocities
+      vel = loadSnapshotSubset(sP=sP,partType=parType,field='vel')
+      vel = vel[*,ids_type_ind]
+
+      r.vrad[galcat_ind] = ((vel[0,*] - gc.subgroupVel[0,gcParIDs_type]) * pos[0,*] + $
+                            (vel[1,*] - gc.subgroupVel[1,gcParIDs_type]) * pos[1,*] + $
+                            (vel[2,*] - gc.subgroupVel[2,gcParIDs_type]) * pos[2,*]) $
+                            / r.rad
+    
+    endforeach
     
     ; immediate return and skip save?
     if keyword_set(skipSave) then return, r
@@ -341,134 +394,19 @@ function galaxyCat, sP=sP, skipSave=skipSave
   
 end
 
-; galaxyCatRadii(): find radial distance and radial velocities of all group member particles wrt 
-;  the group they belong to as well as the rad to the primary group if this is a secondary group
-
-function galaxyCatRadii, sP=sP
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  ; if snap specified, run only one snapshot (and/or just return previous results)
-  if (sP.snap ne -1) then begin
-    saveFilename = sP.derivPath + 'galaxyCatRadii.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
-    
-    ; results exist, return
-    if file_test(saveFilename) then begin
-      restore,saveFilename
-      return,r
-    endif
-    
-    ; need to compute, set restricted range of snapshots to process
-    snapRange = [sP.snap,sP.snap]
-  endif else begin
-    snapRange = sP.groupCatRange
-  endelse
-  
-  ; loop from target redshift to beginning of group catalogs
-  for m=snapRange[0],snapRange[1],1 do begin
-  
-    ; set save filename
-    sP.snap  = m
-    saveFilename = sP.derivPath + 'galaxyCatRadii.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
-    
-    ; load galaxy and group membership catalogs
-    h = loadSnapshotHeader(sP=sP)
-    galcat = galaxyCat(sP=sP)
-    
-    ; load subhalo catalog for mostBoundParticleID and for priParentIDs
-    gc = loadGroupCat(sP=sP,/skipIDs)
-    
-    ; find group center positions with most bound particles for each group
-    subgroupCen = subgroupPosByMostBoundID(sP=sP)
-
-    ; replicate parent IDs (of SECONDARY/direct and PRIMARY/parent)
-    gcIDs_sec = galCatRepParentIDs(galcat=galcat)
-    
-    priParentIDs = gcIDList(gc=gc,select='pri')
-    gcIDs_pri = galCatRepParentIDs(galcat=galcat,priParentIDs=priParentIDs)
-    priParentIDs = !NULL
-      
-    r = { rad_pri   : fltarr(galcat.countTot)  ,$
-          rad_sec   : fltarr(galcat.countTot)  ,$
-          vrad_pri  : fltarr(galcat.countTot)  ,$
-          vrad_sec  : fltarr(galcat.countTot)   }
-    
-    ; restrict gas particle positions to gal/gmem gas only
-    parTypes = ['gas','stars','BHs']
-    
-    foreach parType,parTypes do begin
-    
-      ; skip non-existent particle types
-      if h.nPartTot[partTypeNum(parType)] eq 0 then continue
-
-      ids_type = loadSnapshotSubset(sP=sP,partType=parType,field='ids')
-    
-      ; IMPORTANT! rearrange ids_ind to be in the order of gc.xIDs, need this if we want ids[ids_ind], 
-      ; temp[ids_ind], etc to be in the same order as the galaxy catalog id list    
-      calcMatch,galcat.ids,ids_type,galcat_ind,ids_type_ind,count=countType
-      ids_type_ind = ids_type_ind[calcSort(galcat_ind)]
-      
-      if countType eq 0 then print,'Warning: Skipping parent type '+parType
-    
-      ids_type = !NULL
-      galcat_ind = !NULL
-    
-      ; calculate radial distances to primary and secondary parents
-      pos = loadSnapshotSubset(sP=sP,partType=parType,field='pos')
-      pos = pos[*,ids_type_ind]
-            
-      ; calulate radial vector of gas from group center (PRI and SEC)
-      r.rad_sec   = periodicDists(subgroupCen[*,gcIDs_sec],pos,sP=sP)
-      r.rad_pri   = periodicDists(subgroupCen[*,gcIDs_pri],pos,sP=sP)
-    
-      ; replace coordinates by relative coordinates (radial vectors) to direct parent
-      for i=0,2 do begin
-        pos_rel = reform(pos[i,*] - subgroupCen[i,gcIDs_pri])
-        correctPeriodicDistVecs, pos_rel, sP=sP
-        pos[i,*] = pos_rel
-      endfor
-    
-      ; load velocities
-      vel = loadSnapshotSubset(sP=sP,partType=parType,field='vel')
-      vel = vel[*,ids_type_ind]
-    
-      r.vrad_pri = ((vel[0,*] - gc.subgroupVel[0,gcIDs_pri]) * pos[0,*] + $
-                    (vel[1,*] - gc.subgroupVel[1,gcIDs_pri]) * pos[1,*] + $
-                    (vel[2,*] - gc.subgroupVel[2,gcIDs_pri]) * pos[2,*]) $
-                    / r.rad_pri
-    
-    endforeach
-    
-    ; save radial distances (and group centers)
-    save,r,filename=saveFilename
-    print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
-
-  endfor
-  
-  if snapRange[0] eq snapRange[1] then return,r
-  
-end
-
 ; galCatRepParentIDs(): for the galaxy catalog, replicate the list of ordered parent IDs such that
 ;                       the return array is the same size as the number of gas particles with
 ;                       each element the id of its parent subgroup/galaxy group/groupmember group
 ;
-; priParentIDs=1 : should be the primary parent group ID for each group,
-;                  e.g. priParentIDs=gcIDList(gc=gc,select='pri')
-;                  if set, for secondary groups, return instead of the ID of the primary parent
-;                  (for primary groups the return is unchanged)
 ;
 ; gcIDList : return only a replicated parent ID list of the specified subgroups in the groupcat
 ; child_counts: return a replicated list for tracers which have multiplicity inside each gas cell
 ;               or star particle as specified in child_counts
 
-function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs, $
-                             gcIDList=gcIDList, child_counts=child_counts
+function galCatRepParentIDs, galcat=galcat, gcIDList=gcIDList, child_counts=child_counts
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-    if not keyword_set(priParentIDs) then priParentIDs = lindgen(galcat.nGroups) ; valid id list set to all
-    
     if not keyword_set(gcIDList) then gcIDList = lindgen(galcat.nGroups) ; id list to process set to all
     
     if keyword_set(child_counts) then begin
@@ -486,23 +424,13 @@ function galCatRepParentIDs, galcat=galcat, priParentIDs=priParentIDs, $
     offset_c = 0L
     
     foreach gcID,gcIDList do begin
-    
-        ; parent ID (pri or sec)
-        if (total(gcID eq priParentIDs) eq 0) then begin
-          dists = gcID - priParentIDs
-          dists = dists[where(dists gt 0)]
-          w = where(dists eq min(dists),count)
-          parID = priParentIDs[w[0]]
-        endif else begin
-          parID = gcID
-        endelse
-        
+            
         ; replicate for children
         if galcat.len[gcID] gt 0 then begin
           tot_children = total(child_counts[offset_c:offset_c+galcat.len[gcID]-1],/int)
           ind_end = offset + tot_children - 1
 
-          if tot_children gt 0 then r[offset:ind_end] = cmreplicate(parID,tot_children)
+          if tot_children gt 0 then r[offset:ind_end] = cmreplicate(gcID,tot_children)
           offset += tot_children
           offset_c += galcat.len[gcID]
         endif
@@ -514,41 +442,27 @@ end
 
 ; galCatParentProperties: calculate some property of the parent galaxy/group for every gas elements
 ;                         in the galaxy catalog at some snapshot
-; virTemp=1 : virial temperature
-; mass=1    : total mass (from catalog, dm+baryon)
-; rVir=1    : virial radius (r_200 critical)
-; parNorm   : 'pri' or 'sec' (if pri then return properties of primary parent even for gas elements
-;             in secondary/"satelitte" subgroups) (if sec effectively ignored, this is default behavior)
+;
+; trRep=1 : return a replicated list for tracers which have some multiplicity inside each gas cell
+;
+; virTemp=1  : virial temperature
+; mass=1     : total mass (from catalog, dm+baryon)
+; rVir=1     : virial radius (r_200 critical)
+; rVirNorm=1 : virial radius / r200
+; vCirc=1    : circular velocity (v_200)
 
-function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir, vCirc=vCirc, $
-                                 parNorm=parNorm
+function galCatParentProperties, sP=sP, galcat=galcat, trRep=trRep, $
+                                 virTemp=virTemp, mass=mass, rVir=rVir, rVirNorm=rVirNorm, vCirc=vCirc
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function galaxyCat, snapNumToRedshift, codeMassToLogMsun
 
-  ; load group catalog for masses
+  ; load group catalog for masses, galaxy catalog
   gc = loadGroupCat(sP=sP,/skipIDs)
-
-  ; load galaxy catalog
-  galcat = galaxyCat(sP=sP)
+  if ~keyword_set(galcat) then galcat = galaxyCat(sP=sP)
 
   ; replicate parent IDs
-  if keyword_set(parNorm) then begin
-    if parNorm eq 'pri' then begin
-      ; replicate parent IDs (of PRIMARY)
-      priParentIDs = gcIDList(gc=gc,select='pri')
-      gcInd = galCatRepParentIDs(galcat=galcat,priParentIDs=priParentIDs)
-      priParentIDs = !NULL
-    endif
-    if parNorm eq 'sec' then begin
-      ; do the usual (use most direct, e.g. secondary, parent)
-      gcInd = galCatRepParentIDs(galcat=galcat)
-    endif
-    if parNorm ne 'pri' and parNorm ne 'sec' then message,'Error! Unrecognized parNorm'
-  endif else begin
-    ; parNorm not specified, do the usual (use most direct, e.g. secondary, parent)
-    gcInd = galCatRepParentIDs(galcat=galcat)
-  endelse
+  gcInd = galCatRepParentIDs(galcat=galcat)
    
   ; arrays
   r = fltarr(galcat.nGroups)
@@ -570,11 +484,26 @@ function galCatParentProperties, sP=sP, virTemp=virTemp, mass=mass, rVir=rVir, v
     r = gc.group_r_crit200[r]
   endif
   
+  if keyword_set(rVirNorm) then begin
+    ; note: if SO values not calculated (no subgroup in fof group), rvir=0 and rad->Inf (not plotted)
+    ; note: since using most bound particle for subgroup centers, one per subgroup will have r=0
+    r = gc.subgroupGrnr[gcInd]
+    r = gc.group_r_crit200[r]
+	r = galcat.rad / r ; r/rvir
+  endif
+  
   if keyword_set(vCirc) then begin
     units = getUnits()
     
     r = gc.subgroupGrnr[gcInd]
     r = sqrt(units.G * gc.group_m_crit200[r] / gc.group_r_crit200[r])
+  endif
+  
+  ; replicate for tracers?
+  if keyword_set(trRep) then begin
+    if sP.trMCPerCell gt 0 then r = r[ replicate_var(galcat.trMC_cc) ]
+	if sP.trMCPerCell lt 0 then r = r[ replicate_var(galcat.trVel_cc) ]
+	if sP.trMCPerCell eq 0 then message,'Error: No trRep on SPH run.'
   endif
 
   return,r
@@ -599,7 +528,7 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, gcSep=gcSep, tr
     galcat = galaxyCat(sP=sP)
   endif
   
-  if keyword_set(trRep) and sP.trMCPerCell le 0 then message,'Error.'
+  if keyword_set(trRep) and sP.trMCPerCell eq 0 then message,'Error.'
   
   if max(galcat.len+galcat.off) gt 2e9 then stop ; change to lon64arr
   
@@ -651,8 +580,8 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, gcSep=gcSep, tr
   endif
   
   ; (2) make list including child counts if requested
-  if sP.trMCPerCell gt 0 then child_counts = galcat.ccMC
-  if sP.trMCPerCell lt 0 then message,'todo'
+  if sP.trMCPerCell gt 0 then child_counts = galcat.trMC_cc
+  if sP.trMCPerCell lt 0 then child_counts = galcat.trVel_cc
 
   if total(child_counts,/int) gt 2e9 then stop ; consider lon64/removing /int
 
@@ -688,8 +617,8 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, gcSep=gcSep, tr
   if ~keyword_set(gcSep) then return,rcc
   
   ; split into gal,gmem,stars,inter,bhs
-  if sP.trMCPerCell lt 0 then message,'Error: trMC hard coded.'
-  xx = replicate_var(galcat.ccMC, subset_inds=r)
+  if sP.trMCPerCell gt 0 then xx = replicate_var(galcat.trMC_cc, subset_inds=r)
+  if sP.trMCPerCell gt 0 then xx = replicate_var(galcat.trVel_cc, subset_inds=r)
   type = galcat.type[ xx.parent_inds ]
   
   rr = {}
@@ -710,18 +639,18 @@ function galcatINDList, sP=sP, galcat=galcat, gcIDList=gcIDList, gcSep=gcSep, tr
 
 end
 
-; gcSubsetProp(): read galaxy catalog for a specific subgroup selection (pri,sec,all) and
-;                 return properties for each gas element/tracer (may or may not depend on parent halo)
+; gcSubsetProp(): read galaxy catalog for a specific subgroup selection (gcIDList) or the atS,
+;                 for each gas element/tracer (may or may not depend on parent halo)
 ;                 at the redshift specified by sP.snap (may or may not depend on previous time)
+; default behavior: return 1 value per tracer for tracer sims, 1 value per gas particle for sph
 ;
-; select=''     : 'pri', 'sec' or 'all', the type of subgroups to select
-; gcIDList=[]   : alternatively, an explicit list of subgroups to select
+; gcIDList=[]   : an explicit list of (primary) subgroups to select, otherwise return for all
 ;
 ; rVirNorm=1    : radial distances normalized by r_vir of either primary or secondary parent
-;  parNorm      : either 'pri' or 'sec' if rVirNorm requested
 ; virTemp=1     : current virial temperatures of parent halos
 ; parMass=1     : total mass (dm+baryonic) of parent halos (from catalog)
-; curTemp=1     : current temperature of each element
+; elemIDs=1       : ids of each element (either SPH particles or tracers)
+; tracksFluid=1   : temp,dens,ent history of each tracer (trMC only)
 ;
 ; maxPastTemp=1 : maximum past previous temperature of each element
 ; maxTempTime=1 : time when maximum past previous temperature was reached (in redshift)
@@ -730,95 +659,162 @@ end
 ; maxPastMach=1 : maximum past mach number
 ;  trPopMin,trPopMean,trPopMax : return the respective statistic for each gas cell for the tracers
 ;
-; elemIDs=1       : ids of each element (either SPH particles or tracers)
+; curGasVal=1    : current single quantity (e.g. mass, density) returned without manipulation (gas, or replicated)
+; curTracerVal=1 : as above, but individual value for each tracer (e.g. wind_counter)
+;  curField : field name in snapshot file for the above
 ;
-; tracksFluid=1   : temp,dens,ent history of each tracer (trMC only)
-;
-; curSingleVal=1  : current single quantity (e.g. mass, density) returned without manipulation (gas, or replicated)
-;  singleValField : field name in snapshot file for the above
-; curTracerVal=1    : as above, but individual value for each tracer (e.g. wind_counter)
-; singleTracerField : ...
-;
-; mergerTreeSubset    : return values only for the subset of halos tracked in the merger tree subset
-;  jun2013: this option removed, since the mtS is exactly all primary halos, and this function only works
-;           with exactly that selection, in the case that we want the atS
 ; accretionTimeSubset : return values only for the subset of particles/tracers with recorded accretion times
+;  timeWindow : either in Myr, or 'all', the time over which to include accretion events
 ;  accTime,accTvir : time of accretion (in redshift) or virial temp of parent halo at time of accretion
 ;  accMode : return values only for one accretionMode (all,smooth,bclumpy,sclumpy,smooth)
 
-function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
+function gcSubsetProp, sP=sP, gcIDList=gcIDList, $
            rVirNorm=rVirNorm, virTemp=virTemp, parMass=parMass, $
            curTemp=curTemp, maxPastTemp=maxPastTemp, maxTempTime=maxTempTime, $
            maxPastEnt=maxPastEnt, maxPastDens=maxPastDens, maxPastMach=maxPastMach, $
-           trPopMin=trPopMin, trPopMax=trPopMax, trPopMean=trPopMean, $ ; for maxPastXX/maxXXTime only
            elemIDs=elemIDs, tracksFluid=tracksFluid, $
-           curSingleVal=curSingleVal, singleValField=singleValField, $
-           curTracerVal=curTracerVal, singleTracerField=singleTracerField, $ ; trMC only
-           parNorm=parNorm, $ ; for rVirNorm,virTemp,parMass only
-           accretionTimeSubset=accretionTimeSubset, $
+           curGasVal=curGasVal, curTracerVal=curTracerVal, curField=curField, $
+           accretionTimeSubset=accretionTimeSubset, timeWindow=TW, $
            accTime=accTime,accTvir=accTvir,accMode=accMode ; for accretionTimeSubset only
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; check combinations of input options for validity
-  if keyword_set(accretionTimeSubset) then if select ne 'pri' then $
-    message,'Error: The atS (mtS) contains only pri subgroups (select must be pri).'
   if (keyword_set(accTime) or keyword_set(accTvir)) and ~keyword_set(accretionTimeSubset) then $
     message,'Error: Can only return accretion time or Tvir at accretion time for atS.'
   if keyword_set(accMode) and ~keyword_set(accretionTimeSubset) then $
     message,'Error: Can only return accretion mode subsets of the accretionTime subset.'
-  if keyword_set(elemIDs) and (keyword_set(trPopMin) or keyword_set(trPopMean) or keyword_set(trPopMax)) then $
-    message,'Error: Cannot return pop stats of unique element IDs.'
-  if (~keyword_set(select) and ~keyword_set(gcIDList)) or (keyword_set(select) and keyword_set(gcIDList)) then $
-    message,'Error: Should specify either group type OR explicit list of groups.'
-  if keyword_set(gcIDList) and keyword_set(accretionTimeSubset) then $
-    message,'Error: since we take accModeInds must subset all of galcat, not just one/few halos.'
-  if keyword_set(rVirNorm) and ~keyword_set(parNorm) then $
-    message,'Error: Must specify parNorm (pri or sec) with rVirNorm.'
-    
-  ; default behavior: return 1 value per tracer for tracer sims, 1 value per gas particle for sph
-  allTR = 0 ; sph
-  if sP.trMCPerCell ne 0 then allTR = 1
-  
+  if keyword_set(TW) and ~keyword_set(accretionTimeSubset) then $
+    message,'Error: Can only enforce timeWindow restriction on the atS.'
+  if keyword_set(curField) and (~keyword_set(curGasVal) and ~keyword_set(curTracerVal)) then $
+    message,'Error: Must specify either gas or tracer for a single current field.'
+	
   ; check input options vs. simulation type
   if keyword_set(curTracerVal) and sP.trMCPerCell le 0 then message,'Error: curTracerVal is trMC only.'
   if keyword_set(tracksFluid) and sP.trMCPerCell le 0 then message,'Error: tracksFluid is trMC only.'
   if keyword_set(elemIDs) and sP.trMCPerCell eq -1 then message,'Error: Not implemented.'
   
+  ; load galaxy catalog to change INDs to gas IDs, or for element IDs
+  galcat = galaxyCat(sP=sP)
+  
   ; ----- selection subset -----
-   
-  ; select primary,secondary,or all subhalos
-  if ~keyword_set(gcIDList) then gcIDList = gcIDList(sP=sP,select=select)
   
   ; subset galcat member indlist by those with recorded accretion times (and associated properties)
   if keyword_set(accretionTimeSubset) then begin
     at = accretionTimes(sP=sP)
     
-    ; select galaxyCat indices (separated for TR, not for SPH)
-    galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList,gcSep=allTR)
-    
-    ; this is used to access accretionTimes
+    ; unseparated, for either each sph particle or each tracer
     if n_elements(accMode) eq 0 then accMode = 'all'
-    accTimeInds = accModeInds(at=at,sP=sP,accMode=accMode)
+    galcatInds = accModeInds(at=at,sP=sP,accMode=accMode)
 
-    ; sph case: modify galcatInds such that the accretionTimes subset is taken
-    if ~allTR then begin
-      for i=0,n_tags(accTimeInds)-1 do $
-        galcatIndsNew = mod_struct( galcatIndsNew, (tag_names(accTimeInds))[i], $
-          galcatInds[accTimeInds.(i)] )
-          
-      galcatInds = galcatIndsNew
+    ; do the timewindow restriction immediately:
+    if keyword_set(TW) then begin
+	
+      ; NOTE: this TW option only used for maxVals binning, is not consistent with TW approach for accRates
+      
+      ; current time
+      h = loadSnapshotHeader(sP=sP)
+      curtime = 1/h.time - 1 ; redshift
+      curtime = redshiftToAgeFlat(curtime)*1e9 ; yr
+  
+      if str(TW) eq 'all' then begin
+        timeWindow = curtime - redshiftToAgeFlat(6.0)*1e9 ; go back to z=6 (in yr)
+      endif else begin
+        timeWindow = TW * 1e6 ; convert input Myr to yr
+      endelse
+
+      ; GALAXY (1): accretion defined as (rho,temp) joining time or 0.15rvir crossing time (most recent)
+      loc_atime = reform(at.accTimeRT[galcatInds.gal])
+    
+      r_crossing_time = reform(at.accTime[sP.radIndGalAcc,galcatInds.gal])
+      w = where(r_crossing_time gt loc_atime,count)
+      if count gt 0 then loc_atime[w] = r_crossing_time[w]
+      
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime)*1e9 ; yr
+    
+      ; make a count of those falling in the time window
+      w_type = where(curtime - loc_atime le timeWindow,nloc)
+      galcatInds = mod_struct( galcatInds, 'gal', galcatInds.gal[w_type] )
+	
+      ; GMEM (2)
+      loc_atime = reform(at.accTime[sP.radIndHaloAcc,galcatInds.gmem])
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime)*1e9 ; yr
+    
+      ; make a count of those falling in the time window
+      w_type = where(curtime - loc_atime le timeWindow,nloc)
+      galcatInds = mod_struct( galcatInds, 'gmem', galcatInds.gmem[w_type] )
+	
+      ; INTER (3) - look at outflow time within this TW
+      loc_atime = reform(at.outTimeRT[galcatInds.inter])
+    
+      r_crossing_time = reform(at.outTime[sP.radIndGalAcc,galcatInds.inter])
+      w = where(r_crossing_time gt loc_atime,count)
+      if count gt 0 then loc_atime[w] = r_crossing_time[w]
+      
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime)*1e9 ; yr
+    
+      ; make a count of those falling in the time window
+      w_type = where(curtime - loc_atime le timeWindow,nloc)
+	galcatInds = mod_struct( galcatInds, 'inter', galcatInds.inter[w_type] )
+    
+      ; STARS (4)
+      loc_atime = reform(at.accTimeRT[galcatInds.stars])
+    
+      r_crossing_time = reform(at.accTime[sP.radIndGalAcc,galcatInds.stars])
+      w = where(r_crossing_time gt loc_atime,count)
+      if count gt 0 then loc_atime[w] = r_crossing_time[w]
+    
+      ; convert from scale factor to age of the universe
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime)*1e9 ; yr
+    
+      ; make a count of those falling in the time window
+      w_type = where(curtime - loc_atime le timeWindow,nloc)
+      galcatInds = mod_struct( galcatInds, 'stars', galcatInds.stars[w_type] )
+    
+      ; BHs (5)
+      if sP.gfmBHs ne 0 then begin
+        loc_atime = reform(at.accTimeRT[galcatInds.bhs])
+    
+        r_crossing_time = reform(at.accTime[sP.radIndGalAcc,galcatInds.bhs])
+        w = where(r_crossing_time gt loc_atime,count)
+        if count gt 0 then loc_atime[w] = r_crossing_time[w]
+    
+        loc_atime = 1/loc_atime - 1 ; redshift
+        loc_atime = redshiftToAgeFlat(loc_atime)*1e9 ; yr
+    
+        ; make a count of those falling in the time window
+        w_type = where(curtime - loc_atime le timeWindow,nloc)
+	  galcatInds = mod_struct( galcatInds, 'bhs', galcatInds.bhs[w_type] )
+      endif
+	
+    endif ; TW
+	
+    ; handle if not selecting all primary subgroups
+    if keyword_set(gcIDList) then begin
+      galcatInds_list = galcatINDList(sP=sP,gcIDList=gcIDList,/gcSep)
+    
+      ; intersect with galcatInds, and take subset
+      for i=0,n_tags(galcatInds)-1 do begin
+        inds_type = intersection( galcatInds.(i), galcatInds_list.(i) )
+        galcatInds = mod_struct( galcatInds, (tag_names(galcatInds))[i], inds_type )
+      endfor
+      
     endif
-
-    ; tracer case: handle only after we have child counts (after expansion or in allTR for maxTemps)
+      
   endif else begin
-    ; not taking atS (perhaps mtS/all pri, or just one or a few gcIDs)
-    ; select galaxycat indices corresponding to the list of subgroup ids (no gcSep for SPH)
+    ; not taking atS: take either gcIDList or all in galaxyCat
+    if n_elements(gcIDList) eq 0 then gcIDList = lindgen(galcat.nGroups)
     galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList,/gcSep)
   endelse
   
-  ; load galaxy catalog to change INDs to gas IDs, or for element IDs
-  galcat = galaxyCat(sP=sP)
+  ; check for blank entries?
+  for i=0,n_tags(galcatInds)-1 do $
+    if n_elements(galcatInds.(i)) eq 1 then $
+      if galcatInds.(i) eq -1 then message,'handle this'
     
   ; ----- values -----
   
@@ -826,7 +822,7 @@ function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
     ;convert scale factors -> redshift
     for i=0,n_tags(galcat.types)-1 do $
       r = mod_struct( r, (tag_names(galcat.types))[i], $
-        reform( 1/at.accTime[sP.atIndMode,accTimeInds.(i)]-1 ) )
+        reform( 1/at.accTime[sP.atIndMode,galcatInds.(i)]-1 ) )
 
     return,r
   endif
@@ -835,347 +831,144 @@ function gcSubsetProp, sP=sP, select=select, gcIDList=gcIDList, $
     ; take accretionTime subset and return
     for i=0,n_tags(galcat.types)-1 do $
       r = mod_struct( r, (tag_names(galcat.types))[i], $
-        at.accHaloTvir[accTimeInds.(i)] )
+        at.accHaloTvir[galcatInds.(i)] )
 
     return,r
   endif
 
   if keyword_set(rVirNorm) or keyword_set(virTemp) or keyword_set(parMass) then begin
-    if keyword_set(rVirNorm) then begin
-      ; load parent r_vir and galaxy radii catalog at sP.snap
-      r_vir = galCatParentProperties(sP=sP, /rVir)
-      gcr   = galaxyCatRadii(sP=sP)
+  
+    trRep = sP.trMCPerCell ne 0
+  
+    if keyword_set(rVirNorm) then val = galCatParentProperties(sP=sP, galcat=galcat, trRep=trRep, /rVirNorm)
+    if keyword_set(virTemp)  then val = galCatParentProperties(sP=sP, galcat=galcat, trRep=trRep, /virTemp) 
+    if keyword_set(parMass)  then val = galCatParentProperties(sP=sP, galcat=galcat, trRep=trRep, /mass)
 
-      ; store radial distance normalized by parent r_vir
-      ; note: if SO values not calculated (no subgroup in fof group), rvir=0 and rad->Inf (not plotted)
-      ; note: since using most bound particle for subgroup centers, one per subgroup will have r=0
-      if parNorm eq 'pri' then val = gcr.rad_pri / r_vir
-      if parNorm eq 'sec' then val = gcr.rad_sec / r_vir
-    endif
-
-    if keyword_set(virTemp) then begin
-      val = galCatParentProperties(sP=sP, /virTemp, parNorm=parNorm) 
-    endif
-
-    if keyword_set(parMass) then begin
-      val = galCatParentProperties(sP=sP, /mass, parNorm=parNorm)
-    endif
-
-    ; restrict to subgroup type / merger tree / accretion time subset
-    if ~allTR then begin
-      for i=0,n_tags(galcat.types)-1 do $
-        r = mod_struct( r, (tag_names(galcat.types))[i], val[galcatInds.(i)] )
-      return,r
-    endif
-
-    ; allTR: replicate
-    if sP.trMCPerCell gt 0 then child_counts = galcat.ccMC
-    if sP.trMCPerCell lt 0 then message,'todo'
-
-    ; create new return arrays
-    r = fltarr( total(child_counts,/int) )
-
-    ; take accretionTime subset and return tracer expanded array
-    if keyword_set(accretionTimeSubset) then begin
-
-      offset = 0L
-
-      for i=0L,n_elements(val)-1 do begin
-        if child_counts[i] gt 0 then begin
-          r[offset:offset+child_counts[i]-1] = replicate(val[i],child_counts[i])
-          offset += child_counts[i]
-        endif
-      endfor
-
-      for i=0,n_tags(galcat.types)-1 do $
-        rr = mod_struct(rr, (tag_names(galcat.types))[i], r[accTimeInds.(i)])
-      return, rr
-    endif
-
-    ; not taking atS, so replicate into tracer expanded array by type, then take galcatInds
-    for j=0,n_tags(galcat.types)-1 do begin
-      r = mod_struct(r, (tag_names(galcat.types))[j], $
-        fltarr(total(child_counts[galcatInds.(j)],/int)) )
-
-      offset = 0L
-      type_child_counts = child_counts[galcatInds.(j)]
-      type_val = val[galcatInds.(i)]
-
-      for i=0L,n_elements(galcatInds.(j))-1 do begin
-        if type_child_counts[i] gt 0 then begin
-          r.(j)[offset:offset+type_child_counts[i]-1] = replicate(type_val[i],type_child_counts[i])
-          offset += type_child_counts[i]
-        endif
-      endfor
-
-    endfor
-    return, r
+    ; separate and return
+    for i=0,n_tags(galcat.types)-1 do $
+      r = mod_struct( r, (tag_names(galcat.types))[i], val[galcatInds.(i)] )
+	  
+    return,r
 
   endif
   
-  if keyword_set(curTemp) then begin
-    message,'todo'
-    ; load gas ids and make ID->index map
+  if keyword_set(curGasVal) then begin
+    ; single current gas field: load gas ids and do match
     ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    idsIndMap = getIDIndexMap(ids,minid=minid)
-    ids = !NULL
+	
+    calcMatch,ids,galcat.ids,ids_ind,galcat_ind,count=countMatch
+    ids_ind    = ids_ind[sort(galcat_ind)]
+    galcat_ind = galcat_ind[sort(galcat_ind)]
     
-    ; load gas u and restrict to subset of galaxy cat
-    u       = loadSnapshotSubset(sP=sP,partType='gas',field='u')
-    u_gal   = u[idsIndMap[galcat.ids[galcatInds.gal]-minid]]
-    u_gmem  = u[idsIndMap[galcat.ids[galcatInds.gmem]-minid]]
-    u       = !NULL
-    
-    ; load gas nelec and restrict to subset of galaxy cat
-    nelec       = loadSnapshotSubset(sP=sP,partType='gas',field='nelec')
-    nelec_gal   = nelec[idsIndMap[galcat.ids[galcatInds.gal]-minid]]
-    nelec_gmem  = nelec[idsIndMap[galcat.ids[galcatInds.gmem]-minid]]
-    nelec       = !NULL
-    
-    idsIndMap = !NULL
-    
-    ; calculate temperature
-    temp_gal   = convertUtoTemp(u_gal,nelec_gal,/log)
-    temp_gmem  = convertUtoTemp(u_gmem,nelec_gmem,/log)
-    temp_stars = fltarr(n_elements(galcat.stellarIDs[galcatInds.stars])) ; zeros, stars have no current temperature
-     
-    r = {gal:temp_gal,gmem:temp_gmem,stars:temp_stars,inter:-1,bhs:-1}
-  endif
-  
-  if keyword_set(curSingleVal) then begin
-    message,'todo'
-    ; load gas ids and make ID->index map
-    ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    idsIndMap = getIDIndexMap(ids,minid=minid)
-    ids = !NULL
-    
-    ; load gas densities
-    singleVal = loadSnapshotSubset(sP=sP,partType='gas',field=singleValField)
-    
-    ; restrict to subgroup type / merger tree / accretion time subset
-    val_gal   = singleVal[idsIndMap[galcat.ids[galcatInds.gal]-minid]]
-    val_gmem  = singleVal[idsIndMap[galcat.ids[galcatInds.gmem]-minid]]
-    val_stars = fltarr(n_elements(galcatInds.stars)) ; zeros, stars don't have the same values as gas
-    
-    density = !NULL & idsIndMap = !NULL
-    
-    r = {gal:val_gal,gmem:val_gmem,stars:val_stars}
+    val = fltarr(n_elements(galcat.ids))
+	
+    if curField eq 'temp' then begin
+      ; load gas u, nelec and calculate temperature
+      u     = loadSnapshotSubset(sP=sP,partType='gas',field='u',inds=ids_ind)
+      nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec',inds=ids_ind)
+	val[galcat_ind] = convertUtoTemp(u,nelec,/log)
+	  
+	u = !NULL
+	nelec = !NULL
+    endif else begin
+	val[galcat_ind] = loadSnapshotSubset(sP=sP,partType='gas',field=curField,inds=ids_ind)
+    endelse
+	
+    ; replicate if curGasVal (one per cell) and using tracers (either type)
+    if sP.trMCPerCell gt 0 then val = val[ replicate_var(galcat.trMC_cc) ]
+    if sP.trMCPerCell lt 0 then val = val[ replicate_var(galcat.trVel_cc) ]
+	
+    ; separate and return
+    for i=0,n_tags(galcat.types)-1 do $
+      r = mod_struct( r, (tag_names(galcat.types))[i], val[galcatInds.(i)] )
+	  
+    return,r
+
   endif
   
   if keyword_set(curTracerVal) then begin
     ; load some tracer field, single value per MC tracer
-    tr_field  = loadSnapshotSubset(sP=sP,partType='tracerMC',field=singleTracerField)
-    tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
-      
-    field = tr_field[cosmoTracerChildren(sP=sP,gasIDs=galcat.ids,tr_parids=tr_parids,/getInds)]
-      
-    tr_field = !NULL
-    tr_parids = !NULL
-     
-    message,'todo, note the cosmoTracerChildren splits gasIDs and starIDs, the above not going to work'
- 
-    r = {gal:field_gal,gmem:field_gmem,stars:field_stars}
-      
-      
-    ; take accretionTime subset of mtS of all tracers and return
-    if keyword_set(accretionTimeSubset) then begin
-      r = { gal:r.gal[accTimeInds.gal], gmem:r.gmem[accTimeInds.gmem], stars:r.stars[acctimeInds.stars] }
-    endif
+    ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
+	
+    calcMatch,ids,galcat.trMC_ids,ids_ind,galcat_ind,count=countMatch
+    ids_ind    = ids_ind[sort(galcat_ind)]
+    galcat_ind = galcat_ind[sort(galcat_ind)]
+    
+    val = fltarr(n_elements(galcat.trMC_ids))
+	
+    load = loadSnapshotSubset(sP=sP,partType='tracerMC',field=curField)
+    val[galcat_ind] = load[ids_ind]
+	
+    ; separate and return
+    for i=0,n_tags(galcat.types)-1 do $
+      r = mod_struct( r, (tag_names(galcat.types))[i], val[galcatInds.(i)] )
+	  
     return,r
+	
   endif
   
   if keyword_set(elemIDs) then begin
-    message,'todo'
-    ; if all tracers requested, find children of all the gas IDs in the groupcat
-    if keyword_set(allTR) then begin
-      tr_ids    = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-      tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
-      
-      ids_gal   = tr_ids[cosmoTracerChildren(sP=sP,gasIDs=galcat.galaxyIDs[galcatInds.gal],tr_parids=tr_parids,/getInds)]
-      ids_gmem  = tr_ids[cosmoTracerChildren(sP=sP,gasIDs=galcat.groupmemIDs[galcatInds.gmem],tr_parids=tr_parids,/getInds)]
-      ids_stars = tr_ids[cosmoTracerChildren(sP=sP,starIDs=galcat.stellarIDs[galcatInds.stars],tr_parids=tr_parids,/getInds)]
-      
-      tr_ids = !NULL
-      tr_parids = !NULL
-      
-      r = {gal:ids_gal,gmem:ids_gmem,stars:ids_stars}
-      
-      ids_gal = !NULL & ids_gmem = !NULL & ids_stars = !NULL
-      
-      ; take accretionTime subset of mtS of all tracers and return
-      if keyword_set(accretionTimeSubset) then begin
-        r = { gal:r.gal[accTimeInds.gal], gmem:r.gmem[accTimeInds.gmem], stars:r.stars[acctimeInds.stars] }
-      endif
-      return,r
-    endif
+    ; which ids to subselect within?
+    if sP.trMCPerCell eq 0 then ids = galcat.ids
+    if sP.trMCPerCell gt 0 then ids = galcat.trMC_ids
+    if sP.trMCPerCell lt 0 then ids = galcat.trVel_ids
     
-    ; otherwise, return ids for each gas particle
-    r = { gal   : galcat.galaxyIDs[galcatInds.gal]    ,$
-          gmem  : galcat.groupmemIDs[galcatInds.gmem] ,$
-          stars : galcat.stellarIDs[galcatInds.stars]  }
+    ; separate and return
+    for i=0,n_tags(galcat.types)-1 do $
+      r = mod_struct( r, (tag_names(galcat.types))[i], ids[galcatInds.(i)] )
+	  
+    return,r
+    
   endif
   
   if keyword_set(tracksFluid) then begin
-    message,'todo'
-    ; make indices for accretionTreeSubset (tracksFluid stored only for mtS/atS)  
-    mtsInds = mergerTreeINDList(sP=sP,galcat=galcat,gcIDList=gcIDList)
-    
-    ; take accretionTime subset of mtS? if so modify indices now
-    if keyword_set(accretionTimeSubset) then begin
-      mtsInds = { gal   : mtsInds.gal[accTimeInds.gal]    ,$
-                  gmem  : mtsInds.gmem[accTimeInds.gmem]  ,$
-                  stars : mtsInds.stars[acctimeInds.stars] }
-    endif
-    
     ; all tracers requested, load directly and immediately return
     ; (could modify this to be like maxPastTemp when sph/trVel added to tracksFluid)
-    tracks_gal   = tracksFluid(sP=sP,/loadAllTRGal)
-    tracks_gmem  = tracksFluid(sP=sP,/loadAllTRGmem)
-    tracks_stars = tracksFluid(sP=sP,/loadAllTRStars)
+    tracks = tracksFluid(sP=sP)
 
-    ; return temps (logK), entropy (log CGS), or density (log code)
-    r = {gal   : { temp : tracks_gal.temp[*,mtsInds.gal] ,$
-                   ent  : tracks_gal.ent[*,mtsInds.gal]  ,$
-                   dens : tracks_gal.dens[*,mtsInds.gal] ,$
-                   rad  : tracks_gal.rad[*,mtsInds.gal] ,$
-                   flag : tracks_gal.flag[*,mtsInds.gal]  }      ,$
-         gmem  : { temp : tracks_gmem.temp[*,mtsInds.gmem] ,$
-                   ent  : tracks_gmem.ent[*,mtsInds.gmem]  ,$
-                   dens : tracks_gmem.dens[*,mtsInds.gmem] ,$
-                   rad  : tracks_gmem.rad[*,mtsInds.gmem] ,$
-                   flag : tracks_gmem.flag[*,mtsInds.gmem]  }    ,$
-         stars : { temp : tracks_stars.temp[*,mtsInds.stars] ,$
-                   ent  : tracks_stars.ent[*,mtsInds.stars]  ,$
-                   dens : tracks_stars.dens[*,mtsInds.stars] ,$
-                   rad  : tracks_stars.rad[*,mtsInds.stars] ,$
-                   flag : tracks_stars.flag[*,mtsInds.stars]  }  ,$
-         rr    : tracks_gal.rr                                       }
-        
-    tracks_gal = !NULL & tracks_gmem = !NULL & tracks_stars = !NULL
-      
+    ; separate and return
+    for i=0,n_tags(galcat.types)-1 do $
+      r = mod_struct( r, (tag_names(galcat.types))[i], $
+                      { temp : tracks.temp[*,galcatInds.(i)] ,$
+                        ent  : tracks.ent [*,galcatInds.(i)] ,$
+                        dens : tracks.dens[*,galcatInds.(i)] ,$
+                        rad  : tracks.rad [*,galcatInds.(i)] ,$
+                        flag : tracks.flag[*,galcatInds.(i)]  } )
+                        
+    r = mod_struct( r, 'rr', tracks.rr )
+    
     return,r
   endif
   
   if keyword_set(maxPastTemp) or keyword_set(maxTempTime) or $
      keyword_set(maxPastEnt)  or keyword_set(maxPastMach)  or $
      keyword_set(maxPastDens) then begin
-     
-    ; if all tracers requested, load directly and immediately return
-    if keyword_set(allTR) then begin
-      maxval = maxVals(sP=sP)
-          
-      ; return temps (logK), entropy (log CGS), or density (log code)
-      if keyword_set(maxPastTemp) then maxvalInd = ( where(tag_names(maxval) eq 'MAXTEMPS') )[0]
-      if keyword_set(maxPastEnt)  then maxvalInd = ( where(tag_names(maxval) eq 'MAXENT') )[0]
-      if keyword_set(maxPastDens) then maxvalInd = ( where(tag_names(maxval) eq 'MAXDENS') )[0]
-      if keyword_set(maxPastMach) then maxvalInd = ( where(tag_names(maxval) eq 'MAXMACHNUM') )[0]
-      if keyword_set(maxTempTime) then maxvalInd = ( where(tag_names(maxval) eq 'MAXTEMPTIME') )[0]
-
-      r = maxval.(maxvalInd)
-      if keyword_set(maxTempTime) then r = 1/r-1 ; scalefac to redshift
-
-      maxval = !NULL
-      
-      ; take accretionTime subset of mtS of all tracers and return
-      if keyword_set(accretionTimeSubset) then begin
-        galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList,/trRep)
-
-        ; index r with galcatInds[accTimeInds.X]
-        for i=0,n_tags(galcat.types)-1 do $ ; n_tags(accTimeInds) includes mask
-          rr = mod_struct( rr, (tag_names(accTimeInds))[i], r[galcatInds[accTimeInds.(i)]] )
- 
-       return,rr
-      endif
-      
-      ; not taking atS, get separated galcatInds and split
-      galcatInds = galcatINDList(sP=sP,gcIDList=gcIDList,/gcSep,/trRep)
-
-      for i=0,n_tags(accTimeInds)-1 do $
-        rr = mod_struct( rr, (tag_names(galcatInds))[i], r[galcatInds.(i)] )
-
-      return,rr
-    endif
-   
-    ; otherwise, load maximum past temperature per gas particle
-    ; (or statistics for the child population of each gas cell, this code removed for now)
+	 
     maxval = maxVals(sP=sP)
-
+          
     ; return temps (logK), entropy (log CGS), or density (log code)
     if keyword_set(maxPastTemp) then maxvalInd = ( where(tag_names(maxval) eq 'MAXTEMPS') )[0]
     if keyword_set(maxPastEnt)  then maxvalInd = ( where(tag_names(maxval) eq 'MAXENT') )[0]
     if keyword_set(maxPastDens) then maxvalInd = ( where(tag_names(maxval) eq 'MAXDENS') )[0]
-    if keyword_set(maxPastMach) then return,-1 ; no max mach number for SPH
+    if keyword_set(maxPastMach) then maxvalInd = ( where(tag_names(maxval) eq 'MAXMACHNUM') )[0]
     if keyword_set(maxTempTime) then maxvalInd = ( where(tag_names(maxval) eq 'MAXTEMPTIME') )[0]
-    
-    val = maxval.(maxvalInd)
-    if keyword_set(maxTempTime) then val = 1/val-1 ; scalefac to redshift
-    
-    maxval = !NULL
-    
-    if sP.trMCPerCell ne 0 then message,'error: how did we get here, todo'
-    
-    ; restrict temps/times to subset of galaxy cat (sph)
+
+    maxval = maxval.(maxvalInd)
+    if keyword_set(maxTempTime) then maxval = 1/maxval-1 ; scalefac to redshift
+      
+    ; if SPH and machNum (doesn't exist), return zeros
+    if sP.trMCPerCell eq 0 and keyword_set(maxPastMach) then begin
+      for i=0,n_tags(galcat.types)-1 do $
+        r = mod_struct( r, (tag_names(galcat.types))[i], fltarr(n_elements(galcatInds.(i))) )
+	return, r
+    endif
+	
+    ; otherwise, separate and return
     for i=0,n_tags(galcat.types)-1 do $
-      r = mod_struct( r, (tag_names(galcat.types))[i], $
-        val[galcatInds.(i)] )
-        
+      r = mod_struct( r, (tag_names(galcat.types))[i], maxval[galcatInds.(i)] )
+	
     return,r
-        
+      
   endif
   
-  ; ----- tracer expansion if requested -----
- 
-  message,'move return inside'
- 
-  if keyword_set(allTR) then begin
-    ; load child counts for both galaxy members and group members
-    if sP.trMCPerCell gt 0 then child_counts = galcat.ccMC
-    if sP.trMCPerCell lt 0 then message,'todo'
-    
-    ; create new return arrays
-    for i=0,n_tags(galcat.types)-1 do begin
-    
-      if size(r.gal,/tname) eq 'LONG64' then $ ; to support curSingleVal=ids
-        rr = mod_struct(rr, (tag_names(galcat.types))[i], $
-        lon64arr(total(child_counts[galcatInds.(i)],/int)) )
-             
-      if size(r.gal,/tname) eq 'LONG' then $
-        rr = mod_struct(rr, (tag_names(galcat.types))[i], $
-        lonarr(total(child_counts[galcatInds.(i)],/int)) )  
-             
-      if size(r.gal,/tname) eq 'FLOAT' then $
-        rr = mod_struct(rr, (tag_names(galcat.types))[i], $
-        fltarr(total(child_counts[galcatInds.(i)],/int)) )
-        
-    endfor
-    
-    if n_elements(rr) eq 0 then message,'Error: Unknown type for tracer replication.'
-    
-    ; replicate byGas arrays into byTracer arrays
-    for j=0,n_tags(galcat.types)-1 do begin
-      offset = 0L
-      type_child_counts = child_counts[galcatInds.(j)]
-      
-      for i=0L,n_elements(r.(j))-1 do begin
-        if type_child_counts[i] gt 0 then begin
-          rr.(j)[offset:offset+type_child_counts[i]-1] = replicate(r.(j)[i],type_child_counts[i])
-          offset += type_child_counts[i]
-        endif
-      endfor
-      
-    endfor
-    
-    stop
-    
-    ; take accretionTime subset and return tracer expanded array
-    if keyword_set(accretionTimeSubset) then $
-      for j=0,n_tags(galcat.types)-1 do $
-        rr.(j) = rr.(j)[accTimeInds.(j)]
-
-    return,rr
-  endif ; allTR
-  
-  return,r
 end
-
-

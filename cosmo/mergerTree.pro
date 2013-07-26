@@ -12,10 +12,10 @@ function mergerTree, sP=sP, makeNum=makeNum
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  partMatchFracTol = 0.6   ; 60% minimum match between particle members of the specified type
+  partMatchFracTol = 0.55  ; 55% minimum match between particle members of the specified type
   massDiffFracTol  = 0.4   ; 40% agreement in total mass or better
-  positionDiffTol  = 100.0 ; 100kpc maximum separation
-  minSubgroupLen   = 100   ; do not try to match subgroups with less than N total particles (for speed)
+  positionDiffTol  = 200.0 ; 200kpc maximum separation
+  minSubgroupLen   = 60    ; do not try to match subgroups with less than N total particles (for speed)
 
   ptNum = partTypeNum('dm') ; use dark matter particles (only) for matching
 
@@ -45,12 +45,11 @@ function mergerTree, sP=sP, makeNum=makeNum
     
     ; or, if not at maxSnap, move "previous" group catalog to current
     if sP.snap lt maxSnap then gcCur = gcPrev
-    gcPrev = !NULL
     
     ; load "previous" group catalog (one snapshot back in time)
     sP.snap -= 1
     gcPrev = loadGroupCat(sP=sP,/readIDs)
-
+    
     time=systime(/sec) ; start timer
     
     ; create/zero Parent to hold sgID of matching subgroup in previous snapshot
@@ -192,13 +191,13 @@ function mergerTree, sP=sP, makeNum=makeNum
 
 end
 
-; mergerTreeAdaptiveSubset():
+; mergerTreeSubset():
 ;                     walk the merger tree from sP.snap back to start of the group catalogs and calculate
 ;                     the snapshot to which each halo can be tracked in time. also calculate
 ;                     a few properties for these subgroups back in time (r_vir,T_vir,position) and 
 ;                     the subset of the galaxycat at maxSnap that we can track back using this selection
 
-function mergerTreeAdaptiveSubset, sP=sP, verbose=verbose
+function mergerTreeSubset, sP=sP, verbose=verbose
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -210,8 +209,8 @@ function mergerTreeAdaptiveSubset, sP=sP, verbose=verbose
   units = getUnits()
   
   ; set saveFilename and check for existence
-  saveFilename = sP.derivPath + 'mTreeAdaSub.'+sP.savPrefix+str(sP.res)+'.'+$
-                 str(maxSnap)+'-'+str(minSnap)+'.sK'+str(smoothKer)+'.sav'  
+  saveFilename = sP.derivPath + 'mTreeSubset.'+sP.savPrefix+str(sP.res)+'.'+$
+                 str(maxSnap)+'-'+str(minSnap)+'.sav'  
 
   if file_test(saveFilename) then begin
     restore, saveFilename
@@ -230,51 +229,54 @@ function mergerTreeAdaptiveSubset, sP=sP, verbose=verbose
 
     ; on first snapshot select primary halos and allocate arrays
     if i eq 0 then begin
-      gcIDs = gcIDList(gc=gc,select='pri')
+      gcIDs = gcIDList(gc=gc,select='all')
 
-      gcIDPlace = lindgen(n_elements(gcIDs)) ; initial placement in ascending order of ID
+      gcIDs_pri = gcIDList(gc=gc,select='pri')
+      
+      ; mark secondary subgroups as invalid at the start
+      gcIDs[ gcIDList(gc=gc,select='sec') ] = -1
       
       times     = fltarr(numBack+floor(smoothKer/2.0))
-      hPos      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDPlace))
-      hVel      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDPlace))
-      hMass     = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
-      hVirRad   = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
-      hVirTemp  = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDPlace))
-      noParMask = bytarr(n_elements(gcIDPlace))
-      hMinSnap  = intarr(n_elements(gcIDPlace)) - 1
+      hPos      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDs))
+      hVel      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDs))
+      hMass     = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDs))
+      hVirRad   = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDs))
+      hVirTemp  = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDs))
+      noParMask = bytarr(n_elements(gcIDs))
+      hMinSnap  = intarr(n_elements(gcIDs)) - 1
     endif
   
     ; which gcIDs still valid? only new "no parents"
-    ;wPar = where(gcIDs ne -1,ncomp=count,comp=wNoPar)
-    wNoPar = where(gcIDs eq -1 and noParMask eq 0B)
+    wNoPar = where(gcIDs eq -1 and noParMask eq 0B,wNoParCount)
     
-    noParMask[wNoPar] = 1B
-    hMinSnap[wNoPar] = sP.snap + 1 ; mark end of tracking for halos with no valid parent at this snapshot
-    gcIDs[wNoPar] = -1 ; from this point on, will contain incorrect values, must use noParMask to select
+    if wNoParCount gt 0 then begin
+      noParMask[wNoPar] = 1B
+      hMinSnap[wNoPar] = sP.snap + 1 ; mark end of tracking for halos with no valid parent at this snapshot
+    endif
     
-    wPar = where(hMinSnap eq -1,nleft)
-    wPar10 = where(hMinSnap eq -1 and hMass[0,*] ge 1.0,nleft10)
-    tot10 = where(hMass[0,*] ge 1.0,ntot10)
+    wPar = where(hMinSnap[gcIDs_pri] eq -1,nleft)
+    wPar10 = where(hMinSnap[gcIDs_pri] eq -1 and hMass[0,gcIDs_pri] ge 1.0,nleft10)
+    tot10 = where(hMass[0,gcIDs_pri] ge 1.0,ntot10)
     
     if keyword_set(verbose) then $
       print,' ['+string(sP.snap,format='(i3)')+'] remaining: '+string(nleft,format='(i5)')+' ('+$
-        string(float(nleft)/n_elements(gcIDs)*100,format='(f4.1)')+'%) massive: '+string(nleft10,format='(i5)')+' ('+$
-        string(float(nleft10)/ntot10*100,format='(f4.1)')+'%) '
+        string(float(nleft)/n_elements(gcIDs)*100,format='(f4.1)')+'%) above 10^10: '+$
+        string(nleft10,format='(i5)')+' ('+string(float(nleft10)/ntot10*100,format='(f4.1)')+'%) '
         
     ; store only currently valid gcIDs
     w = where(gcIDs ne -1,count)
     if count eq 0 then message,'error'
     
     times[i] = h.time
-    hPos[i,*,gcIDPlace[w]]   = subgroupCen[*,gcIDs[w]]
-    hVel[i,*,gcIDPlace[w]]   = gc.subgroupVel[*,gcIDs[w]]
-    hMass[i,gcIDPlace[w]]    = gc.subgroupMass[gcIDs[w]]
-    hVirRad[i,gcIDPlace[w]]  = gc.group_r_crit200[gc.subgroupGrNr[gcIDs[w]]]
-    hVirTemp[i,gcIDPlace[w]] = alog10(codeMassToVirTemp(gc.subgroupMass[gcIDs[w]],sP=sP))
+    hPos[i,*,w]   = subgroupCen[*,gcIDs[w]]
+    hVel[i,*,w]   = gc.subgroupVel[*,gcIDs[w]]
+    hMass[i,w]    = gc.subgroupMass[gcIDs[w]]
+    hVirRad[i,w]  = gc.group_r_crit200[gc.subgroupGrNr[gcIDs[w]]]
+    hVirTemp[i,w] = alog10(codeMassToVirTemp(gc.subgroupMass[gcIDs[w]],sP=sP))
 
     ; load mergerTree and change subgroup IDs to parents at the prior snapshot
     Parent = mergerTree(sP=sP)
-    
+
     gcIDs[w] = Parent[gcIDs[w]] ; change to parent IDs
 
     sP.snap -= 1
@@ -282,7 +284,6 @@ function mergerTreeAdaptiveSubset, sP=sP, verbose=verbose
   
   Parent = !NULL
   gcIDs  = !NULL
-  gcIDPlace = !NULL
   noParMask = !NULL
   subgroupCen = !NULL
   
@@ -310,224 +311,31 @@ function mergerTreeAdaptiveSubset, sP=sP, verbose=verbose
   sP.snap = maxSnap
   galcat = galaxyCat(sP=sP)
   
-  ; replicate parent IDs (of PRIMARY/parent)
-  gc = loadGroupCat(sP=sP,/skipIDs)
-  galcatIDList = gcIDList(gc=gc,select='pri') ; this is the starting gcIDs from above
-  
   ; replicated galcat parent IDs for each galcatSub member
-  gcIndOrig = galCatRepParentIDs(galcat=galcat,gcIDList=galcatIDList)
+  gcIndOrig = galCatRepParentIDs(galcat=galcat)
   
-  ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
-  placeMap  = getIDIndexMap(galcatIDList,minid=minid)
-  gcIndOrig = placeMap[gcIndOrig-minid]
-  placeMap  = !NULL
-  
-  ; get the subset of the galcat indices in sgIDList
-  galcatSub = galcatINDList(sP=sP,galcat=galcat,gcIDList=galcatIDList)
-  
-  r = {galcatIDList:galcatIDList,gcIndOrig:gcIndOrig,galcatSub:galcatSub,$
+  r = {gcIndOrig:gcIndOrig,gcIndOrigTrMC:-1,gcIndOrigTrVel:-1,$
        hPos:hPos,hVel:hVel,hPosSm:hPosSm,hVelSm:hVelSm,$
        hVirRad:hVirRad,hVirTemp:hVirTemp,hMass:hMass,hMinSnap:hMinSnap,$
        times:times,minSnap:minSnap,maxSnap:maxSnap,smoothKer:smoothKer}
 
+  if sP.trMCPerCell gt 0 then begin
+    galcat = galaxyCat(sP=sP)
+    gcIndOrigTrMC = galCatRepParentIDs(galcat=galcat,child_counts=galcat.trMC_cc)
+    r = mod_struct( r, 'gcIndOrigTrMC', gcIndOrigTrMC )
+  endif
+  
+  if sP.trVelPerCell gt 0 then begin
+    galcat = galaxyCat(sP=sP)
+    gcIndOrigTrVel = galCatRepParentIDs(galcat=galcat,child_counts=galcat.trVel_cc)
+    r = mod_struct( r, 'gcIndOrigTrVel', gcIndOrigTrVel )
+  endif
+       
   ; save
   save,r,filename=saveFilename
   print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
   
   return,r
-end
-
-; mergerTreeSubset(): replaced with adaptive approach
-
-function mergerTreeSubset, sP=sP, verbose=verbose
-
-  return, mergerTreeAdaptiveSubset(sP=sP,verbose=verbose)
-
-end
-
-; mergerTreeRepParentIDs(): wrapper which returns mt.gcIndOrig for SPH simulations and the similarly
-;                           replicated galcat parent ID list for tracer simulations
-
-function mergerTreeRepParentIDs, mt=mt, galcat=galcat, sP=sP, compactMtS=compactMtS, $
-                                 trids=galcat_trids, gc_cc=galcat_cc  ; outputs
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-  forward_function cosmoTracerChildren, galaxyCat
-
-  if n_elements(sP) eq 0 then message,'Error: sP required.'
-  if n_elements(mt) eq 0 then mt = mergerTreeSubset(sP=sP)
-  if n_elements(galcat) eq 0 then galcat = galaxyCat(sP=sP)
-
-  if sP.trMCPerCell eq 0 then begin
-    gcIndOrig = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList)
-  
-    ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
-    if keyword_set(compactMtS) then begin
-      placeMap  = getIDIndexMap(mt.galcatIDList,minid=minid)
-      gcIndOrig = placeMap[gcIndOrig-minid]
-      placeMap  = !NULL
-    endif
-    
-    return,gcIndOrig
-  endif
-
-  if sP.trMCPerCell gt 0 then begin
-    ids = galcat.ids[mt.galcatSub]
-    
-    ; locate tracer children (indices) of gas id subsets
-    galcat_trids = cosmoTracerChildren(sP=sP, /getInds, gasIDs=ids, tr_parids=tr_parids, child_counts=galcat_cc)
-
-    ids = !NULL
-    
-    ; convert tracer children indices to tracer IDs at this zMin if we are returning them
-    if keyword_set(galcat_trids) then begin
-      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-      galcat_trids = tr_ids[galcat_trids]
-      tr_ids = !NULL
-    endif
-    
-    ; create a gcIndOrig for the tracers
-    gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,child_counts=galcat_cc) 
-                  
-    ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
-    if keyword_set(compactMtS) then begin
-      placeMap    = getIDIndexMap(mt.galcatIDList,minid=minid)
-      gcIndOrigTr = placeMap[gcIndOrigTr-minid]
-      placeMap    = !NULL
-    endif
-    
-    return,gcIndOrigTr
-  endif
-  
-  if sP.trMCPerCell eq -1 then begin
-    ; load gas ids
-    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-
-    ; match galcat IDs to gas_ids
-    idIndexMap = getIDIndexMap(gas_ids,minid=minid)
-    ids_ind    = idIndexMap[galcat.ids[mt.galcatSub] - minid]
-    idIndexMap = !NULL
-    
-    gas_ids = !NULL
-    
-    ; locate tracer children (indices) of gas id subsets
-    galcat_trids = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=ids_ind,child_counts=galcat_cc)
-    
-    ids_ind  = !NULL
-    
-    ; convert tracer children indices to tracer IDs at this zMin if we are returning them
-    if keyword_set(galcat_gal_trids) then begin
-      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
-      galcat_trids  = tr_ids[galcat_trids]
-      tr_ids = !NULL
-    endif
-    
-    ; create a gcIndOrig for the tracers
-    gcIndOrigTr = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList,child_counts=galcat_cc) 
-                  
-    ; want to use these parent IDs to access hVirRad,etc so compact the same way (ascending ID->index)
-    if keyword_set(compactMtS) then begin
-      placeMap = getIDIndexMap(mt.galcatIDList,minid=minid)
-      gcIndOrigTr = placeMap[gcIndOrigTr-minid]
-      placeMap = !NULL
-    endif
-    
-    return,gcIndOrigTr
-  endif
-
-end
-
-; mergerTreeINDList(): return a list of indices into the accretionTimeSubset/Traj catalog 
-;                      for a subset of the members defined by the subgroup ID list gcIDList
-
-function mergerTreeINDList, sP=sP, galcat=galcat, mt=mt, gcIDList=gcIDList
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
-  forward_function galaxyCat
-
-  ; load galaxy cat and mergerTreeSubset if necessary
-  if ~keyword_set(galcat) then galcat = galaxyCat(sP=sP)
-  if ~keyword_set(mt) then mt = mergerTreeSubset(sP=sP)
-  
-  ; verify that all the requested subgroup IDs are part of the mergerTreeSubset
-  calcMatch,mt.galcatIDList,gcIDList,ind1,ind2,count=count
-  if count ne n_elements(gcIDList) then message,'Error: Not all gcIDs found in mergerTreeSubset.'
-  
-  ; make mask for requested subgroup IDs
-  gcIDMask = bytarr(galcat.nGroups)
-  if keyword_set(gcIDList) then gcIDMask[gcIDList] = 1B  
-  if ~keyword_set(gcIDList) then gcIDMask[*] = 1B
-  
-  if sP.trMCPerCell eq 0 then begin
-    ; normal indices return (handle zeros which will happen for individual halo ID requests at low masses)
-    ; note: must handle the -1 return inside the calling function
-    tots = total(galcat.len[gcIDList],/int)
-    if tots eq 0 then message,'Fix me.'
-  
-    r = ulonarr(tots)
-  
-    offset    = 0L
-    offset_mt = 0L
-  
-    ; (1) make list for gas cells/particles
-    foreach gcID,mt.galcatIDList do begin
-
-      if galcat.len[gcID] gt 0 and gcIDMask[gcID] eq 1B then begin
-        galInds = ulindgen(galcat.len[gcID]) + offset_mt
-        
-        r[ offset:offset+galcat.len[gcID]-1 ] = galInds
-        
-        offset += galcat.len[gcID]
-      endif
-    
-      offset_mt += galcat.len[gcID]
-    endforeach
-  
-    return,r
-  
-  endif ; sP.trMCPerCell eq 0
-  
-  ; (2) make list including child counts if simulation has a tracer type
-  maxt = maxVals(sP=sP)  ; load child counts
-  child_counts = maxt.child_counts
-  maxt = !NULL
-  
-  if n_elements(child_counts) ne total(galcat.len,/int) then $
-     message,'Error: Child_counts should have same size as full galcat subset.'
-
-  if total(child_counts,/int) gt 2e9 then stop ; consider lon64/removing /int
-
-  ; get normal-galcat indices for this selection, use to allocate rcc
-  rr = galcatINDList(sP=sP,gcIDList=gcIDList)
-  rcc = ulonarr(total(child_counts[rr],/int))
-  rr = !NULL
-       
-  offset     = 0L
-  offset_all = 0UL
-  
-  foreach gcID,mt.galcatIDList do begin
-
-    if galcat.len[gcID] gt 0 then begin
-      ; calculate total number of children in this subgroup
-      tot_children = total(child_counts[ galcat.off[gcID]:galcat.off[gcID]+galcat.len[gcID]-1 ],/int)
-      
-      ; add indices only for specified galaxy IDs
-      if tot_children gt 0 and gcIDMask[gcID] then begin
-        ; calculate place and store indices
-        galInds = ulindgen(tot_children) + offset_all
-        rcc[ offset:offset+tot_children-1 ] = galInds
-  
-        offset += tot_children
-      endif
-      
-      ; add child counts to indice array offset
-      offset_all  += tot_children
-    endif
-    
-  endforeach
-  
-  return,rcc
-  
 end
 
 ; trackHaloPosition(): return a new position for some halo gcID at an earlier snapshot using mergerTree
@@ -620,7 +428,7 @@ pro plotHaloTracking, sP=sP
 
   minMasses = [10.0,10.5,11.0,11.5] ; z=2 masses in log(msun)
   
-  mt = mergerTreeAdaptiveSubset(sP=sP,/verbose)
+  mt = mergerTreeSubset(sP=sP,/verbose)
   numSnaps = mt.maxSnap - mt.minSnap
   
   ; arrays
@@ -698,9 +506,9 @@ pro plotHaloEvo, sP=sP
     mt.hPos[*,*,i] = dists_xyz
   endfor
   
-  ;massBins = [11.6,11.7,11.8,12.0,12.4]
+  massBins = [11.6,11.7,11.8,12.0,12.4]
   ;massBins = [10.5,10.55,10.6,10.65,10.7]
-  massBins = [10.0,10.5,11.0,11.5,12.0]
+  ;massBins = [10.0,10.5,11.0,11.5,12.0]
 
   ires = 20
   respts = findgen(ires)/(ires-1) * min(ages)
@@ -716,19 +524,19 @@ pro plotHaloEvo, sP=sP
       xrange = [min(ages),0.0]
       yrange = [min(mt.hMass[*,w])*0.99,max(mt.hMass[*,w])*1.01]
       
-      fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-               xtitle="Time Back [Myr]",ytitle="log ( halo mass [M"+textoidl("_{sun}")+"] )",$
-               title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
-               string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+             xtitle="Time Back [Myr]",ytitle="log ( halo mass [M"+textoidl("_{sun}")+"] )",$
+             title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
+             string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
       
       ; smooth/interpolate testing
       for j=0,count-1 do begin
-        fsc_plot,ages,smooth(mt.hMass[*,w[j]],5),line=0,color=getColor(j),/overplot
+        cgPlot,ages,smooth(mt.hMass[*,w[j]],5),line=0,color=getColor(j),/overplot
         ;res=interpol(mt.hMass[*,w[j]],ages,respts,/lsquadratic)
-        ;fsc_plot,respts,res,line=0,color=getColor(j),/overplot
+        ;cgPlot,respts,res,line=0,color=getColor(j),/overplot
       endfor
       ; original data
-      for j=0,count-1 do fsc_plot,ages,mt.hMass[*,w[j]],line=1,color=getColor(j),/overplot
+      for j=0,count-1 do cgPlot,ages,mt.hMass[*,w[j]],line=1,color=getColor(j),/overplot
     endfor
     
   end_PS
@@ -743,13 +551,13 @@ pro plotHaloEvo, sP=sP
       xrange = [min(ages),0.0]
       yrange = [min(mt.hVirTemp[*,w])*0.99,max(mt.hVirTemp[*,w])*1.01]
       
-      fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-               xtitle="Time Back [Myr]",ytitle="halo T"+textoidl("_{vir}")+" [K]",$
-               title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
-               string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+             xtitle="Time Back [Myr]",ytitle="halo T"+textoidl("_{vir}")+" [K]",$
+             title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
+             string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
                
-      for j=0,count-1 do fsc_plot,ages,smooth(mt.hVirTemp[*,w[j]],5),line=0,color=getColor(j),/overplot
-      for j=0,count-1 do fsc_plot,ages,mt.hVirTemp[*,w[j]],line=1,color=getColor(j),/overplot
+      for j=0,count-1 do cgPlot,ages,smooth(mt.hVirTemp[*,w[j]],5),line=0,color=getColor(j),/overplot
+      for j=0,count-1 do cgPlot,ages,mt.hVirTemp[*,w[j]],line=1,color=getColor(j),/overplot
     endfor
     
   end_PS
@@ -764,13 +572,13 @@ pro plotHaloEvo, sP=sP
       xrange = [min(ages),0.0]
       yrange = [min(mt.hVirRad[*,w])*0.94,max(mt.hVirRad[*,w])*1.06]
       
-      fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-               xtitle="Time Back [Myr]",ytitle="log ( halo R"+textoidl("_{vir}")+" [kpc] )",$
-               title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
-               string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+             xtitle="Time Back [Myr]",ytitle="log ( halo R"+textoidl("_{vir}")+" [kpc] )",$
+             title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
+             string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
                
-      for j=0,count-1 do fsc_plot,ages,smooth(mt.hVirRad[*,w[j]],5),line=0,color=getColor(j),/overplot
-      for j=0,count-1 do fsc_plot,ages,mt.hVirRad[*,w[j]],line=1,color=getColor(j),/overplot
+      for j=0,count-1 do cgPlot,ages,smooth(mt.hVirRad[*,w[j]],5),line=0,color=getColor(j),/overplot
+      for j=0,count-1 do cgPlot,ages,mt.hVirRad[*,w[j]],line=1,color=getColor(j),/overplot
     endfor
     
   end_PS
@@ -785,14 +593,14 @@ pro plotHaloEvo, sP=sP
       xrange = [min(ages),0.0]
       yrange = [-300,300] ;kpc offset from initial
       
-      fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-               xtitle="Time Back [Myr]",ytitle="Delta Position X [kpc]",$
-               title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
-               string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+             xtitle="Time Back [Myr]",ytitle="Delta Position X [kpc]",$
+             title=textoidl("z_{start} = "+string(sP.redshift,format='(f3.1)'))+" "+$
+             string(massBins[i],format='(f4.1)')+" < logM < "+string(massBins[i+1],format='(f4.1)')
                
-      for j=0,count-1 do fsc_plot,ages,smooth(mt.hPos[*,0,w[j]],5),$
+      for j=0,count-1 do cgPlot,ages,smooth(mt.hPos[*,0,w[j]],5),$
         line=0,color=getColor(j),/overplot
-      for j=0,count-1 do fsc_plot,ages,mt.hPos[*,0,w[j]],$
+      for j=0,count-1 do cgPlot,ages,mt.hPos[*,0,w[j]],$
         line=1,color=getColor(j),/overplot
     endfor
     

@@ -131,7 +131,7 @@ function galaxyHaloCat, sP=sP
   
   pos_rel = !NULL
   
-  ; calculate vrad: since we are doing the job of galaxyCatRadii() as well
+  ; calculate radial velocity
   vrad_pri = fltarr(n_elements(sgParIDs))
   
   if countSGOk gt 0 then $

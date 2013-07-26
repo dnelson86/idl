@@ -11,8 +11,6 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
      exit
   endif
   
-  print,'WARNING: sP.atIndMode changed to 0, check'
-  
   run = strlowcase(run)
 
   r = {simPath:      '',$    ; root path to simulation snapshots and group catalogs
@@ -35,8 +33,9 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        $
        $ ; tracers
        trMassConst:  0.0,$        ; mass per tracerMC under equal mass assumption (=TargetGasMass/trMCPerCell)
-       trMCPerCell:  0,$          ; starting number of monte carlo tracers per cell (copied from f input, 0=none)
+       trMCPerCell:  0,$          ; starting number of monte carlo tracers per cell
        trMCFields:   intarr(13),$ ; which TRACER_MC_STORE_WHAT fields did we save, and in what indices
+       trVelPerCell: 0,$          ; starting number of velocity tracers per cell
        $
        $ ; analysis parameters:
        minNumGasPart: 0,$    ; minimum number of gas particles required to use subgroup (unused)
@@ -84,6 +83,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   ; sims.feedback (Velocity + f=5 Monte Carlo) 128,256,512 @ 20Mpc w/ fiducial Illustris parameters
   if (run eq 'feedback') or (run eq 'feedback_noz') or (run eq 'feedback_nofb') or (run eq 'feedback_nogfm') then begin
     r.minNumGasPart  = -1 ; no additional cut
+    r.trVelPerCell   = 0
     r.trMCPerCell    = 5
     r.trMCFields     = [0,1,2,3,4,5,6,7,8,9,-1,-1,-1] ; up to and including WIND_COUNTER (=512, 10 of 13)
     r.gfmNumElements = 9
@@ -227,6 +227,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   if (run eq 'tracer') or (run eq 'tracer_nouv') then begin
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 10
+    r.trVelPerCell  = 1
     
     if res eq 128 or res eq 256 then $
       r.trMCFields    = [0,1,5,2,-1,3,4,-1,-1,-1,-1,-1,-1] ; even older code version than tracer.512, indices specified manually in Config.sh

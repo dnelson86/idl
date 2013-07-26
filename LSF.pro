@@ -216,9 +216,9 @@ end
 pro runGasAccPaper
 
   ; config
-  redshifts   = [2.0,3.0]
+  redshifts   = [2.0] ;0.0,1.0,3.0
   resolutions = [128,256,512]
-  runs        = ['gadget','tracer']
+  runs        = ['gadget','tracer'] ;'feedback'
   
   timeWindows = list('all',1000.0,250.0) ; Myr
   accModes    = ['all','smooth','clumpy','stripped']
@@ -233,12 +233,11 @@ pro runGasAccPaper
         
         ; catalogs at analysis redshift
         x = galaxyCat(sP=sP)
-        x = galaxyCatRadii(sP=sP)
         
         ; primary analysis
         x = maxVals(sP=sP)
         x = mergerTree(sP=sP,makeNum=snap)
-        x = mergerTreeAdaptiveSubset(sP=sP)
+        x = mergerTreeSubset(sP=sP)
         x = accretionTimes(sP=sP)
         x = accretionMode(sP=sP)
         
@@ -246,6 +245,7 @@ pro runGasAccPaper
         foreach timeWindow,timeWindows do begin
           foreach accMode,accModes do begin
             x = haloMassBinValues(sP=sP,timeWindow=timeWindow,accMode=accMode)
+            x = binValMaxHistos(sP=sP,timeWindow=timeWindow,accMode=accMode)
           endforeach
         endforeach
         
@@ -257,8 +257,7 @@ pro runGasAccPaper
   plotByMode
   plotByMethod
   plotByRes
-  plotTmaxHistos
-  plotTmaxHisto2D
+  plotValMaxHistos
   
   ; visual plots
   scatterMapHalosComp

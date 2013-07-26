@@ -1,11 +1,11 @@
 ; plotVsRedshift.pro
 ; feedback - plots skipping tconst/tvircur/tviracc definitions in favor of redshift panels
-; dnelson jun.2013
+; dnelson jul.2013
 
 ; plotRatesFracsInRedshift():
 
 pro plotRatesFracsInRedshift
-  message,'unchecked with new format'
+
   ; config
   runs       = ['feedback','tracer','gadget']
   redshifts  = [3.0,2.0,1.0,0.0]
@@ -80,8 +80,8 @@ pro plotRatesFracsInRedshift
   
   pos = plot_pos(total=n_elements(redshifts),/gap) ; plot positioning (3x2, 2x2, or 1x2 with gaps)
   
-  ; cold fraction (allgal,gmem)
-  start_PS, sP.(0).(0).plotPath + 'coldFracRedshift.allgal-gmem.' + plotStr + '.eps', /big
+  ; cold fraction (galaxy,halo)
+  start_PS, sP.(0).(0).plotPath + 'coldFracRedshift.galaxy-halo.' + plotStr + '.eps', /big
     
     for zind=0,3 do begin
       cgPlot,[0],[0],/nodata,xrange=xrange_halo,yrange=yrange_frac,/xs,/ys,$
@@ -90,10 +90,10 @@ pro plotRatesFracsInRedshift
     
       for i=0,n_tags(sP)-1 do begin
         xvals = mbv.(i).(zind).logMassBinCen
-        yvals = smooth(mbv.(i).(zind).fracMedian.allGal.tVirAcc[tVirInd,*],sK,/nan)
+        yvals = smooth(mbv.(i).(zind).galaxyMedian.coldFrac.total.tVirAcc[tVirInd,*],sK,/nan)
         cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[0],/overplot ; allgal
         
-        yvals = smooth(mbv.(i).(zind).fracMedian.gmem.tVirAcc[tVirInd,*],sK,/nan)
+        yvals = smooth(mbv.(i).(zind).galaxyMedian.coldFrac.total.tVirAcc[tVirInd,*],sK,/nan)
         cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[1],/overplot ; gmem
       endfor
       
@@ -119,8 +119,8 @@ pro plotRatesFracsInRedshift
 
   end_PS  
   
-  ; accretion rates (allgal)
-  start_PS, sP.(0).(0).plotPath + 'accRateRedshift.allgal.' + plotStr + '.eps', /big
+  ; net accretion rates (galaxy)
+  start_PS, sP.(0).(0).plotPath + 'netRateRedshift.galaxy.' + plotStr + '.eps', /big
     
     for zind=0,3 do begin
       cgPlot,[0],[0],/nodata,xrange=xrange_halo,yrange=yrange_rate,/xs,/ys,$
@@ -130,13 +130,13 @@ pro plotRatesFracsInRedshift
     
       for i=0,n_tags(sP)-1 do begin
         xvals = mbv.(i).(zind).logMassBinCen
-        yvals = smooth(alog10(mbv.(i).(zind).hotMedian.allGal.tVirAcc[tVirInd,*] / $
+        yvals = smooth(alog10(mbv.(i).(zind).galaxyMedian.netRate.total.hot.tVirAcc[tVirInd,*] / $
                        10.0^mbv.(i).(zind).logMassBinCen * 1e9),sK,/nan) ; yr->Gyr
-        cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[0],/overplot ; allgal, hot
+        cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[0],/overplot ; galaxy, hot
         
-        yvals = smooth(alog10(mbv.(i).(zind).coldMedian.allGal.tVirAcc[tVirInd,*] / $
+        yvals = smooth(alog10(mbv.(i).(zind).galaxyMedian.netRate.total.cold.tVirAcc[tVirInd,*] / $
                        10.0^mbv.(i).(zind).logMassBinCen * 1e9),sK,/nan) ; yr->Gyr
-        cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[1],/overplot ; allgal, cold
+        cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[1],/overplot ; galaxy, cold
       endfor
       
       ; redshift legend
@@ -154,8 +154,8 @@ pro plotRatesFracsInRedshift
 
   end_PS
   
-  ; accretion rates (gmem)
-  start_PS, sP.(0).(0).plotPath + 'accRateRedshift.gmem.' + plotStr + '.eps', /big
+  ; net accretion rates (halo)
+  start_PS, sP.(0).(0).plotPath + 'netRateRedshift.halo.' + plotStr + '.eps', /big
     
     for zind=0,3 do begin
       cgPlot,[0],[0],/nodata,xrange=xrange_halo,yrange=yrange_rate,/xs,/ys,$
@@ -165,13 +165,13 @@ pro plotRatesFracsInRedshift
     
       for i=0,n_tags(sP)-1 do begin
         xvals = mbv.(i).(zind).logMassBinCen
-        yvals = smooth(alog10(mbv.(i).(zind).hotMedian.gmem.tVirAcc[tVirInd,*] / $
+        yvals = smooth(alog10(mbv.(i).(zind).haloMedian.netRate.total.hot.tVirAcc[tVirInd,*] / $
                        10.0^mbv.(i).(zind).logMassBinCen * 1e9),sK,/nan) ; yr->Gyr
-        cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[0],/overplot ; gmem, hot
+        cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[0],/overplot ; halo, hot
         
-        yvals = smooth(alog10(mbv.(i).(zind).coldMedian.gmem.tVirAcc[tVirInd,*] / $
+        yvals = smooth(alog10(mbv.(i).(zind).haloMedian.netRate.total.cold.tVirAcc[tVirInd,*] / $
                        10.0^mbv.(i).(zind).logMassBinCen * 1e9),sK,/nan) ; yr->Gyr
-        cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[1],/overplot ; gmem, cold
+        cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[1],/overplot ; halo, cold
       endfor
       
       ; redshift legend
@@ -230,11 +230,11 @@ pro plotRatesFracsInRedshift
 
   end_PS
   
-  ; fraction of accretion by mode (allgal)
+  ; fraction of accretion by mode (galaxy)
   pos_local = plot_pos(total=2*n_elements(redshifts),/gap)
   if accModes[0] ne 'all' then message,'Error: Not going to work.'
   
-  start_PS, sP.(0).(0).plotPath + 'accRateFracsRedshift.allgal.' + plotStr + '.eps', xs=9, ys=12
+  start_PS, sP.(0).(0).plotPath + 'accRateFracsRedshift.galaxy.' + plotStr + '.eps', xs=9, ys=12
     
     for zind=0,3 do begin
       cgPlot,[0],[0],/nodata,xrange=xrange_halo,yrange=yrange_frac,/xs,/ys,$
@@ -247,8 +247,8 @@ pro plotRatesFracsInRedshift
         for j=1,n_tags(amv.(i).(zind))-1 do begin ; take ratio to first
         
           xvals = amv.(i).(zind).(0).logMassBinCen
-          yvals = smooth(amv.(i).(zind).(j).hotMedian.allGal.tVirAcc[tVirInd,*] / $
-                         amv.(i).(zind).(0).hotMedian.allGal.tVirAcc[tVirInd,*],sK,/nan)
+          yvals = smooth(amv.(i).(zind).(j).galaxyMedian.netRate.total.hot.tVirAcc[tVirInd,*] / $
+                         amv.(i).(zind).(0).galaxyMedian.netRate.total.hot.tVirAcc[tVirInd,*],sK,/nan)
           cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=linesAM[j],/overplot
           
         endfor
@@ -268,8 +268,8 @@ pro plotRatesFracsInRedshift
         for j=1,n_tags(amv.(i).(zind))-1 do begin ; take ratio to first
         
           xvals = amv.(i).(zind).(0).logMassBinCen
-          yvals = smooth(amv.(i).(zind).(j).coldMedian.allGal.tVirAcc[tVirInd,*] / $
-                         amv.(i).(zind).(0).coldMedian.allGal.tVirAcc[tVirInd,*],sK,/nan)
+          yvals = smooth(amv.(i).(zind).(j).galaxyMedian.netRate.total.cold.tVirAcc[tVirInd,*] / $
+                         amv.(i).(zind).(0).galaxyMedian.netRate.total.cold.tVirAcc[tVirInd,*],sK,/nan)
           cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=linesAM[j],/overplot
           
         endfor
@@ -294,10 +294,10 @@ pro plotRatesFracsInRedshift
   stop
 end
 
-; binAccRateVsRedshift():
+; binAccRateVsRedshift(): NOTE: lots of duplication with binHaloMassVals()
 
 function binAccRateVsRedshift, sP=sP, accMode=accMode, binWindow=BW
-  message,'needs update to new format'
+
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
@@ -343,192 +343,260 @@ function binAccRateVsRedshift, sP=sP, accMode=accMode, binWindow=BW
   at = accretionTimes(sP=sP)
   mt = mergerTreeSubset(sP=sP)
   
-  wAm = accModeInds(at=at,accMode=accMode,sP=sP,/mask)
+  wAm = accModeInds(at=at,accMode=accMode,sP=sP)
     
   ; reverse histogram parent IDs of all particles/tracers in this selection
-  gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sP,/compactMtS)
+  if sP.trMCPerCell gt 0 then gcIndOrig = mt.gcIndOrigTrMC
+  if sP.trMCPerCell eq 0 then gcIndOrig = mt.gcIndOrig
+  if sP.trMCPerCell lt 0 then gcIndOrig = mt.gcIndOrigTrVel
   
-  maxHist = max([gcIndOrig.gal[wAm.gal],gcIndOrig.gmem[wAm.gmem],gcIndOrig.stars[wAm.stars]])
-  hist_gal   = histogram(gcIndOrig.gal[wAm.gal],min=0,max=maxHist,loc=loc_gal,rev=rev_gal)
-  hist_gmem  = histogram(gcIndOrig.gmem[wAm.gmem],min=0,max=maxHist,loc=loc_gmem,rev=rev_gmem)
-  hist_stars = histogram(gcIndOrig.stars[wAm.stars],min=0,max=maxHist,loc=loc_stars,rev=rev_stars)
+  maxHist = max(gcIndOrig)
+
+  for i=0,n_tags(wAm)-1 do begin
+    hist_type = histogram(gcIndOrig[wAm.(i)],min=0,max=maxHist,loc=loc,rev=rev_type)
+    hist = mod_struct( hist, (tag_names(wAm))[i], hist_type )
+    rev  = mod_struct( rev,  (tag_names(wAm))[i], rev_type )
+  endfor
+  
   gcIndOrig = !NULL
   
   ; load max temps, current tvir, tvir at accretion
-  accTvir = gcSubsetProp(sP=sP,select='pri',/accTvir,/accretionTimeSubset,accMode=accMode)
-  maxTemp = gcSubsetProp(sP=sP,select='pri',/maxPastTemp,/accretionTimeSubset,accMode=accMode)
+  accTvir = gcSubsetProp(sP=sP,/accTvir,/accretionTimeSubset,accMode=accMode)
+  maxTemp = gcSubsetProp(sP=sP,/maxPastTemp,/accretionTimeSubset,accMode=accMode)
 
-  ; load group cat for subgroup masses
+  ; load group cat for subgroup masses, zero secondary so they don't get median binned
+  galcat = galaxyCat(sP=sP)
+  
   gc = loadGroupCat(sP=sP,/skipIDs)
-  gcMasses = codeMassToLogMsun(gc.subgroupMass[mt.galcatIDList])
+  gcMasses = codeMassToLogMsun(gc.subgroupMass)
+  gcIDs_sec = gcIDList(gc=gc,select='sec')
+  gcMasses[gcIDs_sec] = -1
   gc = !NULL
   
+  ; which galaxyCat types contribute to "total"?
+  typeLabels = [ tag_names(galcat.types), 'total' ]
+  
+  totalInds = where( typeLabels ne 'total' ) ; where to take total from
+  totalInd  = ( where( typeLabels eq 'total' ) )[0] ; where to store total  
+  
   ; structure to store results
-  accRate = { gal_cold   : fltarr(nTimeBins,n_elements(mt.galcatIDList))+!values.f_nan  ,$
-              gmem_cold  : fltarr(nTimeBins,n_elements(mt.galcatIDList))+!values.f_nan  ,$
-              stars_cold : fltarr(nTimeBins,n_elements(mt.galcatIDList))+!values.f_nan  ,$
-              both_cold  : fltarr(nTimeBins,n_elements(mt.galcatIDList))+!values.f_nan  ,$
-              gal_hot    : fltarr(nTimeBins,n_elements(mt.galcatIDList))+!values.f_nan  ,$
-              gmem_hot   : fltarr(nTimeBins,n_elements(mt.galcatIDList))+!values.f_nan  ,$
-              stars_hot  : fltarr(nTimeBins,n_elements(mt.galcatIDList))+!values.f_nan  ,$
-              both_hot   : fltarr(nTimeBins,n_elements(mt.galcatIDList))+!values.f_nan   }
-                  
+  tempHC = { cold : fltarr(nTimeBins,galcat.nGroups) ,$
+             hot  : fltarr(nTimeBins,galcat.nGroups)  }
+               
+  foreach typeLabel,typeLabels do $  
+    templateTypes = mod_struct(templateTypes, typeLabel, tempHC)
+               
+  ; for (1) galaxy and (2) halo, duplicate template for: accretion (inflow), outflow, and net
+  galaxy = { accRate : templateTypes, outRate : templateTypes, netRate : templateTypes }
+  halo   = { accRate : templateTypes, outRate : templateTypes, netRate : templateTypes }
+                    
   ; loop over all tracked subgroups
   for i=0L,maxHist do begin
-   
-    if hist_gal[i] gt 0 then begin
-      ; list of indices of galaxy gas particles in this subgroup
-      loc_inds_gal = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
+  
+    if i mod (maxHist/10) eq 0 then print,string(float(i)/maxHist*100,format='(f5.2)')+'%'
+    
+    ; loop over types
+    for k=0,n_tags(wAm)-1 do begin
+      if (tag_names(wAm))[k] ne (tag_names(rev))[k] then message,'Check'
       
-      ; galaxy accretion defined as (rho,temp) joining time or 0.15rvir crossing time
-      loc_atime_gal = reform(at.accTimeRT_gal[wAm.gal[loc_inds_gal]])
+      ; enforce local timewindow
+      loc_rev  = rev.(k)
+	  
+	if loc_rev[i] eq loc_rev[i+1] then continue ; no particles of type in this group, or whole group empty (secondary)
+	  
+      loc_inds = loc_rev[ loc_rev[i] : loc_rev[i+1]-1 ]
       
-      r_crossing_time = reform(at.accTime_gal[sP.radIndGalAcc,wAm.gal[loc_inds_gal]])
-      w = where(r_crossing_time gt loc_atime_gal,count)
-      if count gt 0 then loc_atime_gal[w] = r_crossing_time[w]
+      ; accretion time defined as:
+      ;  switching side of (rho,temp) cut or 0.15rvir crossing (headed in)
+      ; outflow time defined as:
+      ;  switching side of (rho,temp) cut or 0.15rvir crossing (headed out)
       
-      loc_atime_gal = 1/loc_atime_gal - 1 ; redshift
-      loc_atime_gal = redshiftToAgeFlat(loc_atime_gal)*1e9 ; yr
-      
-      ; split into hot and cold
-      loc_maxt_gal    = maxTemp.gal[loc_inds_gal]
-      loc_accTvir_gal = accTvir.gal[loc_inds_gal]
-      
-      w_cold = where(10.0^loc_maxt_gal / 10.0^loc_accTvir_gal le maxTempTvirFac,$
-                     count_cold,ncomp=count_hot,comp=w_hot)
-      
-      ; histogram in time
-      if count_cold gt 0 then begin
-        hh_cold = histogram(loc_atime_gal[w_cold],min=startTime,max=curtime,binsize=timeWindow,loc=locc)
-        accRate.gal_cold[*,i] = hh_cold
-      endif
-      
-      if count_hot gt 0 then begin
-        hh_hot = histogram(loc_atime_gal[w_hot],min=startTime,max=curtime,binsize=timeWindow,loc=loch)
-        accRate.gal_hot[*,i]  = hh_hot
-      endif
-      
-    endif ; hist_gal[i]
+      ; --- GALAXY ACCRETION ---
 
-    if hist_gmem[i] gt 0 then begin
-      ; list of indices of group member gas particles in this subgroup
-      loc_inds_gmem = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
+      ; decide between using outTimeRT and accTimeRT (satisfying/failing the rho,temp cut, respectively)
+      ; based on status at sP.snap (e.g. gmem by definition fails rho,temp cut)
+      curTimeRT = max(at.accTimeRT)
       
-      ; corresponding accretion times for these particles
-      loc_atime_gmem = reform(at.accTime_gmem[sP.radIndHaloAcc,wAm.gmem[loc_inds_gmem]])
-      loc_atime_gmem = 1/loc_atime_gmem - 1 ; redshift
-      loc_atime_gmem = redshiftToAgeFlat(loc_atime_gmem)*1e9 ; yr
+      loc_atime = reform( at.accTimeRT[ (wAm.(k))[loc_inds] ] )
+      
+      ; those that fail at sP.snap (e.g. gmem), use satisfying the cut as the accretion time
+      w = where( at.accTimeRT[ (wAm.(k))[loc_inds] ] eq curTimeRT, count)
+      if count gt 0 then loc_atime[w] = at.outTimeRT[ (wAm.(k))[loc_inds[w]] ]
+      
+      ; for those that neither satisfy nor fail the cut at sP.snap (all stars, stars in inter) we
+      ; cannot use the (rho,temp) cut, since don't know where they will fall when switching back
+      ; to a gas parent, so just use the radial cut
+      w_noCut = where( at.outTimeRT[ (wAm.(k))[loc_inds] ] ne max(at.outTimeRT) and $
+                       at.accTimeRT[ (wAm.(k))[loc_inds] ] ne max(at.accTimeRT), count_noCut)
+      if count_noCut gt 0 then loc_atime[w_noCut] = -1
+		
+      ; modify based on 0.15rvir crossing time (the latest / lowest redshift of the two criteria)
+      r_crossing_time = reform( at.accTime[ sP.radIndGalAcc, (wAm.(k))[ loc_inds ] ] )
+      w = where(r_crossing_time gt loc_atime, count)
+      if count gt 0 then loc_atime[w] = r_crossing_time[w]
+	  
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
       
       ; split into hot and cold
-      loc_maxt_gmem    = maxTemp.gmem[loc_inds_gmem]
-      loc_accTvir_gmem = accTvir.gmem[loc_inds_gmem]
+      loc_maxTemp = maxTemp.(k)[loc_inds]
+      loc_accTvir = accTvir.(k)[loc_inds]
       
-      w_cold = where(10.0^loc_maxt_gmem / 10.0^loc_accTvir_gmem le maxTempTvirFac,$
+      w_cold = where(10.0^loc_maxTemp / 10.0^loc_accTvir le maxTempTvirFac,$
                      count_cold,ncomp=count_hot,comp=w_hot)
       
       ; histogram in time
       if count_cold gt 0 then begin
-        hh_cold = histogram(loc_atime_gmem[w_cold],min=startTime,max=curtime,binsize=timeWindow,loc=locc)
-        accRate.gmem_cold[*,i] = hh_cold
+        hh_cold = histogram(loc_atime[w_cold],min=startTime,max=curtime,binsize=timeWindow,loc=locc)
+        galaxy.accRate.(k).cold[*,i] = hh_cold
       endif
       
       if count_hot gt 0 then begin
-        hh_hot = histogram(loc_atime_gmem[w_hot],min=startTime,max=curtime,binsize=timeWindow,loc=loch)
-        accRate.gmem_hot[*,i]  = hh_hot
+        hh_hot = histogram(loc_atime[w_hot],min=startTime,max=curtime,binsize=timeWindow,loc=loch)
+        galaxy.accRate.(k).hot[*,i]  = hh_hot
       endif
       
-    endif ; hist_gmem[i]
+      ; --- GALAXY OUTFLOW ---
+      curTimeRT = max(at.outTimeRT)
+      
+      loc_atime = reform( at.outTimeRT[ (wAm.(k))[loc_inds] ] )
+      
+      ; those that satisfy at sP.snap (e.g. gal gas), use failing the cut as the outflow time
+      w = where( at.outTimeRT[ (wAm.(k))[loc_inds] ] eq curTimeRT, count)
+      if count gt 0 then loc_atime[w] = at.accTimeRT[ (wAm.(k))[loc_inds[w]] ]
+      
+      if count_noCut gt 0 then loc_atime[w_noCut] = -1 ; see above
+      
+      ; modify by 0.15rvir crossing time
+      r_crossing_time = reform( at.outTime[ sP.radIndGalAcc, (wAm.(k))[ loc_inds ] ] )
+      w = where(r_crossing_time gt loc_atime, count)
+      if count gt 0 then loc_atime[w] = r_crossing_time[w]
+      
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
+      
+      ; histogram in time (using hot/cold split from above)
+      if count_cold gt 0 then begin
+        hh_cold = histogram(loc_atime[w_cold],min=startTime,max=curtime,binsize=timeWindow,loc=locc)
+        galaxy.outRate.(k).cold[*,i] = hh_cold
+      endif
+      
+      if count_hot gt 0 then begin
+        hh_hot = histogram(loc_atime[w_hot],min=startTime,max=curtime,binsize=timeWindow,loc=loch)
+        galaxy.outRate.(k).hot[*,i]  = hh_hot
+      endif
+            
+      ; --- HALO ACCRETION ---
+      ; accretion time defined as 1.0rvir crossing (headed in)
+      ; outflow time defined as 1.0rvir crossing (headed out)
+      loc_atime = reform( at.accTime[ sP.radIndHaloAcc, (wAm.(k))[ loc_inds ] ] )      
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
+      
+      ; histogram in time (using hot/cold split from above)
+      if count_cold gt 0 then begin
+        hh_cold = histogram(loc_atime[w_cold],min=startTime,max=curtime,binsize=timeWindow,loc=locc)
+        halo.accRate.(k).cold[*,i] = hh_cold
+      endif
+      
+      if count_hot gt 0 then begin
+        hh_hot = histogram(loc_atime[w_hot],min=startTime,max=curtime,binsize=timeWindow,loc=loch)
+        halo.accRate.(k).hot[*,i]  = hh_hot
+      endif
+            
+      ; --- HALO OUTFLOW ---
+      loc_atime = reform( at.outTime[ sP.radIndHaloAcc, (wAm.(k))[ loc_inds ] ] )      
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
+      
+      ; histogram in time (using hot/cold split from above)
+      if count_cold gt 0 then begin
+        hh_cold = histogram(loc_atime[w_cold],min=startTime,max=curtime,binsize=timeWindow,loc=locc)
+        halo.outRate.(k).cold[*,i] = hh_cold
+      endif
+      
+      if count_hot gt 0 then begin
+        hh_hot = histogram(loc_atime[w_hot],min=startTime,max=curtime,binsize=timeWindow,loc=loch)
+        halo.outRate.(k).hot[*,i]  = hh_hot
+      endif
+      	  
+	; right now, accRate/outRate hold just particle/tracer counts, convert to mass rates
+	factor = massPerPart * units.UnitMass_in_Msun / timeWindow
+		
+	for hotCold=0,1 do begin
+	  galaxy.accRate.(k).(hotCold)[*,i] *= factor
+	  galaxy.outRate.(k).(hotCold)[*,i] *= factor
+	  halo.accRate.(k).(hotCold)[*,i] *= factor
+	  halo.outRate.(k).(hotCold)[*,i] *= factor
+		
+	  ; compute net=(inflow-outflow) rates by type
+	  galaxy.netRate.(k).(hotCold)[*,i] = $
+	    galaxy.accRate.(k).(hotCold)[*,i] - galaxy.outRate.(k).(hotCold)[*,i]
+	  halo.netRate.(k).(hotCold)[*,i] = $
+	    halo.accRate.(k).(hotCold)[*,i] - halo.outRate.(k).(hotCold)[*,i]
+		
+	  ; calculate total rates (not by type)
+	  galaxy.accRate.total.(hotCold)[*,i] += galaxy.accRate.(k).(hotCold)[*,i]
+	  galaxy.outRate.total.(hotCold)[*,i] += galaxy.outRate.(k).(hotCold)[*,i]
+	  galaxy.netRate.total.(hotCold)[*,i] += galaxy.netRate.(k).(hotCold)[*,i]
+	  halo.accRate.total.(hotCold)[*,i] += halo.accRate.(k).(hotCold)[*,i]
+	  halo.outRate.total.(hotCold)[*,i] += halo.outRate.(k).(hotCold)[*,i]
+	  halo.netRate.total.(hotCold)[*,i] += halo.netRate.(k).(hotCold)[*,i]
+	endfor
 
-    if hist_stars[i] gt 0 then begin
-      ; list of indices of star gas particles in this subgroup
-      loc_inds_stars = rev_stars[rev_stars[i]:rev_stars[i+1]-1]
-      
-      ; corresponding accretion times for these particles:
-      ; stellar accretion defined as (rho,temp) joining time or 0.15rvir crossing time (most recent)
-      loc_atime_stars = reform(at.accTimeRT_stars[wAm.stars[loc_inds_stars]])
-      
-      r_crossing_time = reform(at.accTime_stars[sP.radIndGalAcc,wAm.stars[loc_inds_stars]])
-      w = where(r_crossing_time gt loc_atime_stars,count)
-      if count gt 0 then loc_atime_stars[w] = r_crossing_time[w]
-      
-      ; convert from scale factor to age of the universe
-      loc_atime_stars = 1/loc_atime_stars - 1 ; redshift
-      loc_atime_stars = redshiftToAgeFlat(loc_atime_stars)*1e9 ; yr
-      
-      ; split into hot and cold
-      loc_maxt_stars    = maxTemp.stars[loc_inds_stars]
-      loc_accTvir_stars = accTvir.stars[loc_inds_stars]
-      
-      w_cold = where(10.0^loc_maxt_stars / 10.0^loc_accTvir_stars le maxTempTvirFac,$
-                     count_cold,ncomp=count_hot,comp=w_hot)
-      
-      ; histogram in time
-      if count_cold gt 0 then begin
-        hh_cold = histogram(loc_atime_stars[w_cold],min=startTime,max=curtime,binsize=timeWindow,loc=locc)
-        accRate.stars_cold[*,i] = hh_cold
-      endif
-      
-      if count_hot gt 0 then begin
-        hh_hot = histogram(loc_atime_stars[w_hot],min=startTime,max=curtime,binsize=timeWindow,loc=loch)
-        accRate.stars_hot[*,i]  = hh_hot
-      endif
-      
-    endif ; hist_stars[i]
-    
-    ; convert accretion total(counts) to msun/year
-    accRate.gal_hot[*,i]     *= massPerPart * units.UnitMass_in_Msun / timeWindow
-    accRate.gmem_hot[*,i]    *= massPerPart * units.UnitMass_in_Msun / timeWindow
-    accRate.stars_hot[*,i]   *= massPerPart * units.UnitMass_in_Msun / timeWindow
-    
-    accRate.gal_cold[*,i]     *= massPerPart * units.UnitMass_in_Msun / timeWindow
-    accRate.gmem_cold[*,i]    *= massPerPart * units.UnitMass_in_Msun / timeWindow
-    accRate.stars_cold[*,i]   *= massPerPart * units.UnitMass_in_Msun / timeWindow
-    
-    accRate.both_hot[*,i]  = accRate.gal_hot[*,i] + accRate.stars_hot[*,i]
-    accRate.both_cold[*,i] = accRate.gal_cold[*,i] + accRate.stars_cold[*,i]
+    endfor ; n_tags(wAm)
     
   endfor ; i
 
   ; for a number of halo mass bins, calculate median acc rates as a function of redshift
   timeBinCen = ( locc + timeWindow*0.5 ) / 1e9 ; centers of time bins for plotting, tage(Gyr)
   logMassBins = list([8.0,13.0],[9.0,9.5],[9.5,10.0],[10.0,10.5],[10.5,11.0],[11.0,11.5],[11.5,12.5])
+  logMassNBins  = n_elements(logMassBins)
   
-  medianRate = { gal_cold   : fltarr(nTimeBins,n_elements(logMassBins))  ,$
-                 gmem_cold  : fltarr(nTimeBins,n_elements(logMassBins))  ,$
-                 stars_cold : fltarr(nTimeBins,n_elements(logMassBins))  ,$
-                 both_cold  : fltarr(nTimeBins,n_elements(logMassBins))  ,$
-                 gal_hot    : fltarr(nTimeBins,n_elements(logMassBins))  ,$
-                 gmem_hot   : fltarr(nTimeBins,n_elements(logMassBins))  ,$
-                 stars_hot  : fltarr(nTimeBins,n_elements(logMassBins))  ,$
-                 both_hot   : fltarr(nTimeBins,n_elements(logMassBins))   }
+  ; structures to store the binned values
+  tempHC = { hot  : fltarr(nTimeBins,logMassNbins) ,$
+             cold : fltarr(nTimeBins,logMassNbins)  }
   
-  foreach logMassBin,logMassBins,k do begin
-    ; select halos in this mass bin
-    wHalo = where(gcMasses ge logMassBin[0] and gcMasses lt logMassBin[1],countHalo)
+  foreach typeLabel,typeLabels do $  
+    templateTypes = mod_struct(templateTypes, typeLabel, tempHC)
+  
+  ; for (1) galaxy and (2) halo, duplicate template for: accretion (inflow), outflow, and net
+  galaxyMedian = { accRate : templateTypes, outRate : templateTypes, netRate : templateTypes }
+  haloMedian   = { accRate : templateTypes, outRate : templateTypes, netRate : templateTypes }
+    
+  foreach logMassBin,logMassBins,j do begin
+    ; select halos in this mass bin (primary only)
+    w = where(gcMasses ge logMassBin[0] and gcMasses lt logMassBin[1],countHalo)
     if countHalo eq 0 then continue
+    
+    print,j,countHalo
   
-    ; loop over each time bin
-    for i=0,nTimeBins-1 do begin
-      ; median accretion rates of all halos in this mass bin at this time
-      medianRate.gal_cold[i,k]   = median(accRate.gal_cold[i,wHalo])
-      medianRate.gmem_cold[i,k]  = median(accRate.gmem_cold[i,wHalo])
-      medianRate.stars_cold[i,k] = median(accRate.stars_cold[i,wHalo])
-      medianRate.both_cold[i,k]  = median(accRate.both_cold[i,wHalo])
-      
-      medianRate.gal_hot[i,k]   = median(accRate.gal_hot[i,wHalo])
-      medianRate.gmem_hot[i,k]  = median(accRate.gmem_hot[i,wHalo])
-      medianRate.stars_hot[i,k] = median(accRate.stars_hot[i,wHalo])
-      medianRate.both_hot[i,k]  = median(accRate.both_hot[i,wHalo])
+    ; loop over each galaxyCat type (gal,gmem,stars,inter,bhs,total)
+    for k=0,n_tags(galaxy.accRate)-1 do begin
+      ; loop over each time bin
+      for i=0,nTimeBins-1 do begin
+	  ; loop  over both hot and cold modes
+	  for hotCold=0,1 do begin
+          ; median accretion, outflow and net rates
+          galaxyMedian.accRate.(k).(hotCold)[i,j] = mean(galaxy.accRate.(k).(hotCold)[i,w])
+	    galaxyMedian.outRate.(k).(hotCold)[i,j] = mean(galaxy.outRate.(k).(hotCold)[i,w])
+	    galaxyMedian.netRate.(k).(hotCold)[i,j] = mean(galaxy.netRate.(k).(hotCold)[i,w])
+		  
+          haloMedian.accRate.(k).(hotCold)[i,j] = mean(halo.accRate.(k).(hotCold)[i,w])
+	    haloMedian.outRate.(k).(hotCold)[i,j] = mean(halo.outRate.(k).(hotCold)[i,w])
+	    haloMedian.netRate.(k).(hotCold)[i,j] = mean(halo.netRate.(k).(hotCold)[i,w])
+        endfor
+      endfor
     endfor
   
   endforeach
   
-  r = {accRateByHalo:accRate,accRateByZ:medianRate,timeRange:[startTime,curtime],$
-       logMassBins:logMassBins,timeBinCen:timeBinCen,gcMasses:gcMasses}
+  r = {galaxy:galaxy, halo:halo, galaxyMedian:galaxyMedian, haloMedian:haloMedian, $
+       timeRange:[startTime,curtime], logMassBins:logMassBins, timeBinCen:timeBinCen, gcMasses:gcMasses}
 
   ; save
-  save,r,filename=saveFilename
-  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
+  ;save,r,filename=saveFilename
+  print,'SKIP Saved: '+strmid(saveFilename,strlen(sP.derivPath))
   
   return, r  
 
@@ -539,7 +607,7 @@ end
 pro plotAccRateVsRedshift
 
   ; config
-  sP = simParams(res=256,run='tracer',redshift=2.0)
+  sP = simParams(res=128,run='gadget',redshift=2.0)
   accMode = 'all'
   binWindow = 200.0 ; Myr
   
@@ -561,11 +629,11 @@ pro plotAccRateVsRedshift
     cgPlot,[0],[0],/nodata,xrange=xrange_time,yrange=yrange_rate,xs=9,/ys,/ylog,yminor=0,$
       xtitle=textoidl("t_{age} [Gyr]"),ytitle="Accretion Rate"
       
-    cgPlot,bar.timeBinCen,bar.accRateByZ.gal_cold[*,massBinInd],color=colors.cold,line=0,/overplot
-    cgPlot,bar.timeBinCen,bar.accRateByZ.gal_hot[*,massBinInd],color=colors.hot,line=0,/overplot
+    cgPlot,bar.timeBinCen,bar.galaxyMedian.netRate.total.cold[*,massBinInd],color=colors.cold,line=0,/overplot
+    cgPlot,bar.timeBinCen,bar.galaxyMedian.netRate.total.hot[*,massBinInd],color=colors.hot,line=0,/overplot
     
-    cgPlot,bar.timeBinCen,bar.accRateByZ.gmem_cold[*,massBinInd],color=colors.cold,line=1,/overplot
-    cgPlot,bar.timeBinCen,bar.accRateByZ.gmem_hot[*,massBinInd],color=colors.hot,line=1,/overplot
+    cgPlot,bar.timeBinCen,bar.haloMedian.netRate.total.cold[*,massBinInd],color=colors.cold,line=1,/overplot
+    cgPlot,bar.timeBinCen,bar.haloMedian.netRate.total.hot[*,massBinInd],color=colors.hot,line=1,/overplot
       
     redshift_axis, xrange_time, yrange_rate, /ylog, sP=sP
   end_PS

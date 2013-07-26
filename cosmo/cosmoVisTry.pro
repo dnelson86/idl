@@ -1,6 +1,6 @@
 ; cosmoVisTry.pro
 ; cosmological boxes - 2d visualization (unused in papers / experimental)
-; dnelson apr.2013
+; dnelson jul.2013
 
 ; scatterPlotBox():
 
@@ -59,6 +59,173 @@ pro scatterPlotBox
     plots,pos[axes[0],wSlice],pos[axes[1],wSlice],psym=3
   end_PS, pngResize=50, /deletePS
 
+  stop
+end
+
+; makeTrackingCutouts(): smooth a halo position in time then make spatial cutouts and save
+; the idea was to plot individual gas elements, interpolating all the quantities in time, but 
+; dealing with all the new/disappearing cells especially across 4 snaps (for hermite) was impossible
+
+pro makeTrackingCutouts
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
+  ; config
+  sP = simParams(res=512,run='feedback',redshift=2.0)
+  
+  sizeFac   = 3.5
+  velVecFac = 0.01 ; must match cosmoVisCutout()!
+  haloID    = 304  ; z2.304 z2.301 z2.130 z2.64
+
+  ; movie config
+  redshiftStart = 2.5
+  redshiftEnd   = 2.0
+  axes          = [0,1,2] ; rotation about first axis
+  nFrames       = 60      ; number of interpolation points along each trajectory
+  nFramesOrbit  = 60      ; do one complete orbit at fixed time at the end (0=disable)
+
+  ; calculate frame stepping in Gyr
+  timeStart  = redshiftToAgeFlat(redshiftStart) + 1e-4
+  timeEnd    = redshiftToAgeFlat(redshiftEnd) - 1e-4
+  timeStep   = (timeEnd - timeStart) / (nFrames-1)
+  
+  frameTimes    = timeStep * findgen(nFrames) + timeStart
+  frameTimesRev = reverse(frameTimes)
+  
+  ; get snapshot times
+  cutoutTimes = snapNumToRedshift(sP=sP,/all)
+  cutoutTimes = redshiftToAgeFlat(cutoutTimes[where(cutoutTimes ge 0.0)])
+  
+  ; get list of tracked halo indices
+  gcID = ( getMatchedIDs(sPa=sP,sPg=sP,haloID=haloID) ).a
+  gcIDList = trackedHaloInds(sP=sP,gcID=gcID)
+  
+  ; load mergerTreeSubset and get this halo, make smoothed position
+  mt = mergerTreeSubset(sP=sP)  
+  
+  mtInd = where(mt.galcatIDList eq gcID,count)
+  
+  smoothPos = fltarr(n_elements(cutoutTimes),3)
+  smoothPos[mt.minSnap : mt.maxSnap, *] = reverse(smoothHaloPos(mt=mt,hInd=mtInd,sP=sP))
+  
+  ; sanity checks
+  if count eq 0 then message,'Error: Failed to find halo in mtS.'
+  if mt.hMinSnap[mtInd] ne -1 then message,'Error: Halo is not tracked all the way.'
+  
+  if redshiftStart lt min(1/mt.times-1) then message,'Error: redshiftStart beyond snapshot range.'
+  if redshiftEnd gt max(1/mt.times-1) then message,'Error: redshiftEnd beyond snapshot range.'
+  if redshiftEnd ne sP.redshift then message,'Are you sure?'  
+  
+  ; decide the initial bracketing
+  if min(frameTimes) lt min(cutoutTimes) or max(frameTimes) gt max(cutoutTimes) then $
+    message,'Error: Requested frame times out of bounds.'
+    
+  firstSnap = value_locate(cutoutTimes, frameTimes)
+  
+  curBracket = [firstSnap[0]-1,firstSnap[0],firstSnap[0]+1,firstSnap[0]+2]
+  gcIDCur = gcIDList[curBracket]
+  
+  ; load the initial cutouts
+  print,'[0]    start bracketing, '+str(curBracket[0])+' - '+str(curBracket[3])
+  sP.snap = curBracket[0]
+  cutout_0 = cosmoVisCutout(sP=sP,gcInd=gcIDCur[0],sizeFac=sizeFac)
+  sP.snap = curBracket[1]
+  cutout_1 = cosmoVisCutout(sP=sP,gcInd=gcIDCur[1],sizeFac=sizeFac)
+  sP.snap = curBracket[2]
+  cutout_2 = cosmoVisCutout(sP=sP,gcInd=gcIDCur[2],sizeFac=sizeFac)
+  sP.snap = curBracket[3]
+  cutout_3 = cosmoVisCutout(sP=sP,gcInd=gcIDCur[3],sizeFac=sizeFac)
+  
+  ; correct for the smoothed halo position by adding the delta with the unsmoothed pos
+  pos_delta = cutout_0.boxCen - smoothPos[curBracket[0],*]
+  for j=0,2 do cutout_0.loc_pos[j,*] += pos_delta[j]
+  pos_delta = cutout_1.boxCen - smoothPos[curBracket[1],*]
+  for j=0,2 do cutout_1.loc_pos[j,*] += pos_delta[j]
+  pos_delta = cutout_2.boxCen - smoothPos[curBracket[2],*]
+  for j=0,2 do cutout_2.loc_pos[j,*] += pos_delta[j]
+  pos_delta = cutout_3.boxCen - smoothPos[curBracket[3],*]
+  for j=0,2 do cutout_3.loc_pos[j,*] += pos_delta[j]
+  
+  ; for hermite we need gas cells to exist at all 4 snaps, do match between extremes
+  calcMatch,cutout_0.loc_ids,cutout_3.loc_ids,ind0,ind3,count=countMatch
+  calcMatch,cutout_1.loc_ids,cutout_3.loc_ids,ind1,ind3b,count=countMatch2
+  calcMatch,cutout_2.loc_ids,cutout_3.loc_ids,ind2,ind3c,count=countMatch3
+  
+  if countMatch2 ne countMatch or countMatch3 ne countMatch3 then message,'a bit unexpected'
+  
+  ; take intersection of ind3,ind3b,ind3c
+  calcMatch,ind3,ind3b,inda,indb
+  ind3 = ind3[inda]
+  
+  ; TODO
+  
+  stop
+  
+  ; grab subsets
+  cutout_1_vel  = (cutout_1.loc_pos2[*,ind1] - cutout_1.loc_pos[*,ind1]) / velVecFac
+  cutout_2_vel  = (cutout_2.loc_pos2[*,ind2] - cutout_2.loc_pos[*,ind2]) / velVecFac
+  cutout_1_pos  = cutout_1.loc_pos[*,ind1]
+  cutout_2_pos  = cutout_2.loc_pos[*,ind2]
+  cutout_1_temp = cutout_1.loc_temp[ind1]
+  cutout_2_temp = cutout_2.loc_temp[ind2]
+  
+  ; start render frame loop
+  for i=0,nFrames-1 do begin
+    print,i
+    ; at the requested time of this frame, we need the 2 bracketing cutouts lower and higher
+    ; so if necessary, shift them back one and load the next
+    if firstSnap[i] ne curBracket[1] then begin
+      curBracket = [firstSnap[i]-1,firstSnap[i],firstSnap[i]+1,firstSnap[i]+2]
+      
+      ; truncate at last snapshot if necessary
+      if curBracket[3] gt sP.snap then curBracket = curBracket[0:2]
+      
+      gcIDCur = gcIDList[curBracket]
+      print,'['+str(i)+'] progress bracketing, '+str(curBracket[0])+' - '+str(curBracket[-1])
+      
+      ; shift cutouts and load next
+      cutout_0 = cutout_1
+      cutout_1 = cutout_2
+      cutout_2 = cutout_3
+      sP.snap = curBracket[-1]
+      cutout_3 = cosmoVisCutout(sP=sP,gcInd=gcIDCur[-1],sizeFac=sizeFac)
+      
+      ; correct for smoothed halo position
+      pos_delta = cutout_3.boxCen - smoothPos[curBracket[-1],*]
+      for j=0,2 do cutout_3.loc_pos[j,*] += pos_delta[j]
+      
+      ; since we are between cutout_1 and cutout_2 (always), which gas IDs match?
+      calcMatch,cutout_1.loc_ids,cutout_2.loc_ids,ind1,ind2,count=countMatch
+      
+      ; those in cutout_1 but not in cutout_2 have disappeared/derefined
+      cutout_1_pos = cutout_1.loc_pos[*,ind1]
+      cutout_2_pos = cutout_2.loc_pos[*,ind2]
+  
+      ; those in cutout_2 but not in cutout_1 have appeared/refined from other cells
+    endif
+    
+    ; spline interpolation of all axes coordinates and current temperatures for this subset
+    gasPos  = fltarr(3,countMatch)
+    gasVel  = fltarr(3,countMatch)
+    gasTemp = fltarr(countMatch)
+
+    ; interpolate without using known derivatives
+    times = [cutoutTimes[curBracket[1]], cutoutTimes[curBracket[2]]]
+    for j=0,countMatch-1 do begin
+      gasPos[0,j] = interpol([cutout_1_pos[0,j],cutout_2_pos[0,j]],times,frameTimes[i])
+      gasPos[1,j] = interpol([cutout_1_pos[1,j],cutout_2_pos[1,j]],times,frameTimes[i])
+      gasPos[2,j] = interpol([cutout_1_pos[2,j],cutout_2_pos[2,j]],times,frameTimes[i])
+      gasVel[0,j] = interpol([cutout_1_vel[0,j],cutout_2_vel[0,j]],times,frameTimes[i])
+      gasVel[1,j] = interpol([cutout_1_vel[1,j],cutout_2_vel[1,j]],times,frameTimes[i])
+      gasVel[2,j] = interpol([cutout_1_vel[2,j],cutout_2_vel[2,j]],times,frameTimes[i])
+      gasTemp[j]  = interpol([cutout_1_temp[j],cutout_2_temp[j]],times,frameTimes[i])
+    endfor
+    
+    stop
+  
+  endfor
+  
   stop
 end
 
