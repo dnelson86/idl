@@ -531,7 +531,7 @@ pro scatterMapHalos, selectHalo=selectHalo
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  sP = simParams(res=512,run='tracer',redshift=2.0)
+  sP = simParams(res=512,run='gadget',redshift=2.0)
   units = getUnits()
 
   haloID = 304 ;z2.304 z2.301 z2.130 z2.64
@@ -552,14 +552,14 @@ pro scatterMapHalos, selectHalo=selectHalo
   ctName           = 'helix'
   
   ; use which field and minmax for color mapping? cut value for right panel?
-  ;colorField = 'temp'     & fieldMinMax  = [4.0,7.0] & secondCutVal = 5.0
+  colorField = 'temp'     & fieldMinMax  = [4.0,7.0] & secondCutVal = 5.0
   ;colorField = 'entropy'  & fieldMinMax  = [6.5,8.5] & secondCutVal = 7.5 ; log(CGS)
   ;colorField = 'metal'     & fieldMinMax = [-4.0,-1.0] & secondCutVal = -2.5 ; log(Z/Zsun)
   ;colorField = 'vrad'      & fieldMinMax = [-400,400] & secondCutVal = -200.0 ; km/s
   ;colorField = 'vradnorm'  & fieldMinMax = [0.0,4.0] & secondCutVal = 2.0 ; vrad/v200
   ;colorField  = 'coolTime' & fieldMinMax = [0.0,5.0] & secondCutVal = 1.0 ; halo only
   ;colorField = 'dynTime'   & fieldMinMax = [0.0,0.8] & secondCutVal = 0.4 ; halo only
-  colorField = 'timeRatio' & fieldMinMax = [0.0,4.0] & secondCutVal = 1.0 ; halo only
+  ;colorField = 'timeRatio' & fieldMinMax = [0.0,4.0] & secondCutVal = 1.0 ; halo only
 
   ; pre-make cutouts (multiple or single)
   ;cutout = cosmoVisCutout(sP=sP,gcInd=gcIDs,sizeFac=sizeFac,selectHalo=selectHalo)

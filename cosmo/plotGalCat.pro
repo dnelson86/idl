@@ -1,6 +1,6 @@
 ; plotGalCat.pro
 ; gas accretion project - plots related to galaxy catalog
-; dnelson may.2012
+; dnelson jul.2013
 
 ; plotGalCatRedshift(): plot the total component masses in the catalog as a function of redshift
 
@@ -10,88 +10,76 @@ pro plotGalCatRedshift, sP=sP
   units = getUnits()
   
   ; config
-  colors = ['forest green','slate blue','black']
+  res    = [128]
   
-  minNumGasInGal = 100 ; 64, 0=no minimum
-  
-  ; plot axes
-  plotRedshifts = snapNumToRedshift(/all)
+  ; plot config
+  plotRedshifts = snapNumToRedshift(sP=sP,/all)
   
   xrange = [6.0,0.0]
   yrange = [11.5,13.5]
     
   ; plot
-  plotName = sP.plotPath+'galmass_vs_redshift_'+str(sP.res)+'.eps'
-  
-  if (str(res[0]) eq 'two') then res = [256,128]    
-  if (str(res[0]) eq 'all') then res = [512,256,128]    
-    
-  start_PS, plotName
+  start_PS, sP.plotPath+'galmass_vs_redshift_r'+str(n_elements(sP.res))+'.eps'
 
-  fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
-           xtitle="Redshift",ytitle="log ( total gas mass [M"+textoidl("_{sun}")+"] )",$
+  cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+           xtitle="Redshift",ytitle="log ( total mass [M"+textoidl("_{sun}")+"] )",$
            xs=9,/ys,ymargin=[4,3]
   universeage_axis,xrange,yrange
     
   if (n_elements(res) eq 1) then $
-    fsc_text,0.06,0.94,/normal,str(res)+"^3",alignment=0.5
+    cgText,0.06,0.94,/normal,str(res)+"^3",alignment=0.5
   
   ; loop over each resolution
   for j=0,n_elements(res)-1 do begin    
   
-    sP.res = res[j]
-  
-    ; arrays
-    mass_tot_gal  = fltarr(sP.snapRange[1])
-    mass_tot_gmem = fltarr(sP.snapRange[1])
+    sP = simParams(res=res[j],run=sP.run,redshift=sP.redshift)
     
-    ; load constant mass factor (gadget)
-    ;massfac = loadSnapshotSubset(sP.simPath,snapNum=0,partType='gas',field='mass')
-    ;massfac = massfac[0]
-    ; TODO FOR UNEQUAL MASSES
-    stop
+    ; mass weighting
+    if sP.trMCPerCell gt 0 then massWt = sP.trMassConst * units.UnitMass_in_Msun
+    if sP.trMCPerCell eq 0 then massWt = sP.targetGasMass * units.UnitMass_in_Msun
+    if sP.trMCPerCell lt 0 then message,'error'     
+  
+    galcat = galaxyCat(sP=sP, /skipSave)
+  
+    ; arrays for this resolution
+    for i=0,n_tags(galcat.types)-1 do $
+      mass_tot = mod_struct( mass_tot, (tag_names(galcat.types))[i], fltarr(sP.snapRange[1]) )
+    mass_tot = mod_struct( mass_tot, 'TOTAL', fltarr(sP.snapRange[1]) )
     
     ; load galaxy and group membership catalogs
     for m=sP.groupcatRange[0],sP.groupcatRange[1]-1 do begin
       sP.snap = m
-      galcat = galaxyCat(sP=sP)
+      print,m
+      galcat = galaxyCat(sP=sP, /skipSave)
       
-      mass_tot_gal[m]  = n_elements(galcat.galaxyIDs)
-      mass_tot_gmem[m] = n_elements(galcat.groupmemIDs)
+      for i=0,n_tags(galcat.types)-1 do begin
+        w = where(galcat.type eq galcat.types.(i), count)
+        if sP.trMCPerCell eq 0 then mass_tot.(i)[m] = count * massWt
+        if sP.trMCPerCell gt 0 then mass_tot.(i)[m] = total(galcat.trMC_cc[w]) * massWt
+        if sP.trMCPerCell lt 0 then mass_tot.(i)[m] = total(gaclat.trVel_cc[w]) * massWt
+      endfor
       
-      ; enforce minimum number of particles cut
-      if (minNumGasInGal gt 0) then begin
-        wGal = where(galcat.galaxyLen ge minNumGasInGal,countGal)
-        wGmem = where(galcat.groupmemLen ge minNumGasInGal,countGmem)
-        
-        if (countGal ne 0) then $
-          mass_tot_gal[m] -= total(galcat.galaxyLen[wGal])
-        if (countGmem ne 0) then $
-          mass_tot_gmem[m] -= total(galcat.groupmemLen[wGmem])
-      endif
+      ; sum for total
+      for i=0,n_tags(galcat.types)-1 do $
+        mass_tot.total[m] += mass_tot.(i)[m]
+      
     endfor
     
-    ; convert masses
-    mass_tot      = codeMassToLogMsun((mass_tot_gal+mass_tot_gmem)*massfac)
-    mass_tot_gal  = codeMassToLogMsun(mass_tot_gal*massfac)
-    mass_tot_gmem = codeMassToLogMsun(mass_tot_gmem*massfac)
+    ; convert masses to log msun
+    for i=0,n_tags(mass_tot)-1 do $
+      mass_tot.(i) = codeMassToLogMsun(mass_tot.(i))
     
      ; overplot successive resolutions
-    overplot = 1 ;1,1,1
     line     = j ;0,1,2
     thick    = !p.thick + 1 - 2*(j gt 0) ;3,1,1
 
-    fsc_plot,plotRedshifts,mass_tot_gal,color=fsc_color(colors[0]),$
-             overplot=overplot,line=line,thick=thick
-    fsc_plot,plotRedshifts,mass_tot_gmem,color=fsc_color(colors[1]),$
-             overplot=overplot,line=line,thick=thick
-    fsc_plot,plotRedshifts,mass_tot,color=fsc_color(colors[2]),$
-             overplot=overplot,line=line,thick=thick
+    for i=0,n_tags(mass_tot)-1 do $
+      cgPlot,plotRedshifts,mass_tot.(i),color=cgColor(units.colors[j]),line=line,thick=thick,/overplot
 
   endfor ;j
 
   ; legend
-  legend,['gas in all galaxies','bound gas not in galaxies','total'],textcolors=colors,box=0,margin=0.25
+  legend,str(res),textcolors=units.colors[0:n_elements(res)-1],/top,/left
   
   end_PS
 
@@ -102,83 +90,65 @@ end
 pro plotGalCatMassFunction, sP=sP
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-
+  units = getUnits()
+  
   ; config
   redshifts = [2.0,0.0]
-  
-  minNumGasInGal = 100 ; 64, 256, 0=no minimum
-  
-  colors = ['forest green','slate blue','black']
+  res       = [256,128]
 
-  ; plot
-  plotName = sP.plotPath+'gal_massfunction_'+str(sP.res)+'.eps'
-  
+  ; plot config
   xrange = [8.0,11.6]
   yrange = [1,5e3]  
-  
-  if (str(res[0]) eq 'two') then res = [256,128]    
-  if (str(res[0]) eq 'all') then res = [512,256,128]
+  binSize = 0.2
 
-  start_PS, plotName
+  ; plot
+  start_PS, sP.plotPath+'gal_massfunction_'+str(sP.res)+'.eps'
 
-  fsc_plot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+  cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
            xtitle="log ( galaxy gas mass [M"+textoidl("_{sun}")+"] )",$
            ytitle="Count",/xs,/ys,ymargin=[4,3],/ylog
     
   if (n_elements(res) eq 1) then $
-    fsc_text,0.06,0.94,/normal,str(res)+"^3",alignment=0.5
+    cgText,0.06,0.94,/normal,str(res)+"^3",alignment=0.5
   
   ; loop over each resolution
   for j=0,n_elements(res)-1 do begin
     for m=0,n_elements(redshifts)-1 do begin  
 
-      sP = simParams(res=res[j],run=run,redshift=redshifts[m])
+      sP = simParams(res=res[j],run=sP.run,redshift=redshifts[m])
       
-      ; load constant mass factor (gadget)
-      ;massfac = loadSnapshotSubset(sP.simPath,snapNum=0,partType='gas',field='mass')
-      ;massfac = massfac[0]
-      ;TODO FOR UNEQUAL MASSES
-      stop 
+      ; mass weighting
+      if sP.trMCPerCell gt 0 then massWt = sP.trMassConst * units.UnitMass_in_Msun
+      if sP.trMCPerCell eq 0 then massWt = sP.targetGasMass * units.UnitMass_in_Msun
+      if sP.trMCPerCell lt 0 then message,'error'    
       
       ; load galaxy catalog and select galaxies above particle count cut
-      galcat = galaxyCat(sP=sP)
+      galcat = galaxyCat(sP=sP, /skipSave)
       
-      ; enforce minimum number of particles cut and compute galaxy masses
-      if (minNumGasInGal gt 0) then begin
-        w = where(galcat.galaxyLen ge minNumGasInGal,count)
-        
-        galMasses = fltarr(count)
-        
-        for i=0,count-1 do $
-          galMasses[i] = galcat.galaxyLen[w[i]] * massfac
-      endif else begin
-        galMasses = galcat.galaxyLen * massfac
-      endelse
+      w = where(galcat.type eq galcat.types.gal, count)
+      if sP.trMCPerCell eq 0 then galMasses = count * massWt
+      if sP.trMCPerCell gt 0 then galMasses = total(galcat.trMC_cc[w]) * massWt
+      if sP.trMCPerCell lt 0 then galMasses = total(gaclat.trVel_cc[w]) * massWt
       
       galMasses = codeMassToLogMsun(galMasses)
       print,redshifts[m],minmax(galMasses)
 
        ; overplot successive resolutions
-      overplot = 1 ;1,1,1
       line     = j ;0,1,2
       thick    = !p.thick + 1 - 2*(j gt 0) ;3,1,1
-      
-      bin = 0.2
-      
-      hist = histogram(galMasses,binsize=bin,locations=xpts,min=xrange[0],max=xrange[1])
+
+      hist = histogram(galMasses,binsize=binSize,locations=xpts,min=xrange[0],max=xrange[1])
       
       w = where(hist ne 0)
       
-      fsc_plot,xpts[w]+bin/2.0,hist[w],overplot=overplot,line=line,$
-               thick=thick,color=fsc_color(colors[m])
+      cgPlot,xpts[w]+bin/2.0,hist[w],line=line,thick=thick,color=cgColor(units.colors[m]),/overplot
       
     endfor ;m
   endfor ;j
   
   ; legend
-  labels = []
-  for i=0,n_elements(redshifts)-1 do labels = [labels,"z="+string(redshifts[i],format='(f3.1)')]
-  legend,labels,textcolors=colors[0:n_elements(redshifts)-1],box=0,/right
+  labels = "z=" + string(redshifts,format='(f3.1)')
+  legend,labels,textcolors=units.colors[0:n_elements(redshifts)-1],/top,/right
   
   end_PS
       
@@ -189,16 +159,10 @@ end
 pro plotGalCatRadii, sP=sP
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-
-  ; config
-  colors = ['forest green','slate blue','black']
-  
-  ; subhalo selection config
-  sgSelect = 'pri' ;pri,sec,all
-  parNorm  = 'sec' ;pri,sec (normalize r_vir by primary or secondary parent)
+  units = getUnits()
   
   ; get normalized r/r_vir
-  gcRad = gcSubsetProp(sP=sP,select=sgSelect,parNorm=parNorm,/rVirNorm)
+  gcRad = gcSubsetProp(sP=sP,s/rVirNorm)
   
   ; plot
   xrange = [-0.1,2.0]
@@ -215,19 +179,19 @@ pro plotGalCatRadii, sP=sP
   start_PS, plotName
     w = where(gcRad.gal ge xrange[0] and gcRad.gal le xrange[1])
     plothist,gcRad.gal[w],bin=bin,xrange=xrange,yrange=yrange,xtitle=xtitle,ytitle=ytitle,/ylog,$
-             color=fsc_color(colors[0]),title=title,/ys
+             color=cgColor(units.colors[0]),title=title,/ys
              
     w = where(gcRad.gmem ge xrange[0] and gcRad.gmem le xrange[1])
-    plothist,gcRad.gmem[w],bin=bin,color=fsc_color(colors[1]),/overplot
+    plothist,gcRad.gmem[w],bin=bin,color=cgColor(units.colors[1]),/overplot
     
     rad_all = [gcRad.gmem,gcRad.gal]
     
     w = where(rad_all ge xrange[0] and rad_all le xrange[1])
-    plothist,rad_all[w],bin=bin,color=fsc_color(colors[2]),line=1,/overplot
+    plothist,rad_all[w],bin=bin,color=cgColor(units.colors[2]),line=1,/overplot
              
     ; legend
     legend,['gas in all galaxies','bound gas not in galaxies','total'],$
-           textcolors=colors,box=0,margin=0.25,/right
+           textcolors=units.colors[0:2],box=0,margin=0.25,/right
              
   end_PS
 end
@@ -242,21 +206,17 @@ pro plotRhoTempGalCut, sP=sP
   galcut_T   = 6.0
   galcut_rho = 0.25
   
-  ; subhalo selection config
-  sgSelect = 'pri' ; pri,sec,all
-  parNorm  = 'sec' ; pri,sec (normalize r_vir by primary or secondary parent)
-
   ; load (dens,temp) and masses  
-  gcDens = gcSubsetProp(sP=sP,select=sgSelect,/curSingleVal,singleValField='dens')
-  gcTemp = gcSubsetProp(sP=sP,select=sgSelect,/curTemp)
+  gcDens = gcSubsetProp(sP=sP,/curGasVal,curField='dens')
+  gcTemp = gcSubsetProp(sP=sP,/curGasVal,curField='temp')
 
   ; 2d histo parameters                
   nbins   = 140*(res/128)
   rMinMax = [-2.0,8.0]
   tMinMax = [3.0,7.0]
   
-  dens = [alog10(rhoRatioToCrit(gcDens.gal,redshift=redshift)),$
-          alog10(rhoRatioToCrit(gcDens.gmem,redshift=redshift))]
+  dens = [alog10(rhoRatioToCrit(gcDens.gal,sP=sP)),$
+          alog10(rhoRatioToCrit(gcDens.gmem,sP=sP))]
   temp = [gcTemp.gal,gcTemp.gmem]
 
   ; calculate bin sizes
@@ -281,7 +241,7 @@ pro plotRhoTempGalCut, sP=sP
   w = where(h2rt ne 0)
   h2rt[w] = alog10(h2rt[w]) / alog10(b)  
   
-  plotBase = "galcut_rhot_"+sgSelect+'_'+parNorm+'_'+str(minNumPart)
+  plotBase = "galcut_rhot_"+str(minNumPart)
   plotName = sP.plotPath + plotBase + '_'+str(sP.res)+'_'+str(sP.snap)+'.eps'
   
   start_PS, plotName
@@ -303,8 +263,8 @@ pro plotRhoTempGalCut, sP=sP
     xpts = [1e-9,1e-1] ; comoving density (code units)
     ypts = galcut_T + galcut_rho * alog10(xpts * a3inv) ; cut on physical density  
       
-    fsc_plot,alog10(rhoRatioToCrit(xpts,redshift=redshift)),ypts,$
-             line=0,thick=!p.thick+1.0,color=fsc_color('light gray'),/overplot
+    cgPlot,alog10(rhoRatioToCrit(xpts,sP=sP)),ypts,$
+           line=0,thick=!p.thick+1.0,color=cgColor('light gray'),/overplot
  
   end_PS
            

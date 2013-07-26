@@ -1,6 +1,6 @@
 ; plotRadProfiles.pro
 ; gas accretion project - plots of gas quantities vs radius (stacked in mass bins)
-; dnelson sep.2012
+; dnelson jul.2013
 
 ; plotVerticalSlices(): helper called by the subsequent 4 plot routines
   
@@ -180,26 +180,16 @@ pro plot2DHisto, sP=sP
   massBins = [9.0,9.5,10.0,10.5,11.0,11.5,12.0,12.5] ; log(M)
   
   ; select one of:
-  curTemp      = 0 ; current temperature
   maxPastTemp  = 0 ; maximum previous temperature
   maxTempTime  = 0 ; time of maximum previous temperature
   accTime      = 0 ; redshift of accretion across virial radius of parent halo
   accTvir      = 0 ; virial temperature of parent halo at time of accretion
   
-  curSingleVal = 1 ; current single gas value
-    singleValField = 'coolingrate'
+  curGasVal = 1 ; current single gas value
+    curField = 'coolingrate' ; temp
   
-   ; if maxPastTemp or maxTempTime, choose one of: population min,mean,max to one statistic per
-   ; gas cell instead of all the tracers individually
-   trPopMax   = 0
-   trPopMin   = 0 
-   trPopMean  = 0
-   
   tVirNorm    = 0  ; normalize temperature by virial temp of parent halo at the starting time
   tVirAccNorm = 0  ; normalize temperature by virial temp of parent halo at the time of accretion
-   
-  parNorm  = 'pri' ; pri,sec (normalize r_vir and temp (if doing tVirNorm) by primary or secondary parent)
-  sgSelect = 'pri' ; pri,sec,all (subhalo selection config, only plot gas in this category of subhalos)
   
   ; consider only the subset with recorded accretion times for certain types of plots
   accretionTimeSubset = 0
@@ -209,11 +199,9 @@ pro plot2DHisto, sP=sP
   ; sanity check config parameters
   if accTime or accTvir then if sP.trMCPerCell eq -1 then message,'vel tracers not implemented yet'
   if accTime or accTvir then if tVirNorm then message,'no'
-  if accTime or accTvir or tVirAccNorm then if parNorm ne 'pri' or sgSelect ne 'pri' then message,'better check you mean this'
-  if trPopMax or trPopMin or trPopMean then if ~maxPastTemp and ~maxTempTime then message,'Error'
-  if total(curTemp+maxPastTemp+maxTempTime+accTime+accTvir+curSingleVal) ne 1 then message,'Just one'
+  if total(maxPastTemp+maxTempTime+accTime+accTvir+curGasVal) ne 1 then message,'Just one'
   if total(tVirNorm+tVirAccNorm) gt 1 then message,'Only one allowed'
-  if tVirNorm or tVirAccNorm then if ~curTemp and ~maxPastTemp then message,'Normalize what?'
+  if tVirNorm or tVirAccNorm then if ~maxPastTemp then message,'Normalize what?'
 
   ; load group catalog just for counts of objects in each mass bin
   gc = loadGroupCat(sP=sP,/skipIDs)
@@ -221,19 +209,18 @@ pro plot2DHisto, sP=sP
   gc = !NULL
   
   ; get normalized r/r_vir
-  gcRad = gcSubsetProp(sP=sP,select=sgSelect,/rVirNorm,parNorm=parNorm,accretionTimeSubset=accretionTimeSubset)
+  gcRad = gcSubsetProp(sP=sP,/rVirNorm,accretionTimeSubset=accretionTimeSubset)
 
   ; get current or maxPast temperature, or accretion time / tvir at accretion
-  gcTemp = gcSubsetProp(sP=sP,select=sgSelect,curTemp=curTemp,maxPastTemp=maxPastTemp,$
+  gcTemp = gcSubsetProp(sP=sP,maxPastTemp=maxPastTemp,$
                         maxTempTime=maxTempTime,accTime=accTime,accTvir=accTvir,$
                         accretionTimeSubset=accretionTimeSubset,$
-                        curSingleVal=curSingleVal,singleValField=singleValField,$
-                        trPopMin=trPopMin,trPopMax=trPopMax,trPopMean=trPopMean)
+                        curGasVal=curGasVal,curField=curField)
 
   ; normalize by halo Tvir at current time
   if tVirNorm then begin
     ; calculate temperatures of parents and take (log) ratio
-    gcVirTemp = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,parNorm=parNorm)
+    gcVirTemp = gcSubsetProp(sP=sP,/virTemp)
     
     gcTemp.gal  = alog10(10.0^gcTemp.gal / 10.0^gcVirTemp.gal)
     gcTemp.gmem = alog10(10.0^gcTemp.gmem / 10.0^gcVirTemp.gmem)
@@ -242,7 +229,7 @@ pro plot2DHisto, sP=sP
   ; normalize by halo Tvir at time of accretion
   if tVirAccNorm then begin
     ; calculate temperatures of parents at time of accretion and take (log) ratio
-    gcAccTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,accretionTimeSubset=accretionTimeSubset)
+    gcAccTvir = gcSubsetProp(sP=sP,/accTvir,accretionTimeSubset=accretionTimeSubset)
     
     gcTemp.gal  = alog10(10.0^gcTemp.gal / 10.0^gcAccTvir.gal)
     gcTemp.gmem = alog10(10.0^gcTemp.gmem / 10.0^gcAccTvir.gmem)
@@ -258,12 +245,10 @@ pro plot2DHisto, sP=sP
   
   ; load gas masses if necessary (sph or byGas arepo)
   if sP.trMCPerCell eq 0 then $
-    gcMass = gcSubsetProp(sP=sP,select=sgSelect,/curSingleVal,singleValField='mass',$
-                          accretionTimeSubset=accretionTimeSubset)
+    gcMass = gcSubsetProp(sP=sP,/curGasVal,curField='mass',accretionTimeSubset=accretionTimeSubset)
   
   ; calculate masses of parents (for mass binning halos only)
-  parentMass = gcSubsetProp(sP=sP,select=sgSelect,/parMass,$
-                            accretionTimeSubset=accretionTimeSubset)
+  parentMass = gcSubsetProp(sP=sP,/parMass,accretionTimeSubset=accretionTimeSubset)
 
   for j=0,n_elements(massBins)-2 do begin
   
@@ -353,10 +338,6 @@ pro plot2DHisto, sP=sP
     endelse
 
     ; 2d histo plot config
-    if curTemp then begin
-      plotBase = "tcur_"+sgSelect+'_'+parNorm
-      ytitle   = "log ( T"+textoidl("_{cur}")+" )"
-    endif
     if maxPastTemp then begin
       plotBase = "tmax_"+sgSelect+'_'+parNorm
       ytitle   = "log ( T"+textoidl("_{max}")+" )"
@@ -376,8 +357,15 @@ pro plot2DHisto, sP=sP
     endif
     
     if curSingleVal then begin
-      plotBase = "coolrate_"+sgSelect+"_"+parNorm
-      ytitle   = "Cooling Rate"
+      if curField eq 'coolingrate' then begin
+        plotBase = "coolrate_"+sgSelect+"_"+parNorm
+        ytitle   = "Cooling Rate"
+      endif
+      
+      if curField eq 'temp' then begin
+        plotBase = "tcur_"+sgSelect+'_'+parNorm
+        ytitle   = "log ( T"+textoidl("_{cur}")+" )"
+      endif
     endif
     
     if tVirNorm then begin
@@ -432,11 +420,7 @@ function binRadProfiles, sP=sP
   ;massBins = [0.0,1000.0] ; no massbins
   massBins = [9.0,9.5,10.0,10.5,11.0,11.5,12.0] ; log(M)
 
-  parNorm  = 'pri' ; pri,sec (normalize r_vir and temp (if doing tVirNorm) by primary or secondary parent)
-  sgSelect = 'pri' ; pri,sec,all (subhalo selection config, only plot gas in this category of subhalos)
-  
-  ; consider only the subset with recorded accretion times for certain types of plots
-  accretionTimeSubset = 0
+  atS = 0 ; consider only the subset with recorded accretion times for certain types of plots
   
   xrange = [0.01,1.0]
   binSizeRad  = 0.03 ;0.014 / (sP.res/128) ;0.04
@@ -444,9 +428,7 @@ function binRadProfiles, sP=sP
   radBinCen = findgen(nRadBins) / (nRadBins) * (xrange[1]-xrange[0]) + xrange[0] + binSizeRad*0.5
   
   ; check if save exists
-  saveFilename = sP.derivPath + 'binnedVals/binRad.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
-    str(sP.snap) + '.mb' + str(n_elements(massBins)) + '.pn-' + parNorm + '.' + sgSelect + $
-    '.ats-' + str(accretionTimeSubset) + '.sav'
+  saveFilename = sP.derivPath + 'binnedVals/binRad.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.mb' + str(n_elements(massBins)) + '.ats-' + str(atS) + '.sav'
   
   ; results exist, return
   if file_test(saveFilename) then begin
@@ -460,16 +442,12 @@ function binRadProfiles, sP=sP
   gc = !NULL
   
   ; get normalized r/r_vir
-  gcRad = gcSubsetProp(sP=sP,select=sgSelect,/rVirNorm,parNorm=parNorm,$
-                       accretionTimeSubset=accretionTimeSubset)
+  gcRad = gcSubsetProp(sP=sP,/rVirNorm,accretionTimeSubset=atS)
 
   ; get gas properties
-  gcCoolRate = gcSubsetProp(sP=sP,select=sgSelect,/curSingleVal,singleValField='coolingrate',$
-                         accretionTimeSubset=accretionTimeSubset)
-  gcTemp     = gcSubsetProp(sP=sP,select=sgSelect,/curTemp,$
-                         accretionTimeSubset=accretionTimeSubset)               
-  gcVirTemp  = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,parNorm=parNorm,$
-                         accretionTimeSubset=accretionTimeSubset)
+  gcCoolRate = gcSubsetProp(sP=sP,/curGasVal,curField='coolingrate',accretionTimeSubset=atS)
+  gcTemp     = gcSubsetProp(sP=sP,/curGasVal,curField='temp',accretionTimeSubset=atS)               
+  gcVirTemp  = gcSubsetProp(sP=sP,/virTemp,accretionTimeSubset=atS)
     
   ; log (cooling rate)
   w = where(gcCoolRate.gal ne 0)
@@ -494,7 +472,7 @@ function binRadProfiles, sP=sP
         sP : sP, radBinCen : radBinCen }
   
   ; calculate masses of parents (for mass binning halos only)
-  parentMass = gcSubsetProp(sP=sP,select=sgSelect,/parMass,accretionTimeSubset=accretionTimeSubset)
+  parentMass = gcSubsetProp(sP=sP,/parMass,accretionTimeSubset=atS)
 
   for j=0,n_elements(massBins)-2 do begin
 
@@ -503,8 +481,6 @@ function binRadProfiles, sP=sP
                   gcRad.gal gt 0.0 and finite(gcRad.gal),count1)
     wGmem = where(parentMass.gmem gt massBins[j] and parentMass.gmem le massBins[j+1] and $
                   gcRad.gmem gt 0.0 and finite(gcRad.gmem),count2)
-    
-    ;print,j,count1,count2
     
     ; select all particles/tracers in this mass bin
     coolrate_gal  = gcCoolRate.gal[wGal]

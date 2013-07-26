@@ -1,6 +1,6 @@
 ; tracksFluid.pro
 ; feedback project - time series analysis of history of gas element properties
-; dnelson jun.2013
+; dnelson jul.2013
 
 ; tracksFluid(): record tracks in (temp,ent,dens,rad) space back in time for each snapshot for each gas element/tracer
 
@@ -54,23 +54,19 @@ function tracksFluid, sP=sP
       
     if ~file_test(resFilename) then begin ; no restart   
       
-      ; locate tracer children in mtS at starting snapshot
-      gcIndOrigTr = mergerTreeRepParentIDs(mt=mt,galcat=galcat,sP=sP,/compactMtS,trids=galcat_trids)
-      
-      galcat = !NULL ; not used past this point
-      
+      ; metadata
       rr = { snaps : lonarr(nSnaps), times : fltarr(nSnaps), redshifts : fltarr(nSnaps) }
       
       ; store the main arrays for all tracers as structures so we can write them directly
-      rtr  = { temp : fltarr(nSnaps,n_elements(galcat_trids))  ,$
-               ent  : fltarr(nSnaps,n_elements(galcat_trids))  ,$
-               dens : fltarr(nSnaps,n_elements(galcat_trids))  ,$
-               rad  : fltarr(nSnaps,n_elements(galcat_trids))  ,$
-               flag : intarr(nSnaps,n_elements(galcat_trids))  , rr : rr }
+      rtr  = { temp : fltarr(nSnaps,n_elements(galcat.trMC_ids))  ,$
+               ent  : fltarr(nSnaps,n_elements(galcat.trMC_ids))  ,$
+               dens : fltarr(nSnaps,n_elements(galcat.trMC_ids))  ,$
+               rad  : fltarr(nSnaps,n_elements(galcat.trMC_ids))  ,$
+               flag : intarr(nSnaps,n_elements(galcat.trMC_ids))  , rr : rr }
              
       ; for determining flags
       lastTime = 1.0/(1+zStart)
-      tr_wc_last = intarr(n_elements(galcat_trids))
+      tr_wc_last = intarr(n_elements(galcat.trMC_ids))
       
     endif else begin
       ; restart
@@ -90,11 +86,11 @@ function tracksFluid, sP=sP
       rr.times    [ m-minSnap ] = redshiftToAgeFlat(1/h.time-1)
   
       ; save restart?
-      if m mod 10 eq 0 and m gt minSnap and keyword_set(restart) then begin
+      if m mod 10 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
-        save,rtr,galcat_trids,gcIndOrigTr,mts_trids,$
-          tr_wc_last,lastTime,rr,m,filename=resFilename
+        save,rtr,tr_wc_last,lastTime,rr,m,filename=resFilename
         print,' --- Done! ---'
+        exit,status=33 ;requeue
       endif
       
       ; load tracer ids and match to child ids from zMin
@@ -102,7 +98,7 @@ function tracksFluid, sP=sP
        
       idIndexMap = getIDIndexMap(tr_ids,minid=minid)
           
-      trids_ind  = idIndexMap[galcat_trids-minid]
+      trids_ind  = idIndexMap[galcat.trMC_ids-minid]
       
       idIndexMap = !NULL
       tr_ids     = !NULL
@@ -129,15 +125,15 @@ function tracksFluid, sP=sP
         
         par_ind = value_locate(par_ids_sorted,tr_parids) ; indices to par_ids_sorted
         par_ind = sort_inds[par_ind>0] ; indices to par_ids (>0 removes -1 entries, which are removed next line)
-        galcat_gal_ind_inPar = where(par_ids[par_ind] eq tr_parids,count_inPar) ; verify we actually matched the ID
+        galcat_ind_inPar = where(par_ids[par_ind] eq tr_parids,count_inPar) ; verify we actually matched the ID
         
-        if countGal_inPar gt 0 then begin
+        if count_inPar gt 0 then begin
           tr_pos_type = par_pos[ *,par_ind[galcat_ind_inPar] ]
           par_ind = !NULL
           
           ; calculate current distance of parent from smoothed halo center position for galaxy members
           rad_pri  = periodicDists( $
-            reform(mt.hPos[mt.maxSnap-m,*,gcIndOrigTr[galcat_ind_inPar]]),tr_pos_type,sP=sP)
+            reform(mt.hPos[mt.maxSnap-m,*,mt.gcIndOrigTrMC[galcat_ind_inPar]]),tr_pos_type,sP=sP)
           
           ; store current radius
           rtr.rad[m-minSnap,galcat_ind_inPar] = rad_pri
@@ -334,7 +330,7 @@ pro plotFluidTracks
   
   ; calculate maximum temps and times for galaxy
   maxtemp = max(tracks.gal.temp, maxind, dim=1)
-  maxtemp_times =  tracks.rr.times[ reform((array_indices(tracks.gal.temp, maxind))[0,*]) ]
+  maxtemp_times = tracks.rr.times[ reform((array_indices(tracks.gal.temp, maxind))[0,*]) ]
                     
   maxind = !NULL
   

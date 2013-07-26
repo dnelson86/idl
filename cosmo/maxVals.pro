@@ -1,6 +1,6 @@
 ; maxVals.pro
 ; gas accretion project - past temperature/entropy/density history of gas
-; dnelson jun.2013
+; dnelson jul.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; maxVals(): find maximum temperature/ent/dens for gas particles in galaxyCat at redshift
@@ -76,10 +76,11 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       print,m
       
       ; save restart?
-      if m mod 10 eq 0 and m gt minSnap and keyword_set(restart) then begin
+      if m mod 10 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
-        save,r,m,filename=resFilename
+        save,rtr,m,filename=resFilename
         print,' --- Done! ---'
+        exit,status=33 ; requeue
       endif
       
       ; load gas ids and match to catalog
@@ -159,28 +160,16 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       
     if ~file_test(resFilename) then begin ; no restart   
       
-      ; locate tracer children (indices) of gas id subsets
-      galcat_trids   = cosmoTracerChildren(sP=sP, /getInds, gasIDs=galcat.ids, child_counts=galcat_cc)
-      
-      ; convert tracer children indices to tracer IDs at this zMin
-      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-      
-      galcat_trids   = tr_ids[galcat_trids]
+      galcat_trids   = galcat.trMC_ids
       num_galcat_trs = n_elements(galcat_trids)
   
-      tr_ids    = !NULL
-      galcat    = !NULL ; not used past this point
-      
       ; store the main arrays for all tracers as structures so we can write them directly
       rtr  = { maxTemps      : fltarr(num_galcat_trs)  ,$
                maxTempTime   : fltarr(num_galcat_trs)  ,$
                maxEnt        : fltarr(num_galcat_trs)  ,$
                maxDens       : fltarr(num_galcat_trs)  ,$
-               maxMachNum    : fltarr(num_galcat_trs)  ,$
-               child_counts  : galcat_cc }
+               maxMachNum    : fltarr(num_galcat_trs)   }
                
-      galcat_cc  = !NULL
-      
     endif else begin
       ; restart
       if ~keyword_set(restart) then message,'Error: Restart file exists but restart not requested.'
@@ -193,10 +182,11 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       print,m  
   
       ; save restart?
-      if m mod 10 eq 0 and m gt minSnap and keyword_set(restart) then begin
+      if m mod 10 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
         save,rtr,galcat_trids,num_galcat_trs,m,filename=resFilename
         print,' --- Done! ---'
+        exit,status=33 ; requeue
       endif
       
       if maxTempsAllFlag eq 0 then begin ; normal
@@ -310,53 +300,7 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
           print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
         endelse
         
-        ; (2) values condensed to gas parents (this is so far unused) - set savefilename
-        saveFilename = sP.derivPath + 'maxVals.par.' + sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
-                       str(minSnap)+'-'+str(maxSnap)+'.sav'
-                       
-        if file_test(saveFilename) then begin
-          print,'WARNING: ['+saveFilename+'] exists, skipping write!'
-          continue
-        endif
-        
-        ; prepare output
-        offset = 0L
-        
-        r = {maxTemps         : fltarr(n_elements(rtr.child_counts))  ,$ ; max(maxTemps)
-             maxTempDisp      : fltarr(n_elements(rtr.child_counts))  ,$ ; stddev(maxTemps)
-             maxTemps_min     : fltarr(n_elements(rtr.child_counts))  ,$ ; min(maxTemps)
-             maxTemps_mean    : fltarr(n_elements(rtr.child_counts))  ,$ ; mean(maxTemps)
-             maxTempTime      : fltarr(n_elements(rtr.child_counts))  ,$ ; time of max(maxTemps)
-             maxTempTime_min  : fltarr(n_elements(rtr.child_counts))  ,$ ; time of min(maxTemps)
-             maxTempTime_mean : fltarr(n_elements(rtr.child_counts))   } ; mean(times maxTemps)}
-        
-        for i=0L,n_elements(rtr.child_counts)-1 do begin
-          if rtr.child_counts[i] gt 0 then begin
-            ; for each gas cell, collect its child tracers
-            childInds = lindgen(rtr.child_counts[i]) + offset
-            
-            locMaxTemps    = rtr.maxTemps[childInds]
-            locMaxTempTime = rtr.maxTempTime[childInds] ; this is really time (scale factor) for tracers
-            
-            ; save the maximum value reached by any child tracer and the stddev of the population maxima
-            r.maxTemps[i]    = max(locMaxTemps,indmax)
-            r.maxTempTime[i] = locMaxTempTime[indmax]
-            r.maxTempDisp[i] = stddev(locMaxTemps)
-            
-            ; save minimum and means (and associated times)
-            r.maxTemps_min[i]     = min(locMaxTemps,indmin)
-            r.maxTempTime_min[i]  = locMaxTempTime[indmin]
-            r.maxTemps_mean[i]    = mean(locMaxTemps)
-            r.maxTempTime_mean[i] = mean(locMaxTempTime)
-            
-            offset += rtr.child_counts[i]
-          endif
-        endfor
-        
-        ; save for future lookups        
-        save,r,filename=saveFilename
-        print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
-        r = !NULL
+        ; (2) values condensed to gas parents (unused and removed for now, see r99)
       endif ;save
       
     endfor ;m  
@@ -371,36 +315,18 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
 
     if ~file_test(resFilename) then begin ; no restart   
-      ; load gas ids
-      gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-  
-      ; match galcat IDs to gas_ids
-      calcMatch,galcat.ids,gas_ids,galcat_ind,ids_ind,count=countGal
-      ids_ind = ids_ind[sort(galcat_ind)]
-      
-      gas_ids = !NULL
-      
-      ; locate tracer children (indices) of gas id subsets
-      galcat_trids  = cosmoTracerVelChildren(sP=sP,/getInds,gasInds=ids_ind,child_counts=galcat_cc)
-      
-      ; convert tracer children indices to tracer IDs at this zMin
-      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerVel',field='ids')
-      
-      galcat_trids   = tr_ids[galcat_trids]
-      galcat_num_trs = n_elements(galcat_gal_trids)
-  
-      tr_ids   = !NULL
-      ids_ind  = !NULL
-      galcat   = !NULL ; not used past this point
+    
+      ; list of velocity tracers
+      galcat_trids   = galcat.trVel_ids ;tr_ids[galcat_trids]
+      galcat_num_trs = n_elements(galcat_trids)
   
       ; store the main arrays for all tracers as structures so we can write them directly
       rtr  = { maxTemps      : fltarr(galcat_num_trs)  ,$
                maxTempTime   : fltarr(galcat_num_trs)  ,$
                maxEnt        : fltarr(galcat_num_trs)  ,$
                maxDens       : fltarr(galcat_num_trs)  ,$
-               maxMachNum    : fltarr(galcat_num_trs)  ,$
-               child_counts  : galcat_cc }
-      galcat_cc  = !NULL
+               maxMachNum    : fltarr(galcat_num_trs)   }
+               
     endif else begin
       ; restart
       if ~keyword_set(restart) then message,'Error: Restart file exists but restart not requested.'
@@ -413,10 +339,11 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       print,m  
   
       ; save restart?
-      if m mod 10 eq 0 and m gt minSnap and keyword_set(restart) then begin
+      if m mod 10 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
         save,rtr,galcat_trids,galcat_num_trs,m,filename=resFilename
         print,' --- Done! ---'
+        exit,status=33 ; requeue
       endif
   
       ; load tracer ids and match to child ids from zMin
@@ -491,53 +418,8 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
           print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
         endelse
         
-        ; (3) values condensed to gas parents - set savefilename
-        saveFilename = sP.derivPath + 'maxVals.par.' + sP.savPrefix+str(sP.res)+'.'+$
-                       str(minSnap)+'-'+str(maxSnap)+'.sav'
-
-        if file_test(saveFilename) then begin
-          print,'WARNING: ['+saveFilename+'] exists, skipping write!'
-          continue
-        endif
+        ; (2) values condensed to gas parents (unused and removed for now, see r99)
         
-        ; prepare output
-        offset = 0L
-        
-        r = {maxTemps       : fltarr(n_elements(rtr.child_counts))  ,$ ; max(maxTemps)
-             maxTempTime    : fltarr(n_elements(rtr.child_counts))  ,$ ; time of max(maxTemps)
-             maxTempDisp    : fltarr(n_elements(rtr.child_counts))  ,$ ; stddev(maxTemps)
-             maxTemps_min   : fltarr(n_elements(rtr.child_counts))  ,$ ; min(maxTemps)
-             maxTemps_mean  : fltarr(n_elements(rtr.child_counts))  ,$ ; mean(maxTemps)
-             maxTempTime_min   : fltarr(n_elements(rtr.child_counts))  ,$ ; time of min(maxTemps)
-             maxTempTime_mean  : fltarr(n_elements(rtr.child_counts))   } ; mean(times maxTemps)
-        
-        for i=0,n_elements(rtr.child_counts)-1 do begin
-          if rtr.child_counts[i] gt 0 then begin
-            ; for each gas cell, collect its child tracers
-            childInds = lindgen(rtr.child_counts[i]) + offset
-            
-            locMaxTemps    = rtr.maxTemps[childInds]
-            locMaxTempTime = rtr.maxTempTime[childInds] ; this is really time (scale factor) for tracers
-            
-            ; save the maximum value reached by any child tracer and the stddev of the population maxima
-            r.maxTemps[i]    = max(locMaxTemps,indmax)
-            r.maxTempTime[i] = locMaxTempTime[indmax]
-            r.maxTempDisp[i] = stddev(locMaxTemps)
-            
-            ; save minimum and means (and associated times)
-            r.maxTemps_min[i]     = min(locMaxTemps,indmin)
-            r.maxTempTime_min[i]  = locMaxTempTime[indmin]
-            r.maxTemps_mean[i]    = mean(locMaxTemps)
-            r.maxTempTime_mean[i] = mean(locMaxTempTime)
-            
-            offset += rtr.child_counts[i]
-          endif
-        endfor
-        
-        ; save for future lookups        
-        save,r,filename=saveFilename
-        print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
-        r = !NULL
       endif ;save
     endfor ;m
   endif

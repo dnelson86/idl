@@ -1,6 +1,6 @@
 ; accretionMode.pro
 ; gas accretion project - past substructure history of gas elements
-; dnelson jun.2013
+; dnelson jul.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionMode(): for eaching gas particle/tracer with a recorded accretion time, starting at some 
@@ -39,7 +39,7 @@ function accretionMode, sP=sP
   endif
   
   ; select those particles/tracers with recorded accretion times
-  w_at = where(at.AccTime[sP.atIndMode,*] ne -1,nTotSearch)
+  w_at = where(at.AccTime[sP.atIndMode,*] ne -1,nTotSearch,comp=w_at_comp)
   
   ; load galaxy/group member catalogs at zMin for gas ids to search for
   origSnap = sP.snap
@@ -54,7 +54,7 @@ function accretionMode, sP=sP
       ' in range ['+str(mt.minSnap)+'-'+str(mt.maxSnap)+'].'
       
     ; only find accretion mode for those gas particles with accretion times
-    galcatSub = galcat.ids[mt.galcatSub[w_at]]
+    galcatSub = galcat.ids[w_at]
 
     ; convert the accretion time (scale factor) into the outer bracketing snapshot number for each member
     bracketSnap = intarr(n_elements(galcatSub))
@@ -68,22 +68,16 @@ function accretionMode, sP=sP
     if count gt 0 then message,'Error: Bad gal bracketing.'
     
     ; list of parent subgroup IDs at starting snapshot for each gas particle
-    gcIndOrig = galCatRepParentIDs(galcat=galcat,gcIDList=mt.galcatIDList)
-    
-    origParIDs = gcIndOrig[w_at]
-                   
-    gcIndOrig = !NULL ; includes primaries+secondaries for Parent (not compacted)
+    origParIDs = mt.gcIndOrig[w_at]
     
     ; replicate hMinSnap for each child gas element
     gasMinSnap = mt.hMinSnap[mt.gcIndOrig[w_at]]
     
-    w_at   = !NULL
-    
     ; store the main arrays as a structure so we can write them directly
-    accMode = intarr(n_elements(galcatSub))-1
+    accMode = intarr(n_elements(galcat.ids))-1
          
     ; debugging
-    accMask = intarr(n_elements(galcatSub))
+    accMask = intarr(n_elements(galcat.ids))
     
     for m=mt.maxSnap,mt.minSnap,-1 do begin
     
@@ -95,7 +89,7 @@ function accretionMode, sP=sP
         if count eq 0 then message,'error'
         origParIDs[w] = Parent[origParIDs[w]] ; change to parent IDs
           
-        ; sanity check no IDs are -1 (we should only be processing the mergerTreeAdaptiveSubset)
+        ; sanity check no IDs are -1 (we should only be processing the mergerTreeSubset)
         w = where(gasMinSnap lt m-1,count)
         if count gt 0 then if min(origParIDs[w]) lt 0 then message,'Error: Bad parent.'
       endif
@@ -110,6 +104,7 @@ function accretionMode, sP=sP
       
       ; select those gas particles whose accretion modes are determined at this snapshot
       w_now = where(bracketSnap eq sP.snap,count_now)
+      w_now_at = w_at[w_now] ; stamp indices into accMode/accMask
 
       ; debug: make sure we aren't searching for a tracer that is now untracked
       if count_now gt 0 and max(gasMinSnap[w_now]) gt sP.snap+1 then $
@@ -124,8 +119,8 @@ function accretionMode, sP=sP
       if countNow lt count_now then begin
         ; if none matched, assign all the bracketed particles to smooth
         if countNow eq 0 then begin
-          accMode[w_now] = 1
-          accMask[w_now] += 1
+          accMode[w_now_at] = 1
+          accMask[w_now_at] += 1
           counts.smooth += count_now
         endif else begin
           ; if some matched, assign the complement of those to smooth
@@ -133,8 +128,8 @@ function accretionMode, sP=sP
           all[galcat_ind] = 1B
           wNotInSG = where(all eq 0B, ncomp)
           
-          accMode[w_now[wNotInSG]] = 1
-          accMask[w_now[wNotInSG]] += 1 ;debug
+          accMode[w_now_at[wNotInSG]] = 1
+          accMask[w_now_at[wNotInSG]] += 1 ;debug
           counts.smooth += ncomp
         endelse
       endif
@@ -148,10 +143,9 @@ function accretionMode, sP=sP
         diff = gc_ind - gc.subgroupOffset[parIDs]
         wInSG = where(diff lt gc.subgroupLen[parIDs],countInSG,comp=wc,ncomp=ncomp)
         
-        
         ; those failing the subgroup bound are smooth
         if ncomp gt 0 then begin
-          rInds = w_now[galcat_ind[wc]]
+          rInds = w_now_at[galcat_ind[wc]]
           accMode[rInds] = 1
           accMask[rInds] += 1 ;debug
           counts.smooth += ncomp
@@ -159,7 +153,7 @@ function accretionMode, sP=sP
           
         if countInSG gt 0 then begin
           ; if their subgroup ID is the traced parent, assign to category 1. smooth
-          rInds = w_now[galcat_ind[wInSG]]
+          rInds = w_now_at[galcat_ind[wInSG]]
           w0 = where(parIDs[wInSG] eq origParIDs[galcat_ind[wInSG]],count,comp=wc,ncomp=ncomp)
           if count gt 0 then begin
             accMode[rInds[w0]] = 1
@@ -202,15 +196,14 @@ function accretionMode, sP=sP
       endif ; countNow
 
       ; check that all bracketed particles found accretion modes
-      if min(accMode[w_now]) eq 0 then message,'Error: Not all done.'
+      if min(accMode[w_now_at]) eq 0 then message,'Error: Not all done.'
       if (counts.smooth+counts.sclumpy+counts.bclumpy) ne count_now then $
         message,'Error: Totals fail to add up.'
-      if max(accMask) gt 1 then message,'Error: Mask exceeds one.'
       
       ; any gas previously marked smooth, categorize as stripped if it is now in a non-parent halo
       ; note: require we are still tracking its progenitor branch to avoid mischaracterizing
       ; smooth gas as stripped if it is just within its true, untracked parent at some earlier time
-      wSmooth = where(accMode eq 1 and gasMinSnap le sP.snap,countSmooth)
+      wSmooth = where(accMode[w_at] eq 1 and gasMinSnap le sP.snap,countSmooth)
       
       if countSmooth eq 0 then continue
       
@@ -227,7 +220,8 @@ function accretionMode, sP=sP
       
       if countInSG gt 0 then begin
         ; if their subgroup ID is -not- the traced parent, assign to category 4. stripped
-        rInds = wSmooth[galcat_ind[wInSG]]
+        
+        rInds = w_at[ wSmooth[galcat_ind[wInSG]] ]
         w0 = where(parIDs[wInSG] ne origParIDs[galcat_ind[wInSG]],count)
         if count gt 0 then begin
           accMode[rInds[w0]] = 4
@@ -264,8 +258,11 @@ function accretionMode, sP=sP
 
     endfor ;m
     
-    ; verify we found an accretion mode for every galaxyCat member
-    if min(accMask) lt 1 then message,'Error: Not all found.'
+    ; verify we found an accretion mode for every galaxyCat member with an accretion time
+    if min(accMask[w_at]) lt 1 then message,'Error: Not all found.'
+    if max(accMask[w_at]) gt 1 then message,'Error: Overassignment.'
+    w = where(accMask[w_at_comp] ne 0,count)
+    if count ne 0 then message,'Error: Assigned to negative one accretion time member.'
     
     ; save
     save,accMode,filename=saveFilename
@@ -280,28 +277,15 @@ function accretionMode, sP=sP
       ' in range ['+str(mt.minSnap)+'-'+str(mt.maxSnap)+'].'
       
     ; make gcIndOrigTr and ids of sorted tracer children
-    gcIndOrigTr = mergerTreeRepParentIDs(mt=mt,galcat=galcat,sP=sP,trids=galcat_trids)
-    
-    origParIDs = gcIndOrigTr[w_at]
+    origParIDs = mt.gcIndOrigTrMC[w_at]
                    
     if min(origParIDs) lt 0 then message,'Error: Bad starting parents.'
              
-    ; replicate hMinSnap for each child tracer (do compactMtS on gcIndOrigTr first)
-    placeMap    = getIDIndexMap(mt.galcatIDList,minid=minid)
-    gcIndOrigTr = placeMap[gcIndOrigTr-minid]
-    placeMap    = !NULL
-    
-    trMinSnap = mt.hMinSnap[gcIndOrigTr[w_at]]
-         
-    gcIndOrigTr = !NULL
-    
-    ; only find accretion mode for those tracers with accretion times
-    galcatSub = galcat_trids[w_at]
-                  
-    galcat_trids   = !NULL
+    ; replicate hMinSnap for each child tracer
+    trMinSnap = mt.hMinSnap[mt.gcIndOrigTrMC[w_at]]
                   
     ; convert the accretion time (scale factor) into the outer bracketing snapshot number for each member
-    bracketSnap = intarr(n_elements(galcatSub))
+    bracketSnap = intarr(n_elements(galcat.trMC_ids))
                     
     snapTimes = snapNumToRedshift(sP=sP,/all,/time)
     snapTimes = [ snapTimes[where(snapTimes ne -1)], 1.00001 ] ; fail if any are past 1.00001
@@ -309,10 +293,8 @@ function accretionMode, sP=sP
     bracketSnap = value_locate(snapTimes, reform(at.accTime[sP.atIndMode,w_at]) )
     
     ; main save array so we can write them directly
-    accMode = intarr(n_elements(galcatSub))
-         
-    ; debugging
-    accMask = intarr(n_elements(galcatSub))
+    accMode = intarr(n_elements(galcat.trMC_ids))
+    accMask = intarr(n_elements(galcat.trMC_ids))
               
     ; for recycled mode, we can decide immediately based on the tracer windcounter
     if sP.gfmWinds ne 0 then begin
@@ -321,10 +303,15 @@ function accretionMode, sP=sP
       tr_parids      = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
       
       ; gal: find recycled and override bracketSnap using earliest rvir crossing
-      galcat_trinds = cosmoTracerChildren(sP=sP, /getInds, tr_parids=tr_parids, gasIDs=galcat.ids[mt.galcatSub])
+      tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
       
+      idIndexMap = getIDIndexMap(tr_ids,minid=minid)
+      tr_ids = !NULL
+      
+      galcat_trinds = idIndexMap[galcat.trMC_ids - minid]
+
       w = where(tr_windcounter[galcat_trinds[w_at]] gt 0,count)
-      if count gt 0 then accMode[w] = 10
+      if count gt 0 then accMode[w_at[w]] = 10
       
       tr_parids = !NULL
       galcat_trinds = !NULL
@@ -337,9 +324,6 @@ function accretionMode, sP=sP
     w = where(bracketSnap eq -1 or bracketSnap eq n_elements(snapTimes)-1,count)
     if count then message,'Error: Bad gal bracketing.'
     
-    w_at   = !NULL
-    galcat = !NULL
-    
     for m=mt.maxSnap,mt.minSnap,-1 do begin
       ; load mergerTree and move to Parent
       if m ne mt.maxSnap then begin
@@ -350,7 +334,7 @@ function accretionMode, sP=sP
         if count eq 0 then message,'error'
         origParIDs[w] = Parent[origParIDs[w]]
           
-        ; sanity check no IDs are -1 (we should only be processing the mergerTreeAdaptiveSubset)
+        ; sanity check no IDs are -1 (we should only be processing the mergerTreeSubset)
         w = where(trMinSnap lt m-1,count)
         if count gt 0 then $
           if min(origParIDs[w]) lt 0 then message,'Error: Bad parent.'
@@ -399,7 +383,8 @@ function accretionMode, sP=sP
       counts = { smooth : 0UL, sclumpy: 0UL, bclumpy: 0UL, stripped: 0UL, recycled: 0UL }
       
       ; select those gas particles whose accretion modes are determined at this snapshot
-      w_now   = where(bracketSnap eq sP.snap,count_now)
+      w_now    = where(bracketSnap eq sP.snap,count_now)
+      w_now_at = w_at[w_now] ; stamp indices into accMode/accMask
       
       ; debug: make sure we aren't searching for a tracer that is now untracked
       if count_now gt 0 and max(trMinSnap[w_now]) gt sP.snap+1 then message,'Error: Searching for untracked'
@@ -407,14 +392,14 @@ function accretionMode, sP=sP
       if count_now eq 0 then continue
         
       ; global match against subgroup tracers ID list (this includes -only- bound gas)
-      calcMatch,galcatSub[w_now],groupcat_trIDs,galcat_ind,gc_ind,count=countNow
+      calcMatch,galcat.trMC_ids[w_now_at],groupcat_trIDs,galcat_ind,gc_ind,count=countNow
         
       ; those that don't match, assign to category 1. smooth
       if countNow lt count_now then begin
         ; if none matched, assign all the bracketed particles to smooth
         if countNow eq 0 then begin
-          accMode[w_now] += 1
-          accMask[w_now] += 1
+          accMode[w_now_at] += 1
+          accMask[w_now_at] += 1
           counts.smooth += count_now
         endif else begin
           ; if some matched, assign the complement of those to smooth
@@ -422,8 +407,8 @@ function accretionMode, sP=sP
           all[galcat_ind] = 1B
           wNotInSG = where(all eq 0B, ncomp)
             
-          accMode[w_now[wNotInSG]] += 1
-          accMask[w_now[wNotInSG]] += 1 ;debug
+          accMode[w_now_at[wNotInSG]] += 1
+          accMask[w_now_at[wNotInSG]] += 1 ;debug
           counts.smooth += ncomp
         endelse
       endif
@@ -442,7 +427,7 @@ function accretionMode, sP=sP
           
         if countInSG gt 0 then begin
           ; if their subgroup ID is the traced parent, assign to category 1. smooth
-          rInds = w_now[galcat_ind[wInSG]]
+          rInds = w_now_at[galcat_ind[wInSG]]
           w0 = where(parIDs[wInSG] eq origParIDs[galcat_ind[wInSG]],count,comp=wc,ncomp=ncomp)
           if count gt 0 then begin
             accMode[rInds[w0]] += 1
@@ -485,21 +470,20 @@ function accretionMode, sP=sP
       endif ; countNow
         
       ; check that all bracketed particles found accretion modes
-      if min(accMode[w_now]) eq 0 then message,'Error: Not all done.'
+      if min(accMode[w_now_at]) eq 0 then message,'Error: Not all done.'
       if (counts.smooth+counts.sclumpy+counts.bclumpy) ne count_now then message,'Error: Totals fail to add up.'
-      if max(accMask) gt 1 then message,'Error: Mask exceeds one.'
         
       ; any gas previously marked smooth, categorize as stripped if it is now in a non-parent halo
       smoothAccModes = [1,11]
         
       foreach smoothAccMode,smoothAccModes do begin       
         ; find either smooth only or smooth+recycled
-        wSmooth = where(accMode eq smoothAccMode and trMinSnap le sP.snap,countSmooth)
+        wSmooth = where(accMode[w_at] eq smoothAccMode and trMinSnap le sP.snap,countSmooth)
         
         if countSmooth eq 0 then continue
           
         ; global match against subgroup ID list (this includes fuzz and unbound gas)
-        calcMatch,galcatSub[wSmooth],groupcat_trIDs,galcat_ind,gc_ind,count=countNow
+        calcMatch,galcat.trMC_ids[w_at[wSmooth]],groupcat_trIDs,galcat_ind,gc_ind,count=countNow
         
         if countNow eq 0 then continue
           
@@ -513,7 +497,7 @@ function accretionMode, sP=sP
         if countInSG ne countNow then message,'Error: Should not happen (gal).'
           
         ; if their subgroup ID is -not- the traced parent, assign to category 4. stripped
-        rInds = wSmooth[galcat_ind[wInSG]]
+        rInds = w_at[ wSmooth[galcat_ind[wInSG]] ]
         w0 = where(parIDs[wInSG] ne origParIDs[galcat_ind[wInSG]],count)
         if count gt 0 then begin
           accMode[rInds[w0]] = 4 + (smoothAccMode-1) ; addition is zero for accMode=1, 10 for recycled
@@ -559,8 +543,10 @@ function accretionMode, sP=sP
     endfor ;m
     
     ; verify we found an accretion mode for every gas particle
-    if min(accMask)   lt 1 then message,'Error: Not all found.'
-    if min(accMode)   lt 1 then message,'Error: Not all accMode set.'
+    if min(accMask[w_at]) lt 1 then message,'Error: Not all found.'
+    if max(accMask[w_at]) gt 1 then message,'Error: Overassignment.'
+    w = where(accMask[w_at_comp] ne 0,count)
+    if count ne 0 then message,'Error: Assigned to negative one accretion time member.'
     
     ; verify no strange accMode numbers
     w = where((accMode gt 4 and accMode lt 10) or accMode gt 14,count)
@@ -582,14 +568,14 @@ function accretionMode, sP=sP
   return, accMode
 end
 
-; accModeInds(): subselect in the mtS/atS/traj subsets for a particular accretion mode
+; accModeInds(): subselect for a particular accretion mode (indices are for galcat.ids or galcat.trMC_ids)
 
 function accModeInds, at=at, sP=sP, accMode=accMode
 
   if n_elements(at) eq 0 or n_elements(accMode) eq 0 then message,'Error: Inputs'
   if ~sP.gfmWinds and accMode eq 'recycled' then message,'Error: Request recycled on non-winds run.'
   
-  at_w = where(at.AccTime[sP.atIndMode,*] ne -1,count)
+  at_w = lindgen(n_elements(at.accTime[0,*]))
   
   ; select on accretion mode by modifying gal_w, gmem_w, and stars_w
   if accMode ne 'all' then begin
@@ -606,6 +592,8 @@ function accModeInds, at=at, sP=sP, accMode=accMode
     if accMode eq 'stripped_rec' then at_w = at_w[where(am eq 4 or am eq 14,count)]
     if accMode eq 'recycled'     then at_w = at_w[where(am ge 10,count)] ; recycled+any other mode
 
+	if n_elements(count) eq 0 then message,'Error: Unrecognized accretion mode.'
+	
     am = !NULL
   endif
 
@@ -614,37 +602,32 @@ function accModeInds, at=at, sP=sP, accMode=accMode
   mask[at_w] = 1B
   
   ; load galaxyCat to replicate type for each tracer
-  mt = mergerTreeSubset(sP=sP)
   galcat = galaxyCat(sP=sP)
   
-  if sP.trMCPerCell gt 0 then parInds = replicate_var(galcat.ccMC, subset_inds=mt.galcatSub)
-  if sP.trMCPerCell eq 0 then parInds = { parent_inds : mt.galcatSub }
-  if sP.trMCPerCell lt 0 then message,'Error.'
-  
-  type = ( galcat.type[parInds.parent_inds] )
+  if sP.trMCPerCell gt 0 then type = ( galcat.type[ replicate_var(galcat.trMC_cc) ] )
+  if sP.trMCPerCell eq 0 then type = ( galcat.type )
+  if sP.trMCPerCell lt 0 then type = ( galcat.type[ replicate_var(galcat.trVel_cc) ] )
 
   ; split at_w into types
-  rr = {}
+  rr = {}  
   totCount = 0L
 
   for i=0,n_tags(galcat.types)-1 do begin
     ; select from atS (note: these indices give the gal/gmem/etc subsets from the GLOBAL mtS)
-    w_type = where(type eq galcat.types.(i) and mask eq 1B,count)
+    w_type = where(type eq galcat.types.(i) and mask eq 1B,typeCount)
     
-    ;DEBUG:
-    ;w_test = where(mask eq 1B)
-    ;stop
-    if count gt 0 then $
+    if typeCount gt 0 then $
       rr = mod_struct(rr, (tag_names(galcat.types))[i], w_type) $
     else $
       rr = mod_struct(rr, (tag_names(galcat.types))[i], -1)
-    totCount += count
+    totCount += typeCount
   endfor
   
   if totCount ne n_elements(at_w) then message,'Error in splitting.'
-
-  ; add mask
-  rr = mod_struct(rr, 'mask', mask)
+  
+  ; include mask and unsplit indices at_w in return
+  ;rr = mod_struct( rr, 'mask', mask )
+  ;rr = mod_struct( rr, 'at_w', at_w )
   
   return,rr
 end

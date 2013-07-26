@@ -1,6 +1,6 @@
 ; plotVsHaloMass.pro
 ; gas accretion project - bin quantities as a function of halo mass
-; dnelson jun.2013
+; dnelson jul.2013
 
 ; haloMassBinValues(): bin accretion rate (in cold/hot) and cold fraction as a function of halo mass
 
@@ -8,8 +8,6 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
-  
-  sgSelect = 'pri' ; only option for atS
   
   if ~sP.gfmWinds and accMode eq 'recycled' then message,'Error: Request recycled on non-winds run.'
   
@@ -37,7 +35,7 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
       timeWindow = TW ; "tVir_tIGM" or "tVir_tIGM_bin"
     endelse
   endelse
-
+  
   ; config
   nCuts = n_elements(sP.TcutVals)
   nVirs = n_elements(sP.TvirVals)
@@ -48,82 +46,81 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
   
   ; check if save exists
   saveFilename = sP.derivPath + 'binnedVals/binVals.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + $
-    str(sP.snap) + '.cut' + str(nCuts) + '.vir' + str(nVirs) + '.' + sgSelect + '.' + accMode + $
+    str(sP.snap) + '.cut' + str(nCuts) + '.vir' + str(nVirs) + '.' + accMode + $
     '.r' + str(sP.radIndHaloAcc) + '.r' + str(sP.radIndGalAcc) + '_tw' + str(TW) + '.sav'
   
-  ; results exist, return
-  ;if file_test(saveFilename) then begin
-  ;  restore,saveFilename
-  ;  return,r
-  ;endif   
+  if file_test(saveFilename) then begin
+    restore, saveFilename
+    return, r
+  endif
   
   ; make a uniform gas selection at the start
   at = accretionTimes(sP=sP)
   mt = mergerTreeSubset(sP=sP)
   
   wAm = accModeInds(at=at,accMode=accMode,sP=sP)
-    
+  galcat = galaxyCat(sP=sP)
+  
   ; reverse histogram parent IDs of all particles/tracers in this selection
-  gcIndOrig = mergerTreeRepParentIDs(mt=mt,sP=sP,/compactMtS)
+  if sP.trMCPerCell gt 0 then gcIndOrig = mt.gcIndOrigTrMC
+  if sP.trMCPerCell eq 0 then gcIndOrig = mt.gcIndOrig
+  if sP.trMCPerCell lt 0 then gcIndOrig = mt.gcIndOrigTrVel
   
   maxHist = max(gcIndOrig)
-  
-  hist_gal   = histogram(gcIndOrig[wAm.gal],min=0,max=maxHist,loc=loc_gal,rev=rev_gal)
-  hist_gmem  = histogram(gcIndOrig[wAm.gmem],min=0,max=maxHist,loc=loc_gmem,rev=rev_gmem)
-  hist_stars = histogram(gcIndOrig[wAm.stars],min=0,max=maxHist,loc=loc_stars,rev=rev_stars)
-  hist_inter = histogram(gcIndOrig[wAm.inter],min=0,max=maxHist,loc=loc_inter,rev=rev_inter)
-  if sP.gfMBHs ne 0 then $
-    hist_bhs   = histogram(gcIndOrig[wAm.bhs],min=0,max=maxHist,loc=loc_bhs,rev=rev_bhs)
-    
+
+  for i=0,n_tags(wAm)-1 do begin
+    hist_type = histogram(gcIndOrig[wAm.(i)],min=0,max=maxHist,loc=loc,rev=rev_type)
+    hist = mod_struct( hist, (tag_names(wAm))[i], hist_type )
+    rev  = mod_struct( rev,  (tag_names(wAm))[i], rev_type )
+  endfor
+
   gcIndOrig = !NULL
   
   ; load max temps, current tvir, tvir at accretion
-  accTvir = gcSubsetProp(sP=sP,select=sgSelect,/accTvir,/accretionTimeSubset,accMode=accMode)
-  curTvir = gcSubsetProp(sP=sP,select=sgSelect,/virTemp,/accretionTimeSubset,accMode=accMode)
-  maxTemp = gcSubsetProp(sP=sP,select=sgSelect,/maxPastTemp,/accretionTimeSubset,accMode=accMode)
-  
+  accTvir = gcSubsetProp(sP=sP,/accTvir,/accretionTimeSubset,accMode=accMode)
+  curTvir = gcSubsetProp(sP=sP,/virTemp,/accretionTimeSubset,accMode=accMode)
+  maxTemp = gcSubsetProp(sP=sP,/maxPastTemp,/accretionTimeSubset,accMode=accMode)
+
   ; load group cat for subgroup masses
   gc = loadGroupCat(sP=sP,/skipIDs)
-  gcMasses = codeMassToLogMsun(gc.subgroupMass[mt.galcatIDList])
+  gcMasses = codeMassToLogMsun(gc.subgroupMass)
   gc = !NULL
 
   ; structure config
   constInds = [0] ; indices into template for constant
   tVirInds  = [1,2] ; indices into template for tvir
   
-  ; which galaxyCat types contribute to the "allGal" and "total"?
-  allgalInds = [0,2,4] ; gal,stars,bhs
-  totalInds  = [0,1,2,3,4] ; gal,gmem,stars,bhs  
+  ; which galaxyCat types contribute to "total"?
+  typeLabels = [ tag_names(galcat.types), 'total' ]
   
-  typeLabels = ['gal','gmem','stars','inter','bhs','allgal','total']
-  
-  allgalInd = ( where( typeLabels eq 'allgal' ) )[0]
-  totalInd  = ( where( typeLabels eq 'total' ) )[0]
-  
-  ; structures to store results (Tmax)
-  template = { tConst  : fltarr(nCuts,n_elements(mt.galcatIDList))  ,$
-               tVirCur : fltarr(nVirs,n_elements(mt.galcatIDList))  ,$
-               tVirAcc : fltarr(nVirs,n_elements(mt.galcatIDList))  ,$
-               num     : lonarr(n_elements(mt.galcatIDList))         }
+  totalInds = where( typeLabels ne 'total' ) ; where to take total from
+  totalInd  = ( where( typeLabels eq 'total' ) )[0] ; where to store total
 
-  coldAccRate = {}
+  ; make templates: structures to store results (Tmax)
+  tempHC   = { tConst  : fltarr(nCuts,galcat.nGroups)  ,$
+               tVirCur : fltarr(nVirs,galcat.nGroups)  ,$
+               tVirAcc : fltarr(nVirs,galcat.nGroups)  ,$
+               num     : lonarr(galcat.nGroups)         }
+
+  template = { hot : tempHC, cold : tempHC }
 
   foreach typeLabel,typeLabels do $  
-    coldAccRate = mod_struct(coldAccRate, typeLabel, template)
+    templateTypes = mod_struct(templateTypes, typeLabel, template)
+    
+  foreach typeLabel,typeLabels do $
+    templateCF = mod_struct(templateCF, typeLabel, tempHC)
   
-  hotAccRate    = coldAccRate
-  coldFrac      = coldAccRate
-  totalColdMass = coldAccRate ; total mass
-  totalHotMass  = coldAccRate
-                   
-  ; outflow rates, filled only for .gal (which searches in gmem and inter) and .gmem
-  coldOutRate = { gal : template, gmem : template }
-  hotOutRate  = coldOutRate
-  coldNetRate = coldOutRate ; net (inflow-outflow) rates
-  hotNetRate  = coldOutRate
+  ; for (1) galaxy and (2) halo, duplicate template for: accretion (inflow), outflow, net, and coldfrac
+  galaxy = { accRate : templateTypes, outRate : templateTypes, $
+             netRate : templateTypes, coldFrac : templateCF }
+
+  halo   = { accRate : templateTypes, outRate : templateTypes, $
+             netRate : templateTypes, coldFrac : templateCF }
 
   ; loop over all tracked subgroups
   for i=0L,maxHist do begin
+  
+    if i mod (maxHist/10) eq 0 then print,string(float(i)/maxHist*100,format='(f5.2)')+'%'
   
     ; calculate min(timeWindow,length of time this halo was tracked back) to use to normalize rates
     loc_timeWindow = timeWindow
@@ -170,452 +167,251 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
       loc_minSnapTime = snapTimes[mt.hMinSnap[i]]
       if curtime-loc_minSnapTime lt loc_timeWindow then loc_timeWindow = curtime-loc_minSnapTime
     endif
-  
-    if hist_gal[i] gt 0 then begin
-      ; list of indices of galaxy gas particles in this subgroup
-      loc_inds_gal = rev_gal[rev_gal[i]:rev_gal[i+1]-1]
-      
-      ; galaxy accretion defined as most recent of (rho,temp) joining time or 0.15rvir crossing time (headed in)
-      loc_atime_gal = reform(at.accTimeRT[wAm.gal[loc_inds_gal]])
-      
-      r_crossing_time = reform(at.accTime[sP.radIndGalAcc,wAm.gal[loc_inds_gal]])
-      w = where(r_crossing_time gt loc_atime_gal,count)
-      if count gt 0 then loc_atime_gal[w] = r_crossing_time[w]
-      
-      loc_atime_gal = 1/loc_atime_gal - 1 ; redshift
-      loc_atime_gal = redshiftToAgeFlat(loc_atime_gal)*1e9 ; yr
-      
-      ; make a count of those falling in the time window
-      w = where(curtime - loc_atime_gal le loc_timeWindow,nloc)
-      
-      coldFrac.gal.num[i]    = nloc
-      coldAccRate.gal.num[i] = nloc
-      
-      ; maximum past temps, cur and acc tvirs for only those particles in the time window
-      if nloc gt 0 then begin
-        loc_maxt_gal = maxTemp.gal[loc_inds_gal[w]]
-        loc_curtvir_gal = curTvir.gal[loc_inds_gal[w]]
-        loc_acctvir_gal = accTvir.gal[loc_inds_gal[w]]
-  
-        ; count mass elements with Tmax below each constant temperature threshold
-        for j=0,nCuts-1 do begin
-          w = where(loc_maxt_gal le sP.TcutVals[j],count_cold,ncomp=count_hot)
-          coldFrac.gal.tConst[j,i]    = float(count_cold) / nloc
-          coldAccRate.gal.tConst[j,i] = count_cold
-          hotAccRate.gal.tConst[j,i]  = count_hot
-        endfor
-        
-        for j=0,nVirs-1 do begin
-          ; count mass elements with Tmax below Tvir at current time
-          w = where(10.0^loc_maxt_gal / 10.0^loc_curtvir_gal le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldFrac.gal.tvircur[j,i]    = float(count_cold) / nloc
-          coldAccRate.gal.tvircur[j,i] = count_cold
-          hotAccRate.gal.tvircur[j,i]  = count_hot
     
-          ; count mass elements with Tmax below Tvir at accretion time
-          w = where(10.0^loc_maxt_gal / 10.0^loc_acctvir_gal le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldFrac.gal.tviracc[j,i]    = float(count_cold) / nloc
-          coldAccRate.gal.tviracc[j,i] = count_cold
-          hotAccRate.gal.tviracc[j,i]  = count_hot
-        endfor
-      endif ;nloc>0
+    ; loop over types
+    for k=0,n_tags(wAm)-1 do begin
+      if (tag_names(wAm))[k] ne (tag_names(rev))[k] then message,'Check'
       
-    endif ; hist_gal[i]
+      ; enforce local timewindow
+      loc_rev  = rev.(k)
+	  
+	if loc_rev[i] eq loc_rev[i+1] then continue ; no particles of type in this group, or whole group empty (secondary)
+	  
+      loc_inds = loc_rev[ loc_rev[i] : loc_rev[i+1]-1 ]
+      
+      ; accretion time defined as:
+      ;  switching side of (rho,temp) cut or 0.15rvir crossing (headed in)
+      ; outflow time defined as:
+      ;  switching side of (rho,temp) cut or 0.15rvir crossing (headed out)
+      
+      ; --- GALAXY ACCRETION ---
 
-    if hist_gmem[i] gt 0 then begin
-      ; list of indices of group member gas particles in this subgroup
-      loc_inds_gmem = rev_gmem[rev_gmem[i]:rev_gmem[i+1]-1]
+      ; decide between using outTimeRT and accTimeRT (satisfying/failing the rho,temp cut, respectively)
+      ; based on status at sP.snap (e.g. gmem by definition fails rho,temp cut)
+      curTimeRT = max(at.accTimeRT)
       
-      ; corresponding accretion times for these particles
-      ; -------------------------------------------------
-      loc_atime_gmem = reform(at.accTime[sP.radIndHaloAcc,wAm.gmem[loc_inds_gmem]])
-      loc_atime_gmem = 1/loc_atime_gmem - 1 ; redshift
-      loc_atime_gmem = redshiftToAgeFlat(loc_atime_gmem)*1e9 ; yr
+      loc_atime = reform( at.accTimeRT[ (wAm.(k))[loc_inds] ] )
       
-      ; make a count of those falling in the time window
-      w = where(curtime - loc_atime_gmem le loc_timeWindow,nloc)
+      ; those that fail at sP.snap (e.g. gmem), use satisfying the cut as the accretion time
+      w = where( at.accTimeRT[ (wAm.(k))[loc_inds] ] eq curTimeRT, count)
+      if count gt 0 then loc_atime[w] = at.outTimeRT[ (wAm.(k))[loc_inds[w]] ]
       
-      coldFrac.gmem.num[i]    = nloc
-      coldAccRate.gmem.num[i] = nloc
+      ; for those that neither satisfy nor fail the cut at sP.snap (all stars, stars in inter) we
+      ; cannot use the (rho,temp) cut, since don't know where they will fall when switching back
+      ; to a gas parent, so just use the radial cut
+      w_noCut = where( at.outTimeRT[ (wAm.(k))[loc_inds] ] ne max(at.outTimeRT) and $
+                       at.accTimeRT[ (wAm.(k))[loc_inds] ] ne max(at.accTimeRT), count_noCut)
+      if count_noCut gt 0 then loc_atime[w_noCut] = -1
+		
+      ; modify based on 0.15rvir crossing time (the latest / lowest redshift of the two criteria)
+      r_crossing_time = reform( at.accTime[ sP.radIndGalAcc, (wAm.(k))[ loc_inds ] ] )
+      w = where(r_crossing_time gt loc_atime, count)
+      if count gt 0 then loc_atime[w] = r_crossing_time[w]
+	  
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
       
-      ; maximum past temps, cur and acc tvirs for only those particles in the time window
+      w = where(curtime - loc_atime le loc_timeWindow, nloc)
+      
+      galaxy.coldFrac.(k).num[i] = nloc
+      galaxy.coldFrac.total.num[i] += nloc
+      
       if nloc gt 0 then begin
-        loc_maxt_gmem = maxTemp.gmem[loc_inds_gmem[w]]
-        loc_curtvir_gmem = curTvir.gmem[loc_inds_gmem[w]]
-        loc_acctvir_gmem = accTvir.gmem[loc_inds_gmem[w]]
-  
+        ; maximum past temps, cur and acc tvirs for only those particles in the time window
+        loc_maxTemp = maxTemp.(k)[ loc_inds[w] ]
+        loc_curTvir = curTvir.(k)[ loc_inds[w] ]
+        loc_accTvir = accTvir.(k)[ loc_inds[w] ]
+        
         ; count mass elements with Tmax below each constant temperature threshold
         for j=0,nCuts-1 do begin
-          w = where(loc_maxt_gmem le sP.TcutVals[j],count_cold,ncomp=count_hot)
-          coldFrac.gmem.tConst[j,i]    = float(count_cold) / nloc
-          coldAccRate.gmem.tConst[j,i] = count_cold
-          hotAccRate.gmem.tConst[j,i]  = count_hot
+          w = where(loc_maxTemp le sP.TcutVals[j],count_cold,ncomp=count_hot)
+          galaxy.coldFrac.(k).tConst[j,i]     = float(count_cold) / nloc
+		  galaxy.coldFrac.total.tConst[j,i]   += count_cold
+          galaxy.accRate.(k).cold.tConst[j,i] = count_cold
+          galaxy.accRate.(k).hot.tConst[j,i]  = count_hot
         endfor
         
         for j=0,nVirs-1 do begin
           ; count mass elements with Tmax below Tvir at current time
-          w = where(10.0^loc_maxt_gmem / 10.0^loc_curtvir_gmem le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldFrac.gmem.tvircur[j,i]    = float(count_cold) / nloc
-          coldAccRate.gmem.tvircur[j,i] = count_cold
-          hotAccRate.gmem.tvircur[j,i]  = count_hot
+          w = where(10.0^loc_maxTemp / 10.0^loc_curTvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          galaxy.coldFrac.(k).tVirCur[j,i]     = float(count_cold) / nloc
+		  galaxy.coldFrac.total.tVirCur[j,i]   += count_cold
+          galaxy.accRate.(k).cold.tVirCur[j,i] = count_cold
+          galaxy.accRate.(k).hot.tVirCur[j,i]  = count_hot
     
           ; count mass elements with Tmax below Tvir at accretion time
-          w = where(10.0^loc_maxt_gmem / 10.0^loc_acctvir_gmem le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldFrac.gmem.tviracc[j,i]    = float(count_cold) / nloc
-          coldAccRate.gmem.tviracc[j,i] = count_cold
-          hotAccRate.gmem.tviracc[j,i]  = count_hot
-        endfor
-      endif ; nloc>0
-      
-      ; corresponding --OUTFLOW-- times from the GALAXY for these particles
-      ; defined as most recent of (rho,temp) leaving time or 0.15rvir crossing time (headed out)
-      ; -------------------------------------------------------------------
-      loc_otime = reform(at.outTimeRT[wAm.gmem[loc_inds_gmem]])
-      
-      r_crossing_time = reform(at.outTime[sP.radIndGalAcc,wAm.gmem[loc_inds_gmem]])
-      w = where(r_crossing_time gt loc_otime,count)
-      if count gt 0 then loc_otime[w] = r_crossing_time[w]
-      
-      loc_otime = 1/loc_otime - 1 ; redshift
-      loc_otime = redshiftToAgeFlat(loc_otime)*1e9 ; yr
-      
-      ; make a count of those falling in the time window
-      w = where(curtime - loc_otime le loc_timeWindow,nloc)
-      
-      coldOutRate.gal.num[i] += nloc
-      
-      ; maximum past temps, cur and acc tvirs for only those particles in the time window
-      if nloc gt 0 then begin
-        loc_maxt = maxTemp.gmem[loc_inds_gmem[w]]
-        loc_curtvir = curTvir.gmem[loc_inds_gmem[w]]
-        loc_acctvir = accTvir.gmem[loc_inds_gmem[w]]
-  
-        ; count mass elements with Tmax below each constant temperature threshold
-        for j=0,nCuts-1 do begin
-          w = where(loc_maxt le sP.TcutVals[j],count_cold,ncomp=count_hot)
-          coldOutRate.gal.tConst[j,i] += count_cold
-          hotOutRate.gal.tConst[j,i]  += count_hot
-        endfor
-        
-        for j=0,nVirs-1 do begin
-          ; count mass elements with Tmax below Tvir at current time
-          w = where(10.0^loc_maxt / 10.0^loc_curtvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldOutRate.gal.tvircur[j,i] += count_cold
-          hotOutRate.gal.tvircur[j,i]  += count_hot
-    
-          ; count mass elements with Tmax below Tvir at accretion time
-          w = where(10.0^loc_maxt / 10.0^loc_acctvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldOutRate.gal.tviracc[j,i] += count_cold
-          hotOutRate.gal.tviracc[j,i]  += count_hot
-        endfor
-      endif ; nloc>0
-      
-      ; corresponding --OUTFLOW-- times from the HALO for these particles
-      ; -------------------------------------------------------------------
-      loc_otime = reform(at.outTime[sP.radIndHaloAcc,wAm.gmem[loc_inds_gmem]])
-      loc_otime = 1/loc_otime - 1 ; redshift
-      loc_otime = redshiftToAgeFlat(loc_otime)*1e9 ; yr
-      
-      ; make a count of those falling in the time window
-      w = where(curtime - loc_otime le loc_timeWindow,nloc)
-      
-      coldOutRate.gmem.num[i] += nloc
-      
-      ; maximum past temps, cur and acc tvirs for only those particles in the time window
-      if nloc gt 0 then begin
-        loc_maxt = maxTemp.gmem[loc_inds_gmem[w]]
-        loc_curtvir = curTvir.gmem[loc_inds_gmem[w]]
-        loc_acctvir = accTvir.gmem[loc_inds_gmem[w]]
-  
-        ; count mass elements with Tmax below each constant temperature threshold
-        for j=0,nCuts-1 do begin
-          w = where(loc_maxt le sP.TcutVals[j],count_cold,ncomp=count_hot)
-          coldOutRate.gmem.tConst[j,i] += count_cold
-          hotOutRate.gmem.tConst[j,i]  += count_hot
-        endfor
-        
-        for j=0,nVirs-1 do begin
-          ; count mass elements with Tmax below Tvir at current time
-          w = where(10.0^loc_maxt / 10.0^loc_curtvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldOutRate.gmem.tvircur[j,i] += count_cold
-          hotOutRate.gmem.tvircur[j,i]  += count_hot
-    
-          ; count mass elements with Tmax below Tvir at accretion time
-          w = where(10.0^loc_maxt / 10.0^loc_acctvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldOutRate.gmem.tviracc[j,i] += count_cold
-          hotOutRate.gmem.tviracc[j,i]  += count_hot
-        endfor
-      endif ; nloc>0
-      
-    endif ; hist_gmem[i]
-
-    if hist_stars[i] gt 0 then begin
-      ; list of indices of star gas particles in this subgroup
-      loc_inds_stars = rev_stars[rev_stars[i]:rev_stars[i+1]-1]
-      
-      ; corresponding accretion times for these particles:
-      ; stellar accretion defined as (rho,temp) joining time or 0.15rvir crossing time (most recent)
-      loc_atime_stars = reform(at.accTimeRT[wAm.stars[loc_inds_stars]])
-      
-      r_crossing_time = reform(at.accTime[sP.radIndGalAcc,wAm.stars[loc_inds_stars]])
-      w = where(r_crossing_time gt loc_atime_stars,count)
-      if count gt 0 then loc_atime_stars[w] = r_crossing_time[w]
-      
-      ; convert from scale factor to age of the universe
-      loc_atime_stars = 1/loc_atime_stars - 1 ; redshift
-      loc_atime_stars = redshiftToAgeFlat(loc_atime_stars)*1e9 ; yr
-      
-      ; note: if no 0.15rvir crossing time exists (crossed as a star particle, not as a gas cell) then
-      ;       set the accretion time to t=-1 which moves it outside any timeWindow (do not consider) (only SPH)
-      w = where(r_crossing_time eq -1,count)
-      if count gt 0 then loc_atime_stars[w] = -1.0
-      
-      ; make a count of those falling in the time window
-      w = where(curtime - loc_atime_stars le loc_timeWindow,nloc)
-      
-      coldFrac.stars.num[i]    = nloc
-      coldAccRate.stars.num[i] = nloc
-      
-      ; maximum past temps, cur and acc tvirs for only those particles in the time window
-      if nloc gt 0 then begin
-        loc_maxt_stars = maxTemp.stars[loc_inds_stars[w]]
-        loc_curtvir_stars = curTvir.stars[loc_inds_stars[w]]
-        loc_acctvir_stars = accTvir.stars[loc_inds_stars[w]]
-  
-        ; count mass elements with Tmax below each constant temperature threshold
-        for j=0,nCuts-1 do begin
-          w = where(loc_maxt_stars le sP.TcutVals[j],count_cold,ncomp=count_hot)
-          coldFrac.stars.tConst[j,i]    = float(count_cold) / nloc
-          coldAccRate.stars.tConst[j,i] = count_cold
-          hotAccRate.stars.tConst[j,i]  = count_hot
-        endfor
-        
-        for j=0,nVirs-1 do begin
-          ; count mass elements with Tmax below Tvir at current time
-          w = where(10.0^loc_maxt_stars / 10.0^loc_curtvir_stars le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldFrac.stars.tvircur[j,i]    = float(count_cold) / nloc
-          coldAccRate.stars.tvircur[j,i] = count_cold
-          hotAccRate.stars.tvircur[j,i]  = count_hot
-    
-          ; count mass elements with Tmax below Tvir at accretion time
-          w = where(10.0^loc_maxt_stars / 10.0^loc_acctvir_stars le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldFrac.stars.tviracc[j,i]    = float(count_cold) / nloc
-          coldAccRate.stars.tviracc[j,i] = count_cold
-          hotAccRate.stars.tviracc[j,i]  = count_hot
+          w = where(10.0^loc_maxTemp / 10.0^loc_accTvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          galaxy.coldFrac.(k).tVirAcc[j,i]     = float(count_cold) / nloc
+		  galaxy.coldFrac.total.tVirAcc[j,i]   += count_cold
+          galaxy.accRate.(k).cold.tVirAcc[j,i] = count_cold
+          galaxy.accRate.(k).hot.tVirAcc[j,i]  = count_hot
         endfor
       endif ;nloc>0
-    endif ; hist_stars[i]
-    
-    if hist_inter[i] gt 0 then begin
-    
-      ; list of indices of inter gas particles in this subgroup
-      loc_inds = rev_inter[rev_inter[i]:rev_inter[i+1]-1]
       
-      ; galaxy --OUTFLOW-- defined as most recent of (rho,temp) leaving time or 0.15rvir crossing time (headed out)
-      loc_otime = reform(at.outTimeRT[wAm.inter[loc_inds]])
+      ; --- GALAXY OUTFLOW ---
+      curTimeRT = max(at.outTimeRT)
       
-      r_crossing_time = reform(at.outTime[sP.radIndGalAcc,wAm.inter[loc_inds]])
-      w = where(r_crossing_time gt loc_otime,count)
-      if count gt 0 then loc_otime[w] = r_crossing_time[w]
+      loc_atime = reform( at.outTimeRT[ (wAm.(k))[loc_inds] ] )
       
-      loc_otime = 1/loc_otime - 1 ; redshift
-      loc_otime = redshiftToAgeFlat(loc_otime)*1e9 ; yr
+      ; those that satisfy at sP.snap (e.g. gal gas), use failing the cut as the outflow time
+      w = where( at.outTimeRT[ (wAm.(k))[loc_inds] ] eq curTimeRT, count)
+      if count gt 0 then loc_atime[w] = at.accTimeRT[ (wAm.(k))[loc_inds[w]] ]
       
-      ; make a count of those falling in the time window
-      w = where(curtime - loc_otime le loc_timeWindow,nloc)
+      if count_noCut gt 0 then loc_atime[w_noCut] = -1 ; see above
       
-      coldOutRate.gal.num[i] += nloc
-      
-      ; maximum past temps, cur and acc tvirs for only those particles in the time window
-      if nloc gt 0 then begin
-        loc_maxt    = maxTemp.inter[loc_inds[w]]
-        loc_curtvir = curTvir.inter[loc_inds[w]]
-        loc_acctvir = accTvir.inter[loc_inds[w]]
-  
-        ; count mass elements with Tmax below each constant temperature threshold
-        for j=0,nCuts-1 do begin
-          w = where(loc_maxt le sP.TcutVals[j],count_cold,ncomp=count_hot)
-          coldOutRate.gal.tConst[j,i] += count_cold
-          hotOutRate.gal.tConst[j,i]  += count_hot
-        endfor
-        
-        for j=0,nVirs-1 do begin
-          ; count mass elements with Tmax below Tvir at current time
-          w = where(10.0^loc_maxt / 10.0^loc_curtvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldOutRate.gal.tvircur[j,i] += count_cold
-          hotOutRate.gal.tvircur[j,i]  += count_hot
-    
-          ; count mass elements with Tmax below Tvir at accretion time
-          w = where(10.0^loc_maxt / 10.0^loc_acctvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldOutRate.gal.tviracc[j,i] += count_cold
-          hotOutRate.gal.tviracc[j,i]  += count_hot
-        endfor
-      endif ;nloc>0
-    
-    endif ; hist_inter[i]
-    
-    if sP.gfmBHs ne 0 then if hist_bhs[i] gt 0 then begin
-    
-      ; list of indices of galaxy gas particles in this subgroup
-      loc_inds = rev_bhs[rev_bhs[i]:rev_bhs[i+1]-1]
-      
-      ; galaxy accretion defined as most recent of (rho,temp) joining time or 0.15rvir crossing time (headed in)
-      loc_atime = reform(at.accTimeRT[wAm.bhs[loc_inds]])
-      
-      r_crossing_time = reform(at.accTime[sP.radIndGalAcc,wAm.bhs[loc_inds]])
-      w = where(r_crossing_time gt loc_atime,count)
+      ; modify by 0.15rvir crossing time
+      r_crossing_time = reform( at.outTime[ sP.radIndGalAcc, (wAm.(k))[ loc_inds ] ] )
+      w = where(r_crossing_time gt loc_atime, count)
       if count gt 0 then loc_atime[w] = r_crossing_time[w]
       
       loc_atime = 1/loc_atime - 1 ; redshift
-      loc_atime = redshiftToAgeFlat(loc_atime)*1e9 ; yr
+      loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
       
-      ; make a count of those falling in the time window
-      w = where(curtime - loc_atime le loc_timeWindow,nloc)
+      w = where(curtime - loc_atime le loc_timeWindow, nloc)
       
-      coldFrac.bhs.num[i]    = nloc
-      coldAccRate.bhs.num[i] = nloc
+      galaxy.outRate.(k).cold.num[i]  = nloc
       
-      ; maximum past temps, cur and acc tvirs for only those particles in the time window
       if nloc gt 0 then begin
-        loc_maxt = maxTemp.bhs[loc_inds[w]]
-        loc_curtvir = curTvir.bhs[loc_inds[w]]
-        loc_acctvir = accTvir.bhs[loc_inds[w]]
-  
+        ; maximum past temps, cur and acc tvirs for only those particles in the time window
+        loc_maxTemp = maxTemp.(k)[ loc_inds[w] ]
+        loc_curTvir = curTvir.(k)[ loc_inds[w] ]
+        loc_accTvir = accTvir.(k)[ loc_inds[w] ]
+        
         ; count mass elements with Tmax below each constant temperature threshold
         for j=0,nCuts-1 do begin
-          w = where(loc_maxt le sP.TcutVals[j],count_cold,ncomp=count_hot)
-          coldFrac.bhs.tConst[j,i]    = float(count_cold) / nloc
-          coldAccRate.bhs.tConst[j,i] = count_cold
-          hotAccRate.bhs.tConst[j,i]  = count_hot
+          w = where(loc_maxTemp le sP.TcutVals[j],count_cold,ncomp=count_hot)
+          galaxy.outRate.(k).cold.tConst[j,i] = count_cold
+          galaxy.outRate.(k).hot.tConst[j,i]  = count_hot
         endfor
         
         for j=0,nVirs-1 do begin
           ; count mass elements with Tmax below Tvir at current time
-          w = where(10.0^loc_maxt / 10.0^loc_curtvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldFrac.bhs.tvircur[j,i]    = float(count_cold) / nloc
-          coldAccRate.bhs.tvircur[j,i] = count_cold
-          hotAccRate.bhs.tvircur[j,i]  = count_hot
+          w = where(10.0^loc_maxTemp / 10.0^loc_curTvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          galaxy.outRate.(k).cold.tVirCur[j,i] = count_cold
+          galaxy.outRate.(k).hot.tVirCur[j,i]  = count_hot
     
           ; count mass elements with Tmax below Tvir at accretion time
-          w = where(10.0^loc_maxt / 10.0^loc_acctvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
-          coldFrac.bhs.tviracc[j,i]    = float(count_cold) / nloc
-          coldAccRate.bhs.tviracc[j,i] = count_cold
-          hotAccRate.bhs.tviracc[j,i]  = count_hot
+          w = where(10.0^loc_maxTemp / 10.0^loc_accTvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          galaxy.outRate.(k).cold.tVirAcc[j,i] = count_cold
+          galaxy.outRate.(k).hot.tVirAcc[j,i]  = count_hot
         endfor
       endif ;nloc>0
-    
-    endif ; hist_bhs[i]
-    
-    ; right now, cold/hotAccRate holds just particle/tracer counts, convert to total masses and rates
-    foreach k,[constInds,tVirInds] do begin ; 0=const, 1=tvircur, 2=tviracc (skip last one which is num)
-      for j=0,n_tags(totalColdMass)-1 do begin
-        ; convert accretion total mass (counts) to msun
-        totalColdMass.(j).(k)[*,i] = coldAccRate.(j).(k)[*,i] * massPerPart * units.UnitMass_in_Msun
-        totalHotMass.(j).(k)[*,i]  = coldAccRate.(j).(k)[*,i] * massPerPart * units.UnitMass_in_Msun
-        
-        ; convert accretion total(counts) to msun/year
-        coldAccRate.(j).(k)[*,i] *= massPerPart * units.UnitMass_in_Msun / loc_timeWindow
-        hotAccRate.(j).(k)[*,i]  *= massPerPart * units.UnitMass_in_Msun / loc_timeWindow
-      endfor
       
-      ; convert outflow total(counts) to msun/year
-      coldOutRate.gal.(k)[*,i]  *= massPerPart * units.UnitMass_in_Msun / loc_timeWindow
-      coldOutRate.gmem.(k)[*,i] *= massPerPart * units.UnitMass_in_Msun / loc_timeWindow
-      hotOutRate.gal.(k)[*,i]   *= massPerPart * units.UnitMass_in_Msun / loc_timeWindow
-      hotOutRate.gmem.(k)[*,i]  *= massPerPart * units.UnitMass_in_Msun / loc_timeWindow
+      ; --- HALO ACCRETION ---
+      ; accretion time defined as 1.0rvir crossing (headed in)
+      ; outflow time defined as 1.0rvir crossing (headed out)
+      loc_atime = reform( at.accTime[ sP.radIndHaloAcc, (wAm.(k))[ loc_inds ] ] )      
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
+      
+      w = where(curtime - loc_atime le loc_timeWindow, nloc)
+      
+      halo.coldFrac.(k).num[i] = nloc
+	halo.coldFrac.total.num[i] += nloc
+      
+      if nloc gt 0 then begin
+        ; maximum past temps, cur and acc tvirs for only those particles in the time window
+        loc_maxTemp = maxTemp.(k)[ loc_inds[w] ]
+        loc_curTvir = curTvir.(k)[ loc_inds[w] ]
+        loc_accTvir = accTvir.(k)[ loc_inds[w] ]
+        
+        ; count mass elements with Tmax below each constant temperature threshold
+        for j=0,nCuts-1 do begin
+          w = where(loc_maxTemp le sP.TcutVals[j],count_cold,ncomp=count_hot)
+          halo.coldFrac.(k).tConst[j,i]     = float(count_cold) / nloc
+	    halo.coldFrac.total.tConst[j,i]   += count_cold
+          halo.accRate.(k).cold.tConst[j,i] = count_cold
+          halo.accRate.(k).hot.tConst[j,i]  = count_hot
+        endfor
+        
+        for j=0,nVirs-1 do begin
+          ; count mass elements with Tmax below Tvir at current time
+          w = where(10.0^loc_maxTemp / 10.0^loc_curTvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          halo.coldFrac.(k).tVirCur[j,i]     = float(count_cold) / nloc
+		  halo.coldFrac.total.tVirCur[j,i]   += count_cold
+          halo.accRate.(k).cold.tVirCur[j,i] = count_cold
+          halo.accRate.(k).hot.tVirCur[j,i]  = count_hot
+    
+          ; count mass elements with Tmax below Tvir at accretion time
+          w = where(10.0^loc_maxTemp / 10.0^loc_accTvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          halo.coldFrac.(k).tVirAcc[j,i]     = float(count_cold) / nloc
+	    halo.coldFrac.total.tVirAcc[j,i]   += count_cold
+          halo.accRate.(k).cold.tVirAcc[j,i] = count_cold
+          halo.accRate.(k).hot.tVirAcc[j,i]  = count_hot
+        endfor
+      endif ;nloc>0
+      
+      ; --- HALO OUTFLOW ---
+      loc_atime = reform( at.outTime[ sP.radIndHaloAcc, (wAm.(k))[ loc_inds ] ] )      
+      loc_atime = 1/loc_atime - 1 ; redshift
+      loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
+      
+      w = where(curtime - loc_atime le loc_timeWindow, nloc)
+      
+      halo.outRate.(k).cold.num[i]  = nloc
+      
+      if nloc gt 0 then begin
+        ; maximum past temps, cur and acc tvirs for only those particles in the time window
+        loc_maxTemp = maxTemp.(k)[ loc_inds[w] ]
+        loc_curTvir = curTvir.(k)[ loc_inds[w] ]
+        loc_accTvir = accTvir.(k)[ loc_inds[w] ]
+        
+        ; count mass elements with Tmax below each constant temperature threshold
+        for j=0,nCuts-1 do begin
+          w = where(loc_maxTemp le sP.TcutVals[j],count_cold,ncomp=count_hot)
+          halo.outRate.(k).cold.tConst[j,i] = count_cold
+          halo.outRate.(k).hot.tConst[j,i]  = count_hot
+        endfor
+        
+        for j=0,nVirs-1 do begin
+          ; count mass elements with Tmax below Tvir at current time
+          w = where(10.0^loc_maxTemp / 10.0^loc_curTvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          halo.outRate.(k).cold.tVirCur[j,i] = count_cold
+          halo.outRate.(k).hot.tVirCur[j,i]  = count_hot
+    
+          ; count mass elements with Tmax below Tvir at accretion time
+          w = where(10.0^loc_maxTemp / 10.0^loc_accTvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
+          halo.outRate.(k).cold.tVirAcc[j,i] = count_cold
+          halo.outRate.(k).hot.tVirAcc[j,i]  = count_hot
+        endfor
+      endif ;nloc>0
+	  
+	; loop over tConst, tVirCur, tVirAcc
+	foreach ind,[constInds,tVirInds] do begin
+	  ; right now, accRate/outRate hold just particle/tracer counts, convert to mass rates
+	  factor = massPerPart * units.UnitMass_in_Msun / loc_timeWindow
+		
+	  for hotCold=0,1 do begin
+	    galaxy.accRate.(k).(hotCold).(ind)[*,i] *= factor
+	    galaxy.outRate.(k).(hotCold).(ind)[*,i] *= factor
+	    halo.accRate.(k).(hotCold).(ind)[*,i] *= factor
+	    halo.outRate.(k).(hotCold).(ind)[*,i] *= factor
+		
+	    ; compute net=(inflow-outflow) rates by type
+	    galaxy.netRate.(k).(hotCold).(ind)[*,i] = $
+	      galaxy.accRate.(k).(hotCold).(ind)[*,i] - galaxy.outRate.(k).(hotCold).(ind)[*,i]
+	    halo.netRate.(k).(hotCold).(ind)[*,i] = $
+	      halo.accRate.(k).(hotCold).(ind)[*,i] - halo.outRate.(k).(hotCold).(ind)[*,i]
+		
+	    ; calculate total rates (not by type)
+	    galaxy.accRate.total.(hotCold).(ind)[*,i] += galaxy.accRate.(k).(hotCold).(ind)[*,i]
+	    galaxy.outRate.total.(hotCold).(ind)[*,i] += galaxy.outRate.(k).(hotCold).(ind)[*,i]
+	    galaxy.netRate.total.(hotCold).(ind)[*,i] += galaxy.netRate.(k).(hotCold).(ind)[*,i]
+	    halo.accRate.total.(hotCold).(ind)[*,i] += halo.accRate.(k).(hotCold).(ind)[*,i]
+	    halo.outRate.total.(hotCold).(ind)[*,i] += halo.outRate.(k).(hotCold).(ind)[*,i]
+	    halo.netRate.total.(hotCold).(ind)[*,i] += halo.netRate.(k).(hotCold).(ind)[*,i]
+	  endfor
+      endforeach
+
+    endfor ; n_tags(wAm)
+	
+    ; loop over tConst, tVirCur, tVirAcc: normalize total cold fractions
+    foreach ind,[constInds,tVirInds] do begin
+      galaxy.coldFrac.total.(ind)[*,i] /= galaxy.coldFrac.total.num[i]
+      halo.coldFrac.total.(ind)[*,i] /= halo.coldFrac.total.num[i]
     endforeach
+    
   endfor ; i
-  
-  ; create totals of allgal=gal+stars+bhs, total=both+gmem+inter 
-  for j=0,nVirs-1 do begin
-    foreach k,tVirInds do begin
-      coldFracNorm = 0
-      
-      ; loop over each galaxyCat type contributing to allGal
-      foreach q,allgalInds do begin
-        coldAccRate.(allgalInd).(k)[j,*] += coldAccRate.(q).(k)[j,*]
-        hotAccRate.(allgalInd).(k)[j,*]  += hotAccRate.(q).(k)[j,*]
-        
-        totalColdMass.(allgalInd).(k)[j,*] += totalColdMass.(q).(k)[j,*]
-        totalHotMass.(allgalInd).(k)[j,*]  += totalHotMass.(q).(k)[j,*]
-        
-        coldFrac.(allgalInd).(k)[j,*] += coldFrac.(q).(k)[j,*] * coldFrac.(q).num
-        coldFracNorm += coldFrac.(q).num
-      endforeach
-      
-      coldFrac.(allgalInd).(k)[j,*] /= coldFracNorm
-      coldFrac.(allgalInd).num = coldFracNorm
-      coldFracNorm = 0
-      
-      ; loop over each galaxyCat type contributing to total
-      foreach q,totalInds do begin
-        coldAccRate.(totalInd).(k)[j,*] += coldAccRate.(q).(k)[j,*]
-        hotAccRate.(totalInd).(k)[j,*]  += hotAccRate.(q).(k)[j,*]
-        
-        totalColdMass.(totalInd).(k)[j,*] += totalColdMass.(q).(k)[j,*]
-        totalHotMass.(totalInd).(k)[j,*]  += totalHotMass.(q).(k)[j,*]
-        
-        coldFrac.(totalInd).(k)[j,*] += coldFrac.(q).(k)[j,*] * coldFrac.(q).num
-        coldFracNorm += coldFrac.(q).num
-      endforeach
-      
-      coldFrac.(totalInd).(k)[j,*] /= coldFracNorm
-      coldFrac.(totalInd).num = coldFracNorm
-      
-      ; calculate net rates
-      ; TODO: add +stars+BHs terms
-      coldNetRate.gal.(k)[j,*]  = coldAccRate.gal.(k)[j,*] - coldOutRate.gal.(k)[j,*]
-      coldNetRate.gmem.(k)[j,*] = coldAccRate.gmem.(k)[j,*] - coldOutRate.gmem.(k)[j,*]
-      hotNetRate.gal.(k)[j,*]   = hotAccRate.gal.(k)[j,*] - hotOutRate.gal.(k)[j,*]
-      hotNetRate.gmem.(k)[j,*]  = hotAccRate.gmem.(k)[j,*] - hotOutRate.gmem.(k)[j,*]
-      
-    endforeach
-  endfor ; nVirs
-  
-  for j=0,nCuts-1 do begin
-    foreach k,constInds do begin
-      coldFracNorm = 0
-      
-      ; loop over each galaxyCat type contributing to allGal
-      foreach q,allgalInds do begin
-        coldAccRate.(allgalInd).(k)[j,*] += coldAccRate.(q).(k)[j,*]
-        hotAccRate.(allgalInd).(k)[j,*]  += hotAccRate.(q).(k)[j,*]
-        
-        totalColdMass.(allgalInd).(k)[j,*] += totalColdMass.(q).(k)[j,*]
-        totalHotMass.(allgalInd).(k)[j,*]  += totalHotMass.(q).(k)[j,*]
-        
-        coldFrac.(allgalInd).(k)[j,*] += coldFrac.(q).(k)[j,*] * coldFrac.(q).num
-        coldFracNorm += coldFrac.(q).num
-      endforeach
-      
-      coldFrac.(allgalInd).(k)[j,*] /= coldFracNorm
-      coldFrac.(allgalInd).num = coldFracNorm ; redundant for clarity
-      coldFracNorm = 0
-      
-      ; loop over each galaxyCat type contributing to total
-      foreach q,totalInds do begin
-        coldAccRate.(totalInd).(k)[j,*] += coldAccRate.(q).(k)[j,*]
-        hotAccRate.(totalInd).(k)[j,*]  += hotAccRate.(q).(k)[j,*]
-        
-        totalColdMass.(totalInd).(k)[j,*] += totalColdMass.(q).(k)[j,*]
-        totalHotMass.(totalInd).(k)[j,*]  += totalHotMass.(q).(k)[j,*]
-        
-        coldFrac.(totalInd).(k)[j,*] += coldFrac.(q).(k)[j,*] * coldFrac.(q).num
-        coldFracNorm += coldFrac.(q).num
-      endforeach
-      
-      coldFrac.(totalInd).(k)[j,*] /= coldFracNorm
-      coldFrac.(totalInd).num = coldFracNorm ; redundant for clarity
-      
-      ; calculate net rates
-      ; TODO: add +stars+BHs terms
-      coldNetRate.gal.(k)[j,*]  = coldAccRate.gal.(k)[j,*] - coldOutRate.gal.(k)[j,*]
-      coldNetRate.gmem.(k)[j,*] = coldAccRate.gmem.(k)[j,*] - coldOutRate.gmem.(k)[j,*]
-      hotNetRate.gal.(k)[j,*]   = hotAccRate.gal.(k)[j,*] - hotOutRate.gal.(k)[j,*]
-      hotNetRate.gmem.(k)[j,*]  = hotAccRate.gmem.(k)[j,*] - hotOutRate.gmem.(k)[j,*]
-      
-    endforeach
-  endfor ; nCuts
   
   ; bin fractions into halo mass bins and make median lines
   logMassBins   = [findgen(21)/10 + 9.0,11.1,11.25,11.5,11.75,11.9,13.1]
@@ -624,122 +420,70 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
   logMassBinCen = logMassBinCen[0:-2]
   
   ; structures to store the binned values
-  template = { tConst  : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-               tVirCur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-               tVirAcc : fltarr(nVirs,logMassNbins) + !values.f_nan  }
+  tempHC = { tConst  : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+             tVirCur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+             tVirAcc : fltarr(nVirs,logMassNbins) + !values.f_nan  }
   
-  coldMedian = {}
-  
+  template = { hot : tempHC, cold : tempHC }
+
   foreach typeLabel,typeLabels do $  
-    coldMedian = mod_struct(coldMedian, typeLabel, template)
+    templateTypes = mod_struct(templateTypes, typeLabel, template)
+    
+  foreach typeLabel,typeLabels do $
+    templateCF = mod_struct(templateCF, typeLabel, tempHC)
   
-  hotMedian   = coldMedian
-  fracMedian  = coldMedian
-  coldTotal   = coldMedian ; total mass (not rates)
-  hotTotal    = coldMedian ; total mass (not rates)
-  
-  ; outflow and net rates
-  coldOutMedian = { gal : template, gmem : template }
-  hotOutMedian  = coldOutMedian
-  coldNetMedian = coldOutMedian
-  hotNetMedian  = coldOutMedian
-  
-  ; total of hot+cold (separated by gal, gmem, stars, both=gal+stars, tot=gal+stars+gmem)
-  template = fltarr(logMassNbins) + !values.f_nan
-  
-  totalHCMedian = {}
-                    
-  foreach typeLabel,typeLabels do $  
-    totalHCMedian = mod_struct(totalHCMedian, typeLabel, template)
-                    
-  totalMassHC = totalHCMedian
-                 
+  ; for (1) galaxy and (2) halo, duplicate template for: accretion (inflow), outflow, net, and coldfrac
+  galaxyMedian = { accRate : templateTypes, outRate : templateTypes, $
+                   netRate : templateTypes, coldFrac : templateCF }
+
+  haloMedian   = { accRate : templateTypes, outRate : templateTypes, $
+                   netRate : templateTypes, coldFrac : templateCF }
+				   
   ; calculate median values in bins of halo mass
   for i=0,logMassNbins-1 do begin
 
-    ; --- accretion rate ---
-    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1],count)
-    
-    if count gt 0 then begin
-    
-      for j=0,nVirs-1 do begin
-        ; loop over each tVir type
-        foreach q,tVirInds do begin
-          ; loop over each galaxyCat type (gal,gmem,stars,...)
-          for k=0,n_tags(coldMedian)-1 do begin
-            ; median accretion rates
-            coldMedian.(k).(q)[j,i] = median(coldAccRate.(k).(q)[j,w])
-            hotMedian.(k).(q)[j,i]  = median(hotAccRate.(k).(q)[j,w])
-            
-            ; median total masses
-            coldTotal.(k).(q)[j,i] = median(totalColdMass.(k).(q)[j,w])
-            hotTotal.(k).(q)[j,i]  = median(totalHotMass.(k).(q)[j,w])
-          endfor
+    ; since minNumFrac > 0, effectively restrict medians to primary only
+    w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
+              (galaxy.coldFrac.total.num+halo.coldFrac.total.num) gt minNumFrac,count)
+	
+    if count eq 0 then continue
+	
+    print,i,logMassBins[i],count
+	
+    ; loop over tConst, tVirCur, tVirAcc
+    foreach ind,[constInds,tVirInds] do begin
+	  
+	  ; how many cuts?
+	  nCuts = n_elements( galaxy.accRate.gal.hot.(ind)[*,0] )
+		
+	  for j=0,nCuts-1 do begin
+          ; loop over each galaxyCat type (gal,gmem,stars,inter,bhs,total)
+          for k=0,n_tags(galaxy.accRate)-1 do begin
           
-          ; outflow and net (gal,gmem)
-          for k=0,n_tags(coldOutMedian)-1 do begin
-            coldOutMedian.(k).(q)[j,i] = median(coldOutRate.(k).(q)[j,w])
-            hotOutMedian.(k).(q)[j,i]  = median(hotOutRate.(k).(q)[j,w])
-            coldNetMedian.(k).(q)[j,i] = median(coldNetRate.(k).(q)[j,w])
-            hotNetMedian.(k).(q)[j,i]  = median(hotNetRate.(k).(q)[j,w])
-          endfor
-        endforeach
-      endfor
-      
-      for j=0,nCuts-1 do begin
-        ; loop over each tVir type
-        foreach q,constInds do begin
-          ; loop over each galaxyCat type (gal,gmem,stars,...)
-          for k=0,n_tags(coldMedian)-1 do begin
-            ; median accretion rates
-            coldMedian.(k).(q)[j,i] = median(coldAccRate.(k).(q)[j,w])
-            hotMedian.(k).(q)[j,i]  = median(hotAccRate.(k).(q)[j,w])
-            
-            ; median total masses
-            coldTotal.(k).(q)[j,i] = median(totalColdMass.(k).(q)[j,w])
-            hotTotal.(k).(q)[j,i]  = median(totalHotMass.(k).(q)[j,w])
-          endfor
-          
-          ; outflow and net (gal,gmem)
-          for k=0,n_tags(coldOutMedian)-1 do begin
-            coldOutMedian.(k).(q)[j,i] = median(coldOutRate.(k).(q)[j,w])
-            hotOutMedian.(k).(q)[j,i]  = median(hotOutRate.(k).(q)[j,w])
-            coldNetMedian.(k).(q)[j,i] = median(coldNetRate.(k).(q)[j,w])
-            hotNetMedian.(k).(q)[j,i]  = median(hotNetRate.(k).(q)[j,w])
-          endfor
-        endforeach
-      endfor
-      
-      ; rate totals (same under any cold/hot definition)
-      for j=0,n_tags(totalHCMedian)-1 do begin
-        totalHCMedian.(j)[i] = median( coldAccRate.(j).(0)[0,w] + hotAccRate.(j).(0)[0,w] )
-        totalMassHC.(j)[i]   = median( totalColdMass.(j).(0)[0,w] + totalHotMass.(j).(0)[0,w] )
-      endfor
-      
-    endif 
-    
-    ; --- cold fraction ---
-    for k=0,n_tags(coldFrac)-1 do begin
-
-      w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and coldFrac.(k).num ge minNumFrac,count)
-      
-      if count gt 0 then begin
-        for j=0,nVirs-1 do fracMedian.(k).tVircur[j,i] = median(coldFrac.(k).tVirCur[j,w])
-        for j=0,nVirs-1 do fracMedian.(k).tViracc[j,i] = median(coldFrac.(k).tVirAcc[j,w])
-        for j=0,nCuts-1 do fracMedian.(k).tConst[j,i]  = median(coldFrac.(k).tConst[j,w])
-      endif
-    endfor
+		; loop  over both hot and cold modes
+		for hotCold=0,1 do begin
+              ; median accretion, outflow and net rates
+              galaxyMedian.accRate.(k).(hotCold).(ind)[j,i] = median(galaxy.accRate.(k).(hotCold).(ind)[j,w])
+		  galaxyMedian.outRate.(k).(hotCold).(ind)[j,i] = median(galaxy.outRate.(k).(hotCold).(ind)[j,w])
+		  galaxyMedian.netRate.(k).(hotCold).(ind)[j,i] = median(galaxy.netRate.(k).(hotCold).(ind)[j,w])
+		  
+              haloMedian.accRate.(k).(hotCold).(ind)[j,i] = median(halo.accRate.(k).(hotCold).(ind)[j,w])
+		  haloMedian.outRate.(k).(hotCold).(ind)[j,i] = median(halo.outRate.(k).(hotCold).(ind)[j,w])
+		  haloMedian.netRate.(k).(hotCold).(ind)[j,i] = median(halo.netRate.(k).(hotCold).(ind)[j,w])
+            endfor
+		  
+		; cold fractions
+		galaxyMedian.coldFrac.(k).(ind)[j,i] = median(galaxy.coldFrac.(k).(ind)[j,w])
+		haloMedian.coldFrac.(k).(ind)[j,i]   = median(halo.coldFrac.(k).(ind)[j,w])
+        endfor ;k
+      endfor ;j
+    endforeach ; ind
     
   endfor ; logMassNBins
 
-  r = {coldAccRate:coldAccRate,hotAccRate:hotAccRate,coldFrac:coldFrac,$
-       coldOutRate:coldOutRate,hotOutRate:hotOutRate,coldNetRate:coldNetRate,hotNetRate:hotNetRate,$
-       fracMedian:fracMedian,coldMedian:coldMedian,hotMedian:hotMedian,totalHCMedian:totalHCMedian,$
-       totalColdMass:totalColdMass,totalHotMass:totalHotMass,coldTotal:coldTotal,hotTotal:hotTotal,totalMassHC:totalMassHC,$
-       coldOutMedian:coldOutMedian,hotOutMedian:hotOutMedian,coldNetMedian:coldNetMedian,hotNetMedian:hotNetMedian,$
-       allgalInd:allgalInd,totalInd:totalInd,typeLabels:typeLabels,allgalInds:allgalInds,totalInds:totalInds,$
-       radIndGalAcc:sP.radIndGalAcc,radIndHaloAcc:sP.radIndHaloAcc,$
-       logMassBins:logMassBins,logMassBinCen:logMassBinCen,TcutVals:sP.TcutVals,TvirVals:sP.TvirVals}
+  r = {galaxy:galaxy, halo:halo, galaxyMedian:galaxyMedian, haloMedian:haloMedian, $
+       radIndGalAcc:sP.radIndGalAcc, radIndHaloAcc:sP.radIndHaloAcc,$
+       logMassBins:logMassBins, logMassBinCen:logMassBinCen, TcutVals:sP.TcutVals, TvirVals:sP.TvirVals}
 
   ; save
   save,r,filename=saveFilename
