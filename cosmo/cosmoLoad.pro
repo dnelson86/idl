@@ -1,6 +1,6 @@
 ; cosmoLoad.pro
 ; cosmological simulations - loading procedures (snapshots, fof/subhalo group cataloges)
-; dnelson mar.2013
+; dnelson jul.2013
 
 ; getTypeSortedIDList(): within the group catalog ID list rearrange the IDs for each FOF group to be 
 ;                        ordered first by type (not by SubNr since Subfind was run) such that the
@@ -237,6 +237,13 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
   if (verbose) then $
     print,'Loading group catalog from snapshot ('+str(sP.snap)+') in [' + str(NumFiles) + '] files.'  
   
+  ; IDs are 64bit?
+  if keyword_set(readIDs) then begin
+    longIDsBits = h5_parse(fileList[0]) ; just parse full structure of first file
+    longIDsBits = longIDsBits.IDs.ID._precision
+    if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
+  endif
+  
   ; counters
   nGroupsTot    = 0L
   nIDsTot       = 0L
@@ -297,7 +304,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
         Group_M_TH200   : fltarr(h.nGroupsTot)    ,$
         Group_R_TH200   : fltarr(h.nGroupsTot)    ,$
         GroupNsubs      : ulonarr(h.nGroupsTot)   ,$
-        GroupFirstSub   : ulonarr(h.nGroupsTot)   ,$
+        GroupFirstSub   : lonarr(h.nGroupsTot)    ,$ ; -1 if none
                                                    $
         SubgroupLen         : ulonarr(h.nSubgroupsTot)    ,$
         SubgroupLenType     : ulonarr(6,h.nSubgroupsTot)  ,$
@@ -358,7 +365,10 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
           print,'Warning: readIDs requested but no IDs in group catalog!' & stop
         endif
         
-        sfids = { IDs:lon64arr(h.nIDsTot) }
+        ; IDs are 64bit?
+        if longIDsBits eq 32 then sfids = { IDs:lonarr(h.nIDsTot) }
+        if longIDsBits eq 64 then sfids = { IDs:lon64arr(h.nIDsTot) }
+        
         sf = create_struct(sf,sfids) ;concat
       endif
       
@@ -1645,7 +1655,9 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     if fieldName eq 'ParticleIDs' or fieldName eq 'ParentID' or fieldName eq 'TracerID' then begin
       ; IDs are 64bit?
       longIDsBits = h5_parse(fileList[0]) ; just parse full structure
-      longIDsBits = longIDsBits.partType0.particleIDs._precision
+      if nPartTot[0] gt 0 then longIDsBits = longIDsBits.partType0.particleIDs._precision else $; use gas
+      if nPartTot[1] gt 0 then longIDsBits = longIDsBits.partType1.particleIDs._precision ; or dm
+      
       if longIDsBits eq 32 then r = lonarr(rDims,readSize)
       if longIDsBits eq 64 then r = lon64arr(rDims,readSize)
       if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
@@ -1972,15 +1984,15 @@ pro createSnapshotCutout, sP=sP, fOut=fOut, cenPos=cenPos, boxSize=boxSize, $
     endif
     
     ; gas - electronabundance
-    ;if tag_exist(s.parttype0,'electronabundance') then begin
-    ;  gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='nelec',verbose=verbose)
-    ;  gasfield = gasfield[wGas]
-    ;  
-    ;  s.PARTTYPE0.ELECTRONABUNDANCE._DIMENSIONS    = [countGas]
-    ;  s.PARTTYPE0.ELECTRONABUNDANCE._NELEMENTS     = countGas
-    ;  s1 = mod_struct(s.PARTTYPE0.ELECTRONABUNDANCE,'_DATA',gasfield)
-    ;  s2 = mod_struct(s2,'ELECTRONABUNDANCE',s1)
-    ;endif
+    if tag_exist(s.parttype0,'electronabundance') then begin
+      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='nelec',verbose=verbose)
+      gasfield = gasfield[wGas]
+      
+      s.PARTTYPE0.ELECTRONABUNDANCE._DIMENSIONS    = [countGas]
+      s.PARTTYPE0.ELECTRONABUNDANCE._NELEMENTS     = countGas
+      s1 = mod_struct(s.PARTTYPE0.ELECTRONABUNDANCE,'_DATA',gasfield)
+      s2 = mod_struct(s2,'ELECTRONABUNDANCE',s1)
+    endif
     
     ; gas - internal energy
     if tag_exist(s.parttype0,'internalenergy') then begin
@@ -2022,15 +2034,15 @@ pro createSnapshotCutout, sP=sP, fOut=fOut, cenPos=cenPos, boxSize=boxSize, $
     endif
     
     ; gas - metallicity
-    if tag_exist(s.parttype0,'metallicity') then begin
-      gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='metallicity',verbose=verbose)
-      gasfield = gasfield[wGas]
-      
-      s.PARTTYPE0.METALLICITY._DIMENSIONS    = [countGas]
-      s.PARTTYPE0.METALLICITY._NELEMENTS     = countGas
-      s1 = mod_struct(s.PARTTYPE0.METALLICITY,'_DATA',gasfield)
-      s2 = mod_struct(s2,'METALLICITY',s1)
-    endif
+    ;if tag_exist(s.parttype0,'metallicity') then begin
+    ;  gasfield = loadSnapshotSubset(sP=sP,partType='gas',field='metallicity',verbose=verbose)
+    ;  gasfield = gasfield[wGas]
+    ;  
+    ;  s.PARTTYPE0.METALLICITY._DIMENSIONS    = [countGas]
+    ;  s.PARTTYPE0.METALLICITY._NELEMENTS     = countGas
+    ;  s1 = mod_struct(s.PARTTYPE0.METALLICITY,'_DATA',gasfield)
+    ;  s2 = mod_struct(s2,'METALLICITY',s1)
+    ;endif
     
     ; gas - nh
     ;if tag_exist(s.parttype0,'neutralhydrogenabundance') then begin
@@ -2213,13 +2225,13 @@ pro createSnapshotCutout, sP=sP, fOut=fOut, cenPos=cenPos, boxSize=boxSize, $
     s2 = mod_struct(s2,'MASSES',s1)
    
     ; stars - metallicity
-    starfield = loadSnapshotSubset(sP=sP,partType='stars',field='metallicity',verbose=verbose)
-    starfield = starfield[wStars]
+    ;starfield = loadSnapshotSubset(sP=sP,partType='stars',field='metallicity',verbose=verbose)
+    ;starfield = starfield[wStars]
     
-    s.PARTTYPE4.METALLICITY._DIMENSIONS    = [countStars]
-    s.PARTTYPE4.METALLICITY._NELEMENTS     = countStars
-    s1 = mod_struct(s.PARTTYPE4.METALLICITY,'_DATA',starfield)
-    s2 = mod_struct(s2,'METALLICITY',s1)
+    ;s.PARTTYPE4.METALLICITY._DIMENSIONS    = [countStars]
+    ;s.PARTTYPE4.METALLICITY._NELEMENTS     = countStars
+    ;s1 = mod_struct(s.PARTTYPE4.METALLICITY,'_DATA',starfield)
+    ;s2 = mod_struct(s2,'METALLICITY',s1)
   
     ; stars - particleIDs
     starfield = loadSnapshotSubset(sP=sP,partType='stars',field='ids',verbose=verbose)
@@ -2231,22 +2243,22 @@ pro createSnapshotCutout, sP=sP, fOut=fOut, cenPos=cenPos, boxSize=boxSize, $
     s2 = mod_struct(s2,'PARTICLEIDS',s1)
     
     ; stars - potential
-    starfield = loadSnapshotSubset(sP=sP,partType='stars',field='potential',verbose=verbose)
-    starfield = starfield[wStars]
+    ;starfield = loadSnapshotSubset(sP=sP,partType='stars',field='potential',verbose=verbose)
+    ;starfield = starfield[wStars]
     
-    s.PARTTYPE4.POTENTIAL._DIMENSIONS    = [countStars]
-    s.PARTTYPE4.POTENTIAL._NELEMENTS     = countStars
-    s1 = mod_struct(s.PARTTYPE4.POTENTIAL,'_DATA',starfield)
-    s2 = mod_struct(s2,'POTENTIAL',s1)
+    ;s.PARTTYPE4.POTENTIAL._DIMENSIONS    = [countStars]
+    ;s.PARTTYPE4.POTENTIAL._NELEMENTS     = countStars
+    ;s1 = mod_struct(s.PARTTYPE4.POTENTIAL,'_DATA',starfield)
+    ;s2 = mod_struct(s2,'POTENTIAL',s1)
   
-    ; stars - particleIDs
-    starfield = loadSnapshotSubset(sP=sP,partType='stars',field='sftime',verbose=verbose)
-    starfield = starfield[wStars]
+    ; stars - star formation time
+    ;starfield = loadSnapshotSubset(sP=sP,partType='stars',field='sftime',verbose=verbose)
+    ;starfield = starfield[wStars]
     
-    s.PARTTYPE4.STELLARFORMATIONTIME._DIMENSIONS    = [countStars]
-    s.PARTTYPE4.STELLARFORMATIONTIME._NELEMENTS     = countStars
-    s1 = mod_struct(s.PARTTYPE4.STELLARFORMATIONTIME,'_DATA',starfield)
-    s2 = mod_struct(s2,'STELLARFORMATIONTIME',s1)
+    ;s.PARTTYPE4.STELLARFORMATIONTIME._DIMENSIONS    = [countStars]
+    ;s.PARTTYPE4.STELLARFORMATIONTIME._NELEMENTS     = countStars
+    ;s1 = mod_struct(s.PARTTYPE4.STELLARFORMATIONTIME,'_DATA',starfield)
+    ;s2 = mod_struct(s2,'STELLARFORMATIONTIME',s1)
   
     ; stars - velocities
     starfield = loadSnapshotSubset(sP=sP,partType='stars',field='vel',verbose=verbose)

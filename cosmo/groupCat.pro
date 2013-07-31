@@ -352,7 +352,10 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
   partType = strlowcase(string(PT)) ; so we don't change the input
   
   if strcmp(partType,'all') then begin
-    subgroupPIDs = lon64arr(total(gc.subGroupLen[valGCids],/int))
+    ; allocate return
+    if size(gc.IDs,/tname) eq 'LONG'   then subgroupPIDs = lonarr(total(gc.subGroupLen[valGCids],/int))
+    if size(gc.IDs,/tname) eq 'LONG64' then subgroupPIDs = lon64arr(total(gc.subGroupLen[valGCids],/int))
+    
     
     foreach gcID, valGCids do begin
       ; select particle IDs in subgroup
@@ -371,9 +374,10 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
 
   ; check if this particle type is present in the subgroup selection
   if total(gc.subgroupLenType[partType,valGCids] gt 0) then begin
-
-    subgroupPIDs = lon64arr(total(gc.subGroupLenType[partType,valGCids],/int))
-
+    ; allocate return
+    if size(gc.IDs,/tname) eq 'LONG'   then subgroupPIDs = lonarr(total(gc.subGroupLenType[partType,valGCids],/int))
+    if size(gc.IDs,/tname) eq 'LONG64' then subgroupPIDs = lon64arr(total(gc.subGroupLenType[partType,valGCids],/int))
+    
     ; store particle IDs of this type from each subgroup
     foreach gcID, valGCids do begin
       ; may be none
