@@ -127,10 +127,9 @@ function getDensityMinMax, densBase, nSnapshots
 
 end
 
-; loadSnapshot(): load an old (non-HDF5) snapshot, currently gas only
+; loadSnapshotOld(): load an old (non-HDF5) snapshot
 
-function loadSnapshot, fileBase, m
-  compile_opt obsolete
+function loadSnapshotOld, fileBase, m
   
   ;set filename
   if (str(m) eq 'none') then begin
@@ -141,10 +140,7 @@ function loadSnapshot, fileBase, m
   endelse
   
   ; check HDF5 format
-  if h5f_is_hdf5(f) then begin
-    print, 'snap is HDF5.'
-    return,0
-  endif
+  if h5f_is_hdf5(f) then message, 'Error: snap is HDF5.'
 
   ; header structure
   bytesLeft     = 136
@@ -158,58 +154,87 @@ function loadSnapshot, fileBase, m
         npartall:     lonarr(6),          $
         la:           intarr(bytesLeft/2) $
       }
-  
-  openr,1,f,/f77_unformatted
+      
+  openr,lun,f,/get_lun,/f77_unformatted
     ; read header
-    readu,1,h
+    readu, lun, h
 
     nGas = h.nPartTot[0]
+    nTot = total(h.nPartTot,/int)
     
     ; masses for variable mass particles (usually gas+stars)
-    ind = where((h.nPartTot gt 0) and (h.massTable eq 0))
+    ind = where((h.nPartTot gt 0) and (h.massTable eq 0), count)
     
     nMass = 0
-    if ind[0] ne -1 then nMass = total(h.nPartTot[ind])
+    if count gt 0 then nMass = total(h.nPartTot[ind],/int)
     
-    ; create structure for gas return
-    gas = { h    : h              ,$
-            pos  : fltarr(3,nGas) ,$
-            vel  : fltarr(3,ngas) ,$
-            id   : lonarr(nGas)   ,$
-            mass : fltarr(nMass)  ,$
-            u    : fltarr(nGas)    }
+    ; create structure for fields, all particles
+    pos  = fltarr(3,nTot)
+    vel  = fltarr(3,nTot)
+    ids  = lonarr(nTot)
+    if nMass gt 0 then mass = fltarr(nMass)
+    if nGas  gt 0 then u    =  fltarr(nGas)
             
     ; read gas values that are always present
-    readu,1, gas.pos
-    readu,1, gas.vel
-    readu,1, gas.id
-    
-    if nMass gt 0 then readu,1, gas.mass ; read masses if present
-    
-    readu,1, gas.u ; internal energy per unit mass
+    readu, lun, pos
+    readu, lun, vel
+    readu, lun, ids
+    if nMass gt 0 then readu, lun, mass
+    if nGas  gt 0 then readu, lun, u
     
     ; fields that are written to snapshots but do not exist in ICs
-    if (str(i) ne 'none') then begin ; how to tell this is a snapshot?
+    if ~EOF(lun) then begin
     
-      gas2 = { rho   : fltarr(nGas) ,$
-               nelec : fltarr(nGas) ,$
-               nh0   : fltarr(nGas) ,$
-               hsml  : fltarr(nGas)  }
+      rho   = fltarr(nGas)
+      nelec = fltarr(nGas)
+      nh0   = fltarr(nGas)
+      hsml  = fltarr(nGas)
                
-      readu,1, gas2.rho
+      readu, lun, rho ; density (code units)
     
       if h.flagSFR gt 0 then begin
-        readu,1, gas.nelec ; gas electron abundance relative to hydrogen
-        readu,1, gas.nh0   ; neutral hydrogen abundance relative to hydrogen
+        readu, lun, nelec ; gas electron abundance relative to hydrogen
+        readu, lun, nh0   ; neutral hydrogen abundance relative to hydrogen
       endif
       
-      readu,1, gas.hsml ; SPH smoothing length 
-      gas = create_struct(gas,gas2) ;concat
-   endif                  
+      readu, lun, hsml ; SPH smoothing length
+    endif
+    
+  close,lun
   
-  close,1
+  ; split by particle type
+  offset = 0L
+  offsetMass = 0L
   
-  return, gas
+  for i=0,n_elements(h.nPartTot)-1 do begin
+    if h.nPartTot[i] eq 0 then continue
+    
+    partType = { pos : pos[*,offset : offset + h.nPartTot[i]-1] ,$
+                 vel : vel[*,offset : offset + h.nPartTot[i]-1] ,$
+                 ids : ids[  offset : offset + h.nPartTot[i]-1] }
+         
+    ; add masses if massTable[partType] is nonzero
+    if h.massTable[i] eq 0 then begin
+      partType = mod_struct( partType, 'mass', mass[offsetMass : offsetMass + h.nPartTot[i]-1] )
+      offsetMass += h.nPartTot[i]
+    endif
+    
+    ; if gas, add extra fields
+    if i eq 0 then begin
+      if n_elements(u)     gt 0 then partType = mod_struct( partType, 'u', u )
+      if n_elements(rho)   gt 0 then partType = mod_struct( partType, 'rho', rho )
+      if n_elements(nelec) gt 0 then partType = mod_struct( partType, 'nelec', nelec )
+      if n_elements(nh0)   gt 0 then partType = mod_struct( partType, 'nh0', nh0 )
+      if n_elements(hsml)  gt 0 then partType = mod_struct( partType, 'hsml', hsml )
+    endif
+    
+    r = mod_struct( r, 'PARTTYPE'+str(i), partType )
+    offset += h.nPartTot[i]
+  endfor
+  
+  r = mod_struct( r, 'Header', h )
+  
+  return, r
 end
 
 ; writeICFile(): write old Gadget format IC file with gas particles and tracers

@@ -260,7 +260,7 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
         
         ; load tracer ids and match to maxTempsAll save order (sorted ascending)
         tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-        tr_ids = tr_ids[sort(tr_ids)]
+        tr_ids = tr_ids[calcSort(tr_ids)]
 
         idIndexMap = getIDIndexMap(tr_ids,minid=minid)
           
@@ -429,9 +429,9 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
 
 end
 
-; maxTempsAll(): record all max temps (to save time, can start from snap>0 given an existing save)
+; maxValsAll(): record all max vals of all tracers (to save time, can start from snap>0 given an existing save)
 
-pro maxTempsAll, sP=sP
+pro maxValsAll, sP=sP
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -461,7 +461,7 @@ pro maxTempsAll, sP=sP
   snapRange = [minSnap,maxSnap]
   
   ; set save filename and check existence
-  saveFilename = sP.derivPath + 'maxtemp.All.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+str(maxSnap)+'.sav'
+  saveFilename = sP.derivPath + 'maxVals.All.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+str(maxSnap)+'.sav'
 
   if file_test(saveFilename) then message,'Error: Save file already exists.'
 
@@ -481,10 +481,13 @@ pro maxTempsAll, sP=sP
     ; store the main arrays for all tracers as structures so we can write them directly
     if minSnap eq 0 then begin
       rtr_all  = { maxTemps      : fltarr(nTracers)  ,$
-                   maxTempTime   : fltarr(nTracers)   }
+                   maxTempTime   : fltarr(nTracers)  ,$
+                   maxEnt        : fltarr(nTracers)  ,$
+                   maxDens       : fltarr(nTracers)  ,$
+                   maxMachNum    : fltarr(nTracers)   }
     endif else begin
       ; starting with a previous save, just load rtr_all
-      loadFilename = sP.derivPath + 'maxtemp.All.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+str(prevSaveSnap)+'.sav'
+      loadFilename = sP.derivPath + 'maxVals.All.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+str(prevSaveSnap)+'.sav'
       restore,loadFilename,/verbose
     endelse
     
@@ -494,38 +497,64 @@ pro maxTempsAll, sP=sP
       
       ; load tracer ids and match to original list
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-      
-      ; for debugging:
-      ;match,tr_ids,tr_ids_orig,ind_tr_ids,ind_tr_ids_orig,count=countOrig
-      ;if countOrig ne n_elements(tr_ids_orig) or $
-      ;   n_elements(tr_ids) ne n_elements(tr_ids_orig) or $
-      ;   array_equal(sort(tr_ids),ind_tr_ids) ne 1 or $
-      ;   array_equal(tr_ids[ind_tr_ids],tr_ids_orig) ne 1 then message,'Error: Bad tracer IDs.'
-      ;ind_tr_ids_orig = !NULL
-      
-      ind_tr_ids = sort(tr_ids) ; quicker than match
+      trids_ind = sort(tr_ids) ; just put them in order
       tr_ids = !NULL
       
-      ; load tracer maximum temperature and sub-snapshot time at this snapshot
-      tr_maxtemp = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp')
-      
-      tr_maxtemp = mylog10(tr_maxtemp) ; tracerMC maxtemp field in Kelvin, convert to log
-      tr_maxtemp = tr_maxtemp[ind_tr_ids] ; ind_tr_ids same as sort(tr_ids)
-      
-      ; replace existing values if current snapshot has higher temps (galaxy members)
-      w = where(tr_maxtemp gt rtr_all.maxTemps,count)
-      if (count gt 0) then begin
-        rtr_all.maxTemps[w] = tr_maxtemp[w]
-        tr_maxtemp = !NULL
+        ; maxtemp
+        ; -------
+        tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp')
         
-        tr_maxtemp_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp_time')
-        tr_maxtemp_time = tr_maxtemp_time[ind_tr_ids]
+        ; sub-snapshot timing?
+        if sP.trMCFields[7] ge 0 then begin
+          tr_maxval_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp_time')
+          tr_maxval_time = tr_maxval_time[trids_ind]
+        endif else begin
+          tr_maxval_time = replicate(snapNumToRedshift(sP=sP,/time), nTracers)
+        endelse
         
-        rtr_all.maxTempTime[w] = tr_maxtemp_time[w] ; sub-snapshot timing
-      endif
-      
-      ind_tr_ids = !NULL
-      tr_maxtemp_time = !NULL
+        ; tracerMC maxtemp field in Kelvin, tracerVEL still in unit system, convert to log
+        tr_maxval = tr_maxval[trids_ind]   
+        tr_maxval = mylog10(tr_maxval)
+
+        ; replace existing values if current snapshot has higher temps
+        ; note: if tracers are inside a star particle, their maxtemp entry will be zero
+        w1 = where(tr_maxval gt rtr_all.maxTemps,count)
+        
+        if (count gt 0) then begin
+          rtr_all.maxTemps[w1]    = tr_maxval[w1]
+          rtr_all.maxTempTime[w1] = tr_maxval_time[w1]
+        endif
+        
+        ; maxent
+        ; ------
+        tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxent')
+        
+        ; convert entropy to log(cgs)
+        tr_maxval = tr_maxval[trids_ind]  
+        tr_maxval = convertTracerEntToCGS(tr_maxval,/log,sP=sP)
+        
+        w1 = where(tr_maxval gt rtr_all.maxEnt,count)
+        if (count gt 0) then rtr_all.maxEnt[w1] = tr_maxval[w1]
+        
+        ; maxdens
+        ; -------
+        tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxdens')
+        tr_maxval = tr_maxval[trids_ind]  
+        
+        w1 = where(tr_maxval gt rtr_all.maxDens,count)
+        if (count gt 0) then rtr_all.maxDens[w1] = tr_maxval[w1]
+        
+        ; maxmachnum
+        ; ----------
+        tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxmachnum')
+        
+        w1 = where(tr_maxval gt rtr_all.maxMachNum,count)
+        if (count gt 0) then rtr_all.maxMachNum[w1] = tr_maxval[w1]
+        
+        tr_maxval      = !NULL
+        tr_maxval_time = !NULL
+            
+      trids_ind = !NULL
       
       ; SAVE?
       if sP.snap eq maxSnap then begin
