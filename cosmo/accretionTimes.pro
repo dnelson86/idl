@@ -727,3 +727,125 @@ function accretionTimes, sP=sP, restart=restart
   return,r
   
 end
+
+; shyPlot(): at a target redshift, make a selection of galaxy star tracers which were in gas cells
+;            in the previous timestep (newly formed stars). normalize the time elapsed since the 
+;            first 1.0rvir crossing of each such tracer by the age of the universe at the time of
+;            that crossing. plot the resulting normalized 'accTime' distribution, comparing
+;            TRACER to FEEDBACK at z=0,1,2,3
+
+function shyPlotBin, sP=sP
+
+  ; load at target redshift
+  galcat = galaxyCat(sP=sP)
+  
+  ; make tracer selection (children of stars in galaxies only)
+  type = ( galcat.type[ replicate_var(galcat.trMC_cc) ] )
+  
+  tr_inds = where(type eq galcat.types.stars)
+  tr_ids_orig = galcat.trMC_ids[ tr_inds ]
+  
+  ; move back one snapshot, load tracer parent ids for this subset
+  sP.snap -= 1
+  tr_ids = loadSnapshotSubset(sP=sP, partType='tracerMC', field='tracerids')
+  
+  idIndexMap = getIDIndexMap(tr_ids, minid=minid)
+  tr_ids = !NULL
+  tr_inds = idIndexMap[ tr_ids_orig - minid ] ; overwrite
+  
+  tr_parids = loadSnapshotSubset(sP=sP, partType='tracerMC', field='parentids', inds=tr_inds)
+  
+  ; load gas ids and crossmatch
+  gas_ids = loadSnapshotSubset(sP=sP, partType='gas', field='ids')
+  
+  sort_inds = calcSort(gas_ids)
+  gas_ids_sorted = gas_ids[sort_inds]
+  gas_ind = value_locate(gas_ids_sorted,tr_parids) ; indices to gas_ids_sorted
+  gas_ind = sort_inds[gas_ind>0] ; indices to gas_ids (>0 removes -1 entries, which are removed next line)
+  w = where(gas_ids[gas_ind] eq tr_parids,count_inPar) ; verify we actually matched the ID
+  
+  print,' Found: ['+str(count_inPar)+'] of ['+str(n_elements(tr_ids_orig))+'] tracers.'
+  
+  tr_ids_final  = tr_ids_orig[ w ]
+  tr_inds_final = w
+  
+  ; return to original snapshot, load accTimes of first 1.0rvir crossing of main progenitor branch
+  sP.snap += 1
+  
+  at = accretionTimes(sP=sP)
+  at = reform( at.accTime[-1,tr_inds_final] )
+  
+  ; restrict to valid accTimes, convert scalefac to redshift
+  w_at = where(at ne -1, count)
+  at = 1/at[ w_at ]-1
+  
+  ; age of universe at each accTime
+  age_at  = redshiftToAgeFlat(at)
+  age_cur = redshiftToAgeFlat(sP.redshift)
+  
+  ; plot value: time since 1.0rvir crossing (Gyr) normalized by age of universe at that time (Gyr)
+  accTime_norm = (age_cur - age_at) / age_at
+  
+  return, accTime_norm
+  
+  ;start_PS,'debug.eps'
+  ;  plothist,accTime_norm,/auto,xtitle=textoidl("\Delta t_{acc} / t_{age}(t_{acc})"),ytitle="N",$
+  ;	  title=sP.run + " " + textoidl(str(sP.res)+"^3") + " " + string(sP.redshift,format='(f3.1)')
+  ;end_PS
+  
+end
+
+pro shyPlot
+
+  ; config
+  redshifts = [1.0,2.0,3.0]
+  runs      = ['feedback','tracer']
+  res       = 256
+  
+  ; plot config
+  xrange    = [0.0,3.0]
+  yrange    = [0.0,1.1]
+  binSize   = 0.02
+  lines     = [0,1] ; one per run
+  colors    = ['red','blue','orange'] ; one per redshift
+  
+  ; load binned values
+  foreach run,runs,i do begin
+    bVr = {}
+	sPr = {}
+	
+    foreach redshift,redshifts,j do begin
+	  print,run,redshift
+	  sP_cur = simParams(res=res,run=run,redshift=redshift)
+	  
+      sPr = mod_struct( sPr, 'a'+str(j), sP_cur)
+	  bVr = mod_struct( bVr, 'b'+str(j), shyPlotBin(sP=sP_cur) )
+	endforeach
+	
+	sP = mod_struct( sP, 'sP'+str(i), sPr )
+	bV = mod_struct( bV, 'bV'+str(i), bVr )
+  endforeach
+  
+  ; plot
+  start_PS,'shyPlot.eps'
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xtitle=textoidl("\Delta t_{acc} / t_{age}(t_{acc})"),$
+	  ytitle="Fraction (peak normalized to 1.0)",/xs,/ys
+	
+	; plot histogram for each run/redshift combination
+    for i=0,n_elements(runs)-1 do begin
+	  for j=0,n_elements(redshifts)-1 do begin
+	    h = histogram(bV.(i).(j), bin=binSize, loc=loc, min=xrange[0], max=xrange[1])
+	    h = float(h)/max(h)
+	  
+	    cgPlot,loc+binSize*0.5,h,color=cgColor(colors[j]),linestyle=lines[i],/overplot
+	  endfor
+	endfor
+	
+	; legend
+	legend,'z = '+string(redshifts,format='(f3.1)'),textcolors=colors,/top,/right
+	legend,runs,linestyle=lines,/bottom,/right
+	
+  end_PS
+  
+end
+

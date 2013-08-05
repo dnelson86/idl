@@ -9,14 +9,14 @@ pro scatterPlotBox
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  res      = 256
+  res      = 128
   run      = 'tracer'
-  redshift = 4.0
-  partType = 'gas' ;tracervel, tracermc, dm
+  redshift = 0.0
+  partType = 'dm' ;tracervel, tracermc, dm
 
   ; plot config
   zoomFac   = 1     ; only in axes, not along projection direction
-  sliceFac  = 20     ; along projection direction (1=whole box, 5=20% width)
+  sliceFac  = 1     ; along projection direction (1=whole box, 5=20% width)
   axes      = [0,1] ; x,y
   sliceAxis = 2     ; z
 
