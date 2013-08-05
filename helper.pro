@@ -81,6 +81,13 @@ function mylog10, x ; leave zeros as zero, instead of converting to NaN
   return, x
 end
 
+function closest, arr, x
+  w = where( abs(arr-x) eq min(abs(arr-x)), count )
+  if count eq 0 then message,'error'
+  if count gt 1 then w = w[0]
+  return,w
+end
+
 pro reportMemory
   mem = memory()
   high_GB = string( float(mem[3]) / (1024L^3), format='(f5.2)')
@@ -1019,12 +1026,12 @@ end
 @galaxyHaloCat
 @accretionMode
 @accretionTimes
-@accretionVel
+;@accretionVel
 @maxVals
 @timeScales
 @timeScalesPlot
 
-@accretionRates
+;@accretionRates
 @accretionTraj
 ;@accretionTrajVis
 @cosmoVis
@@ -1044,12 +1051,15 @@ end
 @plotMaxVals
 @binVsHaloMass
 @plotVsHaloMass
-@plotRadProfiles
+;@plotRadProfiles
 
 ; new feedback project analysis
 @plotVsRedshift
 @recycledMaterial
 @tracksFluid
+
+; zooms:
+@ICs_cosmoZoom
 
 @tracersVel_Cosmo
 ;@tracersVel_Halos

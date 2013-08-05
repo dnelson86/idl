@@ -289,6 +289,7 @@ function partTypeNum, PT
   partType = PT ; so we don't change the input
   if not isnumeric(partType) then partType = strlowcase(str(partType))
 
+  ; non-zoom, with or without GFM
   if (strcmp(partType,'gas')        or strcmp(partType,'hydro'))      then partType = 0
   if (strcmp(partType,'dm')         or strcmp(partType,'darkmatter')) then partType = 1
   if (strcmp(partType,'tracervel')  or strcmp(partType,'tracersvel')) then partType = 2
@@ -297,6 +298,11 @@ function partTypeNum, PT
   if (strcmp(partType,'wind')       or strcmp(partType,'windstars'))  then partType = 4 ;StellarFormationTime<0
   if (strcmp(partType,'blackholes') or strcmp(partType,'bh') $
                                     or strcmp(partType,'bhs'))        then partType = 5
+  
+  ; zoom
+  if (strcmp(partType,'highres_dm')  or strcmp(partType,'dm_highres')) then partType = 1
+  if (strcmp(partType,'lowres_dm')   or strcmp(partType,'dm_lowres'))  then partType = 2
+  if (strcmp(partType,'coarse_dm')   or strcmp(partType,'dm_coarse'))  then partType = 2
   
   if (strcmp(partType,'tracer') or strcmp(partType,'tracers')) then $
     message,'ERROR: Please specify which type of tracers!'

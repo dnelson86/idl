@@ -1,8 +1,8 @@
 ; simParams.pro
 ; return structure of simulation and analysis parameters with consistent information
-; dnelson jun.2013
+; dnelson jul.2013
 
-function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
+function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f=f
 
   forward_function redshiftToSnapNum
 
@@ -47,7 +47,6 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
        radIndHaloAcc: 0,$     ; 1.0 rvir crossing for halo accretion
        radIndGalAcc:  4,$     ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
        atIndMode:     -1,$     ; use first 1.0 rvir crossing to determine mode
-       mapNotMatch:   1,$ ; use idIndexMap instead of match() approach in analysis, whenever possible
        TcutVals:      [5.3,5.5,5.7],$ ; log(K) for constant threshold comparisons
        TvirVals:      [1.0,0.8,0.4],$ ; T/Tvir coefficients for variable threshold comparisons
        $
@@ -75,9 +74,75 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, f=f
   if n_elements(snap) gt 0 then $
     r.snap = snap
  
+  ; illustris
   if (run eq 'illustris') or (run eq 'illustris_dm') then begin
-    
+    message,'todo'
   
+  endif
+  
+  ; zoom project: DM+gas single halo zooms (now all in 20Mpc box, add boxsize to run label later)
+  if strmid(run,0,10) eq 'zoom_20mpc' then begin
+    if n_elements(hInd) eq 0 then message,'Error: Must specify hInd (halo index) to load zoom.'
+    
+    r.minNumGasPart  = -1 ; no additional cut
+    r.trVelPerCell   = 0
+    r.trMCPerCell    = 5
+    r.trMCFields     = [0,1,2,3,4,5,6,7,8,9,-1,-1,-1] ; up to and including WIND_COUNTER (=512, 10 of 13)
+    r.gfmNumElements = 0
+    r.gfmWinds       = 0
+    r.gfmBHs         = 0
+    r.boxSize       = 20000.0
+    r.snapRange     = [0,60]
+    r.groupCatRange = [5,133] ; z6=5, z5=14, z4=21, z3=36, z2=60
+    
+    ; fullbox, DM only run
+    if str(hInd) eq 'dm' then begin
+      r.trMCPerCell   = 0
+      r.trMCFields    = replicate(-1,11)
+      r.snapRange     = [0,10] ; z99=0, z0=10
+      r.groupCatRange = [2,10]
+      pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc_dm'
+      r.simName    = 'ZOOM_DM'
+      r.saveTag    = 'zDm'
+      r.plotPrefix = 'zDm'
+    endif else begin
+      ; zoom, with gas or dmonly?
+      if hInd ge 0 then begin
+        ; gas
+        pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc_h' + str(hInd) + '_L' + str(res)
+        r.simName    = 'ZOOM_L'+str(res)
+        r.saveTag    = 'zL'+str(res)
+        r.plotPrefix = 'zL'+str(res)
+      endif else begin
+        ; negative hInd --> dmonly
+        hInd *= -1
+        pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc_h' + str(hInd) + '_L' + str(res) + '_dmonly'
+        r.simName    = 'ZOOM_L'+str(res)+'_DM'
+        r.saveTag    = 'zDmL'+str(res)
+        r.plotPrefix = 'zDmL'+str(res)
+      endelse
+    endelse
+    
+    if res lt 7 or res gt 11 then message,'res error'
+
+    r.targetGasMass = 4.76446157e-03 ; L7
+    r.targetGasMass /= (8*(res-7)) ; factor of eight decrease at each increasing zoom level
+    
+    r.gravSoft = 4.0 ; L7
+    r.gravSoft /= (8*(res-7)) ; factor of two decrease at each increasing zoom level
+    
+    r.trMassConst = r.targetGasMass / r.trMCPerCell
+        
+    r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'/output/'
+    r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/'
+    r.savPrefix  = 'Z'
+    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.derivPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return, r
   endif
  
   ; sims.feedback (Velocity + f=5 Monte Carlo) 128,256,512 @ 20Mpc w/ fiducial Illustris parameters
