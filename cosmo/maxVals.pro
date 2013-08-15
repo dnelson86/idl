@@ -260,7 +260,7 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
         
         ; load tracer ids and match to maxTempsAll save order (sorted ascending)
         tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
-        tr_ids = tr_ids[calcSort(tr_ids)]
+        tr_ids = tr_ids[sort(tr_ids)]
 
         idIndexMap = getIDIndexMap(tr_ids,minid=minid)
           
@@ -504,6 +504,10 @@ pro maxValsAll, sP=sP
         ; -------
         tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp')
         
+        ; tracerMC maxtemp field in Kelvin, tracerVEL still in unit system, convert to log
+        tr_maxval = tr_maxval[trids_ind]   
+        tr_maxval = mylog10(tr_maxval)
+        
         ; sub-snapshot timing?
         if sP.trMCFields[7] ge 0 then begin
           tr_maxval_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp_time')
@@ -512,10 +516,6 @@ pro maxValsAll, sP=sP
           tr_maxval_time = replicate(snapNumToRedshift(sP=sP,/time), nTracers)
         endelse
         
-        ; tracerMC maxtemp field in Kelvin, tracerVEL still in unit system, convert to log
-        tr_maxval = tr_maxval[trids_ind]   
-        tr_maxval = mylog10(tr_maxval)
-
         ; replace existing values if current snapshot has higher temps
         ; note: if tracers are inside a star particle, their maxtemp entry will be zero
         w1 = where(tr_maxval gt rtr_all.maxTemps,count)
@@ -528,9 +528,9 @@ pro maxValsAll, sP=sP
         ; maxent
         ; ------
         tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxent')
+        tr_maxval = tr_maxval[trids_ind]
         
         ; convert entropy to log(cgs)
-        tr_maxval = tr_maxval[trids_ind]  
         tr_maxval = convertTracerEntToCGS(tr_maxval,/log,sP=sP)
         
         w1 = where(tr_maxval gt rtr_all.maxEnt,count)
@@ -539,7 +539,7 @@ pro maxValsAll, sP=sP
         ; maxdens
         ; -------
         tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxdens')
-        tr_maxval = tr_maxval[trids_ind]  
+        tr_maxval = tr_maxval[trids_ind]
         
         w1 = where(tr_maxval gt rtr_all.maxDens,count)
         if (count gt 0) then rtr_all.maxDens[w1] = tr_maxval[w1]
@@ -547,7 +547,8 @@ pro maxValsAll, sP=sP
         ; maxmachnum
         ; ----------
         tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxmachnum')
-        
+        tr_maxval = tr_maxval[trids_ind]
+       
         w1 = where(tr_maxval gt rtr_all.maxMachNum,count)
         if (count gt 0) then rtr_all.maxMachNum[w1] = tr_maxval[w1]
         

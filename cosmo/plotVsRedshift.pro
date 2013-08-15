@@ -1,17 +1,17 @@
 ; plotVsRedshift.pro
 ; feedback - plots skipping tconst/tvircur/tviracc definitions in favor of redshift panels
-; dnelson jul.2013
+; dnelson aug.2013
 
 ; plotRatesFracsInRedshift():
 
 pro plotRatesFracsInRedshift
 
   ; config
-  runs       = ['feedback','tracer','gadget']
-  redshifts  = [3.0,2.0,1.0,0.0]
-  res        = 256
+  runs       = ['feedback','gadget']
+  redshifts  = [3.0,2.0,1.0]
+  res        = 512
   accMode    = 'smooth' ; accretion mode: all, smooth, clumpy, stripped, recycled
-  timeWindow = 1000.0   ; consider accretion over this past time range (Myr)
+  timeWindow = 500.0    ; consider accretion over this past time range (Myr)
                         ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0        ; use Tmax/Tviracc=1 to separate hot vs. cold
   massBinInd = 4        ; plot 11.0<logM<11.5 halos for Tmax histos
@@ -24,7 +24,7 @@ pro plotRatesFracsInRedshift
   sK      = 3           ; smoothing kernel size  
   cInd    = 1           ; color index
 
-  xrange_halo = [10.0,12.0]
+  xrange_halo = [9.0,12.0]
   yrange_frac = [0.0,1.0]
   yrange_rate = [-5,-1.0]
   
@@ -93,7 +93,7 @@ pro plotRatesFracsInRedshift
         yvals = smooth(mbv.(i).(zind).galaxyMedian.coldFrac.total.tVirAcc[tVirInd,*],sK,/nan)
         cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[0],/overplot ; allgal
         
-        yvals = smooth(mbv.(i).(zind).galaxyMedian.coldFrac.total.tVirAcc[tVirInd,*],sK,/nan)
+        yvals = smooth(mbv.(i).(zind).haloMedian.coldFrac.total.tVirAcc[tVirInd,*],sK,/nan)
         cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[1],/overplot ; gmem
       endfor
       
@@ -202,7 +202,7 @@ pro plotRatesFracsInRedshift
       for i=0,n_tags(sP)-1 do begin
       
         ; gal
-        xvals = bth.(i).(zind).binLocRatio
+        xvals = bth.(i).(zind).params.binLoc.TmaxTviracc
         yvals = float( bth.(i).(zind).allGal.TmaxTviracc[massBinInd,*] ) / $
                 total( bth.(i).(zind).allGal.TmaxTviracc[j,*] )
         cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[0],/overplot ; allgal

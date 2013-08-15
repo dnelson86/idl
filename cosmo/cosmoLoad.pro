@@ -1015,7 +1015,7 @@ end
 function getSnapFilelist, fileBase, snapNum=m, subBox=subBox, checkExists=checkExists
 
   sbstr = ''
-  if keyword_set(subBox) then sbstr = 'subbox_'
+  if keyword_set(subBox) then sbstr = 'subbox0_'
 
   ; format snapNum and initial guess
   if (str(m) eq 'none') then begin
@@ -1033,7 +1033,7 @@ function getSnapFilelist, fileBase, snapNum=m, subBox=subBox, checkExists=checkE
     if (m gt 999) then $
       ext = string(m,format='(I4.4)')
       
-    f = fileBase + 'snapdir_' + ext + '/snap_' + sbstr + ext
+    f = fileBase + 'snapdir_' + sbstr + ext + '/snap_' + sbstr + ext
   endelse
 
   ; check for single (non-split)

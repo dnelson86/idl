@@ -50,12 +50,48 @@ function trackedHaloInds, sP=sP, gcID=gcID, maxZ=maxZ, minZ=minZ
 
 end
 
-; makeSubboxPanels() : generate frames for a movie based on a subbox (either whole subbox or 
+; makeSubboxFrames() : generate frames for a movie based on a subbox (either whole subbox or 
 ;   following one halo through time within that subbox) (single run or comparison of two runs)
 
-pro makeSubboxPanels
+pro makeSubboxFrames
 
-  message,'todo'
+  ; config
+  zStart = 6.0
+  zEnd   = 2.0
+  hInd   = -1 ; negative one to show whole subbox
+  
+  sP1 = simParams(res=512,run='tracer',redshift=zStart)
+  sP2 = simParams(res=512,run='feedback',redshift=zStart)
+  
+  ; load all subbox times, find ranges within [zStart,zEnd]
+  
+  
+  nFrames = 0
+  
+  ; if subbox times don't match, take the number of frames as the larger, decide for each frame
+  ; the corresponding subbox number for the lesser set (duplicate frames) (use value_locate)
+  snaps = { run1 : intarr(nFrames), run2 : intarr(nFrames) }
+  
+  ; TODO
+  
+  
+  ; if following one halo, calculate tracked position vs time from main snapshots, interpolate to subbox times
+  
+  ; loop over all frames
+  for fN=0,nFrames-1 do begin
+    sP1.snap = snaps.run1[fN]
+    sP2.snap = snaps.run2[fN]
+    
+    ; load
+    x = loadSnapshotSubset(sP=sP1,partType='gas',field='pos',/subBox)
+  
+    ; calculate colors
+    
+    ; render (call existing function)
+  
+  endfor
+  
+  stop
   
 end
 

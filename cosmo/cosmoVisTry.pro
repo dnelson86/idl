@@ -9,10 +9,11 @@ pro scatterPlotBox
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  res      = 128
-  run      = 'tracer'
-  redshift = 0.0
-  partType = 'dm' ;tracervel, tracermc, dm
+  res      = 9 ;128
+  run      = 'zoom_20Mpc_dm'
+  hInd     = 0
+  redshift = 2.0
+  partType = 'dm_highres' ;tracervel, tracermc, dm
 
   ; plot config
   zoomFac   = 1     ; only in axes, not along projection direction
@@ -21,7 +22,7 @@ pro scatterPlotBox
   sliceAxis = 2     ; z
 
   ; paths and render config
-  sP = simParams(res=res,run=run,redshift=redshift)
+  sP = simParams(res=res,run=run,redshift=redshift,hInd=hInd)
   h = loadSnapshotHeader(sP=sP)
   
   ; view parameters

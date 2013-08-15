@@ -340,11 +340,11 @@ function accretionTimes, sP=sP, restart=restart
       reportMemory
       
       ; save restart?
-      if m mod 10 eq 0 and m lt snapRange[0] and keyword_set(restart) then begin
+      if m mod 20 eq 0 and m lt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
         save,prevRad,accMask,trMinSnap,accCount,accCountRT,r,prevTime,m,filename=resFilename
         print,' --- Done! ---'
-        exit,status=33 ; requeue
+        ;exit,status=33 ; requeue
       endif
       
       ; load tracer ids and match to child ids from zMin
@@ -734,7 +734,7 @@ end
 ;            that crossing. plot the resulting normalized 'accTime' distribution, comparing
 ;            TRACER to FEEDBACK at z=0,1,2,3
 
-function shyPlotBin, sP=sP
+function shyPlotBin, sP=sP, accMode=accMode
 
   ; load at target redshift
   galcat = galaxyCat(sP=sP)
@@ -769,83 +769,116 @@ function shyPlotBin, sP=sP
   tr_ids_final  = tr_ids_orig[ w ]
   tr_inds_final = w
   
+  tr_ids_final   = !NULL
+  gas_ids        = !NULL
+  gas_ind        = !NULL
+  gas_ids_sorted = !NULL
+  tr_parids      = !NULL
+  tr_inds        = !NULL
+  sort_inds      = !NULL
+  w              = !NULL
+  
   ; return to original snapshot, load accTimes of first 1.0rvir crossing of main progenitor branch
   sP.snap += 1
   
   at = accretionTimes(sP=sP)
   at = reform( at.accTime[-1,tr_inds_final] )
   
-  ; restrict to valid accTimes, convert scalefac to redshift
-  w_at = where(at ne -1, count)
+  ; restrict to accretion mode (all are +_rec) and valid accTimes
+  am = accretionMode(sP=sP)
+  am = reform( am[tr_inds_final] )
+  
+  if accMode eq 'smooth'   then $
+    w_at = where(at ne -1 and (am eq 1 or am eq 11),count)
+  if accMode eq 'clumpy'   then $
+    w_at = where(at ne -1 and (am eq 2 or am eq 3 or am eq 12 or am eq 13),count)
+  if accMode eq 'stripped' then $
+    w_at = where(at ne -1 and (am eq 4 or am eq 14),count)
+  if accMode eq 'all' then $
+    w_at = where(at ne -1,count)
+    
+  am = !NULL
+  
+  ; convert scalefac to redshift
   at = 1/at[ w_at ]-1
   
   ; age of universe at each accTime
-  age_at  = redshiftToAgeFlat(at)
-  age_cur = redshiftToAgeFlat(sP.redshift)
-  
+  r = { age_at  : redshiftToAgeFlat(at) ,$
+        age_cur : redshiftToAgeFlat(sP.redshift) }
+        
+
   ; plot value: time since 1.0rvir crossing (Gyr) normalized by age of universe at that time (Gyr)
-  accTime_norm = (age_cur - age_at) / age_at
-  
-  return, accTime_norm
-  
-  ;start_PS,'debug.eps'
-  ;  plothist,accTime_norm,/auto,xtitle=textoidl("\Delta t_{acc} / t_{age}(t_{acc})"),ytitle="N",$
-  ;	  title=sP.run + " " + textoidl(str(sP.res)+"^3") + " " + string(sP.redshift,format='(f3.1)')
-  ;end_PS
+  return, r
   
 end
 
 pro shyPlot
 
   ; config
-  redshifts = [1.0,2.0,3.0]
+  redshift  = 2.0
   runs      = ['feedback','tracer']
-  res       = 256
+  res       = 512
+  accModes  = ['all','smooth']
   
   ; plot config
-  xrange    = [0.0,3.0]
-  yrange    = [0.0,1.1]
+  xrange    = [0.0,2.0]
+  yrange    = [0.0,0.1]
   binSize   = 0.02
-  lines     = [0,1] ; one per run
-  colors    = ['red','blue','orange'] ; one per redshift
+  colors    = ['red','blue'] ; one per run
   
-  ; load binned values
-  foreach run,runs,i do begin
-    bVr = {}
-	sPr = {}
-	
-    foreach redshift,redshifts,j do begin
-	  print,run,redshift
-	  sP_cur = simParams(res=res,run=run,redshift=redshift)
-	  
-      sPr = mod_struct( sPr, 'a'+str(j), sP_cur)
-	  bVr = mod_struct( bVr, 'b'+str(j), shyPlotBin(sP=sP_cur) )
-	endforeach
-	
-	sP = mod_struct( sP, 'sP'+str(i), sPr )
-	bV = mod_struct( bV, 'bV'+str(i), bVr )
-  endforeach
-  
-  ; plot
-  start_PS,'shyPlot.eps'
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xtitle=textoidl("\Delta t_{acc} / t_{age}(t_{acc})"),$
-	  ytitle="Fraction (peak normalized to 1.0)",/xs,/ys
+  foreach accMode,accModes do begin
+    
+  ; plot (1)
+  start_PS,'shyPlot_'+accMode+'_'+str(res)+'.eps'
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+      title=textoidl(str(res)+'^3') + ' z = '+string(redshift,format='(f3.1)')+' '+accMode,$
+      xtitle=textoidl("\Delta t_{acc} / t_{age}(t_{acc})"),$
+      ytitle="Fraction (total normalized to 1.0)",/xs,/ys
 	
 	; plot histogram for each run/redshift combination
-    for i=0,n_elements(runs)-1 do begin
-	  for j=0,n_elements(redshifts)-1 do begin
-	    h = histogram(bV.(i).(j), bin=binSize, loc=loc, min=xrange[0], max=xrange[1])
-	    h = float(h)/max(h)
+      foreach run,runs,i do begin
+        sP_cur = simParams(res=res,run=run,redshift=redshift)
+        bV     = shyPlotBin(sP=sP_cur, accMode=accMode)
+        
+        val = (bV.age_cur - bV.age_at) / bV.age_at
+        bV = !NULL
+	  h = histogram(val, bin=binSize, loc=loc, min=xrange[0], max=xrange[1])
+	  h = float(h)/total(h)
 	  
-	    cgPlot,loc+binSize*0.5,h,color=cgColor(colors[j]),linestyle=lines[i],/overplot
-	  endfor
-	endfor
+	  cgPlot,loc+binSize*0.5,h,color=cgColor(colors[i]),/overplot
+	endforeach
 	
 	; legend
-	legend,'z = '+string(redshifts,format='(f3.1)'),textcolors=colors,/top,/right
-	legend,runs,linestyle=lines,/bottom,/right
+	legend,runs,textcolors=colors,/top,/right
 	
   end_PS
+  
+  ; plot (2) nonorm
+  start_PS,'shyPlot_'+accMode+'_'+str(res)+'_nonorm.eps'
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,$
+      title=textoidl(str(res)+'^3') + ' z = '+string(redshift,format='(f3.1)')+' '+accMode,$
+      xtitle=textoidl("\Delta t_{acc} [Gyr]"),$
+      ytitle="Fraction (total normalized to 1.0)",/xs,/ys
+	
+	; plot histogram for each run/redshift combination
+      foreach run,runs,i do begin
+        sP_cur = simParams(res=res,run=run,redshift=redshift)
+        bV     = shyPlotBin(sP=sP_cur, accMode=accMode)
+        
+        val = (bV.age_cur - bV.age_at)
+        bV = !NULL
+	  h = histogram(val, bin=binSize, loc=loc, min=xrange[0], max=xrange[1])
+	  h = float(h)/total(h)
+	  
+	  cgPlot,loc+binSize*0.5,h,color=cgColor(colors[i]),/overplot
+	endforeach
+	
+	; legend
+	legend,runs,textcolors=colors,/top,/right
+	
+  end_PS
+  
+  endforeach
   
 end
 

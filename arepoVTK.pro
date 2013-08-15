@@ -1,25 +1,148 @@
 ; arepoVTK.pro
 ; helper functions to test ArepoRT and ArepoVTK
-; dnelson aug.2012
+; dnelson aug.2013
 
 @helper
 
+; runMissingFrames(): identify missing frames in a sequence and re-run them, start in ArepoRT directory
+
+pro runMissingFrames
+
+  ; config
+  path = 'frames_final/'
+  confName = 'config_movie.txt'
+  mmFrames = [0,1000]
+  
+  ; search for files and fill mask=1 for frames that already exist
+  totNumFrames = mmFrames[1]-mmFrames[0]+1
+  mask = intarr(totNumFrames)
+  
+  files = file_search(path+'*.tga') ; assume format: somename_XXX.tga
+  
+  foreach file,files do begin
+    fileNum = strsplit(file,'/',/extract) ; remove full path
+	fileNum = fileNum[-1]
+	fileNum = strsplit(fileNum,'.',/extract) ; remove extension
+	fileNum = fileNum[-2]
+	fileNum = strsplit(fileNum,'_',/extract)
+	fileNum = fix( fileNum[1] )
+	mask[fileNum] += 1
+  endforeach
+
+  w = where(mask eq 0,nMissing)
+  
+  print,'Of ['+str(totNumFrames)+'] found ['+str(n_elements(files))+'] existing, and ['+str(nMissing)+'] missing.'
+
+  if nMissing gt 0 then foreach fileNum,w do begin
+  
+    openW, lun, path + 'missing.bsub', /GET_LUN
+    
+    ; write header
+    printf,lun,'#!/bin/sh'
+    printf,lun,'#BSUB -q nancy'
+	printf,lun,'#BSUB -J spRT_'+str(fileNum)
+	printf,lun,'#BSUB -n 8'
+	printf,lun,'#BSUB -R "span[ptile=8]"'
+	printf,lun,'#BSUB -g /dnelson/orbit'
+	printf,lun,'#BSUB -x'
+	printf,lun,'#BSUB -o '+path+'run_'+str(fileNum)+'.out'
+	printf,lun,'#BSUB -e '+path+'run_'+str(fileNum)+'.err'
+	printf,lun,''
+	printf,lun,'module load hpc/openmpi-1.6_gcc-4.7.0thread'
+	printf,lun,'./ArepoRT '+confName+' '+str(fileNum)+' >> '+path+'run_'+str(fileNum)+'.txt'
+
+    ; close, queue and delete
+    close,lun
+    free_lun,lun
+      
+    spawn, 'bsub < ' + path + 'missing.bsub', result
+    print,str(fileNum)+'  '+result
+    wait,0.2
+    spawn, 'rm ' + path + 'missing.bsub'
+
+  endforeach
+  
+  stop
+  
+end
+
+; plotSpoon3D(): quick point plot of a snapshot with a surface boundary
+
+pro plotSpoon3D
+ 
+  ; config
+  axes = [0,2]
+  path = '/n/home07/dnelson/sims.idealized/sims.coffee3D/output/'
+  snaps = [0,5,10,15,20]
+  colors = ['red','blue','green','orange','yellow']
+  
+  start_PS, path + 'spoon_pos.eps', xs=8, ys=8
+  
+    cgPlot,[0],[0],/nodata,xrange=[0,1],yrange=[0,1],/xs,/ys,xtitle="axis"+str(axes[0]),$
+      ytitle="axis"+str(axes[1]),aspect=1.0
+    
+    times = []
+  
+    foreach snap,snaps,k do begin
+      fpath = path + 'snap_' + string(snap,format='(I3.3)') + '.hdf5'
+      
+      x = h5_parse(fpath,/read)
+      times = [times, x.header.time._data]
+      
+      ids = x.parttype0.particleids._data
+      pos = x.parttype0.coordinates._data
+      dens = x.parttype0.density._data
+      mass = double(x.parttype0.masses._data)
+      
+      ; spoon boundingbox?
+      ;print,'mass',total(mass[where(ids ge -1)],/double)
+      
+      w = where(ids eq -2,count)
+      spoon_pos = pos[*,w]
+      spoon_bbox = { x:minmax(spoon_pos[0,*]), y:minmax(spoon_pos[1,*]), z:minmax(spoon_pos[2,*]) }
+      
+      print,'snap = '+str(snap)+' gascount = '+str(count)
+      print,' spoon bBox x ['+string(spoon_bbox.x[0],format='(f4.2)')+' '+$
+                              string(spoon_bbox.x[1],format='(f4.2)')+']'+$
+                        ' y ['+string(spoon_bbox.y[0],format='(f4.2)')+' '+$
+                              string(spoon_bbox.y[1],format='(f4.2)')+']'+$
+                        ' z ['+string(spoon_bbox.z[0],format='(f4.2)')+' '+$
+                              string(spoon_bbox.z[1],format='(f4.2)')+']'
+      
+      cgPlot,spoon_pos[axes[0],*],spoon_pos[axes[1],*],psym=3,/overplot,color=colors[k]
+      
+      if k eq 1 then begin
+        w = where(ids ge 0 and dens gt 1.5,count)
+        print,'fluid',count
+        cgPlot,pos[axes[0],w],pos[axes[1],w],psym=3,/overplot,color=cgColor('black')
+      endif
+    endforeach
+    
+    legend,'t = '+string(times,format='(f3.1)'),textcolor=colors,/top,/right
+  
+  end_PS
+  
+  stop
+
+end
+
 ; makeVTKColorTable(): output .tbl discrete color table
+; see: http://www.exelisvis.com/docs/LoadingDefaultColorTables.html
 
 pro makeVTKColorTable
 
   ; load colortable into rgb[N,3]
-  loadColorTable,'helix',rgb_table=rgb
+  ;loadColorTable,'helix',rgb_table=rgb
   
   ; idl builtins
-  ;loadct,33
-  ;tvlct,rgb,/get
+  loadct,13
+  tvlct,rgb,/get
   
   start = 0
   
   nVals = n_elements(rgb[*,0])
 
-  fileName = 'cubehelix_1_50.tbl'
+  fileName = 'idl_13_rainbow.tbl'
 
   ; alpha channel
   alpha = fltarr(nVals) + 1.0 ; uniform

@@ -214,7 +214,7 @@ pro orderLagrangianVolumes
   ; config
   haloMassRange  = [11.8,12.2] ; log msun
   targetRedshift = 2.0 ; resimulate until this redshift only
-  zoomLevel      = 4    ; levelmax-levelmin
+  zoomLevel      = 1    ; levelmax-levelmin
   
   sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=targetRedshift)
 
@@ -318,7 +318,11 @@ pro orderLagrangianVolumes
       print,'['+string(k,format='(i2)')+']'+$
             ' hInd = '+string(halo.hInd,format='(i4)')+$
             ' mass = '+string(halo.mass,format='(f5.2)')+$
-            ' vol = '+ string(haloStat.volume,format='(f5.1)')
+            ' rvir = '+string(halo.rVir,format='(f5.1)')+$
+            ' vol = '+ string(haloStat.volume,format='(f5.1)')+$
+            ' pos = ['+string(halo.pos[0],format='(f8.2)')+' '+$
+                       string(halo.pos[1],format='(f8.2)')+' '+$
+                       string(halo.pos[2],format='(f8.2)')+' ]'
     
   endfor
  
@@ -339,7 +343,11 @@ pro orderLagrangianVolumes
     print,'['+string(ind,format='(i2)')+']'+$
           ' hInd = '+string(halo.hInd,format='(i4)')+$
           ' mass = '+string(halo.mass,format='(f5.2)')+$
-          ' vol = '+ string(haloStat.volume,format='(f5.1)')
+          ' rvir = '+string(halo.rVir,format='(f5.1)')+$
+          ' vol = '+ string(haloStat.volume,format='(f5.1)')+$
+          ' pos = ['+string(halo.pos[0],format='(f8.2)')+' '+$
+                     string(halo.pos[1],format='(f8.2)')+' '+$
+                     string(halo.pos[2],format='(f8.2)')+' ]'
     print,'      boxCenter: [ '+$
       string(haloStat.boxCenter.x/sP.boxSize,format='(f7.4)')+' , '+$
       string(haloStat.boxCenter.y/sP.boxSize,format='(f7.4)')+' , '+$
@@ -354,15 +362,110 @@ pro orderLagrangianVolumes
   stop
 end
 
-; checkLowResContamination(): look for intrusion of lowres DM particles, or MC tracers starting in lowres gas 
-;   cells that make it into the Lagrangian region of the target halo
+; zoomTargetHalo(): locate our target halo in a zoom snapshot
 
-pro checkLowResContamination
+function zoomTargetHalo, sP=sP, gc=gc
 
-  sP = simParams(run='zoom_20Mpc',res=8,hInd=0,redshift=0.0)
+  if n_elements(sP) eq 0 then message,'Error: Must supply sP.'
+  if n_elements(gc) eq 0 then gc = loadGroupCat(sP=sP,/skipIDs)
 
-  gc = loadGroupCat(sP=sP,/skipIDs)
+  expectedHaloPos = sP.targetHaloPos + sP.zoomShiftPhys
   
+  massDiffs = abs( sP.targetHaloMass - codeMassToLogMsun(gc.subgroupMass) )
+  hInd = ( where(massDiffs eq min(massDiffs),count) )[0]
+  if count ne 1 then message,'Error'
+  
+  posDiff = expectedHaloPos - gc.subgroupPos[*,hInd]
+  foundMass = codeMassToLogMsun( gc.subgroupMass[hInd] )
+  foundRvir = gc.group_r_crit200[ gc.subgroupGrNr[hInd] ]
+  distNorm = sqrt( posDiff[0]^2 + posDiff[1]^2 + posDiff[2]^2 ) / foundRvir
+  
+  print,'zoom hInd: '+str(hInd)
+  print,'targetMass ['+str(sP.targetHaloMass)+'] foundMass ['+str(foundMass)+']'
+  print,'targetRvir ['+str(sP.targetHaloRvir)+'] foundRvir ['+str(foundRvir)+']'
+  print,'posDiff: ',posDiff
+  print,'distNorm: ',distNorm
+  
+  return, hInd
+end
+
+; checkDMContamination(): look for intrusion of lowres DM particles into the Lagrangian region of the target halo
+
+pro checkDMContamination
+
+  ; config
+  sP = simParams(run='zoom_20Mpc_dm',res=9,hInd=0,redshift=2.0)
+
+  ; load
+  gc   = loadGroupCat(sP=sP,/skipIDs)
+  hInd = zoomTargetHalo(sP=sP, gc=gc) ; which subhalo is our target halo?
+  
+  ; group catalog check
+  nCoarseSubhalo = gc.subgroupLenType[ partTypeNum('lowres_dm'),hInd ]
+  nCoarseFof     = gc.groupLenType[ partTypeNum('lowres_dm'), gc.subgroupGrNr[hInd] ]
+  
+  print,'nCoarseSubhalo ['+str(nCoarseSubhalo)+'] nCoarseFof ['+str(nCoarseFof)+']'
+  
+  ; spatial check: load lowres DM positions
+  rVirFac = (1.5 * sP.zoomLevel + 1)
+  pos = loadSnapshotSubset(sP=sP,partType='lowres_dm',field='pos')
+  
+  dists = periodicDists(gc.subgroupPos[*,hInd],pos,sP=sP)
+  dists /= gc.group_r_crit200[ gc.subgroupGrNr[hInd] ] ; divide by found rvir
+  
+  w = where(dists le rVirFac,nRvirFac)
+  print,'Spatial within rVirFac='+str(rVirFac)+' have ['+str(nRvirFac)+'] coarse DM.'
+  w = where(dists le 1.5,n15rvir)
+  print,'Spatial within rVirFac=1.5 have ['+str(n15rvir)+'] coarse DM.'
+  
+  if n15rvir eq 0 and nCoarseSubhalo eq 0 and nCoarseFof eq 0 then print,' - PASSED -' else print,' - FAILED -'
+  
+  stop
+
+end
+
+; checkGasContamination(): look for the intrusion of MC tracers starting in lowres gas cells
+
+pro checkGasContamination
+
+  ; config
+  sP = simParams(run='zoom_20Mpc',res=9,hInd=0)
+
+  ; load
+  sP.snap = 0
+  sP.redshift = snapNumToRedshift(sP=sP)
+  
+  h = loadSnapshotHeader(sP=sP)
+
+  tr_ids  = loadSnapshotSubset(sP=sP, partType='tracerMC', field='tracerids')
+ 
+  ; trIDs > IDS_OFFSET*trMCPerCell are in highres
+  ; trIDs < IDS_OFFSET*trMCPerCell are in lowres
+  tr_ids_highres = tr_ids[ where(tr_ids gt sP.ids_offset * sP.trMCPerCell) ]
+  tr_ids_lowres  = tr_ids[ where(tr_ids lt sP.ids_offset * sP.trMCPerCell) ]
+  
+  ; sanity check
+  calcMatch,tr_ids,tr_ids_highres,ind1,ind_high,count=count1
+  calcMatch,tr_ids,tr_ids_lowres,ind2,ind_low,count=count2
+  
+  if count1+count2 ne n_elements(tr_ids) then message,'Fail'
+  if intersection(tr_ids_highres,tr_ids_lowres) ne -1 then message,'Fail'
+  if intersection(ind1,ind2) ne -1 then message,'Fail'
+  
+  mask = bytarr(n_elements(tr_ids))
+  mask[ind1] = 1B
+  mask[ind2] = 1B
+  w = where(mask eq 0B,count)
+  if count gt 0 then message,'Fail'
+  
+  if count1 ne h.nPartTot[ partTypeNum('highres_dm') ] * sP.trMCPerCell then message,'Fail'
+  if count2 ne h.nPartTot[ partTypeNum('lowres_dm') ] * sP.trMCPerCell then message,'Fail'
+  
+  ; tracer IDs are ok, load gas cells by group catalog
+  gc   = loadGroupCat(sP=sP,/skipIDs)
+  hInd = zoomTargetHalo(sP=sP, gc=gc) ; which subhalo is our target halo?
+  
+  message,'TODO'
   stop
 
 end
