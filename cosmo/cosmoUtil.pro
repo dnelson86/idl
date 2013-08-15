@@ -1,32 +1,43 @@
 ; cosmoUtil.pro
 ; cosmological simulations - utility functions
-; dnelson nov.2012
+; dnelson aug.2013
 
 ; redshiftToSnapNum(): convert redshift to the nearest snapshot number
 
-function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose
+function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose, subBox=subBox
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   if not keyword_set(verbose) then verbose = 0
+  if ~keyword_set(sP) then message,'Error: Must input sP.'
+  if n_elements(redshiftList) eq 0 then redshiftList = [sP.redshift]
   
-  saveFileName = sP.derivPath + sP.savPrefix + '_snapnum.redshift.sav'
+  sbstr = ''
+  if keyword_set(subBox) then sbstr = 'subbox0_'  
+  
+  saveFileName = sP.derivPath + sP.savPrefix + '_' + sbstr + 'snapnum.redshift.sav'
 
   if not (file_test(saveFileName)) then begin
 
     nSnaps = 400 ; maximum
+    if keyword_set(subBox) then nSnaps *= 10
     
     redshifts = fltarr(nSnaps) - 1
     times     = fltarr(nSnaps) - 1
     
     for m=0,nSnaps-1 do begin
+      ; format snapshot number
+      if (m le 999) then $
+        ext = string(m,format='(I3.3)')
+      if (m gt 999) then $
+        ext = string(m,format='(I4.4)')
+        
       ; format filename
-      ext = str(string(m,format='(I3.3)'))
-      f = sP.simPath + 'snapdir_' + ext + '/snap_' + ext + '.0.hdf5'
+      f = sP.simPath + 'snapdir_' + sbstr + ext + '/snap_' + sbstr + ext + '.0.hdf5'
       
       ; single file per group catalog
       if (not file_test(f)) then $
-        f = sP.simPath + 'snap_' + ext + '.hdf5'
+        f = sP.simPath + 'snap_' + sbstr + ext + '.hdf5'
         
       ; single groupordered file per group catalog
       if (not file_test(f)) then $

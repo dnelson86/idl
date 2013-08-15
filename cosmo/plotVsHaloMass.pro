@@ -13,9 +13,9 @@ pro plotPreBin, sP=sP
   res        = sP.res ;256
   run        = sP.run
 
-  runs        = ['tracer','feedback','gadget']
-  resolutions = [128,256]
-  timeWindows = list(250.0,500.0,1000.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
+  runs        = [sP.run] ;['feedback','gadget'] ;tracer
+  resolutions = [512]
+  timeWindows = list(500.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
   accModes    = list('all','smooth','smooth','clumpy','stripped','recycled')
 
   

@@ -226,7 +226,8 @@ pro plotQueueTest
   print,'Found ['+str(n_elements(host))+'] entries.'
   
   start_PS, jobPath + 'histo.eps'
-    plothist, testTime / mean(testTime), /auto, xtitle=textoidl("\Delta t / < \Delta t >"), ytitle="Number of Nodes"
+    plothist, testTime / min(testTime), /auto, xtitle=textoidl("\Delta t / min ( \Delta t )"), $
+      ytitle="Number of Nodes", /ylog
   end_PS
   
   ; sort

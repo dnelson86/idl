@@ -1,6 +1,58 @@
 ; simParams.pro
 ; return structure of simulation and analysis parameters with consistent information
-; dnelson jul.2013
+; dnelson aug.2013
+
+function fillZoomParams, r, res=res, hInd=hInd
+
+  ; convert res to levelMax if needed
+  r.levelMax = res
+  if res ge 64 then res = alog10(res)/alog10(2)
+  if res-round(res) gt 1e-6 then message,'Error: Bad res'
+  r.levelMax = round(res)
+
+  if r.levelMin lt 7 or r.levelMax gt 11 or r.levelMax lt r.levelMin then message,'res error'
+  if r.levelMax eq 8 then message,'Error: Does not exist.'
+  
+  if r.levelMin ne r.levelMax then $
+    if n_elements(hInd) eq 0 then message,'Error: Must specify hInd to load zoom.'
+  print,'sP levMin levMax: ',r.levelMin,r.levelMax
+  
+  r.zoomLevel = r.levelMax - r.levelMin
+
+  r.targetGasMass = 4.76446157e-03 ; L7
+  r.targetGasMass /= (8*r.zoomLevel) ; factor of eight decrease at each increasing zoom level
+  
+  r.gravSoft = 4.0 ; L7
+  r.gravSoft /= (8*r.zoomLevel) ; factor of two decrease at each increasing zoom level
+  
+  if hInd eq 0 then begin
+    ;[ 6] hInd =   95 mass = 11.97 rvir = 239.9 vol =  69.3 pos = [ 7469.41  5330.66  3532.18 ]
+    ;  boxCenter: [  0.3977 ,  0.2466 ,  0.1829 ]
+    ;  boxExtent: [  0.2529 ,  0.1853 ,  0.1847 ]
+    r.targetHaloInd  = 95
+    r.targetHaloPos  = [7469.41, 5330.66, 3532.18]
+    r.targetHaloRvir = 239.9 ; ckpc
+    r.targetHaloMass = 11.97 ; log msun
+    r.targetRedshift = 2.0
+    
+    if r.levelMax eq 7  then r.zoomShift = [0,0,0]
+    if r.levelMax eq 9  then r.zoomShift = [13,32,40]
+    if r.levelMax eq 10 then r.zoomShift = [13,31,40]
+    if r.levelMax eq 11 then r.zoomShift = [14,31,38]
+    
+    if r.levelMax eq 9  then r.ids_offset =  10000000L
+    if r.levelMax eq 10 then r.ids_offset =  50000000L
+    if r.levelMax eq 11 then r.ids_offset = 500000000L
+  endif
+  
+  ; convert zoomShift to zoomShiftPhys
+  r.zoomShiftPhys = r.zoomShift / 2.0^r.levelMin * r.boxSize
+  
+  if r.targetHaloMass eq 0.0 then message,'Error: Unrecognized zoom hInd.'
+  if r.zoomLevel eq 0 then message,'Strange'
+  
+  return, r
+end
 
 function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f=f
 
@@ -19,17 +71,32 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
        saveTag:      '',$    ; save string: trVel, trMC, or SPH
 	 simName:      '',$    ; label to add to plot legends (e.g. "GADGET", "AREPO", "FEEDBACK")
        plotPrefix:   '',$    ; plot prefix for simulation (make unique, e.g. 'GR')
-       boxSize:      0.0,$   ; boxsize of simulation, kpc
-       targetGasMass:0.0,$   ; refinement/derefinement target, equal to SPH gas mass in equivalent run
-       gravSoft:     0.0,$   ; gravitational softening length (ckpc)
        snapRange:    [0,0],$ ; snapshot range of simulation
        groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
        plotPath:     '',$    ; working path to put plots
        derivPath:    '',$    ; path to put derivative (data) files
        snap:         -1,$    ; convenience for passing between functions
-       res:          0,$     ; copied from input
        run:          '',$    ; copied from input
        redshift:     -1.0,$  ; copied from input
+       $
+       $ ; run parameters
+       res:          0,$     ; copied from input
+       boxSize:      0.0,$   ; boxsize of simulation, kpc
+       targetGasMass:0.0,$   ; refinement/derefinement target, equal to SPH gas mass in equivalent run
+       gravSoft:     0.0,$   ; gravitational softening length (ckpc)
+       $
+       $ ; zoom runs only
+       levelmin:       0,$     ; power of two minimum level parameter (e.g. MUSIC L7=128, L8=256, L9=512, L10=1024)
+       levelmax:       0,$     ; power of two maximum level parameter (equals levelmin for non-zoom runs)
+       zoomLevel:      0,$     ; levelmax-levelmin
+       zoomShift:      [0,0,0]       ,$ ; Music output: "Domain will be shifted by (X, X, X)"
+       zoomShiftPhys:  [0.0,0.0,0.0] ,$ ; the domain shift in box units
+       targetHaloPos:  [0.0,0.0,0.0] ,$ ; position at targetRedshift in fullbox
+       targetHaloInd:  0             ,$ ; hInd (subhalo index) at targetRedshift in fullbox
+       targetHaloRvir: 0.0           ,$ ; rvir (ckpc) at targetRedshift
+       targetHaloMass: 0.0           ,$ ; mass (logmsun) at targetRedshift
+       targetRedshift: 0.0           ,$ ; maximum redshift the halo can be resimulated to
+       ids_offset:     0L            ,$ ; IDS_OFFSET configuration parameter
        $
        $ ; tracers
        trMassConst:  0.0,$        ; mass per tracerMC under equal mass assumption (=TargetGasMass/trMCPerCell)
@@ -80,8 +147,48 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
   
   endif
   
+  ; zoom project: DM only single halo zooms (L=7/128 for fullbox)
+  if run eq 'zoom_20mpc_dm' then begin
+  
+    r.minNumGasPart  = -1 ; no additional cut
+    r.trVelPerCell   = 0
+    r.trMCPerCell    = 0
+    r.trMCFields     = replicate(-1,13)
+    r.gfmNumElements = 0
+    r.gfmWinds       = 0
+    r.gfmBHs         = 0
+    r.boxSize        = 20000.0
+    r.levelMin       = 7 ; uniform box @ 128
+    r.levelMax       = 7 ; default
+    r.snapRange      = [0,10] ; z99=0, z0=10
+    r.groupCatRange  = [2,10]
+    r.targetGasMass  = 0.0
+    r.trMassConst    = 0.0
+    
+    if n_elements(hInd) gt 0 then r = fillZoomParams(r,res=res,hInd=hInd)
+              
+    if r.levelMin ne r.levelMax then $
+      pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc_h' + str(hInd) + '_L' + str(r.levelMax) $
+    else $
+      pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc'
+              
+    r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/output/'
+    r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/'
+    r.savPrefix  = 'Z'
+    r.simName    = 'ZOOM_L'+str(r.levelMax)+'_DM'
+    r.saveTag    = 'zDmL'+str(r.levelMax)
+    r.plotPrefix = 'zDmL'+str(r.levelMax)
+    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.derivPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return, r
+  endif
+  
   ; zoom project: DM+gas single halo zooms (now all in 20Mpc box, add boxsize to run label later)
-  if strmid(run,0,10) eq 'zoom_20mpc' then begin
+  if run eq 'zoom_20mpc' then begin
     if n_elements(hInd) eq 0 then message,'Error: Must specify hInd (halo index) to load zoom.'
     
     r.minNumGasPart  = -1 ; no additional cut
@@ -91,51 +198,27 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.gfmNumElements = 0
     r.gfmWinds       = 0
     r.gfmBHs         = 0
-    r.boxSize       = 20000.0
-    r.snapRange     = [0,60]
-    r.groupCatRange = [5,133] ; z6=5, z5=14, z4=21, z3=36, z2=60
+    r.boxSize        = 20000.0
+    r.levelMin       = 7 ; uniform box @ 128
+    r.levelMax       = 7 ; default
+    r.snapRange      = [0,60]
+    r.groupCatRange  = [5,133] ; z6=5, z5=14, z4=21, z3=36, z2=60
     
-    ; fullbox, DM only run
-    if str(hInd) eq 'dm' then begin
-      r.trMCPerCell   = 0
-      r.trMCFields    = replicate(-1,11)
-      r.snapRange     = [0,10] ; z99=0, z0=10
-      r.groupCatRange = [2,10]
-      pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc_dm'
-      r.simName    = 'ZOOM_DM'
-      r.saveTag    = 'zDm'
-      r.plotPrefix = 'zDm'
-    endif else begin
-      ; zoom, with gas or dmonly?
-      if hInd ge 0 then begin
-        ; gas
-        pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc_h' + str(hInd) + '_L' + str(res)
-        r.simName    = 'ZOOM_L'+str(res)
-        r.saveTag    = 'zL'+str(res)
-        r.plotPrefix = 'zL'+str(res)
-      endif else begin
-        ; negative hInd --> dmonly
-        hInd *= -1
-        pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc_h' + str(hInd) + '_L' + str(res) + '_dmonly'
-        r.simName    = 'ZOOM_L'+str(res)+'_DM'
-        r.saveTag    = 'zDmL'+str(res)
-        r.plotPrefix = 'zDmL'+str(res)
-      endelse
-    endelse
-    
-    if res lt 7 or res gt 11 then message,'res error'
-
-    r.targetGasMass = 4.76446157e-03 ; L7
-    r.targetGasMass /= (8*(res-7)) ; factor of eight decrease at each increasing zoom level
-    
-    r.gravSoft = 4.0 ; L7
-    r.gravSoft /= (8*(res-7)) ; factor of two decrease at each increasing zoom level
+    if n_elements(hInd) gt 0 then r = fillZoomParams(r,res=res,hInd=hInd)
+              
+    if r.levelMin ne r.levelMax then $
+      pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc_h' + str(hInd) + '_L' + str(r.levelMax) $
+    else $
+      pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc'
     
     r.trMassConst = r.targetGasMass / r.trMCPerCell
         
     r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'/output/'
     r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/'
     r.savPrefix  = 'Z'
+    r.simName    = 'ZOOM_L'+str(r.levelMax)
+    r.saveTag    = 'zL'+str(r.levelMax)
+    r.plotPrefix = 'zL'+str(r.levelMax)
     r.plotPath   = '/n/home07/dnelson/coldflows/'
     r.derivPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/data.files/'
     
