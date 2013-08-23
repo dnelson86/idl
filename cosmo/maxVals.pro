@@ -76,11 +76,11 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       print,m
       
       ; save restart?
-      if m mod 10 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
+      if m mod 20 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
         save,rtr,m,filename=resFilename
         print,' --- Done! ---'
-        exit,status=33 ; requeue
+        ;exit,status=33 ; requeue
       endif
       
       ; load gas ids and match to catalog
@@ -182,11 +182,11 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       print,m  
   
       ; save restart?
-      if m mod 10 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
+      if m mod 20 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
         save,rtr,galcat_trids,num_galcat_trs,m,filename=resFilename
         print,' --- Done! ---'
-        exit,status=33 ; requeue
+        ;exit,status=33 ; requeue
       endif
       
       if maxTempsAllFlag eq 0 then begin ; normal
@@ -339,11 +339,11 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       print,m  
   
       ; save restart?
-      if m mod 10 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
+      if m mod 20 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
         save,rtr,galcat_trids,galcat_num_trs,m,filename=resFilename
         print,' --- Done! ---'
-        exit,status=33 ; requeue
+        ;exit,status=33 ; requeue
       endif
   
       ; load tracer ids and match to child ids from zMin

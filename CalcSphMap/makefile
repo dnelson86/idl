@@ -3,8 +3,8 @@
 # export C_INCLUDE_PATH=$C_INCLUDE_PATH:/n/sw/idl-8.1/idl/idl81/external/include
 # comment out TWODIMS OPT for 3D version
 
-OPT = -DTWODIMS
-EXEC = CalcSphMap_2D.so
+#OPT = -DTWODIMS
+EXEC = CalcSphMap_3D.so
 
 SRCS   = main.c
 

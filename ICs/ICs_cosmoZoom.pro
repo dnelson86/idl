@@ -2,6 +2,127 @@
 ; zoom project - helper for generating zoom ICs with MUSIC (O. Hahn)
 ; dnelson aug.2013
 
+pro checkZoomDerefineGal
+
+  ; config
+  sP = simParams(run='zoom_20Mpc_derefgal',res=9,hInd=0,redshift=3.0)
+  print,sP.simPath
+  fileName = '/n/home07/dnelson/temp.txt'
+  ptStruct = {line:''}
+  headerLines = 1
+  
+  ; load
+  x = loadCSV(headerLines, fileName, ptStruct)
+  x = x.line
+  
+  updateFlag = intarr(n_elements(x))
+  time       = fltarr(n_elements(x))
+  redshift   = fltarr(n_elements(x))
+  haloMass   = fltarr(n_elements(x))
+  xyz        = fltarr(3,n_elements(x))
+  
+  ; parse
+  for i=0,n_elements(x)-1 do begin
+    line = strsplit(x[i],' ',/extract)
+    if line[1] eq '[UPDATE]' then updateFlag[i] = 1
+    
+    time[i]     = strmid(line[2],2)
+    redshift[i] = 1/time[i]-1
+    haloMass[i] = alog10( 1e10*line[6] )
+    xyz[0,i]    = line[9]
+    xyz[1,i]    = line[10]
+    xyz[2,i]    = line[11]
+  endfor
+  
+  ; plot
+  w = where(updateFlag eq 1)
+  pos = plot_pos(rows=4,cols=1)
+  
+  start_PS,'derefGal_haloEvo.eps', xs=9, ys=12
+    xrange = minmax(time[w])*[0.99,1.01]
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=[10.3,11.8],/xs,/ys,pos=pos[0],$
+      ytitle="Mass",xtickname=replicate(' ',10)
+      
+    cgPlot,time[w],haloMass[w],line=0,/overplot
+      
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=minmax(xyz[0,w])*[0.999,1.001],/xs,/ys,$
+      pos=pos[1],ytitle="PosX",xtickname=replicate(' ',10),/noerase
+      
+    cgPlot,time[w],xyz[0,w],line=0,/overplot
+      
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=minmax(xyz[1,w])*[0.999,1.001],/xs,/ys,$
+      pos=pos[2],ytitle="PosY",xtickname=replicate(' ',10),/noerase
+      
+    cgPlot,time[w],xyz[1,w],line=0,/overplot
+      
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=minmax(xyz[2,w])*[0.999,1.001],/xs,/ys,$
+      pos=pos[3],ytitle="PosZ",xtitle="Scale Factor",/noerase
+    
+    cgPlot,time[w],xyz[2,w],line=0,/overplot
+    
+  end_PS
+  
+  ; load group catalog, find most massive center
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  
+  hInd = 0
+  rmax = 20.0 ; ckpc
+  
+  grNr = gc.subgroupGrNr[hInd]
+  groupPos = gc.groupPos[*,grNr]
+  print,'Fof GrNr: '+str(grNr)+' Pos ['+$
+    string(groupPos[0],format='(f7.1)')+' '+$
+    string(groupPos[1],format='(f7.1)')+' '+$
+    string(groupPos[2],format='(f7.1)')+']'
+  print,'SF hInd: '+str(hInd)+' Pos ['+$
+    string(gc.subgroupPos[0,hInd],format='(f7.1)')+' '+$
+    string(gc.subgroupPos[0,hInd],format='(f7.1)')+' '+$
+    string(gc.subgroupPos[0,hInd],format='(f7.1)')+']'
+  print,'SF hInd: '+str(hInd)+' CM ['+$
+    string(gc.subgroupCM[0,hInd],format='(f7.1)')+' '+$
+    string(gc.subgroupCM[0,hInd],format='(f7.1)')+' '+$
+    string(gc.subgroupCM[0,hInd],format='(f7.1)')+']'
+    
+  ; closest output to this time?
+  scaleFac = 1/(1+sP.redshift)
+  w = where(abs(time-scaleFac) eq min(abs(time-scaleFac)),count)
+  if count eq 0 then print,'Error'
+  print,'Minimum time delta: '+str(min(abs(time-scaleFac)))
+  print,'Output position at this time: ['+$
+    string(xyz[0,w[0]],format='(f7.1)')+' '+$
+    string(xyz[1,w[0]],format='(f7.1)')+' '+$
+    string(xyz[2,w[0]],format='(f7.1)')+']'
+  
+  ; load gas positions (make into radial distances) and masses
+  pos  = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+  mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
+  
+  ; histogram of gas cell masses relative to target
+  start_PS,'derefGal_massHisto.eps'
+    plothist,alog10(mass/sP.targetGasMass),/auto,xrange=[-1,3.3],$
+      xtitle="log (Gas Cell Mass / targetGasMass)",ytitle="N",/ylog,yminor=0
+  end_PS
+  
+  dists = periodicDists(groupPos,pos,sP=sP)
+  
+  w = where(dists le rmax,count)
+  if count eq 0 then message,'Error'
+  
+  dists = dists[w]
+  mass  = mass[w]
+  
+  ; plot expected mass(r) profile for gas cells vs scatter of actual
+  start_PS,'derefGal_massRadProfile.eps'
+    cgPlot,[0],[0],/nodata,xrange=[0,rmax],yrange=[0.1,1000.0],/xs,/ys,/ylog,yminor=0,$
+      xtitle="Radial Distance [ckpc]",ytitle="Gas Cell Mass / targetGasMass"
+      
+    cgPlot,dists,mass/sP.targetGasMass,psym=4,/overplot
+  end_PS
+  
+  stop
+  
+end
+
 ; zoomSelectHaloSimple(): select a single halo at z=0 based on desired mass and determine bounding region in ICs
 ;   by matching all IDs from the primary subgroup (subfind selection, or spatial) in one step
 ; NOTE: assumes snapshot zero is the ICs at z=zstart
@@ -214,13 +335,13 @@ pro orderLagrangianVolumes
   ; config
   haloMassRange  = [11.8,12.2] ; log msun
   targetRedshift = 2.0 ; resimulate until this redshift only
-  zoomLevel      = 1    ; levelmax-levelmin
+  zoomLevel      = 2    ; levelmax-levelmin
   
   sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=targetRedshift)
 
   ; Onorbe+ (2013) suggested R_tb / rVirFac (requires >~4000 particles in halo in fullbox
   ; we just about satisfy this, ~2500-3500 for a 10^12 halo @ 20Mpc/128 or 40Mpc/256
-  rVirFac = (1.5 * zoomLevel + 1)
+  rVirFac = (-0.1 * zoomLevel + 4) ; shy's formula
   print,'Using rVirFac: '+str(rVirFac)+' for zoomLevel='+str(zoomLevel)
   
   ; load z=target
@@ -345,6 +466,8 @@ pro orderLagrangianVolumes
           ' mass = '+string(halo.mass,format='(f5.2)')+$
           ' rvir = '+string(halo.rVir,format='(f5.1)')+$
           ' vol = '+ string(haloStat.volume,format='(f5.1)')+$
+          ' zL = '+str(zoomLevel)+$
+          ' rVirFac = '+string(rVirFac,format='(f3.1)')+$
           ' pos = ['+string(halo.pos[0],format='(f8.2)')+' '+$
                      string(halo.pos[1],format='(f8.2)')+' '+$
                      string(halo.pos[2],format='(f8.2)')+' ]'
@@ -380,11 +503,11 @@ function zoomTargetHalo, sP=sP, gc=gc
   foundRvir = gc.group_r_crit200[ gc.subgroupGrNr[hInd] ]
   distNorm = sqrt( posDiff[0]^2 + posDiff[1]^2 + posDiff[2]^2 ) / foundRvir
   
-  print,'zoom hInd: '+str(hInd)
-  print,'targetMass ['+str(sP.targetHaloMass)+'] foundMass ['+str(foundMass)+']'
-  print,'targetRvir ['+str(sP.targetHaloRvir)+'] foundRvir ['+str(foundRvir)+']'
-  print,'posDiff: ',posDiff
-  print,'distNorm: ',distNorm
+  print,' zoom hInd: '+str(hInd)
+  print,' targetMass ['+str(sP.targetHaloMass)+'] foundMass ['+str(foundMass)+']'
+  print,' targetRvir ['+str(sP.targetHaloRvir)+'] foundRvir ['+str(foundRvir)+']'
+  print,' posDiff: ',posDiff
+  print,' distNorm: ',distNorm
   
   return, hInd
 end
@@ -394,31 +517,62 @@ end
 pro checkDMContamination
 
   ; config
-  sP = simParams(run='zoom_20Mpc_dm',res=9,hInd=0,redshift=2.0)
+  ;sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_20Mpc_dm',res=9,hInd=0,redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_20Mpc_dm',res=10,hInd=0,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_dm',res=11,hInd=0,redshift=2.0) )
+  
+  colors = ['red','blue','green','orange']
+  nn     = 99
+  
+  start_PS,sPs.(0).plotPath + 'radialContamination_DM.eps'
+    cgPlot,[0],[0],/nodata,xrange=[1,5.5],yrange=[0.9,100],/xs,/ys,/ylog,yminor=0,$
+      xtitle=textoidl("r / r_{vir}"),ytitle="Cumulative Number of Lowres DM Within Radius"
+  
+  strings = []
+  
+  for i=0,n_tags(sPs)-1 do begin
 
-  ; load
-  gc   = loadGroupCat(sP=sP,/skipIDs)
-  hInd = zoomTargetHalo(sP=sP, gc=gc) ; which subhalo is our target halo?
+    ; load
+    sP = sPs.(i)
+    print,'RUN: '+sP.run+' [res='+str(sP.res)+']'
+    gc   = loadGroupCat(sP=sP,/skipIDs)
+    hInd = zoomTargetHalo(sP=sP, gc=gc) ; which subhalo is our target halo?
   
-  ; group catalog check
-  nCoarseSubhalo = gc.subgroupLenType[ partTypeNum('lowres_dm'),hInd ]
-  nCoarseFof     = gc.groupLenType[ partTypeNum('lowres_dm'), gc.subgroupGrNr[hInd] ]
+    ; group catalog check
+    nCoarseSubhalo = gc.subgroupLenType[ partTypeNum('lowres_dm'),hInd ]
+    nCoarseFof     = gc.groupLenType[ partTypeNum('lowres_dm'), gc.subgroupGrNr[hInd] ]
   
-  print,'nCoarseSubhalo ['+str(nCoarseSubhalo)+'] nCoarseFof ['+str(nCoarseFof)+']'
+    print,' nCoarseSubhalo ['+str(nCoarseSubhalo)+'] nCoarseFof ['+str(nCoarseFof)+']'
   
-  ; spatial check: load lowres DM positions
-  rVirFac = (1.5 * sP.zoomLevel + 1)
-  pos = loadSnapshotSubset(sP=sP,partType='lowres_dm',field='pos')
+    ; spatial check: load lowres DM positions
+    rVirFac = (1.5 * sP.zoomLevel + 1)
+    pos = loadSnapshotSubset(sP=sP,partType='lowres_dm',field='pos')
   
-  dists = periodicDists(gc.subgroupPos[*,hInd],pos,sP=sP)
-  dists /= gc.group_r_crit200[ gc.subgroupGrNr[hInd] ] ; divide by found rvir
+    dists = periodicDists(gc.subgroupPos[*,hInd],pos,sP=sP)
+    dists /= gc.group_r_crit200[ gc.subgroupGrNr[hInd] ] ; divide by found rvir
   
-  w = where(dists le rVirFac,nRvirFac)
-  print,'Spatial within rVirFac='+str(rVirFac)+' have ['+str(nRvirFac)+'] coarse DM.'
-  w = where(dists le 1.5,n15rvir)
-  print,'Spatial within rVirFac=1.5 have ['+str(n15rvir)+'] coarse DM.'
+    w = where(dists le rVirFac,nRvirFac)
+    print,' Spatial within rVirFac='+str(rVirFac)+' have ['+str(nRvirFac)+'] coarse DM.'
+    w = where(dists le 1.5,n15rvir)
+    print,' Spatial within rVirFac=1.5 have ['+str(n15rvir)+'] coarse DM.'
   
-  if n15rvir eq 0 and nCoarseSubhalo eq 0 and nCoarseFof eq 0 then print,' - PASSED -' else print,' - FAILED -'
+    if n15rvir eq 0 and nCoarseSubhalo eq 0 and nCoarseFof eq 0 then print,' - PASSED -' else print,' - FAILED -'
+  
+    ; out to what radius are we uncontaminated?
+    dists = dists[sort(dists)]
+    print,' Zero lowres DM out to radius of ['+string(min(dists),format='(f4.2)')+' rvir] ('+$
+      string(min(dists)/rVirFac,format='(f4.2)')+')'
+  
+    ; add cumulative histogram to plot
+    strings = [strings, str(sP.simName)+' ('+str(2^sP.res)+')']
+    cgPlot,dists[0:nn],lindgen(nn),psym=-4,/overplot,color=cgColor(colors[i])
+    
+  endfor
+  
+  legend,strings,textcolor=colors,/top,/left
+  
+  end_PS
   
   stop
 
@@ -429,20 +583,22 @@ end
 pro checkGasContamination
 
   ; config
-  sP = simParams(run='zoom_20Mpc',res=9,hInd=0)
+  sP = simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=2.0)
 
   ; load
-  sP.snap = 0
-  sP.redshift = snapNumToRedshift(sP=sP)
-  
   h = loadSnapshotHeader(sP=sP)
 
-  tr_ids  = loadSnapshotSubset(sP=sP, partType='tracerMC', field='tracerids')
- 
-  ; trIDs > IDS_OFFSET*trMCPerCell are in highres
-  ; trIDs < IDS_OFFSET*trMCPerCell are in lowres
-  tr_ids_highres = tr_ids[ where(tr_ids gt sP.ids_offset * sP.trMCPerCell) ]
-  tr_ids_lowres  = tr_ids[ where(tr_ids lt sP.ids_offset * sP.trMCPerCell) ]
+  tr_ids    = loadSnapshotSubset(sP=sP, partType='tracerMC', field='tracerids')
+  tr_parids = loadSnapshotSubset(sP=sP, partType='tracerMC', field='parentids')
+
+  ; trIDs > IDS_OFFSET*trMCPerCell are in lowres
+  ; trIDs < IDS_OFFSET*trMCPerCell are in highres
+  w_tr_highres = where(tr_ids lt sP.ids_offset * sP.trMCPerCell, comp=w_tr_lowres)
+  
+  tr_ids_highres    = tr_ids[ w_tr_highres ]
+  tr_ids_lowres     = tr_ids[ w_tr_lowres ]
+  tr_parids_highres = tr_parids[ w_tr_highres ]
+  tr_parids_lowres  = tr_parids[ w_tr_lowres ]
   
   ; sanity check
   calcMatch,tr_ids,tr_ids_highres,ind1,ind_high,count=count1
@@ -462,10 +618,76 @@ pro checkGasContamination
   if count2 ne h.nPartTot[ partTypeNum('lowres_dm') ] * sP.trMCPerCell then message,'Fail'
   
   ; tracer IDs are ok, load gas cells by group catalog
-  gc   = loadGroupCat(sP=sP,/skipIDs)
+  gc   = loadGroupCat(sP=sP,/readIDs)
   hInd = zoomTargetHalo(sP=sP, gc=gc) ; which subhalo is our target halo?
   
-  message,'TODO'
+  ; primary subgroup: all=gas+stars
+  par_ids = gcPIDList(gc=gc,valGCids=[hInd],partType='all')
+  par_ids = par_ids[sort(par_ids)]
+  
+  ; crossmatch lowres (e.g. starting in lowres gas) tracer parentids to target halo ids
+  par_ind = value_locate(par_ids,tr_parids_lowres) > 0
+  w = where(par_ids[par_ind] eq tr_parids_lowres,count_inSG) ; verify we actually matched the ID
+  
+  ; repeat for full fof group, use all types (no tracers have DM parents)
+  grNr = gc.subgroupGrNr[hInd]
+  par_ids = lindgen(gc.groupLen[grNr]) + gc.groupOffset[grNr]
+  par_ids = gc.ids[par_ids]
+  par_ids = par_ids[sort(par_ids)]
+  
+  par_ind = value_locate(par_ids,tr_parids_lowres) > 0
+  w = where(par_ids[par_ind] eq tr_parids_lowres,count_inFoF) ; verify we actually matched the ID
+  
+  print,'Found lowres tracers: ['+str(count_inSG)+'] in subgroup and ['+str(count_inFoF)+'] in fof.'
+  
+  ; want: dists to each lowres tracer, first change tr_parids to tr_parinds then calculate par dists
+  dists = fltarr(n_elements(tr_parids_lowres))
+  mask  = intarr(n_elements(tr_parids_lowres))
+  
+  foreach parType,['gas','stars'] do begin
+    ; load
+    par_ids = loadSnapshotSubset(sP=sP, partType=parType, field='ids')
+    par_pos = loadSnapshotSubset(sP=sP, partType=parType, field='pos')
+  
+    ; crossmatch
+    sort_inds = calcSort(par_ids)
+    par_ids_sorted = par_ids[sort_inds]
+    par_ind = value_locate(par_ids_sorted,tr_parids_lowres)
+    par_ind = sort_inds[par_ind>0]
+    w = where(par_ids[par_ind] eq tr_parids_lowres,count) ; indices to tr_parids_lowres, dists
+
+    if count eq 0 then continue ; none, skip this parent type
+    
+    tr_parids_inPar = par_ind[w] ; indices to par_ids, par_pos, par_dists
+  
+    ; calculate par dists (all)
+    par_dists = periodicDists(gc.subgroupPos[*,hInd],par_pos,sP=sP)
+    par_dists /= gc.group_r_crit200[ gc.subgroupGrNr[hInd] ] ; divide by found rvir
+  
+    dists[w] = par_dists[tr_parids_inPar] ; stamp matched parents in
+    mask[w] += 1 ; debug
+  endforeach
+  
+  w = where(mask ne 1,count)
+  if count gt 0 then message,'Calculating lowres tracer dists FAIL.'
+  
+  ; out to what radius are we uncontaminated?
+  dists = dists[sort(dists)]
+  rVirFac = (1.5 * sP.zoomLevel + 1)
+  print,' Zero lowres TR out to radius of ['+string(min(dists),format='(f4.2)')+' rvir] ('+$
+    string(min(dists)/rVirFac,format='(f4.2)')+')'
+  
+  ; plot
+  start_PS,sP.plotPath + 'radialContamination_Gas.eps'
+    cgPlot,[0],[0],/nodata,xrange=[1,5.5],yrange=[0.9,100],/xs,/ys,/ylog,yminor=0,$
+      xtitle=textoidl("r / r_{vir}"),ytitle="Cumulative Number of Lowres TR Within Radius"
+      
+    nn = 99
+    cgPlot,dists[0:nn],lindgen(nn),psym=-4,/overplot,color=cgColor('red')
+    
+    legend,[str(sP.simName)+' ('+str(2^sP.res)+')'],textcolor=['red'],/top,/left
+  end_PS
+  
   stop
 
 end

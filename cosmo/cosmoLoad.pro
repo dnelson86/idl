@@ -1236,7 +1236,7 @@ function readStrategyIO, inds=inds, indRange=indRange, $
 end
 
 ; snapshotFieldExists(): check if a specified field exists in the snapshot
-function snapshotFieldExists, sP=sP, fileName=fileName, field=field
+function snapshotFieldExists, sP=sP, fileName=fileName, field=field, subBox=subBox
 
   if n_elements(fileName) eq 0 then $
     fileList = getSnapFilelist(sP.simPath,snapNum=sP.snap,subBox=subBox)
