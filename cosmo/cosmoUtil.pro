@@ -242,15 +242,18 @@ end
 
 ; snapNumToRedshift(): convert snapshot number to redshift or time (scale factor)
 
-function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap
+function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap, subBox=subBox
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   if not keyword_set(sP) then message,'Error: Need sP to convert snapshot number to redshift!'
 
-  saveFileName = sP.derivPath + sP.savPrefix + '_snapnum.redshift.sav'
+  sbstr = ''
+  if keyword_set(subBox) then sbstr = 'subbox0_'  
+  
+  saveFileName = sP.derivPath + sP.savPrefix + '_' + sbstr + 'snapnum.redshift.sav'
 
-  if not file_test(saveFileName) then message,'Error: Failed to find snapnum save file.'
+  if not file_test(saveFileName) then dummy = redshiftToSnapNum(sP=sP, subBox=subBox)
   if n_elements(snap) eq 0 then snap = sP.snap
   if snap[0] eq -1 then message,'Error: sP.snap used but was undefined.'
   

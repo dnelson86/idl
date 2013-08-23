@@ -15,20 +15,19 @@ function fillZoomParams, r, res=res, hInd=hInd
   
   if r.levelMin ne r.levelMax then $
     if n_elements(hInd) eq 0 then message,'Error: Must specify hInd to load zoom.'
-  print,'sP levMin levMax: ',r.levelMin,r.levelMax
   
   r.zoomLevel = r.levelMax - r.levelMin
 
   r.targetGasMass = 4.76446157e-03 ; L7
-  r.targetGasMass /= (8*r.zoomLevel) ; factor of eight decrease at each increasing zoom level
+  r.targetGasMass /= (8^r.zoomLevel) ; factor of eight decrease at each increasing zoom level
   
   r.gravSoft = 4.0 ; L7
-  r.gravSoft /= (8*r.zoomLevel) ; factor of two decrease at each increasing zoom level
+  r.gravSoft /= (2^r.zoomLevel) ; factor of two decrease at each increasing zoom level
   
   if hInd eq 0 then begin
     ;[ 6] hInd =   95 mass = 11.97 rvir = 239.9 vol =  69.3 pos = [ 7469.41  5330.66  3532.18 ]
-    ;  boxCenter: [  0.3977 ,  0.2466 ,  0.1829 ]
-    ;  boxExtent: [  0.2529 ,  0.1853 ,  0.1847 ]
+    ;ref_center = 0.3938, 0.2466, 0.1794
+    ;ref_extent = 0.2450, 0.1850, 0.1778
     r.targetHaloInd  = 95
     r.targetHaloPos  = [7469.41, 5330.66, 3532.18]
     r.targetHaloRvir = 239.9 ; ckpc
@@ -36,9 +35,7 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.targetRedshift = 2.0
     
     if r.levelMax eq 7  then r.zoomShift = [0,0,0]
-    if r.levelMax eq 9  then r.zoomShift = [13,32,40]
-    if r.levelMax eq 10 then r.zoomShift = [13,31,40]
-    if r.levelMax eq 11 then r.zoomShift = [14,31,38]
+    if r.levelMax ge 9  then r.zoomShift = [13,32,41]
     
     if r.levelMax eq 9  then r.ids_offset =  10000000L
     if r.levelMax eq 10 then r.ids_offset =  50000000L
@@ -84,6 +81,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
        boxSize:      0.0,$   ; boxsize of simulation, kpc
        targetGasMass:0.0,$   ; refinement/derefinement target, equal to SPH gas mass in equivalent run
        gravSoft:     0.0,$   ; gravitational softening length (ckpc)
+       subboxCen:    [0.0,0.0,0.0]   ,$ ; subbox0 center
+       subboxSize:   [0.0,0.0,0.0]   ,$ ; subbox0 extent (ckpc)
        $
        $ ; zoom runs only
        levelmin:       0,$     ; power of two minimum level parameter (e.g. MUSIC L7=128, L8=256, L9=512, L10=1024)
@@ -143,8 +142,59 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
  
   ; illustris
   if (run eq 'illustris') or (run eq 'illustris_dm') then begin
-    message,'todo'
+    if res ne 455 and res ne 910 and res ne 1820 then message,'Error: Invalid res.'
+    
+    r.minNumGasPart  = -1 ; no additional cut
+    r.trVelPerCell   = 0
+    r.trMCPerCell    = 1
+    r.trMCFields     = [0,1,2,3,4,5,6,7,8,9,10,11,12] ; all (=4096, 13 of 13)
+    r.gfmNumElements = 9
+    r.gfmWinds       = 1
+    r.gfmBHs         = 1
+    
+    ; TODO: subbox (4 of them)
+    ; TODO: SPT / other runs (and some 40Mpc boxes?)
+    
+    r.boxSize       = 75000.0
+    r.snapRange     = [0,135]
+    r.groupCatRange = [21,135] ; z6=45, z5=49, z4=54, z3=60, z2=68, z1=85, z0=135
+    
+    if res eq 455  then r.targetGasMass = 5.66834e-3
+    if res eq 910  then r.targetGasMass = 7.08542e-4
+    if res eq 1820 then r.targetGasMass = 8.85678e-5
+	
+    r.trMassConst = r.targetGasMass / r.trMCPerCell
+    
+    if res eq 455  then r.gravSoft = 4.0 ; comoving until z=1, then fixed at z=1 value after (except DM)
+    if res eq 910  then r.gravSoft = 2.0 ; same
+    if res eq 1820 then r.gravSoft = 1.0 ; same
+    
+    if run eq 'illustris' then begin
+      r.simPath    = '/n/home07/dnelson/sims.illustris/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_FP/output/'
+      r.arepoPath  = '/n/home07/dnelson/sims.illustris/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_FP/'
+      r.savPrefix  = 'I'
+      r.simName    = 'ILLUSTRIS'
+      r.saveTag    = 'il'
+      r.plotPrefix = 'il'
+      r.plotPath   = '/n/home07/dnelson/coldflows/'
+      r.derivPath  = '/n/home07/dnelson/sims.illustris/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_FP/data.files/'
+    endif
+    
+    if run eq 'illustris_dm' then begin
+      r.simPath    = '/n/home07/dnelson/sims.illustris/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_DM/output/'
+      r.arepoPath  = '/n/home07/dnelson/sims.illustris/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_DM/'
+      r.savPrefix  = 'IDM'
+      r.simName    = 'ILLUSTRIS_DM'
+      r.saveTag    = 'ilDM'
+      r.plotPrefix = 'ilDM'
+      r.plotPath   = '/n/home07/dnelson/coldflows/'
+      r.derivPath  = '/n/home07/dnelson/sims.illustris/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_DM/data.files/'
+    endif
   
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return, r  
   endif
   
   ; zoom project: DM only single halo zooms (L=7/128 for fullbox)
@@ -188,7 +238,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
   endif
   
   ; zoom project: DM+gas single halo zooms (now all in 20Mpc box, add boxsize to run label later)
-  if run eq 'zoom_20mpc' then begin
+  if run eq 'zoom_20mpc' or run eq 'zoom_20mpc_derefgal' then begin
     if n_elements(hInd) eq 0 then message,'Error: Must specify hInd (halo index) to load zoom.'
     
     r.minNumGasPart  = -1 ; no additional cut
@@ -201,8 +251,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.boxSize        = 20000.0
     r.levelMin       = 7 ; uniform box @ 128
     r.levelMax       = 7 ; default
-    r.snapRange      = [0,60]
-    r.groupCatRange  = [5,133] ; z6=5, z5=14, z4=21, z3=36, z2=60
+    r.snapRange      = [0,59]
+    r.groupCatRange  = [5,59] ; z6=5, z5=14, z4=21, z3=36, z2=59
     
     if n_elements(hInd) gt 0 then r = fillZoomParams(r,res=res,hInd=hInd)
               
@@ -212,6 +262,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
       pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc'
     
     r.trMassConst = r.targetGasMass / r.trMCPerCell
+    
+    if run eq 'zoom_20mpc_derefgal' then pathStr = pathStr + '_derefgal'
         
     r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'/output/'
     r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/'
@@ -237,6 +289,9 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.gfmNumElements = 9
     r.gfmWinds       = 1
     r.gfmBHs         = 1
+    
+    if res eq 512 then r.subboxCen  = [5500,7000,7500]
+    if res eq 512 then r.subboxSize = [4000,4000,4000]
     
     if res eq 128 or res eq 256 or res eq 512 then begin 
       r.boxSize       = 20000.0
@@ -389,6 +444,9 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
       r.snapRange     = [0,314]
       r.groupCatRange = [50,314]
     endif
+    
+    if res eq 512 then r.subboxCen  = [5500,7000,7500]
+    if res eq 512 then r.subboxSize = [4000,4000,4000]
     
     if res eq 128 then r.targetGasMass = 4.76446157e-03
     if res eq 256 then r.targetGasMass = 5.95556796e-04

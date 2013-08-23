@@ -171,10 +171,14 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
       xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+len]
       ypos = replicate(yMinMax[1]*0.93,2)
       
-      cgText,mean(xpos),ypos*0.9,string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('white')
-      loadct,0,/silent
-      oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
-      loadColorTable,config.ctNameScat
+      ; skip this for subbox plotting (e.g. scatter and map have same scale)
+      if config.haloMass ne -1 then begin
+        cgText,mean(xpos),ypos*0.9,string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('white')
+        loadct,0,/silent
+        oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
+        loadColorTable,config.ctNameScat
+      endif
+      
     endif
     
     ; dividing lines
@@ -255,12 +259,11 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
   
   ; scale bar
   if ~keyword_set(right) and ~keyword_set(two) and ~keyword_set(three) then begin
-    len = 200.0 ;kpc
-    
-    xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+len]
+    xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+config.scaleBarLen]
     ypos = replicate(yMinMax[1]*0.93,2)
     
-    cgText,mean(xpos),ypos*0.9,string(len,format='(i3)')+' kpc',alignment=0.5,color=cgColor('white')
+    cgText,mean(xpos),ypos*0.9,string(config.scaleBarLen,format='(i3)')+' kpc',$
+      alignment=0.5,color=cgColor('white')
     loadct,0,/silent
     oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
     loadColorTable,'bw linear'
@@ -270,8 +273,9 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
   if ~keyword_set(left) and ~keyword_set(one) and ~keyword_set(two) then begin
     cgText,0.99,0.666-0.02,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
            color=cgColor('white'),/normal
-    cgText,0.99,0.666-0.04,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
-           color=cgColor('white'),/normal
+    if config.haloMass ne -1 then $
+      cgText,0.99,0.666-0.04,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
+             color=cgColor('white'),/normal
   endif
   
   ; simulation name
@@ -368,7 +372,7 @@ pro sphScatterAndMapHaloComp
     config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:fieldMinMax,$
               gcID:gcIDs[i],haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
               boxCen:boxCenImg,boxSizeImg:cutout.boxSizeImg,boxSizeScat:cutout2.boxSizeImg,$
-              ctNameScat:'helix',ctNameMap:'blue-red2',sP:sP.(i),bartype:'none'}
+              ctNameScat:'helix',ctNameMap:'blue-red2',sP:sP.(i),bartype:'none',scaleBarLen:200.0}
 
     plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
       left=(i eq 0 and numRuns eq 2), right=(i eq 1 and numRuns eq 2), $

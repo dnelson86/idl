@@ -195,7 +195,9 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
       if(dens_out[j * Ypixels + i] > 0)
         quant_out[j * Ypixels + i] /= dens_out[j * Ypixels + i];
 
-  IF_VERBOSE(printf("]\n"));	
+#ifdef VERBOSE
+  printf("]\n");
+#endif	
 	
   return 1;
 }

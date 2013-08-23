@@ -1,6 +1,6 @@
 ; cosmoVis.pro
 ; cosmological boxes - 2d visualization
-; dnelson apr.2013
+; dnelson aug.2013
 
 ; cosmoVisCutout(): make a spatial cutout around a halo
 ;                   call with multiple gcInd's for one load and save cutouts
@@ -37,7 +37,7 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
   if readFlag then begin
     
   gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
-  sgcen = subgroupPosByMostBoundID(sP=sP)   
+  sgcen = subgroupPosByMostBoundID(sP=sP)
   
   ; have metallicities to include in cutout?
   metalsFlag = 0
