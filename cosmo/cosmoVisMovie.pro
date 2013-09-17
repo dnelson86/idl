@@ -1,8 +1,9 @@
 ; cosmoVis.pro
 ; cosmological boxes - animated 2d visualizations, usually tracking halos in time
-; dnelson jul.2013
+; dnelson sep.2013
 
-; trackedHaloInds():
+; trackedHaloInds(): starting from a halo at one time, return a list of tracked halo indices
+;   both earlier and/or later using the mergerTree
 
 function trackedHaloInds, sP=sP, gcID=gcID, maxZ=maxZ, minZ=minZ
 
@@ -299,7 +300,7 @@ pro makeSubboxFrames
   for fN=0,nFrames-1 do begin
     print,'['+string(fN,format='(I4.4)')+'] progress: '+string(float(fN)/nFrames*100,format='(f5.1)')+$
       '%'+' (snap = '+string( (snaps.(0))[fN],format='(I4.4)' )+' / '+$
-      string( (zsnaps.(1))[fN],format='(I4.4)' )+') (redshift = '+string(sP1.redshift,format='(f5.2)')+')'
+      string( (snaps.(1))[fN],format='(I4.4)' )+') (redshift = '+string(sP1.redshift,format='(f5.2)')+')'
     
     saveFilename = 'subbox_frame_' + string(fN,format='(I4.4)') + '.eps'
                  
@@ -351,7 +352,8 @@ pro makeSubboxFrames
   
 end
 
-; makeProgressionPanels()
+; makeProgressionPanels(): for one run, or comparing two runs, do panels or individual frames of 
+;  plotScatterComp for a halo tracked through time
 
 pro makeProgressionPanels
 
@@ -359,14 +361,16 @@ pro makeProgressionPanels
   units = getUnits()
   
   ; config
-  sP  = simParams(res=256,run='feedback',redshift=0.0)
+  ;sP = simParams(res=256,run='feedback',redshift=0.0)
+  sP = simParams(res=512,run='zoom_20Mpc',redshift=2.0,hInd=0)
   
   ; best match in sP2 is found for each sP snap, comment out sP2 to not make a comparison
-  sP2 = simParams(res=256,run='tracer',redshift=0.0)
+  ;sP2 = simParams(res=256,run='tracer',redshift=0.0)
 
-  haloID        = 304 ; z2.314 z2.304 z2.301 z2.130 z2.64
+  haloID        = 0   ; zoom.0 z2.314 z2.304 z2.301 z2.130 z2.64
   redshiftStart = 2.0 ; when to start (can differ from sP.redshift, which is where the halo is targeted)
   redshiftEnd   = 4.0 ; how far back to go
+  indivFrames   = 1   ; 1=write individual frames (for a movie) instead of all panels in one big image
   
   singleColorScale = 0 ; 1=use same color scale for right panel, 0=rescale
   secondGt         = 0 ; 1=show greater than cut, 0=show less than cut
@@ -374,6 +378,8 @@ pro makeProgressionPanels
   nbottom          = 50
   sizeFac          = 3.5 ; times rvir
   ctName           = 'helix'
+  pngResize        = 80 ; 40=900px wide for one sim, 1800px for two sims
+  deletePS         = 1  ; 0=false, 1=true
   
   ; use which field and minmax for color mapping? cut value for right panel?
   colorField = 'temp'     & fieldMinMax  = [4.0,7.0] & secondCutVal = 5.0
@@ -391,6 +397,7 @@ pro makeProgressionPanels
   if numSnaps eq 0 then message,'error'
   if wCheck eq 0 then message,'error'
   numSnaps = sP.snap - minSnap + 1
+  if indivFrames then numSnaps = 1 ; override
   
   ; get list of tracked halo indices
   gcID     = getMatchedIDs(simParams=sP,haloID=haloID)
@@ -411,12 +418,18 @@ pro makeProgressionPanels
   pWidth  = 8.0 * (2 * n_elements(sP2)) ; change 8 to 16 if comparing runs
   pHeight = 4.0 * numSnaps
   
-  start_PS, sP.plotPath + pFilename, xs=pWidth, ys=pHeight
-                     
+  if ~indivFrames then start_PS, sP.plotPath + pFilename, xs=pWidth, ys=pHeight
+
   ; loop over snapshots
   for m=sP.snap,minSnap,-1 do begin
-    sP.snap = m & print,m,gcIDList[sP.snap]
+    sP.snap = m & print,m,m-minSnap,gcIDList[sP.snap]
     sP.redshift = snapNumToRedshift(sP=sP)
+    
+    ; individual frames? set filename and open plot
+    if indivFrames then begin
+      pFilename = 'scatter_frame_'+string(m-minSnap,format='(I4.4)')+'.eps'
+      start_PS, sP.plotPath + pFilename, xs=pWidth, ys=pHeight
+    endif
     
     ; load cutouts
     cutout = cosmoVisCutout(sP=sP,gcInd=gcIDList[sP.snap],sizeFac=sizeFac)
@@ -424,7 +437,8 @@ pro makeProgressionPanels
     config = {boxSizeImg:cutout.boxSizeImg,plotFilename:'',haloVirRad:cutout.haloVirRad,$
               haloMass:cutout.haloMass,axisPair:axes,sP:sP,singleColorScale:singleColorScale,$
               colorField:colorField,fieldMinMax:fieldMinMax,secondCutVal:secondCutVal,$
-              secondGt:secondGt,nbottom:nbottom,barMM:fieldMinMax,ctName:ctName,barType:'2bar'}
+              secondGt:secondGt,nbottom:nbottom,barMM:fieldMinMax,ctName:ctName,barType:'2bar',$
+              lineThick:3.0}
     
     if m eq minSnap then config = mod_struct(config, 'subtitle', subtitles)
     
@@ -452,15 +466,19 @@ pro makeProgressionPanels
     endif    
     
     ; add row to plot
-    plotScatterComp,sub=sub,config=config,row=[m-minSnap,numSnaps],first=(n_elements(sP2) gt 0)
+    row = [m-minSnap,numSnaps]
+    if indivFrames then row = []
+    
+    plotScatterComp,sub=sub,config=config,row=row,first=(n_elements(sP2) gt 0)
     
     if n_elements(sP2) gt 0 then $
-      plotScatterComp,sub=sub2,config=mod_struct(config,'subtitle',/delete),$
-        row=[m-minSnap,numSnaps],/second
+      plotScatterComp,sub=sub2,config=mod_struct(config,'subtitle',/delete),row=row,/second
+        
+    if indivFrames then end_PS, pngResize=pngResize, deletePS=deletePS
   
   endfor
   
   ; finish plot
-  end_PS, pngResize=40
+  if ~indivFrames then end_PS, pngResize=pngResize, deletePS=deletePS
   stop
 end

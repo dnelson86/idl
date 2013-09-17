@@ -1,65 +1,137 @@
 ; ICs_cosmoZoom.pro
 ; zoom project - helper for generating zoom ICs with MUSIC (O. Hahn)
-; dnelson aug.2013
+; dnelson sep.2013
+
+; checkBHDerefGal(): debugging
+
+pro checkBHDerefGal
+
+  ; how similar are the snapshots?
+  snapNum = 0
+  sP_old = simParams(run='zoom_20Mpc',res=9,hInd=0,snap=snapNum)
+  sP_new = simParams(run='zoom_20Mpc_derefgal_nomod',res=9,hInd=0,snap=snapNum)
+  
+  h_old = loadSnapshotHeader(sP=sP_old)
+  h_new = loadSnapshotHeader(sP=sP_new)
+  
+  print,h_old.nPartTot
+  print,h_new.nPartTot
+  ; random number differences due to BHs being there? (new has more gas cells, less stars)
+  
+  stop
+  
+end
 
 pro checkZoomDerefineGal
 
   ; config
-  sP = simParams(run='zoom_20Mpc_derefgal',res=9,hInd=0,redshift=3.0)
-  print,sP.simPath
-  fileName = '/n/home07/dnelson/temp.txt'
+  sP = simParams(run='zoom_20Mpc_derefgal',res=9,hInd=0,redshift=2.2)
+  sP.snap = 48
+  fileName = '/n/home07/dnelson/sims.zooms/128_20Mpc_h0_L9_derefgal/output/bhderef.txt'
   ptStruct = {line:''}
   headerLines = 1
+  
+  outer_mass_fac  = 1.0
+  inner_mass_fac  = 64.0
+  outer_deref_rad = 10.0
+  colors = ['red','blue','orange']
   
   ; load
   x = loadCSV(headerLines, fileName, ptStruct)
   x = x.line
   
-  updateFlag = intarr(n_elements(x))
-  time       = fltarr(n_elements(x))
-  redshift   = fltarr(n_elements(x))
-  haloMass   = fltarr(n_elements(x))
-  xyz        = fltarr(3,n_elements(x))
+  ; count proper lines (some are malformed)
+  count = 0L
   
-  ; parse
   for i=0,n_elements(x)-1 do begin
-    line = strsplit(x[i],' ',/extract)
-    if line[1] eq '[UPDATE]' then updateFlag[i] = 1
+    startPos = strpos(x[i], ':', 0) + 2
+    line = strmid(x[i], startPos)
+    line = strsplit(line,' ',/extract)
+    if n_elements(line) ne 13 and n_elements(line) ne 14 then continue
     
-    time[i]     = strmid(line[2],2)
-    redshift[i] = 1/time[i]-1
-    haloMass[i] = alog10( 1e10*line[6] )
-    xyz[0,i]    = line[9]
-    xyz[1,i]    = line[10]
-    xyz[2,i]    = line[11]
+    count += 1
   endfor
   
-  ; plot
-  w = where(updateFlag eq 1)
-  pos = plot_pos(rows=4,cols=1)
+  print,n_elements(x),count,float(count)/n_elements(x)*100.0
   
-  start_PS,'derefGal_haloEvo.eps', xs=9, ys=12
-    xrange = minmax(time[w])*[0.99,1.01]
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=[10.3,11.8],/xs,/ys,pos=pos[0],$
-      ytitle="Mass",xtickname=replicate(' ',10)
-      
-    cgPlot,time[w],haloMass[w],line=0,/overplot
-      
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=minmax(xyz[0,w])*[0.999,1.001],/xs,/ys,$
-      pos=pos[1],ytitle="PosX",xtickname=replicate(' ',10),/noerase
-      
-    cgPlot,time[w],xyz[0,w],line=0,/overplot
-      
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=minmax(xyz[1,w])*[0.999,1.001],/xs,/ys,$
-      pos=pos[2],ytitle="PosY",xtickname=replicate(' ',10),/noerase
-      
-    cgPlot,time[w],xyz[1,w],line=0,/overplot
-      
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=minmax(xyz[2,w])*[0.999,1.001],/xs,/ys,$
-      pos=pos[3],ytitle="PosZ",xtitle="Scale Factor",/noerase
+  createFlag = intarr(count) ; 1=create at this time, 0=reposition
+  time       = fltarr(count)
+  bh_id      = lonarr(count)
+  timebin    = intarr(count)
+  minpot     = fltarr(count)
+  redshift   = fltarr(count)
+  xyz        = fltarr(3,count)
+  
+  ; parse
+  count = 0L
+  
+  for i=0,n_elements(x)-1 do begin
+    ; cut off task number and BH_DEREFINE_GAL:
+    startPos = strpos(x[i], ':', 0) + 2
+    line = strmid(x[i], startPos)
     
-    cgPlot,time[w],xyz[2,w],line=0,/overplot
+    line = strsplit(line,' ',/extract)
+    if n_elements(line) ne 13 and n_elements(line) ne 14 then continue
     
+    if line[0] eq 'BH_Create:' then begin
+      ; create
+      createFlag[count] = 1
+      time[count]     = float(line[2])
+      bh_id[count]    = long(line[5])
+      timebin[count]  = 0
+      minpot[count]   = 0.0
+      xyz[0,count]    = line[10]
+      xyz[1,count]    = line[11]
+      xyz[2,count]    = line[12]
+    endif else begin
+      ; reposition
+      time[count]     = float(line[2])
+      bh_id[count]    = long(line[5])
+      timebin[count]  = fix(line[7])
+      minpot[count]   = float(line[9])
+      xyz[0,count]    = line[11]
+      xyz[1,count]    = line[12]
+      xyz[2,count]    = line[13]
+    endelse
+    
+    count += 1
+  endfor
+  
+  ; stats
+  redshift = 1.0/time-1.0
+  
+  w = where(createFlag eq 0,comp=wc)
+  print,'Found ['+str(nuniq(bh_id[w]))+'] unique BH IDs.'
+  print,'Time: ',minmax(time)
+  print,'Timebins: ',minmax(timebin[w])
+  print,'XYZ: ',minmax(xyz)
+  print,'Minpot: ',minmax(minpot[w])
+  
+  ids_repo = bh_id[w]
+  uniq_ids = ids_repo[uniq(ids_repo,sort(ids_repo))]
+  
+  ; plot
+  xrange = minmax(time)*[0.99,1.01]
+  
+  start_PS,sP.plotPath+'derefGal_pos_'+sP.saveTag+'.eps', /big
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=minmax(xyz)*[0.99,1.01]/1e4,/xs,/ys,$
+      ytitle="XYZ Coordinate",xtitle="Scale Factor"
+      
+    for i=0,2 do begin
+      cgPlot,time,xyz[i,*]/1e4,psym=3,color=cgColor(colors[i]),/overplot
+      cgPlot,time[wc],xyz[i,wc]/1e4,psym=4,color=cgColor(colors[i]),/overplot
+    endfor
+    
+    legend,['x','y','z'],textcolor=colors,/top,/left
+  end_PS
+  
+  start_PS,sP.plotPath+'derefGal_minpot_'+sP.saveTag+'.eps', /big
+    w = where(minpot ne 0.0)
+    yrange = minmax(minpot[w])*[1.01,0.99]/1e4
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      ytitle="Minimum Potential Value",xtitle="Scale Factor"
+      
+    cgPlot,time,minpot/1e4,psym=3,color=cgColor('blue'),/overplot
   end_PS
   
   ; load group catalog, find most massive center
@@ -83,26 +155,68 @@ pro checkZoomDerefineGal
     string(gc.subgroupCM[0,hInd],format='(f7.1)')+' '+$
     string(gc.subgroupCM[0,hInd],format='(f7.1)')+']'
     
-  ; closest output to this time?
-  scaleFac = 1/(1+sP.redshift)
-  w = where(abs(time-scaleFac) eq min(abs(time-scaleFac)),count)
-  if count eq 0 then print,'Error'
-  print,'Minimum time delta: '+str(min(abs(time-scaleFac)))
-  print,'Output position at this time: ['+$
-    string(xyz[0,w[0]],format='(f7.1)')+' '+$
-    string(xyz[1,w[0]],format='(f7.1)')+' '+$
-    string(xyz[2,w[0]],format='(f7.1)')+']'
+  ; load BH positions
+  h = loadSnapshotHeader(sP=sP)
+  numBHs = h.nPartTot[partTypeNum('bh')]
   
+  pos_bh = loadSnapshotSubset(sP=sP,partType='bh',field='pos')
+  nuniq_pos = nuniq( pos_bh[0,*]+pos_bh[1,*]+pos_bh[2,*] )
+  
+  print,'In snapshot z='+string(snapNumToRedshift(sP=sP),format='(f4.2)')+' have ['+str(numBHs)+'] BHs with ['+$
+    str(nuniq_pos)+'] unique positions (snap='+str(sP.snap)+')'
+  print,pos_bh
+  
+  start_PS,sP.plotPath+'derefGal_bhPos_'+sP.saveTag+'.eps', xs=8.0, ys=8.0
+    xyrange = minmax(pos_bh)*[0.99,1.01]/1e4
+    cgPlot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,xtitle="X",ytitle="Y",/xs,/ys,aspect=1.0
+    
+    ; most massive fof/subfind position
+    cgPlot,groupPos[0]/1e4,groupPos[1]/1e4,psym='filled circle',$
+      symsize=2.0,color=cgColor('red'),/overplot
+    cgPlot,gc.subgroupPos[0]/1e4,gc.subgroupPos[1]/1e4,psym='filled circle',$
+      symsize=2.0,color=cgColor('blue'),/overplot
+    cgPlot,gc.subgroupCM[0]/1e4,gc.subgroupCM[1]/1e4,psym='filled circle',$
+      symsize=2.0,color=cgColor('orange'),/overplot
+    
+    ; bh positions
+    cgPlot,pos_bh[0,*]/1e4,pos_bh[1,*]/1e4,psym=4,color=cgColor('black'),/overplot
+  end_PS
+    
   ; load gas positions (make into radial distances) and masses
   pos  = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
   mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
+  ids  = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
   
   ; histogram of gas cell masses relative to target
-  start_PS,'derefGal_massHisto.eps'
+  start_PS,sP.plotPath+'derefGal_massHisto_'+sP.saveTag+'.eps'
     plothist,alog10(mass/sP.targetGasMass),/auto,xrange=[-1,3.3],$
       xtitle="log (Gas Cell Mass / targetGasMass)",ytitle="N",/ylog,yminor=0
   end_PS
   
+  ; scatterplot of >100 target mass in (x,y) plane
+  start_PS,sP.plotPath+'derefGal_highMassPos_'+sP.saveTag+'.eps', xs=8, ys=8
+    zoomFac = 5.0
+    axes = [0,1]
+    
+    xrange = groupPos[axes[0]] + [-sP.boxSize/zoomFac,sP.boxSize/zoomFac]
+    yrange = groupPos[axes[1]] + [-sP.boxSize/zoomFac,sP.boxSize/zoomFac]
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+      xtitle="axis"+str(axes[0]),ytitle="axis"+str(axes[1]),aspect=1.0
+    
+    xx = mass/sP.targetGasMass
+    cuts = [5, 10, 20]
+    
+    w = where(xx ge cuts[0] and xx le cuts[1] and ids le sP.ids_offset)
+    cgPlot,pos[axes[0],w],pos[axes[1],w],psym=4,color=cgColor('blue'),/overplot
+    w = where(xx ge cuts[1] and xx le cuts[2] and ids le sP.ids_offset)
+    cgPlot,pos[axes[0],w],pos[axes[1],w],psym=4,color=cgColor('red'),/overplot
+    w = where(xx ge cuts[2] and ids le sP.ids_offset)
+    cgPlot,pos[axes[0],w],pos[axes[1],w],psym=4,color=cgColor('orange'),/overplot
+    
+    cgPlot,groupPos[axes[0]],groupPos[axes[1]],psym='open circle',symsize=4.0,/overplot
+  end_PS
+  
+  ; calculate radial distances
   dists = periodicDists(groupPos,pos,sP=sP)
   
   w = where(dists le rmax,count)
@@ -112,11 +226,68 @@ pro checkZoomDerefineGal
   mass  = mass[w]
   
   ; plot expected mass(r) profile for gas cells vs scatter of actual
-  start_PS,'derefGal_massRadProfile.eps'
-    cgPlot,[0],[0],/nodata,xrange=[0,rmax],yrange=[0.1,1000.0],/xs,/ys,/ylog,yminor=0,$
+  start_PS,sP.plotPath+'derefGal_massRadProfile_'+sP.saveTag+'.eps'
+    cgPlot,[0],[0],/nodata,xrange=[0,rmax],yrange=[0.3,300.0],/xs,/ys,/ylog,yminor=0,$
       xtitle="Radial Distance [ckpc]",ytitle="Gas Cell Mass / targetGasMass"
       
+    !p.thick -= 1
     cgPlot,dists,mass/sP.targetGasMass,psym=4,/overplot
+    
+    ; theory (1)
+    inner_slope = 0
+    r = linspace(0.0,rmax,1000)
+    t = r / outer_deref_rad
+    localTargetFac = outer_mass_fac * (3*t*t - 2*t*t*t) + $ ; h00
+                     inner_mass_fac * (1 - 3*t*t + 2*t*t*t) + $ ;h01
+                     ( (t*t*t)-2*t*t+t ) * inner_slope ; h10 (tangent at t=0)
+                     
+    ;localTargetFac = outer_mass_fac / (t*t) * (1.0-t)
+    
+    ; t>1 set ltF=1
+    w = where(t gt 1.0,count)
+    if count gt 0 then localTargetFac[w] = 1.0
+    
+    ;cgPlot,r,localTargetFac,line=0,thick=!p.thick+2,color=cgColor('blue'),/overplot
+    
+    ; theory (2)
+    KERNEL_COEFF_1 = 2.546479089470
+    KERNEL_COEFF_1_INV = 0.3926990926
+    KERNEL_COEFF_2 = 15.278874536822
+    KERNEL_COEFF_3 = 5.092958178941
+    
+    u = r / outer_deref_rad
+    
+    localTargetFac = fltarr(n_elements(u))
+    w = where(u lt 0.5)
+    localTargetFac[w] = KERNEL_COEFF_1 + KERNEL_COEFF_2 * (u[w] - 1.0) * u[w] * u[w]
+    w = where(u gt 0.5 and u le 1.0)
+    localTargetFac[w] = KERNEL_COEFF_3 * (1.0 - u[w]) * (1.0 - u[w]) * (1.0 - u[w])
+    w = where(u gt 1.0)
+    localTargetFac[w] = 0.0
+    
+    localTargetFac *= (inner_mass_fac-outer_mass_fac) * KERNEL_COEFF_1_INV
+    localTargetFac += outer_mass_fac
+    
+    cgPlot,r,localTargetFac,line=0,thick=!p.thick+2,color=cgColor('orange'),/overplot
+    
+    ltfHalf = 0.5 * localTargetFac
+    ltfDbl  = 2.0 * localTargetFac
+    
+    cgPlot,r,ltfHalf,line=2,thick=!p.thick+2,color=cgColor('orange'),/overplot
+    cgPlot,r,ltfDbl,line=2,thick=!p.thick+2,color=cgColor('orange'),/overplot
+    
+    cgPlot,[1,8.5],inner_mass_fac*[1,1],line=1,color=cgColor('orange'),/overplot
+    cgText,8,inner_mass_fac*1.2,str(fix(inner_mass_fac)),color=cgColor('orange'),alignment=0.5
+  end_PS
+  
+  ; load volumes (-> cell radii) and histogram
+  hsml = loadSnapshotSubset(sP=sP,partType='gas',field='vol')
+  hsml = (temporary(hsml) * 3.0 / (4*!pi))^(1.0/3.0) ;cellrad [ckpc]
+  
+  start_PS,sP.plotPath+'derefGal_cellSizeHisto_'+sP.saveTag+'.eps'
+    plothist,alog10(hsml),/auto,xrange=[-2,3.0],$
+      xtitle="log (Gas Cell Size [ckpc])",ytitle="N",/ylog,yminor=0
+    legend,['minimum: '+string(min(hsml)*1000,format='(f5.1)')+' pc'],/top,/left
   end_PS
   
   stop
@@ -335,7 +506,7 @@ pro orderLagrangianVolumes
   ; config
   haloMassRange  = [11.8,12.2] ; log msun
   targetRedshift = 2.0 ; resimulate until this redshift only
-  zoomLevel      = 2    ; levelmax-levelmin
+  zoomLevel      = 4    ; levelmax-levelmin
   
   sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=targetRedshift)
 
@@ -517,16 +688,16 @@ end
 pro checkDMContamination
 
   ; config
-  ;sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=2.0) )
   sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_20Mpc_dm',res=9,hInd=0,redshift=2.0) )
   sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_20Mpc_dm',res=10,hInd=0,redshift=2.0) )
-  ;sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_dm',res=11,hInd=0,redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_dm',res=11,hInd=0,redshift=2.0) )
   
   colors = ['red','blue','green','orange']
   nn     = 99
   
   start_PS,sPs.(0).plotPath + 'radialContamination_DM.eps'
-    cgPlot,[0],[0],/nodata,xrange=[1,5.5],yrange=[0.9,100],/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=[1,3.5],yrange=[0.9,100],/xs,/ys,/ylog,yminor=0,$
       xtitle=textoidl("r / r_{vir}"),ytitle="Cumulative Number of Lowres DM Within Radius"
   
   strings = []
@@ -679,7 +850,7 @@ pro checkGasContamination
   
   ; plot
   start_PS,sP.plotPath + 'radialContamination_Gas.eps'
-    cgPlot,[0],[0],/nodata,xrange=[1,5.5],yrange=[0.9,100],/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=[1,3.5],yrange=[0.9,100],/xs,/ys,/ylog,yminor=0,$
       xtitle=textoidl("r / r_{vir}"),ytitle="Cumulative Number of Lowres TR Within Radius"
       
     nn = 99

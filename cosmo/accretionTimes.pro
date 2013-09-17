@@ -1,6 +1,6 @@
 ; accretionTimes.pro
 ; gas accretion project - past radial history of gas elements (virial radius crossing)
-; dnelson jul.2013
+; dnelson sep.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionTimes(): for each gas particle/tracer, starting at some redshift, track backwards in time
@@ -16,8 +16,12 @@ function accretionTimes, sP=sP, restart=restart
   units = getUnits()
 
   ; first, walk back through the merger tree and find primary subhalos with good parent histories
-  nVirFacs = n_elements(sP.rVirFacs) + 1 ; one extra for first rvir crossing
+  nVirFacs = n_elements(sP.rVirFacs) + 2 ; two extra for first 0.15/1.0 rvir crossings
   mt = mergerTreeSubset(sP=sP,/verbose)
+  
+  snapStep = -1 ; process every snapshot
+  ;if sP.snapRange[1] ge 300 then snapStep = -2 ; process every other snap for gadget/tracer runs
+  
   snapRange = [mt.maxSnap,mt.minSnap]
   
   ; set saveFilename and check for existence
@@ -30,7 +34,7 @@ function accretionTimes, sP=sP, restart=restart
   endif
   
   resFilename = sP.derivPath + 'accTimes.'+sP.saveTag+'.restart.'+sP.savPrefix+str(sP.res)+'.'+$
-                str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'
+                str(mt.maxSnap)+'-'+str(mt.minSnap)+'.sav'  
   
   ; load galaxy/group member catalogs at zMin for gas ids to search for
   origSnap = sP.snap
@@ -43,8 +47,6 @@ function accretionTimes, sP=sP, restart=restart
   outCountRT = 0L
   
   prevTime = 0 ; scale factor at previous snapshot
-  
-  reportMemory
 
   ; NO TRACERS CASE - track the particles themselves back in time (SPH)
   ; ---------------
@@ -75,16 +77,16 @@ function accretionTimes, sP=sP, restart=restart
       snapRange[0] = m
     endelse
     
-    for m=snapRange[0],snapRange[1],-1 do begin
+    for m=snapRange[0],snapRange[1],snapStep do begin
       sP.snap = m
       
       ; save restart?
-      if m mod 10 eq 0 and m lt snapRange[0] and keyword_set(restart) then begin
+      if m mod 20 eq 0 and m lt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
         save,prevRad,gasMinSnap,accMask,r,prevTime,accCount,outCount,$
           accCountRT,outCountRT,m,filename=resFilename
         print,' --- Done! ---'
-        exit,status=33 ; requeue
+        ;exit,status=33 ; requeue
       endif
       
       ; load gas ids and match to catalog
@@ -183,12 +185,12 @@ function accretionTimes, sP=sP, restart=restart
         endif
         
         ; loop over each target radius
-        foreach rVirFac,[sP.rVirFacs,1.0],k do begin
+        foreach rVirFac,[sP.rVirFacs,sP.radcut_rvir,1.0],k do begin
           count_rad = 0
           count_out = 0
         
           if k eq n_elements(sP.rVirFacs) then begin
-            ; for the last iteration, take 1.0rvir and do not use accMask
+            ; for the last two iterations, take 0.15/1.0rvir and do not use accMask
             ; thereby recording the earliest/highest redshift crossing
             if count_inPar gt 0 then begin
               rad_w = where(rad_pri ge rVirFac and prevRad[galcat_ind_inPar] lt rVirFac and $
@@ -334,10 +336,8 @@ function accretionTimes, sP=sP, restart=restart
       snapRange[0] = m
     endelse
 
-    for m=snapRange[0],snapRange[1],-1 do begin
+    for m=snapRange[0],snapRange[1],snapStep do begin
       sP.snap = m
-      
-      reportMemory
       
       ; save restart?
       if m mod 20 eq 0 and m lt snapRange[0] and keyword_set(restart) then begin
@@ -456,13 +456,13 @@ function accretionTimes, sP=sP, restart=restart
         endif
       
       ; loop over each critical radius
-      foreach rVirFac,[sP.rVirFacs,1.0],k do begin
+      foreach rVirFac,[sP.rVirFacs,sP.radcut_rvir,1.0],k do begin
         ; for particles who are still within r_vir, check if they have passed beyond
         count_rad = 0
         count_out = 0
         
         if k eq n_elements(sP.rVirFacs) then begin
-          ; for the last iteration, take 1.0rvir and do not use accMask
+          ; for the last two iterations, take 0.15/1.0rvir and do not use accMask
           ; thereby recording the earliest/highest redshift crossing
           if count_inPar gt 0 then begin
             rad_w = where(rad_pri ge rVirFac and prevRad[galcat_ind_inPar] lt rVirFac and $
@@ -603,7 +603,7 @@ function accretionTimes, sP=sP, restart=restart
       snapRange[0] = m
     endelse
 
-    for m=snapRange[0],snapRange[1],-1 do begin
+    for m=snapRange[0],snapRange[1],snapStep do begin
       sP.snap = m
       print,m
       
@@ -642,13 +642,13 @@ function accretionTimes, sP=sP, restart=restart
       
       tr_pos  = !NULL
       
-      foreach rVirFac,[sP.rVirFacs,1.0],k do begin
+      foreach rVirFac,[sP.rVirFacs,sP.radcut_rvir,1.0],k do begin
         ; for particles who are still within each radius, check if they have passed beyond
         count_rad = 0
         count_out = 0
         
         if k eq n_elements(sP.rVirFacs) then begin
-          ; for the last iteration, take 1.0rvir and do not use accMask
+          ; for the last two iterations, take 0.15/1.0rvir and do not use accMask
           ; thereby recording the earliest/highest redshift crossing
           if count_inPar gt 0 then begin
             rad_w = where(rad_pri ge rVirFac and prevRad lt rVirFac and accMask eq 0B,count_rad)

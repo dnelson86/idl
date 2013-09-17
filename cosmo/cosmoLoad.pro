@@ -238,11 +238,9 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
     print,'Loading group catalog from snapshot ('+str(sP.snap)+') in [' + str(NumFiles) + '] files.'  
   
   ; IDs are 64bit?
-  if keyword_set(readIDs) then begin
-    longIDsBits = h5_parse(fileList[0]) ; just parse full structure of first file
-    longIDsBits = longIDsBits.IDs.ID._precision
-    if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
-  endif
+  longIDsBits = h5_parse(fileList[0]) ; just parse full structure of first file
+  longIDsBits = longIDsBits.IDs.ID._precision
+  if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
   
   ; counters
   nGroupsTot    = 0L
@@ -321,11 +319,16 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
         SubgroupVmax        : fltarr(h.nSubgroupsTot)     ,$
         SubgroupVmaxRad     : fltarr(h.nSubgroupsTot)     ,$
         SubgroupHalfMassRad : fltarr(h.nSubgroupsTot)     ,$
-        SubgroupIDMostBound : lon64arr(h.nSubgroupsTot)   ,$
+        ;SubgroupIDMostBound : lon64arr(h.nSubgroupsTot)   ,$ ; handle below
         SubgroupGrNr        : lonarr(h.nSubgroupsTot)     ,$
         SubgroupParent      : ulonarr(h.nSubgroupsTot)     }
         
         sf = create_struct(sf,sfsub) ;concat
+        
+        ; IDMostBound
+        if longIDsBits eq 32 then sfsub = { SubgroupIDMostBound:lonarr(h.nSubgroupsTot) }
+        if longIDsBits eq 64 then sfsub = { SubgroupIDMostBound:lon64arr(h.nSubgroupsTot) }
+        sf = create_struct(sf,sfsub)
       endif
       
       ; SUBFIND newer products

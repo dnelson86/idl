@@ -1,6 +1,6 @@
 ; groupCat.pro
 ; cosmological simulations - group (fof/subfind) catalog utilities
-; dnelson may.2013
+; dnelson sep.2013
 
 ; getMatchedIDs(): return matched subgroup IDs given a "haloID" from the HaloComparisonProject
 ;                  account for resolution, redshift, and run. try to prevent IDs from floating
@@ -144,11 +144,20 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z2_h64_res512_gadget']    = 5498
   sgIDs['z2_h64_res512_arepo']     = 5097
   sgIDs['z2_h64_res512_feedback']  = 5363
+  
+  ; zoom.0 (target halo)
+  sgIDs['z2_h0_res9_zoom_20mpc_hind0']  = 0
+  sgIDs['z2_h0_res10_zoom_20mpc_hind0'] = 0
+  sgIDs['z2_h0_res9_zoom_20mpc_derefgal_hind0'] = 0
+  sgIDs['z2_h0_res9_zoom_20mpc_derefgal_nomod_hind0'] = 0
 
   ; single simulation requested?
   if keyword_set(simParams) then begin
     key = 'z' + str(fix(simParams.redshift)) + '_h' + str(haloID) + '_res' + str(simParams.res) + $
           '_' + simParams.run
+    if simParams.zoomLevel ne 0 then key += '_hind'+str(simParams.hInd)
+    
+    if simParams.zoomLevel eq 0 and haloID eq 0 then message,'Error: haloID=0 is for zoom target halo.'
     if ~sgIDs.HasKey(key) then message,'Error: Unknown request.'
     
     return, sgIDs[key]
@@ -158,6 +167,12 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   keyA = 'z' + str(fix(sPa.redshift)) + '_h' + str(haloID) + '_res' + str(sPa.res) + '_' + sPa.run
   keyG = 'z' + str(fix(sPg.redshift)) + '_h' + str(haloID) + '_res' + str(sPg.res) + '_' + sPg.run
     
+  if sPa.zoomLevel ne 0 then keyA += '_hind'+str(sPa.hInd)
+  if sPg.zoomLevel ne 0 then keyG += '_hind'+str(sPg.hInd)
+  
+  if (sPa.zoomLevel eq 0 and sPg.zoomLevel ne 0) or (sPa.zoomLevel ne 0 and sPg.zoomLevel eq 0) then $
+    message,'Error: One zoom and one non zoom? No comparable halos.'
+  if (sPa.zoomLevel eq 0 or sPg.zoomLevel eq 0) and haloID eq 0 then message,'Error: haloID=0 for zooms.'
   if ~sgIDs.HasKey(keyA) and ~sgIDs.HasKey(keyG) then message,'Error: Unknown request.'
     
   ; make return

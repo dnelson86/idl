@@ -1,6 +1,6 @@
 ; units.pro
 ; units and unit conversions (for Kpc, 10^10 Msun, Gyr unit set)
-; dnelson jan.2013
+; dnelson sep.2013
 ; note: for cosmological+comoving simulations, all masses and lengths are 1/h
 ;       and all lengths are comoving (multiply by scalefac for physical)
 ;       and all times derived from Timebase_interval are similar (divide by scalefac for normal)
@@ -127,7 +127,7 @@ function codeMassToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt,
 
   units = getUnits()
   
-  if not keyword_set(redshift) then redshift = sP.redshift
+  if n_elements(redshift) eq 0 then redshift = sP.redshift
   if redshift eq -1 then stop
 
   ; mean molecular weight default (valid for ComparisonProject at ionized T>10^4 K)

@@ -16,8 +16,7 @@ pro plotPreBin, sP=sP
   runs        = [sP.run] ;['feedback','gadget'] ;tracer
   resolutions = [sP.res]
   timeWindows = list(500.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
-  accModes    = list('all','smooth','smooth','clumpy','stripped','recycled')
-
+  accModes    = list('all','smooth','clumpy','stripped','recycled')
   
   ;foreach redshift,redshifts do begin
     foreach timeWindow,timeWindows do begin
@@ -51,26 +50,34 @@ pro plotByMethod
   ; config
   runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
-  timeWindow = 1000.0 ; consider accretion over this past time range (Myr)
+  timeWindow = 500.0 ; consider accretion over this past time range (Myr)
                       ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0 ; plot Tmax/Tvir=1
-  res        = 256
-  redshift   = 2.0
+  res        = 512
+  redshift   = 1.0
   
   lines   = [1,0,2] ; tvircur,tviracc,const5.5
   sK      = 3 ; smoothing kernel size  
   cInd    = 1 ; color index
+  zoomSym = ['open circle','open square','open diamond'] ;cutVals/virVals
 
   xrange = [10.0,12.0]
   yrange = [0.0,1.025]
-  yrange_rate = [0.01,20.0]
+  yrange_rate = [0.01,50.0]
   
+  ; add any zoom run single points?
+  ;sPz = mod_struct( sPz, 'sPz0', simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=redshift) )
+  ;sPz = mod_struct( sPz, 'sPz1', simParams(run='zoom_20Mpc',res=10,hInd=0,redshift=redshift) )
+
   ; load
   foreach run,runs,i do begin
     sP  = mod_struct(sP, 'sP'+str(i), simParams(res=res,run=run,redshift=redshift))
     mbv = mod_struct(mbv, 'mbv'+str(i), haloMassBinValues(sP=sP.(i),accMode=accMode,timeWindow=timeWindow))
   endforeach
-
+  
+  for i=0,n_tags(sPz)-1 do $
+    mbvZ = mod_struct( mbvZ, 'mbvZ'+str(i), haloMassBinValues(sP=sPz.(i),accMode=accMode,timeWindow=timeWindow))
+  
   ; strings
   if isnumeric(timeWindow) then twStr = str(fix(timeWindow))
   if ~isnumeric(timeWindow) then twStr = "-"+timeWindow
@@ -84,6 +91,11 @@ pro plotByMethod
     simNames  = [simNames, sP.(i).simName]
     simColors = [simColors, sP.(i).colors[cInd]]
   endforeach
+  for i=0,n_tags(sPz)-1 do begin
+    plotStr   = plotStr + sPz.(i).plotPrefix + '.'
+    simNames  = [simNames, sPz.(i).simName]
+    simColors = [simColors, sPz.(i).colors[cInd]]
+  endfor
 
   plotStr += str(res) + '_' + str(sP.(0).snap) + '_tw' + twStr + '_am-' + accMode
   
@@ -109,10 +121,18 @@ pro plotByMethod
       for j=0,n_elements(mbv.(i).TvirVals)-1 do $
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).galaxyMedian.coldFrac.total.tVirAcc[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
+        
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).galaxy.coldFrac.total.tVirAcc[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
     
     ; top left axis
     tvirrange = alog10(codeMassToVirTemp((10.0^xrange)/1e10,redshift=redshift))
     cgAxis,/xaxis,xrange=tvirrange,/xs
+    
+    ; symbol legend for zooms
+    if n_tags(sPz) gt 0 then legend,string(mbvZ.(0).TvirVals,format='(f4.1)'),psym=zoomSym,/top,/left
     
     ; ur: allgal const
     ; ---
@@ -123,11 +143,19 @@ pro plotByMethod
       for j=0,n_elements(mbv.(i).TcutVals)-1 do $
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).galaxyMedian.coldFrac.total.tConst[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
+        
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).galaxy.coldFrac.total.tConst[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
       
     ; top right axis
     tvirrange = alog10(codeMassToVirTemp((10.0^xrange)/1e10,redshift=redshift))
     tvirrange[1] = round(10*tvirrange[1])/10.0
     cgAxis,/xaxis,xrange=tvirrange,/xs
+    
+    ; symbol legend for zooms
+    if n_tags(sPz) gt 0 then legend,string(mbvZ.(0).TcutVals,format='(f4.1)'),psym=zoomSym,/top,/right
 
     ; ll: gmem tvir
     ; ---
@@ -139,10 +167,14 @@ pro plotByMethod
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).haloMedian.coldFrac.total.tViracc[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
       
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).halo.coldFrac.total.tVirAcc[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
+      
     ; legend
     strings = textoidl("T_{max} / T_{vir,acc} < ")+string(mbv.(0).TvirVals,format='(f4.1)')
-    legend,strings,linestyle=indgen(n_elements(mbv.(0).TvirVals)),box=0,linesize=0.25,$
-      position=[10.8,0.97]
+    legend,strings,linestyle=indgen(n_elements(mbv.(0).TvirVals)),box=0,linesize=0.25,/top,/left
 
     ; lr: gmem const
     ; ---
@@ -154,10 +186,14 @@ pro plotByMethod
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).haloMedian.coldFrac.total.tConst[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
     
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).halo.coldFrac.total.tConst[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
+    
     ; legend
     strings = textoidl("T_{max} < T_{c} = 10^{"+string(mbv.(0).TcutVals,format='(f3.1)')+"}")
-    legend,strings,linestyle=indgen(n_elements(mbv.(0).TcutVals)),box=0,linesize=0.25,$
-      position=[10.92,0.97]
+    legend,strings,linestyle=indgen(n_elements(mbv.(0).TcutVals)),box=0,linesize=0.25,/top,/right
 
     legend,simNames,textcolors=simColors,box=0,/bottom,/left
 
@@ -201,8 +237,13 @@ pro plotByMethod
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).galaxyMedian.(rateInd).total.hot.tConst[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
     
-    ; legend
-    legend,simNames,textcolors=simColors,box=0,/top,/left
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).galaxy.(rateInd).total.hot.tConst[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
+    
+    ; symbol legend for zooms
+    if n_tags(sPz) gt 0 then legend,string(mbvZ.(0).TcutVals,format='(f4.1)'),psym=zoomSym,/top,/left
     
     ; ur: cold galaxy
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
@@ -213,6 +254,14 @@ pro plotByMethod
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).galaxyMedian.(rateInd).total.cold.tConst[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
     
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).galaxy.(rateInd).total.cold.tConst[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
+    
+    ; legend
+    legend,simNames,textcolors=simColors,box=0,/top,/left
+    
     ; ll: hot halo
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",pos=pos[2],/noerase
@@ -222,6 +271,11 @@ pro plotByMethod
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).haloMedian.(rateInd).total.hot.tConst[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
 
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).halo.(rateInd).total.hot.tConst[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
+        
     ; lr: cold halo
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",ytickname=replicate(' ',10),pos=pos[3],xticks=3,xtickv=[10.5,11.0,11.5,12.0],/noerase
@@ -231,10 +285,14 @@ pro plotByMethod
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).haloMedian.(rateInd).total.cold.tConst[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
     
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).halo.(rateInd).total.cold.tConst[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
+    
     ; legend
     strings = textoidl("T_{max} < T_{c} = 10^{"+string(mbv.(0).TcutVals,format='(f3.1)')+"}")
-    legend,strings,linestyle=indgen(n_elements(mbv.(0).TcutVals)),$
-      box=0,linesize=0.25,position=[10.05,13.0]
+    legend,strings,linestyle=indgen(n_elements(mbv.(0).TcutVals)),linesize=0.25,/top,/left
 
     ; labels
     cgText,0.05,y1,"Gas "+ytitles[k]+" Rate "+textoidl("[_{ }h^{-1} M_{sun } yr^{-1 }]"),$
@@ -266,8 +324,13 @@ pro plotByMethod
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).galaxyMedian.(rateInd).total.hot.tVirAcc[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
     
-    ; legend
-    legend,simNames,textcolors=simColors,box=0,/top,/left
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).galaxy.(rateInd).total.hot.tVirAcc[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
+    
+    ; symbol legend for zooms
+    if n_tags(sPz) gt 0 then legend,string(mbvZ.(0).TvirVals,format='(f4.1)'),psym=zoomSym,/top,/left
     
     ; ur: cold galaxy
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
@@ -278,6 +341,14 @@ pro plotByMethod
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).galaxyMedian.(rateInd).total.cold.tVirAcc[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
     
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).galaxy.(rateInd).total.cold.tVirAcc[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
+    
+    ; legend
+    legend,simNames,textcolors=simColors,box=0,/bottom,/right
+        
     ; ll: hot halo
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
       ytitle="",xtitle="",pos=pos[2],/noerase
@@ -286,6 +357,11 @@ pro plotByMethod
       for j=0,n_elements(mbv.(i).TvirVals)-1 do $
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).haloMedian.(rateInd).total.hot.tVirAcc[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
+    
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).halo.(rateInd).total.hot.tVirAcc[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
     
     ; lr: cold halo
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
@@ -296,10 +372,14 @@ pro plotByMethod
         cgPlot,mbv.(i).logMassBinCen,smooth(mbv.(i).haloMedian.(rateInd).total.cold.tVirAcc[j,*],sK,/nan),$
         color=sP.(i).colors[cInd],line=j,/overplot
 
+    for i=0,n_tags(sPz)-1 do $
+      for j=0,n_elements(mbvZ.(i).TvirVals)-1 do $
+        cgPlot,mbvZ.(i).logMassBinCen,mbvZ.(i).halo.(rateInd).total.cold.tVirAcc[j],$
+        color=sPz.(i).colors[cInd],psym=zoomSym[j],/overplot
+        
     ; legend
     strings = textoidl("T_{max} / T_{vir,acc} < ")+string(mbv.(0).TvirVals,format='(f4.1)')
-    legend,strings,linestyle=indgen(n_elements(mbv.(0).TvirVals)),$
-      box=0,linesize=0.25,position=[10.05,13.0]
+    legend,strings,linestyle=indgen(n_elements(mbv.(0).TvirVals)),linesize=0.25,/top,/left
 
     ; labels
     cgText,0.05,y1,"Gas "+ytitles[k]+" Rate "+textoidl("[_{ }h^{-1} M_{sun } yr^{-1 }]"),$

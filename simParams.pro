@@ -1,14 +1,15 @@
 ; simParams.pro
 ; return structure of simulation and analysis parameters with consistent information
-; dnelson aug.2013
+; dnelson sep.2013
 
 function fillZoomParams, r, res=res, hInd=hInd
 
   ; convert res to levelMax if needed
   r.levelMax = res
-  if res ge 64 then res = alog10(res)/alog10(2)
-  if res-round(res) gt 1e-6 then message,'Error: Bad res'
-  r.levelMax = round(res)
+  if r.levelMax ge 64 then r.levelMax = alog10(r.levelMax)/alog10(2)
+  if r.levelMax-round(r.levelMax) gt 1e-6 then message,'Error: Bad res'
+  r.levelMax = round(r.levelMax)
+  r.res      = r.levelMax
 
   if r.levelMin lt 7 or r.levelMax gt 11 or r.levelMax lt r.levelMin then message,'res error'
   if r.levelMax eq 8 then message,'Error: Does not exist.'
@@ -17,12 +18,18 @@ function fillZoomParams, r, res=res, hInd=hInd
     if n_elements(hInd) eq 0 then message,'Error: Must specify hInd to load zoom.'
   
   r.zoomLevel = r.levelMax - r.levelMin
+  r.hInd      = hInd
+  r.zoomShift = [0,0,0] ; for levelMax=7 (unigrid)
 
   r.targetGasMass = 4.76446157e-03 ; L7
   r.targetGasMass /= (8^r.zoomLevel) ; factor of eight decrease at each increasing zoom level
   
   r.gravSoft = 4.0 ; L7
   r.gravSoft /= (2^r.zoomLevel) ; factor of two decrease at each increasing zoom level
+  
+  if r.levelMax eq 9  then r.ids_offset =  10000000L
+  if r.levelMax eq 10 then r.ids_offset =  50000000L
+  if r.levelMax eq 11 then r.ids_offset = 500000000L
   
   if hInd eq 0 then begin
     ;[ 6] hInd =   95 mass = 11.97 rvir = 239.9 vol =  69.3 pos = [ 7469.41  5330.66  3532.18 ]
@@ -34,12 +41,21 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.targetHaloMass = 11.97 ; log msun
     r.targetRedshift = 2.0
     
-    if r.levelMax eq 7  then r.zoomShift = [0,0,0]
-    if r.levelMax ge 9  then r.zoomShift = [13,32,41]
+    if r.levelMax ge 9 then r.zoomShift = [13,32,41]
+  endif
+  
+  if hInd eq 1 then begin
+    ;[ 7] hInd =   98 mass = 11.90 rvir = 218.0 vol =  63.7 zL = 2 rVirFac = 3.8 pos = [ 6994.99 16954.28 16613.29 ]
+    ;ref_center = 0.3288, 0.8630, 0.8127
+    ;ref_extent = 0.2229, 0.1853, 0.1929
+
+    r.targetHaloInd  = 98
+    r.targetHaloPos  = [6994.99, 16954.28, 16613.29]
+    r.targetHaloRvir = 218.0 ; ckpc
+    r.targetHaloMass = 11.90 ; log msun
+    r.targetRedshift = 2.0
     
-    if r.levelMax eq 9  then r.ids_offset =  10000000L
-    if r.levelMax eq 10 then r.ids_offset =  50000000L
-    if r.levelMax eq 11 then r.ids_offset = 500000000L
+    if r.levelMax ge 9 then r.zoomShift = [21,-46,-40]
   endif
   
   ; convert zoomShift to zoomShiftPhys
@@ -88,6 +104,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
        levelmin:       0,$     ; power of two minimum level parameter (e.g. MUSIC L7=128, L8=256, L9=512, L10=1024)
        levelmax:       0,$     ; power of two maximum level parameter (equals levelmin for non-zoom runs)
        zoomLevel:      0,$     ; levelmax-levelmin
+       hInd:           0,$     ; zoom halo index (as in path)
        zoomShift:      [0,0,0]       ,$ ; Music output: "Domain will be shifted by (X, X, X)"
        zoomShiftPhys:  [0.0,0.0,0.0] ,$ ; the domain shift in box units
        targetHaloPos:  [0.0,0.0,0.0] ,$ ; position at targetRedshift in fullbox
@@ -176,7 +193,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
       r.simName    = 'ILLUSTRIS'
       r.saveTag    = 'il'
       r.plotPrefix = 'il'
-      r.plotPath   = '/n/home07/dnelson/coldflows/'
+      r.plotPath   = '/n/home07/dnelson/plots/'
       r.derivPath  = '/n/home07/dnelson/sims.illustris/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_FP/data.files/'
     endif
     
@@ -187,7 +204,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
       r.simName    = 'ILLUSTRIS_DM'
       r.saveTag    = 'ilDM'
       r.plotPrefix = 'ilDM'
-      r.plotPath   = '/n/home07/dnelson/coldflows/'
+      r.plotPath   = '/n/home07/dnelson/plots/'
       r.derivPath  = '/n/home07/dnelson/sims.illustris/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_DM/data.files/'
     endif
   
@@ -228,7 +245,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.simName    = 'ZOOM_L'+str(r.levelMax)+'_DM'
     r.saveTag    = 'zDmL'+str(r.levelMax)
     r.plotPrefix = 'zDmL'+str(r.levelMax)
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.plotPath   = '/n/home07/dnelson/plots/'
     r.derivPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/data.files/'
     
     ; if redshift passed in, convert to snapshot number and save
@@ -238,7 +255,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
   endif
   
   ; zoom project: DM+gas single halo zooms (now all in 20Mpc box, add boxsize to run label later)
-  if run eq 'zoom_20mpc' or run eq 'zoom_20mpc_derefgal' then begin
+  if run eq 'zoom_20mpc' or run eq 'zoom_20mpc_derefgal' or run eq 'zoom_20mpc_derefgal_nomod' then begin
     if n_elements(hInd) eq 0 then message,'Error: Must specify hInd (halo index) to load zoom.'
     
     r.minNumGasPart  = -1 ; no additional cut
@@ -264,16 +281,38 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.trMassConst = r.targetGasMass / r.trMCPerCell
     
     if run eq 'zoom_20mpc_derefgal' then pathStr = pathStr + '_derefgal'
+    if run eq 'zoom_20mpc_derefgal_nomod' then pathStr = pathStr + '_derefgal'
+    
+    dirStr = ''
+    if run eq 'zoom_20mpc_derefgal_nomod' then dirStr = '_noMod'
         
-    r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'/output/'
+    r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'/output'+dirStr+'/'
     r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/'
     r.savPrefix  = 'Z'
     r.simName    = 'ZOOM_L'+str(r.levelMax)
     r.saveTag    = 'zL'+str(r.levelMax)
     r.plotPrefix = 'zL'+str(r.levelMax)
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
-    r.derivPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/data.files/'
+    r.plotPath   = '/n/home07/dnelson/plots/'
+    r.derivPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/data.files'+dirStr+'/'
     
+    if run eq 'zoom_20mpc_derefgal' then begin
+      r.saveTag = r.saveTag + 'drG'
+      r.simName = r.simName + '_drG'
+    endif
+    if run eq 'zoom_20mpc_derefgal_nomod' then begin
+      r.saveTag = r.saveTag + 'drN'
+      r.simName = r.simName + '_drN'
+    endif
+    
+    r.colors = [getColor24(['ff'x,'40'x,'40'x]), $ ; red, light to dark (L9/default)
+                getColor24(['ff'x,'00'x,'00'x]), $
+                getColor24(['a6'x,'00'x,'00'x])]
+                
+    if r.res eq 10 then $
+      r.colors = [getColor24(['ff'x,'5b'x,'00'x]), $ ; red, light to dark (L9/default)
+                  getColor24(['ff'x,'7c'x,'00'x]), $
+                  getColor24(['ff'x,'9d'x,'00'x])]
+                  
     ; if redshift passed in, convert to snapshot number and save
     if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
     
@@ -317,7 +356,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.simName    = 'FEEDBACK'
     r.saveTag    = 'feMC'
     r.plotPrefix = 'feMC'
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.plotPath   = '/n/home07/dnelson/plots/'
     r.derivPath  = '/n/home07/dnelson/sims.feedback/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
     
     r.colors = [getColor24(['3e'x,'41'x,'e8'x]), $ ; blue, light to dark
@@ -413,7 +452,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.saveTag    = 'SPH'
     r.simName    = 'GADGET'
     r.plotPrefix = 'G'
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.plotPath   = '/n/home07/dnelson/plots/'
     r.derivPath  = '/n/home07/dnelson/sims.gadget/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
     
     r.colors = [getColor24(['e6'x,'7a'x,'22'x]),$ ; brown, light to dark
@@ -464,7 +503,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.saveTag    = 'trMC'
     r.simName    = 'AREPO'
     r.plotPrefix = 'trMC'
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.plotPath   = '/n/home07/dnelson/plots/'
     r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
     
     ; originally: 00eb00,00bd00,009000 for gas accretion paper
@@ -493,7 +532,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
       r.saveTag    = 'trMC'
 	  r.simName    = 'AREPO noUV'
       r.plotPrefix = 'trNoUV'
-      r.plotPath   = '/n/home07/dnelson/coldflows/'
+      r.plotPath   = '/n/home07/dnelson/plots/'
       r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noUV/data.files/'
     endif
     
@@ -532,7 +571,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
 	r.saveTag    = 'AR'
 	r.simName    = 'AREPO'
     r.plotPrefix = 'A'
-    r.plotPath   = '/n/home07/dnelson/coldflows/'
+    r.plotPath   = '/n/home07/dnelson/plots/'
     r.derivPath  = '/n/home07/dnelson/sims.tracers/A'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
     
     ; if redshift passed in, convert to snapshot number and save

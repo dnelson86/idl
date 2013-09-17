@@ -242,7 +242,7 @@ function galaxyCat, sP=sP, skipSave=skipSave
     ; construct galaxy catalog
     r = { len   : lonarr(gc.nSubgroupsTot) ,$
           off   : lonarr(gc.nSubgroupsTot) ,$
-          ids   : lon64arr(countTot)       ,$
+          ;ids   : lon64arr(countTot)      ,$ ; add below
           type  : intarr(countTot)         ,$
           rad   : fltarr(countTot)         ,$
           vrad  : fltarr(countTot)         ,$
@@ -254,6 +254,9 @@ function galaxyCat, sP=sP, skipSave=skipSave
           countGal: countGal, countGmem: countGmem, countStars: countStars ,$
           countInter: countInter, countBHs: countBHs, countTot:countTot,$
           nGroups: gc.nSubgroupsTot }
+          
+    if size(gc.IDs,/tname) eq 'LONG'   then r = create_struct(r, {IDs:lonarr(countTot)})
+    if size(gc.IDs,/tname) eq 'LONG64' then r = create_struct(r, {IDs:lon64arr(countTot)})
     
     ; insert IDs and types
     nextOff = 0L
@@ -346,6 +349,8 @@ function galaxyCat, sP=sP, skipSave=skipSave
       ids_type = loadSnapshotSubset(sP=sP,partType=parType,field='ids')
        
       calcMatch,r.ids,ids_type,galcat_ind,ids_type_ind,count=countType
+      if countType eq 0 then continue
+      
       ids_type_ind = ids_type_ind[calcSort(galcat_ind)] ; rearrange indices to be in the order of r.ids
       galcat_ind   = galcat_ind[calcSort(galcat_ind)]
       

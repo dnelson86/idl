@@ -1,6 +1,6 @@
 ; cosmoVis.pro
 ; cosmological boxes - 2d visualization
-; dnelson aug.2013
+; dnelson sep.2013
 
 ; cosmoVisCutout(): make a spatial cutout around a halo
 ;                   call with multiple gcInd's for one load and save cutouts
@@ -13,8 +13,11 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
   units = getUnits()
   
   velVecFac = 0.01 ; times velocity (km/s) in plotted kpc
-  hsmlFac   = 1.75 ; increase arepo 'hsml' to decrease visualization noise  
+  hsmlFac   = 1.75 ; increase arepo 'hsml' to decrease visualization noise
 
+  if sP.zoomLevel ne 0 then velVecFac = 0.005 ; decrease for zooms (high point density)
+  if sP.zoomLevel ne 0 then hsmlFac = 1.25    ; decrease for zooms
+  
   if ~keyword_set(sP) or n_elements(gcInd) eq 0 then message,'Error'
   
   ; filename tag for selectHalo or not
@@ -76,6 +79,7 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
   pos  = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
   vel  = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
   mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
+  sfr  = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
   
   ; randomly shuffle the points (break the peano ordering to avoid "square" visualization artifacts)
   print,'shuffling...'
@@ -88,6 +92,7 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
   dens  = dens[sort_inds]
   hsml  = hsml[sort_inds]
   mass  = mass[sort_inds]
+  sfr   = sfr[sort_inds]
   pos   = pos[*,sort_inds]
   vel   = vel[*,sort_inds]
   
@@ -109,6 +114,7 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
     dens = dens[ids_ind]
     hsml = hsml[ids_ind]
     mass = mass[ids_ind]
+    sfr  = sfr[ids_ind]
     pos  = pos[*,ids_ind]
     vel  = vel[*,ids_ind]
     
@@ -176,6 +182,10 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
     yDist = !NULL
     zDist = !NULL
     
+    loc_sf = bytarr(nCutout)
+    w = where(sfr[wCut] gt 0.0,count)
+    if count gt 0 then loc_sf[w] = 1B ; flag, 0=not star forming, 1=star forming
+    
     if metalsFlag then loc_metal = metal[wCut]
     if ~metalsFlag then loc_metal = -1    
     
@@ -215,7 +225,7 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
     ; save
     r = {loc_pos:loc_pos,loc_temp:loc_temp,loc_ent:loc_ent,loc_vrad:loc_vrad,loc_hsml:loc_hsml,$
 	   loc_pos2:loc_pos2,loc_mass:loc_mass,loc_metal:loc_metal,loc_ids:loc_ids,$
-         loc_dynTime:loc_dynTime,loc_coolTime:loc_coolTime,loc_dens:loc_dens,$
+         loc_dynTime:loc_dynTime,loc_coolTime:loc_coolTime,loc_dens:loc_dens,loc_sf:loc_sf,$
          sP:sP,gcID:gcIndCur,boxCen:boxCen,boxSizeImg:boxSizeImg,sizeFac:sizeFac,$
          haloVirRad:haloVirRad,haloMass:haloMass,haloM200:haloM200,haloV200:haloV200}
          
@@ -306,13 +316,13 @@ pro plotScatterComp, sub=sub, config=config, first=first, second=second, row=row
         
         ; circle at virial radius
         tvcircle,config.haloVirRad,0,0,cgColor('light gray'),thick=0.6,/data
-
+        
         ; particle loop for velocity vector plotting
         nCutoutLeft = n_elements(sub.pos_left[0,*])
         for i=0L,nCutoutLeft-1 do $
           oplot,[sub.pos_left[config.axisPair[0],i],sub.pos_left2[config.axisPair[0],i]],$
                  [sub.pos_left[config.axisPair[1],i],sub.pos_left2[config.axisPair[1],i]],$
-                 line=0,color=sub.cinds_left[i]
+                 line=0,color=sub.cinds_left[i],thick=config.lineThick
         
         ; scale bar
         if ~keyword_set(second) then begin
@@ -341,7 +351,7 @@ pro plotScatterComp, sub=sub, config=config, first=first, second=second, row=row
         for i=0L,nCutoutRight-1 do $
           oplot,[sub.pos_right[config.axisPair[0],i],sub.pos_right2[config.axisPair[0],i]],$
                  [sub.pos_right[config.axisPair[1],i],sub.pos_right2[config.axisPair[1],i]],$
-                 line=0,color=sub.cinds_right[i]
+                 line=0,color=sub.cinds_right[i],thick=config.lineThick
         
         ; redshift and halo mass (top on 2x2, right on progression)
         if (~keyword_set(second) and row[1] eq 1) or (~keyword_set(first) and row[1] gt 1) then begin
@@ -470,10 +480,12 @@ pro plotScatterComp, sub=sub, config=config, first=first, second=second, row=row
       if config.plotFilename ne '' then end_PS, pngResize=60;, /deletePS
 end
 
-; cosmoVisCutoutSub(): create color mapping
+; cosmoVisCutoutSub(): create color mapping (helper)
 
-function cosmoVisCutoutSub, cutout=cutout, config=config
-                            
+function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
   ; create color index mapping
   if config.colorField eq 'temp'      then fieldVal = cutout.loc_temp
   if config.colorField eq 'entropy'   then fieldVal = cutout.loc_ent
@@ -484,14 +496,28 @@ function cosmoVisCutoutSub, cutout=cutout, config=config
   if config.colorField eq 'coolTime'  then fieldVal = cutout.loc_coolTime
   if config.colorField eq 'dynTime'   then fieldVal = cutout.loc_dynTime
   if config.colorField eq 'timeRatio' then fieldVal = cutout.loc_coolTime / cutout.loc_dynTime
-    
+  
+  if config.colorField eq 'radmassflux' then begin
+    fieldVal = cutout.loc_dens * cutout.loc_vrad
+    fieldVal *= float(units.kmS_in_kpcYr) ; 10^10 msun/yr
+    fieldVal *= float(units.UnitMass_in_Msun) ; msun/yr
+    fieldVal *= 1e6 ; msun/ckpc^2/Myr
+  endif
+  
+  if config.colorField eq 'radmassfluxSA' then begin
+    loc_rad = reform(sqrt(cutout.loc_pos[0,*]^2.0 + cutout.loc_pos[1,*]^2.0 + cutout.loc_pos[2,*]))
+    fieldVal = loc_rad*loc_rad * cutout.loc_dens * cutout.loc_vrad ;ckpc^2 10^10 msun/ckpc^3 km/s
+    fieldVal *= float(units.kmS_in_kpcYr) ; 10^10 msun/yr/rad^2
+    fieldVal *= float(units.UnitMass_in_Msun) ; msun/yr/rad^2
+  endif
+  
   ; right now, first panel is "all"
   pos_left  = cutout.loc_pos
   pos_left2 = cutout.loc_pos2
   
   cinds_all = (fieldVal-config.fieldMinMax[0])*(255.0-config.nbottom) / $
-              (config.fieldMinMax[1]-config.fieldMinMax[0])
-  cinds_all = fix(cinds_all + config.nbottom) > 0 < 255 ;nbottom-255  
+              (config.fieldMinMax[1]-config.fieldMinMax[0]) > 0
+  cinds_all = fix(cinds_all + config.nbottom) < 255 ;nbottom-255  
   
   cinds_left = cinds_all
   
@@ -510,13 +536,82 @@ function cosmoVisCutoutSub, cutout=cutout, config=config
   if config.singleColorScale eq 0 then begin
     if config.secondGt eq 1 then $
       cinds_right = (fieldVal-config.secondCutVal)*(255.0-config.nbottom) / $
-                    (config.fieldMinMax[1]-config.secondCutVal)
+                    (config.fieldMinMax[1]-config.secondCutVal) > 0
     if config.secondGt eq 0 then $
       cinds_right = (fieldVal-config.fieldMinMax[0])*(255.0-config.nbottom) / $
-                    (config.secondCutVal-config.fieldMinMax[0])
+                    (config.secondCutVal-config.fieldMinMax[0]) > 0
       
-    cinds_right = fix(cinds_right[wSecond] + config.nbottom) > 0 < 255 ; nbottom-255
+    cinds_right = fix(cinds_right[wSecond] + config.nbottom) < 255 ; nbottom-255
   endif
+  
+  ; cutoutMap? if so, use this second mapCutout to do a sph kernel projection and include it
+  if n_elements(mapCutout) gt 0 then begin
+    if config.colorField eq 'temp'      then fieldValMap = mapCutout.loc_temp
+    if config.colorField eq 'entropy'   then fieldValMap = mapCutout.loc_ent
+    if config.colorField eq 'density'   then fieldValMap = mapCutout.loc_dens
+    if config.colorField eq 'metal'     then fieldValMap = mapCutout.loc_metal
+    if config.colorField eq 'vrad'      then fieldValMap = reform(mapCutout.loc_vrad)
+    if config.colorField eq 'vradnorm'  then fieldValMap = reform(mapCutout.loc_vrad)/mapCutout.haloV200
+  
+    if config.colorField eq 'radmassflux' then begin
+      ;loc_rad = reform(sqrt(mapCutout.loc_pos[0,*]^2.0 + mapCutout.loc_pos[1,*]^2.0 + mapCutout.loc_pos[2,*]))
+      ;fieldValMap = loc_rad*loc_rad * mapCutout.loc_dens * mapCutout.loc_vrad ;ckpc^2 10^10 msun/ckpc^3 km/s
+      fieldValMap = mapCutout.loc_dens * mapCutout.loc_vrad ; 10^10 msun/ckpc^3 km/s
+      fieldValMap *= float(units.kmS_in_kpcYr) ; 10^10 msun/ckpc^2/yr
+      fieldValMap *= float(units.UnitMass_in_Msun) ; msun/ckpc^2/yr
+      fieldValMap *= 1e6 ; msun/ckpc^2/Myr
+    endif
+  
+    if config.colorField eq 'radmassfluxSA' then begin
+      loc_rad = reform(sqrt(mapCutout.loc_pos[0,*]^2.0 + mapCutout.loc_pos[1,*]^2.0 + mapCutout.loc_pos[2,*]))
+      fieldValMap = loc_rad*loc_rad * mapCutout.loc_dens * mapCutout.loc_vrad ;ckpc^2 10^10 msun/ckpc^3 km/s
+      fieldValMap *= float(units.kmS_in_kpcYr) ; 10^10 msun/yr/rad^2
+      fieldValMap *= float(units.UnitMass_in_Msun) ; msun/yr/rad^2
+    endif
+  
+    ; set mass=0 for star forming gas if projecting temperature (eEOS)
+    if config.colorField eq 'temp' then begin
+      w = where(mapCutout.loc_sf eq 1B,count)
+      if count gt 0 then mapCutout.loc_mass[w] = 0.0
+    endif
+  
+    sphmap = calcSphMap(mapCutout.loc_pos,mapCutout.loc_hsml,mapCutout.loc_mass,fieldValMap,$
+                        boxSizeImg=mapCutout.boxSizeImg,boxSizeSim=0,boxCen=[0,0,0],$
+                        nPixels=config.nPixels,axes=config.axes,ndims=3)
+  
+    ; set minimum for sphmap (mass-weighted quantity, do nothing with projected density)
+    w = where(sphmap.quant_out eq 0.0,count,comp=wc)
+    if count gt 0 then sphmap.quant_out[w] = min(sphmap.quant_out[wc])
+  
+    if config.colorField eq 'vrad' then if count gt 0 then sphmap.quant_out[w] = 0.0
+   
+    ; scale sphmap (min->max) to (0->255) (note: no nbottom)
+    sphmap.quant_out = (sphmap.quant_out-config.mapMinMax[0])*(255.0) / $
+                       (config.mapMinMax[1]-config.mapMinMax[0])
+    sphmap.quant_out = fix(sphmap.quant_out) > 0 < 255 ; 0-255 
+  
+    ; some additional configuration manipulations for plotScatterAndMap
+    if config.colorField eq 'temp'        then config.ctNameMap  = 'blue-red2'
+    if config.colorField eq 'entropy'     then config.ctNameMap  = 'brewerR-yellowblue'
+    if config.colorField eq 'vrad'        then config.ctNameScat = 'brewer-redgreen'
+    if config.colorField eq 'vrad'        then config.ctNameMap  = 'brewer-brownpurple'
+    if config.colorField eq 'radmassflux' then config.ctNameMap  = 'blue-red2'
+    if config.colorField eq 'radmassflux' then config.ctNameScat = 'blue-red2'
+    
+    if config.colorField eq 'radmassfluxSA' then config.ctNameMap  = 'blue-red2'
+    if config.colorField eq 'radmassfluxSA' then config.ctNameScat = 'blue-red2'
+    
+    if config.colorField eq 'temp'        then config.secondText = 'cold gas only'
+    if config.colorField eq 'entropy'     then config.secondText = 'low entropy only'
+    if config.colorField eq 'vrad'        then config.secondText = 'rapid infall'
+    if config.colorField eq 'radmassflux' then config.secondText = 'high radial mass flux'
+    if config.colorField eq 'radmassfluxSA' then config.secondText = 'high inward flux per solid angle'
+    
+    return, {cinds_left:cinds_left,pos_left:pos_left,pos_left2:pos_left2,$
+             cinds_right:cinds_right,pos_right:pos_right,pos_right2:pos_right2,$
+             dens_out:sphmap.dens_out, quant_out:sphmap.quant_out}
+  endif
+
 
   return, {cinds_left:cinds_left,pos_left:pos_left,pos_left2:pos_left2,$
            cinds_right:cinds_right,pos_right:pos_right,pos_right2:pos_right2}
@@ -527,17 +622,17 @@ end
 ; showHalo (use galaxy catalog and display halo only, otherwise all in spatial subset)
 
 pro scatterMapHalos, selectHalo=selectHalo
-
   compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
   
   ; config
-  sP = simParams(res=512,run='gadget',redshift=2.0)
-  units = getUnits()
+  ;sP = simParams(res=512,run='gadget',redshift=2.0)
+  sP = simParams(res=9,run='zoom_20Mpc',redshift=2.0,hInd=0)
 
-  haloID = 304 ;z2.304 z2.301 z2.130 z2.64
+  haloID = 0 ;zoom.0 z2.304 z2.301 z2.130 z2.64
   gcIDs = getMatchedIDs(simParams=sP,haloID=haloID)
 
-  if ~keyword_set(gcIDs) then message,'Error: Must specify gcIDs.'
+  if n_elements(gcIDs) eq 0 then message,'Error: Must specify gcIDs.'
 
   ; compare to a second run (2x2 panels instead of 2x1)?
   ; TODO
@@ -576,7 +671,8 @@ pro scatterMapHalos, selectHalo=selectHalo
     config = {boxSizeImg:boxSizeImg,plotFilename:'',haloVirRad:cutout.haloVirRad,$
               haloMass:cutout.haloMass,axisPair:[0,0],sP:sP,singleColorScale:singleColorScale,$
               colorField:colorField,fieldMinMax:fieldMinMax,secondCutVal:secondCutVal,$
-              secondGt:secondGt,nbottom:nbottom,barMM:fieldMinMax,ctName:ctName,barType:'2bar'}
+              secondGt:secondGt,nbottom:nbottom,barMM:fieldMinMax,ctName:ctName,barType:'2bar',$
+              lineThick:1.0}
     
     sub = cosmoVisCutoutSub(cutout=cutout,config=config)
 
@@ -676,7 +772,8 @@ pro scatterMap4Panels, selectHalo=selectHalo
       config = {boxSizeImg:boxSizeImg,plotFilename:'',haloVirRad:cutout.haloVirRad,$
                 haloMass:cutout.haloMass,axisPair:axisPair,sP:sP,barMM:fieldMinMax,$
                 colorField:colorField,fieldMinMax:fieldMinMax,secondGt:secondGt,subtitle:['',''],$
-                singleColorScale:singleColorScale,ctName:ctName,nbottom:nbottom,barType:'1bar'}
+                singleColorScale:singleColorScale,ctName:ctName,nbottom:nbottom,barType:'1bar',$
+                lineThick:3.0}
 
       if ~singleColorScale then config.barType = ''
                 
@@ -794,7 +891,8 @@ pro mosaicHalosComp, redshift=redshift
   
     config = {boxSizeImg:cutout.boxSizeImg,plotFilename:'',haloVirRad:cutout.haloVirRad,$
               colorField:'na',fieldMinMax:tempMinMax,secondCutVal:coldTempCut,secondGt:0,$
-              haloMass:cutout.haloMass,axisPair:axisPair,sP:sPg,barMM:tempMinMax,barType:'na'}
+              haloMass:cutout.haloMass,axisPair:axisPair,sP:sPg,barMM:tempMinMax,barType:'na',$
+              lineThick:3.0}
     
     ; plot
     xMinMax = [-config.boxSizeImg[0]/2.0,config.boxSizeImg[0]/2.0]
@@ -868,7 +966,8 @@ pro mosaicHalosComp, redshift=redshift
   
     config = {boxSizeImg:cutout.boxSizeImg,plotFilename:'',haloVirRad:cutout.haloVirRad,$
               colorField:'na',fieldMinMax:tempMinMax,secondCutVal:coldTempCut,secondGt:0,$
-              haloMass:cutout.haloMass,axisPair:axisPair,sP:sPa,barMM:tempMinMax,barType:'na'}
+              haloMass:cutout.haloMass,axisPair:axisPair,sP:sPa,barMM:tempMinMax,barType:'na',$
+              lineThick:3.0}
     
     ; plot
     xMinMax = [-config.boxSizeImg[0]/2.0,config.boxSizeImg[0]/2.0]

@@ -255,7 +255,7 @@ function snapNumToRedshift, time=time, all=all, sP=sP, snap=snap, subBox=subBox
 
   if not file_test(saveFileName) then dummy = redshiftToSnapNum(sP=sP, subBox=subBox)
   if n_elements(snap) eq 0 then snap = sP.snap
-  if snap[0] eq -1 then message,'Error: sP.snap used but was undefined.'
+  if snap[0] eq -1 and ~keyword_set(all) then message,'Error: sP.snap used but was undefined.'
   
   ; restore
   restore,saveFilename
@@ -329,6 +329,50 @@ function partTypeNum, PT
 
   return, partType
 end  
+
+; plotRedshiftSpacings(): compare different runs
+
+pro plotRedshiftSpacings
+
+  ; config
+  sP = mod_struct( sP, 'sP0', simParams(res=128,run='gadget') )
+  sP = mod_struct( sP, 'sP1', simParams(res=128,run='tracer') )
+  sP = mod_struct( sP, 'sP2', simParams(res=128,run='feedback') )
+  ;sP = mod_struct( sP, 'sP3', simParams(res=512,run='zoom_20mpc',hind=0) )
+  sP = mod_struct( sP, 'sP4', simParams(res=910,run='illustris') )
+
+  xrange = [0.0,14.0]
+  yrange = [0.5,n_tags(sP)+0.5]
+  
+  runNames = []
+  for i=0,n_tags(sP)-1 do runNames = [runNames,sP.(i).run]
+
+  start_PS, sP.(0).plotPath + 'redshift_spacing.eps', xs=16, ys=6
+  
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,yticks=n_tags(sP)-1,$
+      ytickv=lindgen(n_tags(sP))+1,ytickname=[runNames],yminor=1,$
+      xtitle="Age of Universe [Gyr]",ytitle="Output Snapshot Spacing",xs=9,/ys,$
+      pos=[0.12,0.12,0.96,0.94]
+  
+    ; loop over each run
+    for i=0,n_tags(sP)-1 do begin
+      zVals = snapNumToRedshift(sP=sP.(i),/all)
+      zVals = redshiftToAgeFlat(zVals)
+      
+      yLoc = (i+1) + [-0.4,0.4]
+      for j=0,n_elements(zVals)-1 do $
+        cgPlot,[zVals[j],zVals[j]],yLoc,color=sP.(i).colors[0],thick=!p.thick-2,/overplot
+    endfor
+    
+    ; redshift axis
+    sP.(0).snap = 0 ; indicate xaxis in Gyr not snapshot number
+    redshift_axis, xrange, yrange, sP=sP.(0)
+   
+  end_PS
+
+  stop
+  
+end
   
 ; rhoTHisto(): make mass-weighted density-temperature 2d histogram
 
@@ -403,7 +447,7 @@ pro redshift_axis, xRange, yRange, ylog=ylog, sP=sP, dotted=dotted, zTicknames=z
   zXPos = fltarr(nZ)
   
   ; plot horizontal line along top xaxis
-  cgPlot,xRange,[yRange[1],yRange[1]],/overplot
+  cgPlot,xRange,[yRange[1],yRange[1]]-0.0005,/overplot
   ;cgText,0.5,0.94,"Redshift",/normal  
   
   ; plot "maximum" redshift label

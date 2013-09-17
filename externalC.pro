@@ -179,17 +179,17 @@ function calcSphMap, pos, hsml, mass, quant, axes=axes, boxSizeImg=boxSizeImg, b
   if (n_elements(nPixels) ne 2) then stop
   if (n_elements(axes)    ne 2) then stop
   
-  if (size(pos))[0] ne 2 or (size(pos))[1] ne 3 then stop
-  if (size(hsml))[0] ne 1 then stop
-  if (size(mass))[0] ne 1 then stop
-  if (size(quant))[0] ne 1 then stop
+  if (size(pos))[0] ne 2 or (size(pos))[1] ne 3 then message,'Error: Strange dimensions of pos.'
+  if (size(hsml))[0] ne 1 then message,'Error: Strange dimensions of hsml.'
+  if (size(mass))[0] ne 1 then message,'Error: Strange dimensions of mass.'
+  if (size(quant))[0] ne 1 then message,'Error: Strange dimensions of quant.'
   
   if (size(pos))[2] ne (size(hsml))[1] or $
      (size(pos))[2] ne (size(mass))[1] or $
-     (size(pos))[2] ne (size(quant))[1] then stop
+     (size(pos))[2] ne (size(quant))[1] then message,'Error: Dimension mismatch for inputs.'
   
-  if (axes[0] ne 0 and axes[0] ne 1 and axes[0] ne 2) then stop
-  if (axes[1] ne 0 and axes[1] ne 1 and axes[1] ne 2) then stop
+  if (axes[0] ne 0 and axes[0] ne 1 and axes[0] ne 2) then message,'Error: Invalid axes.'
+  if (axes[1] ne 0 and axes[1] ne 1 and axes[1] ne 2) then message,'Error: Invalid axes.'
   
   ; we direct cast so ensure everything is the right size
   pos   = float(pos)

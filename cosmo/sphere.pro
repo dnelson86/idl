@@ -97,6 +97,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
     if n_elements(subgroupIDs) gt 1 then message,'Computed and saved, to return radmassflux request only one halo.'                       
     hsv_dens.valName = 'radmassflux'
     hsv_dens.value = alog10(hsv_dens.value * units.UnitMass_in_Msun) * (hsv_radvel.value * units.kmS_in_kpcYr)
+    print,'seems strange to have log, check'
     hsv_dens.value *= 1e6 ; Msun / kpc^2 / year  -->  Msun / kpc^2 / Myr
     return, hsv_dens 
   endif

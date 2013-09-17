@@ -8,7 +8,6 @@
 ;           (otherwise just make it for sP.snap and/or return existing catalog for sP.snap)
 
 function mergerTree, sP=sP, makeNum=makeNum
-
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
@@ -198,7 +197,6 @@ end
 ;                     the subset of the galaxycat at maxSnap that we can track back using this selection
 
 function mergerTreeSubset, sP=sP, verbose=verbose
-
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
@@ -341,7 +339,8 @@ end
 ; trackHaloPosition(): return a new position for some halo gcID at an earlier snapshot using mergerTree
     
 function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
-    
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
     step = -1 ; back in snapshots, back in time
     if endSnap gt sP.snap then step = 1 ; forward in snapshots
     
@@ -425,7 +424,7 @@ end
 ; plotHaloTracking(): plot fraction of successful halo adaptive tracking vs redshift
 
 pro plotHaloTracking, sP=sP
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   minMasses = [10.0,10.5,11.0,11.5] ; z=2 masses in log(msun)
   
   mt = mergerTreeSubset(sP=sP,/verbose)
@@ -475,6 +474,75 @@ pro plotHaloTracking, sP=sP
   
   stop
 
+end
+
+; plotHaloEvoSingle(): plot evolution of a single (zoom) halo properties
+
+pro plotHaloEvoSingle
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  forward_function zoomTargetHalo
+
+  ; config
+  sP = simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=2.0)
+  colors = ['red','blue','orange']
+  
+  ; load
+  hInd = zoomTargetHalo(sP=sP)
+  mt   = mergerTreeSubset(sP=sP,/verbose)
+  
+  ; calculate
+  redshifts = 1/mt.times-1
+  ages = redshiftToAgeFlat(redshifts)
+  ages = (ages-ages[0])*1000 ; Myr since sP.redshift
+  mt.hMass = codeMassToLogMsun(mt.hMass)
+  
+  print,'Target halo: ['+str(hInd)+'] tracked to minSnap: ['+str(mt.minSnap[hInd])+'] (z='+$
+    string(min(redshifts),format='(f4.2)')+' to z='+string(max(redshifts),format='(f4.2)')+')'
+  
+  startPos = reform(mt.hPos[0,*,hInd])
+  
+  xyz_delta    = fltarr(3,n_elements(ages))
+  xyz_delta_sm = fltarr(3,n_elements(ages))
+  
+  for i=0,2 do begin
+    xyz_delta[i,*]    = reform(mt.hPos[*,i,hInd]) - startPos[i]
+    xyz_delta_sm[i,*] = reform(mt.hPosSm[*,i,hInd]) - startPos[i]
+  endfor
+  
+  ; plot
+  pos = plot_pos(rows=2,cols=2,/gap)
+  start_PS,sP.plotPath + 'haloEvoSingle_' + sP.saveTag + '.eps', /big
+    cgPlot,[0],[0],/nodata,xrange=minmax(ages),yrange=minmax(xyz_delta),$
+      xtitle="Delta Time Back [Myr]",ytitle="Delta Position [ckpc]",pos=pos[0]
+      
+    for i=0,2 do begin
+      cgPlot,ages,xyz_delta[i,*],psym=-4,line=0,color=cgColor(colors[i]),/overplot
+      ;cgPlot,ages,xyz_delta_sm[i,*],psym='filled circle',color=cgColor(colors[i]),/overplot
+    endfor
+    
+    legend,['x','y','z'],textcolors=colors,/bottom,/right
+    
+    cgPlot,[0],[0],/nodata,xrange=minmax(ages),yrange=minmax(mt.hMass[*,hInd]),$
+      xtitle="Delta Time Back [Myr]",ytitle="Halo Mass [log Msun]",pos=pos[1],/noerase
+      
+    cgPlot,ages,mt.hMass[*,hInd],psym=-4,color=cgColor('black'),/overplot
+    ;cgPlot,ages,1.95*mt.hVirTemp[*,hInd],psym=-4,color=cgColor('forest green'),/overplot
+    ;legend,['mass','2*virTemp'],textcolors=['black','forest green'],/top,/left
+    
+    cgPlot,[0],[0],/nodata,xrange=minmax(ages),yrange=minmax(mt.hVirRad[*,hInd]),$
+      xtitle="Delta Time Back [Myr]",ytitle="Halo VirRad [ckpc]",pos=pos[2],/noerase
+      
+    cgPlot,ages,mt.hVirRad[*,hInd],psym=-4,color=cgColor('black'),/overplot
+    
+    cgPlot,[0],[0],/nodata,xrange=minmax(ages),yrange=minmax(mt.hVel[*,*,hInd]),$
+      xtitle="Delta Time Back [Myr]",ytitle="Halo Velocity [km/s]",pos=pos[3],/noerase
+      
+    cgPlot,minmax(ages),[0,0],line=1,color=cgColor('gray'),/overplot
+    for i=0,2 do $
+      cgPlot,ages,mt.hVel[*,i,hInd],psym=-4,line=0,color=cgColor(colors[i]),/overplot
+    legend,['x','y','z'],textcolors=colors,/bottom,/right
+  end_PS
+  
 end
 
 ; plotHaloEvo(): plot evolution of halo masses, virial temperatures, positions, r200 using mergerTree()
