@@ -107,13 +107,8 @@ function accretionTimes, sP=sP, restart=restart
         ; locate
         par_ind = value_locate(par_ids_sorted,galcat.ids) ; indices to par_ids_sorted
         par_ind = sort_inds[par_ind>0] ; indices to par_ids (>0 removes -1 entries, which are removed next line)
-        w = where(par_ids[par_ind] eq galcat.ids,count_inPar) ; verify we actually matched the ID
-        
-        if count_inPar gt 0 then begin
-          tr_parids_inPar = par_ind[w]
-          galcat_ind_inPar = w ; used to be galcat_par_ind[w] but this is unnecessary
-          par_ind = !NULL
-        endif
+        galcat_ind_inPar = where(par_ids[par_ind] eq galcat.ids,count_inPar) ; verify we actually matched the ID
+        par_ind = par_ind[galcat_ind_inPar] ; indices of matched parents
         
         sort_inds = !NULL
         par_ids_sorted = !NULL
@@ -127,14 +122,14 @@ function accretionTimes, sP=sP, restart=restart
           u     = !NULL
           nelec = !NULL
           
-          if count_inPar gt 0 then temp = temp[tr_parids_inPar]
+          if count_inPar gt 0 then temp = temp[par_ind]
       
           ; scale Torrey+ (2012) galaxy cut to physical density
           scalefac = snapNumToRedshift(sP=sP,/time) ; time flag gives simulation time = scale factor
           a3inv = 1.0 / (scalefac*scalefac*scalefac)
       
           dens = loadSnapshotSubset(sP=sP,partType='gas',field='density')
-          if count_inPar gt 0 then dens = dens[tr_parids_inPar] * a3inv
+          if count_inPar gt 0 then dens = dens[par_ind] * a3inv
       
           ; mark any galaxy gas failing cut as accreted at this snapshot, if not previously
           ; marked due to RT cut (note: for gmem accTimeRT is flagged at mt.maxSnap by definition)
@@ -171,10 +166,10 @@ function accretionTimes, sP=sP, restart=restart
             
         ; load parent positions and convert to tracer positions
         par_pos = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
-        if count_inPar gt 0 then child_pos = par_pos[*,tr_parids_inPar]
+        if count_inPar gt 0 then child_pos = par_pos[*,par_ind]
       
         par_pos = !NULL
-        tr_parids_inPar  = !NULL
+        par_ind = !NULL
 
         ; calculate current distance of parent from smoothed halo center position for galaxy members
         if count_inPar gt 0 then begin
@@ -377,13 +372,8 @@ function accretionTimes, sP=sP, restart=restart
         ; locate
         par_ind = value_locate(par_ids_sorted,tr_parids) ; indices to par_ids_sorted
         par_ind = sort_inds[par_ind>0] ; indices to par_ids (>0 removes -1 entries, which are removed next line)
-        w = where(par_ids[par_ind] eq tr_parids,count_inPar) ; verify we actually matched the ID
-        
-        if count_inPar gt 0 then begin
-          tr_parids_inPar = par_ind[w]
-          galcat_ind_inPar = w ; used to be galcat_par_ind[w] but this is unnecessary
-          par_ind = !NULL
-        endif
+        galcat_ind_inPar = where(par_ids[par_ind] eq tr_parids,count_inPar) ; verify we actually matched the ID
+        par_ind = par_ind[galcat_ind_inPar] ; indices of matched parents
         
         sort_inds = !NULL
         par_ids_sorted = !NULL
@@ -397,14 +387,14 @@ function accretionTimes, sP=sP, restart=restart
           u     = !NULL
           nelec = !NULL
           
-          if count_inPar gt 0 then temp = temp[tr_parids_inPar]
+          if count_inPar gt 0 then temp = temp[par_ind]
       
           ; scale Torrey+ (2012) galaxy cut to physical density
           scalefac = snapNumToRedshift(sP=sP,/time) ; time flag gives simulation time = scale factor
           a3inv = 1.0 / (scalefac*scalefac*scalefac)
       
           dens = loadSnapshotSubset(sP=sP,partType='gas',field='density')
-          if count_inPar gt 0 then dens = dens[tr_parids_inPar] * a3inv
+          if count_inPar gt 0 then dens = dens[par_ind] * a3inv
       
           ; mark any galaxy gas failing cut as accreted at this snapshot, if not previously
           ; marked due to RT cut (note: for gmem accTimeRT is flagged at mt.maxSnap by definition)
@@ -441,10 +431,10 @@ function accretionTimes, sP=sP, restart=restart
       
         ; load parent positions and convert to tracer positions
         par_pos = loadSnapshotSubset(sP=sP,partType=partType,field='pos')
-        if count_inPar gt 0 then tr_pos = par_pos[*,tr_parids_inPar]
+        if count_inPar gt 0 then tr_pos = par_pos[*,par_ind]
       
         par_pos = !NULL
-        tr_parids_inPar  = !NULL
+        par_ind = !NULL
 
         ; calculate current distance of parent from smoothed halo center position for galaxy members
         if count_inPar gt 0 then begin
