@@ -89,7 +89,6 @@ function maxVals, sP=sP, restart=restart
     
     for m=snapRange[0],snapRange[1],snapStep do begin
       sP.snap = m
-      sP.redshift = snapNumToRedshift(sP=sP)
       
       ; save restart?
       if m mod 20 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
@@ -162,7 +161,7 @@ function maxVals, sP=sP, restart=restart
       fracDens   = string( float(countDens)/galcat.countTot * 100,    format='(f5.1)')
       fracMach   = string( 0.0,                                       format='(f5.1)')
         
-      print,'['+string(m,format='(I3.3)')+'] z='+string(sP.redshift,format='(f5.1)')+$
+      print,'['+string(m,format='(I3.3)')+'] z='+string(snapNumToRedshift(sP=sP),format='(f5.1)')+$
         ' fracInMask: '+fracInMask+' fracInWind: '+fracInWind+' fracTemp: '+fracTemp+$
         ' fracEnt: '+fracEnt+' fracDens: '+fracDens+' fracMach: '+fracMach
       
@@ -209,7 +208,6 @@ function maxVals, sP=sP, restart=restart
 
     for m=snapRange[0],snapRange[1],snapStep do begin
       sP.snap = m
-      sP.redshift = snapNumToRedshift(sP=sP)
   
       ; save restart?
       if m mod 20 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
@@ -309,7 +307,7 @@ function maxVals, sP=sP, restart=restart
         fracDens   = string( float(countDens)/num_galcat_trs * 100,    format='(f5.1)')
         fracMach   = string( float(countMach)/num_galcat_trs * 100,    format='(f5.1)')
         
-        print,'['+string(m,format='(I3.3)')+'] z='+string(sP.redshift,format='(f5.1)')+$
+        print,'['+string(m,format='(I3.3)')+'] z='+string(snapNumToRedshift(sP=sP),format='(f5.1)')+$
           ' fracInMask: '+fracInMask+' fracInWind: '+fracInWind+' fracTemp: '+fracTemp+$
           ' fracEnt: '+fracEnt+' fracDens: '+fracDens+' fracMach: '+fracMach
         
@@ -389,7 +387,6 @@ function maxVals, sP=sP, restart=restart
     
     for m=snapRange[0],snapRange[1],snapStep do begin
       sP.snap = m
-      sP.redshift = snapNumToRedshift(sP=sP)
   
       ; save restart?
       if m mod 20 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
@@ -470,7 +467,7 @@ function maxVals, sP=sP, restart=restart
       fracDens   = string( float(countDens)/galcat_num_trs * 100,    format='(f5.1)')
       fracMach   = string( float(countMach)/galcat_num_trs * 100,    format='(f5.1)')
         
-      print,'['+string(m,format='(I3.3)')+'] z='+string(sP.redshift,format='(f5.1)')+$
+      print,'['+string(m,format='(I3.3)')+'] z='+string(snapNumToRedshift(sP=sP),format='(f5.1)')+$
         ' fracInMask: '+fracInMask+' fracInWind: '+fracInWind+' fracTemp: '+fracTemp+$
         ' fracEnt: '+fracEnt+' fracDens: '+fracDens+' fracMach: '+fracMach
       

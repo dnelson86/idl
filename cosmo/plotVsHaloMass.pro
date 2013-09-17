@@ -1,6 +1,6 @@
 ; plotVsHaloMass.pro
 ; gas accretion project - plots as a function of halo mass
-; dnelson jul.2013
+; dnelson sep.2013
 
 ; plotPreBin():
 
@@ -25,7 +25,7 @@ pro plotPreBin, sP=sP
           foreach accMode,accModes do begin
             if (run eq 'gadget' or run eq 'tracer') and accMode eq 'recycled' then continue ; skip
             
-            print,run,res,timeWindow,accMode
+            print,run,res,redshift,timeWindow,accMode
             sP = simParams(res=res,run=run,redshift=redshift)
         
             binv = haloMassBinValues(sP=sP,timeWindow=timeWindow,accMode=accMode)
