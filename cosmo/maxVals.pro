@@ -1,27 +1,32 @@
 ; maxVals.pro
 ; gas accretion project - past temperature/entropy/density history of gas
-; dnelson jul.2013
+; dnelson sep.2013
 
 ; -----------------------------------------------------------------------------------------------------
-; maxVals(): find maximum temperature/ent/dens for gas particles in galaxyCat at redshift
-;            through the redshift range (redshift,zStart] where zStart is typically the start of 
-;            the simulation
+; maxVals(): find maximum temperature/ent/dens for gas particles in galaxyCat from the start of the
+;   simulation up to sP.redshift (maxTemp only while not on eEOS)
 ;
-; NOTE: currently temps are only saved for gas in the galaxyCat at the end of the interval (not all gas)
+; NOTE: vals are only saved for gas in the galaxyCat at the end of the interval (not all gas)
+; NOTE: vals are only recorded until gas crosses 0.15rvir of main progenitor branch for the first time, 
+;       or enters wind phase (windcounter>0). sep2013 change.
 ; -----------------------------------------------------------------------------------------------------
 
-function maxVals, sP=sP, zStart=zStart, restart=restart
+function maxVals, sP=sP, restart=restart
 
   forward_function cosmoTracerChildren, cosmoTracerVelParents
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   ; set minimum snapshot (maxmimum redshift)
-  if not keyword_set(zStart) then zStart = snapNumToRedshift(snap=0,sP=sP)
+  zStart = snapNumToRedshift(snap=0,sP=sP)
   minSnap = redshiftToSnapnum(zStart,sP=sP)
 
   ; set maximum snapshot (minimum redshift) (-1 do not include final snapshot in Tmax search)
   maxSnap = sP.snap - 1
+
+  snapStep = 1 ; process every snapshot
+  ;if sP.snapRange[1] ge 300 then snapStep = 2 ; every other for run=tracer
+  maxSnap = maxSnap - (maxSnap mod snapStep) ; make sure we save at the end
   
   snapRange = [minSnap,maxSnap]
   
@@ -34,6 +39,15 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
     return, rtr
   endif
   
+  ; load first 0.15rvir crossing times
+  at = accretionTimes(sP=sP)
+  if (size(at.accTime))[1] ne n_elements(at.rVirFacs)+2 then message,'Error: Old at, update.'
+
+  at = reform( at.AccTime[-2,*] ) ; last two are special (first) 0.15 and 1.0 crossings
+  w = where(at lt 0.0,count)
+  if count gt 0 then at[w] = 1.0 ; do not restrict maxvals recording if no recorded 0.15 accTime
+  
+  ; set filename for restart file
   resFilename = sP.derivPath + 'maxVals.' + sP.saveTag+'.restart.'+sP.savPrefix+str(sP.res)+'.'+$
                         str(minSnap)+'-'+str(maxSnap)+'.sav'
                         
@@ -54,6 +68,8 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       ' in range ['+str(minSnap)+'-'+str(maxSnap)+'].'
       
     if ~file_test(resFilename) then begin ; no restart  
+        accMask = bytarr(galcat.countTot)
+        
         ; store the main arrays for all tracers as structures so we can write them directly
         rtr = {maxTemps      : fltarr(galcat.countTot)   ,$
                maxTempTime   : fltarr(galcat.countTot)   ,$
@@ -71,14 +87,14 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       snapRange[0] = m
     endelse    
     
-    for m=snapRange[0],snapRange[1],1 do begin
+    for m=snapRange[0],snapRange[1],snapStep do begin
       sP.snap = m
-      print,m
+      sP.redshift = snapNumToRedshift(sP=sP)
       
       ; save restart?
       if m mod 20 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
-        save,rtr,m,filename=resFilename
+        save,rtr,m,accMask,filename=resFilename
         print,' --- Done! ---'
         ;exit,status=33 ; requeue
       endif
@@ -93,6 +109,12 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       galcat_ind = galcat_ind[sort(galcat_ind)]
       
       ids_gas = !NULL
+      
+      ; update mask for any tracers passing 0.15rvir point (stop recording maxvals)
+      h = loadSnapshotHeader(sP=sP)
+      w = where(at lt h.time,countAccMask)
+      if countAccMask gt 0 then accMask[w] = 1B
+      if sP.gfmWinds then message,'A bit strange.' ; update mask if windcounter>0
       
       ; temp
       ; ----
@@ -120,28 +142,35 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       sfr = sfr[ids_ind]
       
       ; replace existing values if current snapshot has higher temps (enforce off effective EOS)
-      w1 = where(temp gt rtr.maxTemps[galcat_ind] and sfr eq 0.0,count)
-      if count gt 0 then begin
+      w1 = where(temp gt rtr.maxTemps[galcat_ind] and sfr eq 0.0 and accMask eq 0B,countTemp)
+      if countTemp gt 0 then begin
         rtr.maxTemps[galcat_ind[w1]]    = temp[w1]
         rtr.maxTempTime[galcat_ind[w1]] = snapNumToRedshift(sP=sP,/time)
       endif
             
-      w1 = where(ent gt rtr.maxEnt[galcat_ind],count)
-      if count gt 0 then rtr.maxEnt[galcat_ind[w1]] = ent[w1]
+      w1 = where(ent gt rtr.maxEnt[galcat_ind] and accMask eq 0B,countEnt)
+      if countEnt gt 0 then rtr.maxEnt[galcat_ind[w1]] = ent[w1]
       
-      w1 = where(dens gt rtr.maxDens[galcat_ind],count)
-      if count gt 0 then rtr.maxDens[galcat_ind[w1]] = dens[w1]
+      w1 = where(dens gt rtr.maxDens[galcat_ind] and accMask eq 0B,countDens)
+      if countDens gt 0 then rtr.maxDens[galcat_ind[w1]] = dens[w1]
+      
+      ; output
+      fracInMask = string( float(countAccMask)/galcat.countTot * 100, format='(f5.1)')
+      fracInWind = string( 0.0,                                       format='(f5.1)')
+      fracTemp   = string( float(countTemp)/galcat.countTot * 100,    format='(f5.1)')
+      fracEnt    = string( float(countEnt)/galcat.countTot * 100,     format='(f5.1)')
+      fracDens   = string( float(countDens)/galcat.countTot * 100,    format='(f5.1)')
+      fracMach   = string( 0.0,                                       format='(f5.1)')
+        
+      print,'['+string(m,format='(I3.3)')+'] z='+string(sP.redshift,format='(f5.1)')+$
+        ' fracInMask: '+fracInMask+' fracInWind: '+fracInWind+' fracTemp: '+fracTemp+$
+        ' fracEnt: '+fracEnt+' fracDens: '+fracDens+' fracMach: '+fracMach
       
       ; SAVE?
       if sP.snap eq maxSnap then begin
         ; set savefilename
         saveFilename = sP.derivPath+'maxVals.' + sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
-                       
-        if file_test(saveFilename) then begin
-          print,'WARNING: ['+saveFilename+'] exists, skipping write!'
-          continue
-        endif
       
         save,rtr,filename=saveFilename
         print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
@@ -162,6 +191,7 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       
       galcat_trids   = galcat.trMC_ids
       num_galcat_trs = n_elements(galcat_trids)
+      accMask = bytarr(num_galcat_trs)
   
       ; store the main arrays for all tracers as structures so we can write them directly
       rtr  = { maxTemps      : fltarr(num_galcat_trs)  ,$
@@ -177,14 +207,14 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       snapRange[0] = m
     endelse 
 
-    for m=snapRange[0],snapRange[1],1 do begin
+    for m=snapRange[0],snapRange[1],snapStep do begin
       sP.snap = m
-      print,m  
+      sP.redshift = snapNumToRedshift(sP=sP)
   
       ; save restart?
       if m mod 20 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
-        save,rtr,galcat_trids,num_galcat_trs,m,filename=resFilename
+        save,rtr,galcat_trids,num_galcat_trs,m,accMask,filename=resFilename
         print,' --- Done! ---'
         ;exit,status=33 ; requeue
       endif
@@ -202,17 +232,23 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
         tr_ids     = !NULL
         galcat_ind = !NULL
         
+        ; update mask for any tracers passing 0.15rvir point (stop recording maxvals)
+        h = loadSnapshotHeader(sP=sP)
+        w = where(at lt h.time,countAccMask)
+        if countAccMask gt 0 then accMask[w] = 1B
+        
+        ; update mask if windcounter>0
+        countAccWind = 0
+        if sP.gfmWinds then begin
+          windc = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
+          windc = windc[trids_ind]
+          w = where(windc gt 0,countAccWind)
+          if countAccWind gt 0 then accMask[w] = 1B
+        endif
+        
         ; maxtemp
         ; -------
         tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp')
-        
-        ; sub-snapshot timing?
-        if sP.trMCFields[7] ge 0 then begin
-          tr_maxval_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp_time')
-          tr_maxval_time = tr_maxval_time[trids_ind]
-        endif else begin
-          tr_maxval_time = replicate(snapNumToRedshift(sP=sP,/time), num_galcat_trs)
-        endelse
         
         ; tracerMC maxtemp field in Kelvin, tracerVEL still in unit system, convert to log
         tr_maxval = tr_maxval[trids_ind]   
@@ -220,11 +256,20 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
 
         ; replace existing values if current snapshot has higher temps
         ; note: if tracers are still inside a star particle, their maxtemp entry will be zero
-        w1 = where(tr_maxval gt rtr.maxTemps,count)
+        w1 = where(tr_maxval gt rtr.maxTemps and accMask eq 0B,countTemp)
         
-        if (count gt 0) then begin
-          rtr.maxTemps[w1]    = tr_maxval[w1]
-          rtr.maxTempTime[w1] = tr_maxval_time[w1]
+        if countTemp gt 0 then begin
+          rtr.maxTemps[w1] = tr_maxval[w1]
+          
+          ; sub-snapshot timing?
+          if sP.trMCFields[7] ge 0 then begin
+            tr_maxval_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp_time')
+            rtr.maxTempTime[w1] = tr_maxval_time[trids_ind]
+            tr_maxval_time = !NULL
+          endif else begin
+            ; if not, just use constant time corresponding to this snapshot
+            rtr.maxTempTime[w1] = snapNumToRedshift(sP=sP,/time)
+          endelse
         endif
         
         ; maxent
@@ -235,26 +280,38 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
         tr_maxval = tr_maxval[trids_ind]  
         tr_maxval = convertTracerEntToCGS(tr_maxval,/log,sP=sP)
         
-        w1 = where(tr_maxval gt rtr.maxEnt,count)
-        if (count gt 0) then rtr.maxEnt[w1] = tr_maxval[w1]
+        w1 = where(tr_maxval gt rtr.maxEnt and accMask eq 0B,countEnt)
+        if countEnt gt 0 then rtr.maxEnt[w1] = tr_maxval[w1]
         
         ; maxdens
         ; -------
         tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxdens')
         tr_maxval = tr_maxval[trids_ind]  
         
-        w1 = where(tr_maxval gt rtr.maxDens,count)
-        if (count gt 0) then rtr.maxDens[w1] = tr_maxval[w1]
+        w1 = where(tr_maxval gt rtr.maxDens and accMask eq 0B,countDens)
+        if countDens gt 0 then rtr.maxDens[w1] = tr_maxval[w1]
         
         ; maxmachnum
         ; ----------
         tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxmachnum')
         
-        w1 = where(tr_maxval gt rtr.maxMachNum,count)
-        if (count gt 0) then rtr.maxMachNum[w1] = tr_maxval[w1]
+        w1 = where(tr_maxval gt rtr.maxMachNum and accMask eq 0B,countMach)
+        if countMach gt 0 then rtr.maxMachNum[w1] = tr_maxval[w1]
         
         tr_maxval      = !NULL
         tr_maxval_time = !NULL
+        
+        ; output
+        fracInMask = string( float(countAccMask)/num_galcat_trs * 100, format='(f5.1)')
+        fracInWind = string( float(countAccWind)/num_galcat_trs * 100, format='(f5.1)')
+        fracTemp   = string( float(countTemp)/num_galcat_trs * 100,    format='(f5.1)')
+        fracEnt    = string( float(countEnt)/num_galcat_trs * 100,     format='(f5.1)')
+        fracDens   = string( float(countDens)/num_galcat_trs * 100,    format='(f5.1)')
+        fracMach   = string( float(countMach)/num_galcat_trs * 100,    format='(f5.1)')
+        
+        print,'['+string(m,format='(I3.3)')+'] z='+string(sP.redshift,format='(f5.1)')+$
+          ' fracInMask: '+fracInMask+' fracInWind: '+fracInWind+' fracTemp: '+fracTemp+$
+          ' fracEnt: '+fracEnt+' fracDens: '+fracDens+' fracMach: '+fracMach
         
       endif else begin ; we have a maxTempsAll save, just load and move immediately to save in correct format
         
@@ -291,16 +348,11 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
         saveFilename = sP.derivPath + 'maxVals.' + sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
-        if file_test(saveFilename) then begin
-          print,'WARNING: ['+saveFilename+'] exists, skipping write!'
-        endif else begin
-          ; output all tracer values at this point and the child counts so they can be 
-          ; matched back up to their parents later
-          save,rtr,filename=saveFilename
-          print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
-        endelse
+        ; output all tracer values at this point
+        save,rtr,filename=saveFilename
+        print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
         
-        ; (2) values condensed to gas parents (unused and removed for now, see r99)
+        ; NOTE: values condensed to gas parents (unused and removed for now, see r99)
       endif ;save
       
     endfor ;m  
@@ -319,6 +371,7 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       ; list of velocity tracers
       galcat_trids   = galcat.trVel_ids ;tr_ids[galcat_trids]
       galcat_num_trs = n_elements(galcat_trids)
+      accMask        = bytarr(galcat_num_trs)
   
       ; store the main arrays for all tracers as structures so we can write them directly
       rtr  = { maxTemps      : fltarr(galcat_num_trs)  ,$
@@ -334,14 +387,14 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       snapRange[0] = m
     endelse 
     
-    for m=snapRange[0],snapRange[1],1 do begin
+    for m=snapRange[0],snapRange[1],snapStep do begin
       sP.snap = m
-      print,m  
+      sP.redshift = snapNumToRedshift(sP=sP)
   
       ; save restart?
       if m mod 20 eq 0 and m gt snapRange[0] and keyword_set(restart) then begin
         print,' --- Writing restart! ---'
-        save,rtr,galcat_trids,galcat_num_trs,m,filename=resFilename
+        save,rtr,galcat_trids,galcat_num_trs,m,accMask,filename=resFilename
         print,' --- Done! ---'
         ;exit,status=33 ; requeue
       endif
@@ -357,6 +410,12 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       tr_ids     = !NULL
       galcat_ind = !NULL
       
+      ; update mask for any tracers passing 0.15rvir point (stop recording maxvals)
+      h = loadSnapshotHeader(sP=sP)
+      w = where(at lt h.time,count)
+      if count gt 0 then accMask[w] = 1B
+      if sP.gfmWinds then message,'Cannot handle consistently without tracers moving to wind.'
+      
       ; maxtemp
       ; -------
       tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxtemp')
@@ -368,8 +427,8 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       tr_maxval = codeTempToLogK(tr_maxval) ; tracerVel output still in unit system
       
       ; replace existing values if current snapshot has higher temps (galaxy members)
-      w1 = where(tr_maxval gt rtr.maxTemps,count1)
-      if (count1 gt 0) then begin
+      w1 = where(tr_maxval gt rtr.maxTemps and accMask eq 0B,countTemp)
+      if countTemp gt 0 then begin
         rtr.maxTemps[w1]    = tr_maxval[w1]
         rtr.maxTempTime[w1] = tr_maxval_time[w1] ; sub-snapshot timing
       endif
@@ -382,26 +441,38 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
       tr_maxval = tr_maxval[trids_ind]  
       tr_maxval = convertTracerEntToCGS(tr_maxval,/log,sP=sP)
       
-      w1 = where(tr_maxval gt rtr.maxEnt,count)
-      if (count gt 0) then rtr.maxEnt[w1] = tr_maxval[w1]
+      w1 = where(tr_maxval gt rtr.maxEnt and accMask eq 0B,countEnt)
+      if countEnt gt 0 then rtr.maxEnt[w1] = tr_maxval[w1]
         
       ; density
       ; -------
       tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxdens')
       tr_maxval = tr_maxval[trids_ind]
         
-      w1 = where(tr_maxval gt rtr.maxDens,count)
-      if (count gt 0) then rtr.maxDens[w1] = tr_maxval[w1]
+      w1 = where(tr_maxval gt rtr.maxDens and accMask eq 0B,countDens)
+      if countDens gt 0 then rtr.maxDens[w1] = tr_maxval[w1]
         
       ; maxmachnum
       ; ----------
       tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerVel',field='tracer_maxmachnum')
         
-      w1 = where(tr_maxval gt rtr.maxMachNum,count)
-      if (count gt 0) then rtr.maxMachNum[w1] = tr_maxval[w1]
+      w1 = where(tr_maxval gt rtr.maxMachNum and accMask eq 0B,countMach)
+      if countMach gt 0 then rtr.maxMachNum[w1] = tr_maxval[w1]
         
       tr_maxval      = !NULL
       tr_maxval_time = !NULL
+      
+      ; output
+      fracInMask = string( float(countAccMask)/galcat_num_trs * 100, format='(f5.1)')
+      fracInWind = string( 0.0,                                       format='(f5.1)')
+      fracTemp   = string( float(countTemp)/galcat_num_trs * 100,    format='(f5.1)')
+      fracEnt    = string( float(countEnt)/galcat_num_trs * 100,     format='(f5.1)')
+      fracDens   = string( float(countDens)/galcat_num_trs * 100,    format='(f5.1)')
+      fracMach   = string( float(countMach)/galcat_num_trs * 100,    format='(f5.1)')
+        
+      print,'['+string(m,format='(I3.3)')+'] z='+string(sP.redshift,format='(f5.1)')+$
+        ' fracInMask: '+fracInMask+' fracInWind: '+fracInWind+' fracTemp: '+fracTemp+$
+        ' fracEnt: '+fracEnt+' fracDens: '+fracDens+' fracMach: '+fracMach
       
       ; SAVE?
       if sP.snap eq maxSnap then begin
@@ -409,17 +480,11 @@ function maxVals, sP=sP, zStart=zStart, restart=restart
         saveFilename = sP.derivPath + 'maxVals.' + sP.savPrefix+str(sP.res)+'.'+$
                        str(minSnap)+'-'+str(maxSnap)+'.sav'
 
-        if file_test(saveFilename) then begin
-          print,'WARNING: ['+saveFilename+'] exists, skipping write!'
-        endif else begin
-          ; output all values at this point and the child counts so they can be 
-          ; matched back up to their parents later
-          save,rtr,filename=saveFilename
-          print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
-        endelse
+        ; output all values at this point
+        save,rtr,filename=saveFilename
+        print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
         
-        ; (2) values condensed to gas parents (unused and removed for now, see r99)
-        
+        ; NOTE: values condensed to gas parents (unused and removed for now, see r99)
       endif ;save
     endfor ;m
   endif
@@ -480,6 +545,8 @@ pro maxValsAll, sP=sP
     
     ; store the main arrays for all tracers as structures so we can write them directly
     if minSnap eq 0 then begin
+      accMask = bytarr(nTracers)
+      
       rtr_all  = { maxTemps      : fltarr(nTracers)  ,$
                    maxTempTime   : fltarr(nTracers)  ,$
                    maxEnt        : fltarr(nTracers)  ,$
@@ -491,75 +558,101 @@ pro maxValsAll, sP=sP
       restore,loadFilename,/verbose
     endelse
     
-    for m=snapRange[0],snapRange[1],1 do begin
+    for m=snapRange[0],snapRange[1],snapStep do begin
       sP.snap = m
-      print,m
+      sP.redshift = snapNumToRedshift(sP=sP)
       
       ; load tracer ids and match to original list
       tr_ids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids')
       trids_ind = sort(tr_ids) ; just put them in order
       tr_ids = !NULL
       
-        ; maxtemp
-        ; -------
-        tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp')
+      ; update mask for any tracers passing 0.15rvir point (stop recording maxvals)
+      h = loadSnapshotHeader(sP=sP)
+      w = where(at lt h.time,countAccMask)
+      if countAccMask gt 0 then accMask[w] = 1B
         
-        ; tracerMC maxtemp field in Kelvin, tracerVEL still in unit system, convert to log
-        tr_maxval = tr_maxval[trids_ind]   
-        tr_maxval = mylog10(tr_maxval)
+      ; update mask if windcounter>0
+      if sP.gfmWinds then begin
+        windc = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
+        windc = windc[trids_ind]
+        w = where(windc gt 0,countAccWind)
+        if countAccWind gt 0 then accMask[w] = 1B
+      endif
+      
+      ; maxtemp
+      ; -------
+      tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp')
+        
+      ; tracerMC maxtemp field in Kelvin, tracerVEL still in unit system, convert to log
+      tr_maxval = tr_maxval[trids_ind]   
+      tr_maxval = mylog10(tr_maxval)
+        
+      ; replace existing values if current snapshot has higher temps
+      ; note: if tracers are inside a star particle, their maxtemp entry will be zero
+      w1 = where(tr_maxval gt rtr_all.maxTemps and accMask eq 0B,countTemp)
+        
+      if countTemp gt 0 then begin
+        rtr_all.maxTemps[w1] = tr_maxval[w1]
         
         ; sub-snapshot timing?
         if sP.trMCFields[7] ge 0 then begin
           tr_maxval_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp_time')
-          tr_maxval_time = tr_maxval_time[trids_ind]
+          rtr_all.maxTempTime[w1] = tr_maxval_time[trids_ind]
+          tr_maxval_time = !NULL
         endif else begin
-          tr_maxval_time = replicate(snapNumToRedshift(sP=sP,/time), nTracers)
+          ; if not, just use constant time corresponding to this snapshot
+          rtr_all.maxTempTime[w1] = snapNumToRedshift(sP=sP,/time)
         endelse
+      endif
         
-        ; replace existing values if current snapshot has higher temps
-        ; note: if tracers are inside a star particle, their maxtemp entry will be zero
-        w1 = where(tr_maxval gt rtr_all.maxTemps,count)
-        
-        if (count gt 0) then begin
-          rtr_all.maxTemps[w1]    = tr_maxval[w1]
-          rtr_all.maxTempTime[w1] = tr_maxval_time[w1]
-        endif
-        
-        ; maxent
-        ; ------
-        tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxent')
-        tr_maxval = tr_maxval[trids_ind]
-        
-        ; convert entropy to log(cgs)
-        tr_maxval = convertTracerEntToCGS(tr_maxval,/log,sP=sP)
-        
-        w1 = where(tr_maxval gt rtr_all.maxEnt,count)
-        if (count gt 0) then rtr_all.maxEnt[w1] = tr_maxval[w1]
-        
-        ; maxdens
-        ; -------
-        tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxdens')
-        tr_maxval = tr_maxval[trids_ind]
-        
-        w1 = where(tr_maxval gt rtr_all.maxDens,count)
-        if (count gt 0) then rtr_all.maxDens[w1] = tr_maxval[w1]
-        
-        ; maxmachnum
-        ; ----------
-        tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxmachnum')
-        tr_maxval = tr_maxval[trids_ind]
+      ; maxent
+      ; ------
+      tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxent')
+      tr_maxval = tr_maxval[trids_ind]
        
-        w1 = where(tr_maxval gt rtr_all.maxMachNum,count)
-        if (count gt 0) then rtr_all.maxMachNum[w1] = tr_maxval[w1]
+      ; convert entropy to log(cgs)
+      tr_maxval = convertTracerEntToCGS(tr_maxval,/log,sP=sP)
         
-        tr_maxval      = !NULL
-        tr_maxval_time = !NULL
+      w1 = where(tr_maxval gt rtr_all.maxEnt and accMask eq 0B,countEnt)
+      if countEnt gt 0 then rtr_all.maxEnt[w1] = tr_maxval[w1]
+        
+      ; maxdens
+      ; -------
+      tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxdens')
+      tr_maxval = tr_maxval[trids_ind]
+        
+      w1 = where(tr_maxval gt rtr_all.maxDens and accMask eq 0B,countDens)
+      if countDens gt 0 then rtr_all.maxDens[w1] = tr_maxval[w1]
+        
+      ; maxmachnum
+      ; ----------
+      tr_maxval = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxmachnum')
+      tr_maxval = tr_maxval[trids_ind]
+       
+      w1 = where(tr_maxval gt rtr_all.maxMachNum and accMask eq 0B,countMach)
+      if countMach gt 0 then rtr_all.maxMachNum[w1] = tr_maxval[w1]
+        
+      tr_maxval      = !NULL
+      tr_maxval_time = !NULL
             
       trids_ind = !NULL
       
+      ; output
+      fracInMask = string( float(countAccMask)/nTracers * 100, format='(f5.1)')
+      fracInWind = string( float(countAccWind)/nTracers * 100, format='(f5.1)')
+      fracTemp   = string( float(countTemp)/nTracers * 100,    format='(f5.1)')
+      fracEnt    = string( float(countEnt)/nTracers * 100,     format='(f5.1)')
+      fracDens   = string( float(countDens)/nTracers * 100,    format='(f5.1)')
+      fracMach   = string( float(countMach)/nTracers * 100,    format='(f5.1)')
+        
+      print,'['+string(m,format='(I3.3)')+'] z='+string(sP.redshift,format='(f5.1)')+$
+        ' fracInMask: '+fracInMask+' fracInWind: '+fracInWind+' fracTemp: '+fracTemp+$
+        ' fracEnt: '+fracEnt+' fracDens: '+fracDens+' fracMach: '+fracMach
+      
       ; SAVE?
       if sP.snap eq maxSnap then begin
-        save,rtr_all,filename=saveFilename
+        save,rtr_all,accMask,filename=saveFilename
         print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
       endif ; save
       

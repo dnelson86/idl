@@ -1,6 +1,6 @@
-; plotVsHaloMass.pro
+; binVsHaloMass.pro
 ; gas accretion project - bin quantities as a function of halo mass
-; dnelson jul.2013
+; dnelson sep.2013
 
 ; haloMassBinValues(): bin accretion rate (in cold/hot) and cold fraction as a function of halo mass
 
@@ -67,6 +67,19 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
   if sP.trMCPerCell lt 0 then gcIndOrig = mt.gcIndOrigTrVel
   
   maxHist = max(gcIndOrig)
+  
+  ; load group cat for subgroup masses
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  gcMasses = codeMassToLogMsun(gc.subgroupMass)
+  
+  ; for zoom runs, only process the single target halo (should be the most massive)
+  if sP.zoomLevel ne 0 then begin
+    hInd = zoomTargetHalo(sP=sP,gc=gc)
+    if hInd ne 0 then message,'Handle.'
+    maxHist = 0
+  endif  
+  
+  gc = !NULL
 
   for i=0,n_tags(wAm)-1 do begin
     hist_type = histogram(gcIndOrig[wAm.(i)],min=0,max=maxHist,loc=loc,rev=rev_type)
@@ -81,11 +94,6 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
   curTvir = gcSubsetProp(sP=sP,/virTemp,/accretionTimeSubset,accMode=accMode)
   maxTemp = gcSubsetProp(sP=sP,/maxPastTemp,/accretionTimeSubset,accMode=accMode)
 
-  ; load group cat for subgroup masses
-  gc = loadGroupCat(sP=sP,/skipIDs)
-  gcMasses = codeMassToLogMsun(gc.subgroupMass)
-  gc = !NULL
-
   ; structure config
   constInds = [0] ; indices into template for constant
   tVirInds  = [1,2] ; indices into template for tvir
@@ -97,10 +105,10 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
   totalInd  = ( where( typeLabels eq 'total' ) )[0] ; where to store total
 
   ; make templates: structures to store results (Tmax)
-  tempHC   = { tConst  : fltarr(nCuts,galcat.nGroups)  ,$
-               tVirCur : fltarr(nVirs,galcat.nGroups)  ,$
-               tVirAcc : fltarr(nVirs,galcat.nGroups)  ,$
-               num     : lonarr(galcat.nGroups)         }
+  tempHC   = { tConst  : fltarr(nCuts,maxHist+1)  ,$
+               tVirCur : fltarr(nVirs,maxHist+1)  ,$
+               tVirAcc : fltarr(nVirs,maxHist+1)  ,$
+               num     : lonarr(maxHist+1)         }
 
   template = { hot : tempHC, cold : tempHC }
 
@@ -117,10 +125,14 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
   halo   = { accRate : templateTypes, outRate : templateTypes, $
              netRate : templateTypes, coldFrac : templateCF }
 
+  ; for float comparison
+  maxAccTimeRT = max(at.accTimeRT)
+  maxOutTimeRT = max(at.outTimeRT)
+             
   ; loop over all tracked subgroups
   for i=0L,maxHist do begin
-  
-    if i mod (maxHist/10) eq 0 then print,string(float(i)/maxHist*100,format='(f5.2)')+'%'
+
+    if i mod (maxHist/10) eq 0 then print,string(float(i)/(maxHist+1)*100,format='(f5.2)')+'%'
   
     ; calculate min(timeWindow,length of time this halo was tracked back) to use to normalize rates
     loc_timeWindow = timeWindow
@@ -188,19 +200,17 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
 
       ; decide between using outTimeRT and accTimeRT (satisfying/failing the rho,temp cut, respectively)
       ; based on status at sP.snap (e.g. gmem by definition fails rho,temp cut)
-      curTimeRT = max(at.accTimeRT)
-      
       loc_atime = reform( at.accTimeRT[ (wAm.(k))[loc_inds] ] )
       
       ; those that fail at sP.snap (e.g. gmem), use satisfying the cut as the accretion time
-      w = where( at.accTimeRT[ (wAm.(k))[loc_inds] ] eq curTimeRT, count)
+      w = where( at.accTimeRT[ (wAm.(k))[loc_inds] ] eq maxAccTimeRT, count)
       if count gt 0 then loc_atime[w] = at.outTimeRT[ (wAm.(k))[loc_inds[w]] ]
       
       ; for those that neither satisfy nor fail the cut at sP.snap (all stars, stars in inter) we
       ; cannot use the (rho,temp) cut, since don't know where they will fall when switching back
       ; to a gas parent, so just use the radial cut
-      w_noCut = where( at.outTimeRT[ (wAm.(k))[loc_inds] ] ne max(at.outTimeRT) and $
-                       at.accTimeRT[ (wAm.(k))[loc_inds] ] ne max(at.accTimeRT), count_noCut)
+      w_noCut = where( at.outTimeRT[ (wAm.(k))[loc_inds] ] ne maxOutTimeRT and $
+                       at.accTimeRT[ (wAm.(k))[loc_inds] ] ne maxAccTimeRT, count_noCut)
       if count_noCut gt 0 then loc_atime[w_noCut] = -1
 		
       ; modify based on 0.15rvir crossing time (the latest / lowest redshift of the two criteria)
@@ -226,7 +236,7 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
         for j=0,nCuts-1 do begin
           w = where(loc_maxTemp le sP.TcutVals[j],count_cold,ncomp=count_hot)
           galaxy.coldFrac.(k).tConst[j,i]     = float(count_cold) / nloc
-		  galaxy.coldFrac.total.tConst[j,i]   += count_cold
+          galaxy.coldFrac.total.tConst[j,i]   += count_cold
           galaxy.accRate.(k).cold.tConst[j,i] = count_cold
           galaxy.accRate.(k).hot.tConst[j,i]  = count_hot
         endfor
@@ -235,26 +245,24 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
           ; count mass elements with Tmax below Tvir at current time
           w = where(10.0^loc_maxTemp / 10.0^loc_curTvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
           galaxy.coldFrac.(k).tVirCur[j,i]     = float(count_cold) / nloc
-		  galaxy.coldFrac.total.tVirCur[j,i]   += count_cold
+          galaxy.coldFrac.total.tVirCur[j,i]   += count_cold
           galaxy.accRate.(k).cold.tVirCur[j,i] = count_cold
           galaxy.accRate.(k).hot.tVirCur[j,i]  = count_hot
     
           ; count mass elements with Tmax below Tvir at accretion time
           w = where(10.0^loc_maxTemp / 10.0^loc_accTvir le sP.TvirVals[j],count_cold,ncomp=count_hot)
           galaxy.coldFrac.(k).tVirAcc[j,i]     = float(count_cold) / nloc
-		  galaxy.coldFrac.total.tVirAcc[j,i]   += count_cold
+          galaxy.coldFrac.total.tVirAcc[j,i]   += count_cold
           galaxy.accRate.(k).cold.tVirAcc[j,i] = count_cold
           galaxy.accRate.(k).hot.tVirAcc[j,i]  = count_hot
         endfor
       endif ;nloc>0
       
       ; --- GALAXY OUTFLOW ---
-      curTimeRT = max(at.outTimeRT)
-      
       loc_atime = reform( at.outTimeRT[ (wAm.(k))[loc_inds] ] )
       
       ; those that satisfy at sP.snap (e.g. gal gas), use failing the cut as the outflow time
-      w = where( at.outTimeRT[ (wAm.(k))[loc_inds] ] eq curTimeRT, count)
+      w = where( at.outTimeRT[ (wAm.(k))[loc_inds] ] eq maxOutTimeRT, count)
       if count gt 0 then loc_atime[w] = at.accTimeRT[ (wAm.(k))[loc_inds[w]] ]
       
       if count_noCut gt 0 then loc_atime[w_noCut] = -1 ; see above
@@ -389,9 +397,9 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
 		
 	    ; compute net=(inflow-outflow) rates by type
 	    galaxy.netRate.(k).(hotCold).(ind)[*,i] = $
-	      galaxy.accRate.(k).(hotCold).(ind)[*,i] - galaxy.outRate.(k).(hotCold).(ind)[*,i]
+	    galaxy.accRate.(k).(hotCold).(ind)[*,i] - galaxy.outRate.(k).(hotCold).(ind)[*,i]
 	    halo.netRate.(k).(hotCold).(ind)[*,i] = $
-	      halo.accRate.(k).(hotCold).(ind)[*,i] - halo.outRate.(k).(hotCold).(ind)[*,i]
+	    halo.accRate.(k).(hotCold).(ind)[*,i] - halo.outRate.(k).(hotCold).(ind)[*,i]
 		
 	    ; calculate total rates (not by type)
 	    galaxy.accRate.total.(hotCold).(ind)[*,i] += galaxy.accRate.(k).(hotCold).(ind)[*,i]
@@ -413,34 +421,35 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
     
   endfor ; i
   
-  ; bin fractions into halo mass bins and make median lines
-  logMassBins   = [findgen(21)/10 + 9.0,11.1,11.25,11.5,11.75,11.9,13.1]
-  logMassNBins  = n_elements(logMassBins)-1
-  logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
-  logMassBinCen = logMassBinCen[0:-2]
+  if sP.zoomLevel eq 0 then begin
+    ; bin fractions into halo mass bins and make median lines
+    logMassBins   = [findgen(21)/10 + 9.0,11.1,11.25,11.5,11.75,11.9,13.1]
+    logMassNBins  = n_elements(logMassBins)-1
+    logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
+    logMassBinCen = logMassBinCen[0:-2]
   
-  ; structures to store the binned values
-  tempHC = { tConst  : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
-             tVirCur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
-             tVirAcc : fltarr(nVirs,logMassNbins) + !values.f_nan  }
+    ; structures to store the binned values
+    tempHC = { tConst  : fltarr(nCuts,logMassNbins) + !values.f_nan ,$
+               tVirCur : fltarr(nVirs,logMassNbins) + !values.f_nan ,$
+               tVirAcc : fltarr(nVirs,logMassNbins) + !values.f_nan  }
   
-  template = { hot : tempHC, cold : tempHC }
+    template = { hot : tempHC, cold : tempHC }
 
-  foreach typeLabel,typeLabels do $  
-    templateTypes = mod_struct(templateTypes, typeLabel, template)
+    foreach typeLabel,typeLabels do $  
+      templateTypes = mod_struct(templateTypes, typeLabel, template)
     
-  foreach typeLabel,typeLabels do $
-    templateCF = mod_struct(templateCF, typeLabel, tempHC)
+    foreach typeLabel,typeLabels do $
+      templateCF = mod_struct(templateCF, typeLabel, tempHC)
   
-  ; for (1) galaxy and (2) halo, duplicate template for: accretion (inflow), outflow, net, and coldfrac
-  galaxyMedian = { accRate : templateTypes, outRate : templateTypes, $
-                   netRate : templateTypes, coldFrac : templateCF }
+    ; for (1) galaxy and (2) halo, duplicate template for: accretion (inflow), outflow, net, and coldfrac
+    galaxyMedian = { accRate : templateTypes, outRate : templateTypes, $
+                     netRate : templateTypes, coldFrac : templateCF }
 
-  haloMedian   = { accRate : templateTypes, outRate : templateTypes, $
-                   netRate : templateTypes, coldFrac : templateCF }
-				   
-  ; calculate median values in bins of halo mass
-  for i=0,logMassNbins-1 do begin
+    haloMedian   = { accRate : templateTypes, outRate : templateTypes, $
+                     netRate : templateTypes, coldFrac : templateCF }
+ 				   
+    ; calculate median values in bins of halo mass
+    for i=0,logMassNbins-1 do begin
 
     ; since minNumFrac > 0, effectively restrict medians to primary only
     w = where(gcMasses gt logMassBins[i] and gcMasses le logMassBins[i+1] and $
@@ -479,7 +488,14 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
       endfor ;j
     endforeach ; ind
     
-  endfor ; logMassNBins
+    endfor ; logMassNBins
+  
+  endif else begin ; zoomLevel > 0
+    galaxyMedian  = -1
+    haloMedian    = -1
+    logMassBins   = -1
+    logMassBinCen = gcMasses[hInd]
+  endelse
 
   r = {galaxy:galaxy, halo:halo, galaxyMedian:galaxyMedian, haloMedian:haloMedian, $
        radIndGalAcc:sP.radIndGalAcc, radIndHaloAcc:sP.radIndHaloAcc,$

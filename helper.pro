@@ -673,6 +673,16 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
  if ctName eq 'brewerc-greens'          then cgLoadct,14,ncolors=255,bottom=bottom,/brewer
  if ctName eq 'brewerc-reds'            then cgLoadct,16,ncolors=255,bottom=bottom,/brewer
  
+ ; reversed brewer (convergent, dark->light)
+ if ctName eq 'brewerR-yellowblue'      then cgLoadct,1,ncolors=255,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-whitegreen'      then cgLoadct,3,ncolors=255,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-purplebluegreen' then cgLoadct,4,ncolors=255,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-redpurple'       then cgLoadct,7,ncolors=255,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-orangered'       then cgLoadct,9,ncolors=255,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-blues'           then cgLoadct,13,ncolors=255,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-greens'          then cgLoadct,14,ncolors=255,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-reds'            then cgLoadct,16,ncolors=255,bottom=bottom,/brewer,/reverse
+ 
   ; reverse normal/brewer if requested
   if keyword_set(reverse) then begin
     tvlct,r,g,b,/get
@@ -970,7 +980,7 @@ pro testBridgePro
   ;redshift = SCOPE_VARFETCH("redshift", LEVEL=1)
   ;res      = SCOPE_VARFETCH("res", LEVEL=1)
 
-  workingPath  = '/n/home07/dnelson/coldflows/'
+  workingPath  = '/n/home07/dnelson/plots/'
   
   result = redshift*2.0
   
@@ -994,7 +1004,7 @@ pro runBridge, res=res
   oB = objarr(n_elements(redshifts))
   for i=0,n_elements(redshifts)-1 do begin
     oB[i] = obj_new('IDL_IDLBridge') ;OUTPUT='' send child output to tty
-    oB[i]->execute, ".r coldflows"
+    oB[i]->execute, ".r helper"
     oB[i]->SetVar, "redshift", redshifts[i]
     oB[i]->SetVar, "res", res
     oB[i]->execute, "testBridgePro", /NOWAIT ; asynchronous
@@ -1076,4 +1086,4 @@ end
 ;@arepoVis2D
 ;@arepoSphSym
 
-@LSF
+@slurm
