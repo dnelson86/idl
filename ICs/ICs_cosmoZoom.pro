@@ -689,9 +689,10 @@ pro checkDMContamination
 
   ; config
   sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=2.0) )
-  sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_20Mpc_dm',res=9,hInd=0,redshift=2.0) )
-  sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_20Mpc_dm',res=10,hInd=0,redshift=2.0) )
-  sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_dm',res=11,hInd=0,redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_20Mpc',res=9,hInd=1,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_20Mpc_dm',res=9,hInd=0,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_dm',res=10,hInd=0,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP4', simParams(run='zoom_20Mpc_dm',res=11,hInd=0,redshift=2.0) )
   
   colors = ['red','blue','green','orange']
   nn     = 99
@@ -736,7 +737,7 @@ pro checkDMContamination
       string(min(dists)/rVirFac,format='(f4.2)')+')'
   
     ; add cumulative histogram to plot
-    strings = [strings, str(sP.simName)+' ('+str(2^sP.res)+')']
+    strings = [strings, str(sP.simName)+' h'+str(sP.hInd)+' ('+str(2^sP.res)+')']
     cgPlot,dists[0:nn],lindgen(nn),psym=-4,/overplot,color=cgColor(colors[i])
     
   endfor
@@ -754,7 +755,7 @@ end
 pro checkGasContamination
 
   ; config
-  sP = simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=2.0)
+  sP = simParams(run='zoom_20Mpc',res=9,hInd=1,redshift=2.0)
 
   ; load
   h = loadSnapshotHeader(sP=sP)
@@ -856,7 +857,7 @@ pro checkGasContamination
     nn = 99
     cgPlot,dists[0:nn],lindgen(nn),psym=-4,/overplot,color=cgColor('red')
     
-    legend,[str(sP.simName)+' ('+str(2^sP.res)+')'],textcolor=['red'],/top,/left
+    legend,[str(sP.simName)+' h'+str(sP.hInd)+' ('+str(2^sP.res)+')'],textcolor=['red'],/top,/left
   end_PS
   
   stop
