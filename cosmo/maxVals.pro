@@ -262,7 +262,7 @@ function maxVals, sP=sP, restart=restart
           ; sub-snapshot timing?
           if sP.trMCFields[7] ge 0 then begin
             tr_maxval_time = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_maxtemp_time')
-            rtr.maxTempTime[w1] = tr_maxval_time[trids_ind]
+            rtr.maxTempTime[w1] = tr_maxval_time[trids_ind[w1]]
             tr_maxval_time = !NULL
           endif else begin
             ; if not, just use constant time corresponding to this snapshot
