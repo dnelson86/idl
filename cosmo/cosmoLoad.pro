@@ -1,6 +1,6 @@
 ; cosmoLoad.pro
 ; cosmological simulations - loading procedures (snapshots, fof/subhalo group cataloges)
-; dnelson jul.2013
+; dnelson oct.2013
 
 ; getTypeSortedIDList(): within the group catalog ID list rearrange the IDs for each FOF group to be 
 ;                        ordered first by type (not by SubNr since Subfind was run) such that the
@@ -207,7 +207,8 @@ end
 ; skipIDs=1 : acknowledge we are working with a STOREIDS type .hdf5 group cat and don't warn
 ; getSortedIDs=1 : create a second ID list sorted by GrNr->Type for use with GroupOffsetType
 
-function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs=getSortedIDs, verbose=verbose
+function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
+                       getSortedIDs=getSortedIDs, verbose=verbose, skipOffsets=skipOffsets
 
   forward_function loadSubhaloGroups
   if not keyword_set(verbose) then verbose = 0
@@ -239,7 +240,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
   
   ; IDs are 64bit?
   longIDsBits = h5_parse(fileList[0]) ; just parse full structure of first file
-  longIDsBits = longIDsBits.IDs.ID._precision
+  longIDsBits = longIDsBits.Subhalo.SubhaloIDMostBound._precision
   if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
   
   ; counters
@@ -326,8 +327,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
         sf = create_struct(sf,sfsub) ;concat
         
         ; IDMostBound
-        if longIDsBits eq 32 then sfsub = { SubgroupIDMostBound:lonarr(h.nSubgroupsTot) }
-        if longIDsBits eq 64 then sfsub = { SubgroupIDMostBound:lon64arr(h.nSubgroupsTot) }
+        if longIDsBits eq 32 then sfsub = { SubgroupIDMostBound:ulonarr(h.nSubgroupsTot) }
+        if longIDsBits eq 64 then sfsub = { SubgroupIDMostBound:ulon64arr(h.nSubgroupsTot) }
         sf = create_struct(sf,sfsub)
       endif
       
@@ -369,8 +370,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
         endif
         
         ; IDs are 64bit?
-        if longIDsBits eq 32 then sfids = { IDs:lonarr(h.nIDsTot) }
-        if longIDsBits eq 64 then sfids = { IDs:lon64arr(h.nIDsTot) }
+        if longIDsBits eq 32 then sfids = { IDs:ulonarr(h.nIDsTot) }
+        if longIDsBits eq 64 then sfids = { IDs:ulon64arr(h.nIDsTot) }
         
         sf = create_struct(sf,sfids) ;concat
       endif
@@ -378,6 +379,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
     endif ;i=0
     
     ; fill sf with group data from this part
+    if h.nGroups gt 0 then begin
+    
     sf.GroupLen        [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/GroupLen"))
     sf.GroupLenType    [*,skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupLenType"))
     sf.GroupMass       [skip:(skip+h.nGroups-1)]   = h5d_read(h5d_open(fileID,"Group/GroupMass"))
@@ -407,10 +410,14 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
       sf.GroupStarMetallicity    [skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupStarMetallicity"))    
     endif
     
+    endif ; h.nGroups>0
+    
     skip += h.nGroups
     
     ; fill sf with subhalo data from this part
     if SubfindExistsFlag then begin
+      if h.nSubgroups gt 0 then begin
+      
       sf.SubgroupLen     [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloLen"))
       sf.SubgroupLenType [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloLenType"))
       sf.SubgroupMass    [skipSub:(skipSub+h.nSubgroups-1)]   = h5d_read(h5d_open(fileID,"Subhalo/SubhaloMass"))
@@ -447,8 +454,11 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
         sf.SubgroupStellarPhotometrics [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloStellarPhotometrics"))
       endif
       
+      endif ; h.nSubgroups>0
+      
       skipSub += h.nSubgroups
-    endif
+            
+    endif ; SubfindExistsFlag
     
     ; fill sf with IDs from this part (if requested)
     if keyword_set(readIDs) then begin
@@ -460,6 +470,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
     h5f_close, fileID
   
   endfor
+  
+  if ~keyword_set(skipOffsets) then begin
   
   ; create group offset table
   ; when subfind is run, sort to create ID list is: (1) GrNr, (2) SubNr, (3) Type, (4) BindingEnergy
@@ -498,6 +510,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
     
   endfor
   
+  endif ; skipOffsets
+  
   ; if ID read requested, create typeSortedIDList (and save), add to return structure
   if keyword_set(readIDs) and keyword_set(getSortedIDs) then begin
     sfsorted = { IDsSorted:getTypeSortedIDList(sP=sP,gc=sf) }
@@ -511,7 +525,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
     stop
   endif
   
-  ; check for 32 bit long overflow
+  ; check for 32 bit long overflow (cannot happen since we switched to ulong)
   if keyword_set(readIDs) then if min(sf.IDs) lt 0 then message,'Error: ID overflow.'
   if (SubfindExistsFlag eq 1) then if min(sf.subgroupIDMostBound) lt 0 then message,'Error: ID overflow2.'
 
@@ -522,495 +536,6 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, getSortedIDs
   
   !except = 1
   return,sf
-end
-
-; loadSubhaloGroups(): load (OLD, not HDF5) complete subfind group catalog for a given snapshot
-; skipIDs=1 : don't load actual group member particle IDs
-
-function loadSubhaloGroups, sP=sP, verbose=verbose, skipIDs=skipIDs
-
-  print,'WARNING: OLD GROUP CATALOG'
-  if not keyword_set(verbose) then verbose = 0
-
-  ; set filename
-  ext = string(sP.snap,format='(I3.3)')
-  fIDs = sP.simPath + 'groups_' + ext + '/subhalo_ids_' + ext
-  fTab = sP.simPath + 'groups_' + ext + '/subhalo_tab_' + ext
-  
-  ; check existance and multiple outputs
-  if not file_test(fIDs) then begin
-    if (file_test(fIDs+'.0')) then begin
-      ; split into multiples, get count
-      nSplit_IDs = n_elements(file_search(fIDs+".*"))
-      nSplit_tab = n_elements(file_search(fTab+".*"))
-    endif else begin
-      message, 'ERROR: group_ids file ' + sP.simPath + str(sP.snap) + ' does not exist!'
-    endelse
-  endif
-  
-  if (nSplit_IDs ne nSplit_tab) then message,'ERROR: different number of ids and tab files'
-  
-  if (verbose) then $
-    print,'Loading subhalo groups from snapshot ('+str(sP.snap)+') in [' + str(nSplit_IDs) + '] files.'
-  
-  ; counters
-  nGroupsTot    = 0L
-  nIDsTot       = 0L
-  nSubgroupsTot = 0L
-  
-  skip    = 0L
-  skipSub = 0L
-  
-  ; headers
-  h  = { headerTab,             $
-               nGroups:        0L,  $
-               nGroupsTot:     0L,  $
-               nIDs:           0L,  $
-               nIDsTot:        0LL, $
-               nTask:          0L,  $
-               nSubgroups:     0L,  $
-               nSubgroupsTot:  0L   $
-             }
-             
-  ; load 0 for header
-  fName = fTab + '.' + str(0)
-  openr,lun,fName,/GET_LUN
-  readu,lun,h
-  close,lun
-  free_lun,lun
-  
-  ;if (h.nTask ne nSplit_tab) then begin
-    ;print,'WARNING: h.nTask='+str(h.nTask)+' (m='+str(m)+$
-    ;      ') differs from number of TAB split files ('+str(nSplit_tab)+'.'
-    ;return,0
-  ;endif
-  
-  for i=0,h.nTask-1 do begin
-  
-    fName = fTab + '.' + str(i)
-    
-    ; open and read header
-    openr,lun,fName,/GET_LUN
-    
-    readu,lun,h
-      
-    ; skip loading actual particle IDs
-    if keyword_set(skipIDs) then h.nIDsTot = 1
-  
-    ; add counters and error check
-    nGroupsTot    += h.nGroups
-    nIDsTot       += h.nIDs
-    nSubgroupsTot += h.nSubgroups
-    
-    ; allocate storage if this is the first iteration
-    if (i eq 0) then begin
-      sf  = {                                      $
-        GroupLen        : ulonarr(h.nGroupsTot)   ,$
-        GroupOffset     : ulonarr(h.nGroupsTot)   ,$
-        GroupMass       : fltarr(h.nGroupsTot)    ,$
-        GroupPos        : fltarr(3,h.nGroupsTot)  ,$
-        Group_M_Mean200 : fltarr(h.nGroupsTot)    ,$
-        Group_R_Mean200 : fltarr(h.nGroupsTot)    ,$
-        Group_M_Crit200 : fltarr(h.nGroupsTot)    ,$
-        Group_R_Crit200 : fltarr(h.nGroupsTot)    ,$
-        Group_M_TH200   : fltarr(h.nGroupsTot)    ,$
-        Group_R_TH200   : fltarr(h.nGroupsTot)    ,$
-        Group_VD_M200   : fltarr(h.nGroupsTot)    ,$
-        Group_VD_C200   : fltarr(h.nGroupsTot)    ,$
-        Group_VD_TH200  : fltarr(h.nGroupsTot)    ,$
-        GroupContCount  : ulonarr(h.nGroupsTot)   ,$
-        GroupContMass   : fltarr(h.nGroupsTot)    ,$
-        GroupNsubs      : ulonarr(h.nGroupsTot)   ,$
-        GroupFirstSub   : ulonarr(h.nGroupsTot)   ,$
-                                                         $
-        SubgroupLen         : ulonarr(h.nSubgroupsTot)  ,$
-        SubgroupOffset      : ulonarr(h.nSubgroupsTot)  ,$
-        SubgroupParent      : ulonarr(h.nSubgroupsTot)  ,$
-        SubgroupMass        : fltarr(h.nSubgroupsTot)   ,$
-        SubgroupPos         : fltarr(3,h.nSubgroupsTot) ,$
-        SubgroupVel         : fltarr(3,h.nSubgroupsTot) ,$
-        SubgroupCM          : fltarr(3,h.nSubgroupsTot) ,$
-        SubgroupSpin        : fltarr(3,h.nSubgroupsTot) ,$
-        SubgroupVelDisp     : fltarr(h.nSubgroupsTot)   ,$
-        SubgroupVmax        : fltarr(h.nSubgroupsTot)   ,$
-        SubgroupVmaxRad     : fltarr(h.nSubgroupsTot)   ,$
-        SubgroupHalfMassRad : fltarr(h.nSubgroupsTot)   ,$
-        SubgroupIDMostBound : ulonarr(h.nSubgroupsTot)  ,$
-        SubgroupGrNr        : lonarr(h.nSubgroupsTot)   ,$
-                                                         $
-        SubgroupIDs         : lon64arr(h.nIDsTot)       ,$
-        nGroupsTot          : h.nGroupsTot                ,$
-        nSubgroupsTot       : h.nSubgroupsTot             ,$
-        nIDsTot             : h.nIDsTot                    $
-      }
-    endif
-    
-    ; allocate temporary storage for groups in this part
-    if (h.nGroups gt 0) then begin
-      part = {Len        : ulonarr(h.nGroups)   ,$
-              Offset     : ulonarr(h.nGroups)   ,$
-              Mass       : fltarr(h.nGroups)    ,$
-              Pos        : fltarr(3,h.nGroups)  ,$
-              M_Mean200  : fltarr(h.nGroups)    ,$
-              R_Mean200  : fltarr(h.nGroups)    ,$
-              M_Crit200  : fltarr(h.nGroups)    ,$
-              R_Crit200  : fltarr(h.nGroups)    ,$
-              M_TH200    : fltarr(h.nGroups)    ,$
-              R_TH200    : fltarr(h.nGroups)    ,$
-              ;VD_M200    : fltarr(h.nGroups)    ,$ ;FLAG_Group_VelDisp
-              ;VD_C200    : fltarr(h.nGroups)    ,$ ;FLAG_Group_VelDisp
-              ;VD_TH200   : fltarr(h.nGroups)    ,$ ;FLAG_Group_VelDisp
-              ContCount  : ulonarr(h.nGroups)   ,$
-              ContMass   : fltarr(h.nGroups)    ,$
-              Nsubs      : ulonarr(h.nGroups)   ,$
-              FirstSub   : ulonarr(h.nGroups)    $
-              }
-    endif
-    
-    ; load group data from this part
-    readu,lun,part
-    
-    ; fill sf with group data from this part
-    sf.GroupLen        [skip:(skip+h.nGroups-1)] = part.Len
-    sf.GroupOffset     [skip:(skip+h.nGroups-1)] = part.Offset
-    sf.GroupMass       [skip:(skip+h.nGroups-1)] = part.Mass
-    sf.GroupPos        [*,skip:(skip+h.nGroups-1)] = part.Pos
-    
-    sf.Group_M_Mean200 [skip:(skip+h.nGroups-1)] = part.M_Mean200
-    sf.Group_R_Mean200 [skip:(skip+h.nGroups-1)] = part.R_Mean200
-    sf.Group_M_Crit200 [skip:(skip+h.nGroups-1)] = part.M_Crit200
-    sf.Group_R_Crit200 [skip:(skip+h.nGroups-1)] = part.R_Crit200
-    sf.Group_M_TH200   [skip:(skip+h.nGroups-1)] = part.M_TH200
-    sf.Group_R_TH200   [skip:(skip+h.nGroups-1)] = part.R_TH200
-        
-    sf.GroupContCount  [skip:(skip+h.nGroups-1)] = part.ContCount
-    sf.GroupContMass   [skip:(skip+h.nGroups-1)] = part.ContMass
-    sf.GroupNsubs      [skip:(skip+h.nGroups-1)] = part.Nsubs
-    sf.GroupFirstsub   [skip:(skip+h.nGroups-1)] = part.FirstSub
-        
-    skip += h.nGroups
-    
-    ; allocate temporary storage for subgroups in this part
-    if (h.nSubgroups gt 0) then begin
-      part = {Len         : ulonarr(h.nSubgroups)   ,$
-              Offset      : ulonarr(h.nSubgroups)   ,$
-              Parent      : ulonarr(h.nSubgroups)   ,$
-              Mass        : fltarr(h.nSubgroups)    ,$
-              
-              Pos         : fltarr(3,h.nSubgroups)  ,$
-              Vel         : fltarr(3,h.nSubgroups)  ,$
-              CM          : fltarr(3,h.nSubgroups)  ,$
-              Spin        : fltarr(3,h.nSubgroups)    ,$
-              
-              VelDisp     : fltarr(h.nSubgroups)      ,$
-              Vmax        : fltarr(h.nSubgroups)      ,$
-              VmaxRad     : fltarr(h.nSubgroups)      ,$
-              
-              HalfMassRad : fltarr(h.nSubgroups)      ,$
-              IDMostBound : ulon64arr(h.nSubgroups)   ,$
-              GrNr        : ulonarr(h.nSubgroups)     ,$
-              masstab     : fltarr(6,h.nSubgroups)     $
-              }
-    endif
-    
-    ; load subgroup data from this part
-    readu,lun,part
-    
-    ; fill sf with Subgroup data from this part
-    sf.SubgroupLen         [skipSub:(skipSub+h.nSubgroups-1)]    = part.Len
-    sf.SubgroupOffset      [skipSub:(skipSub+h.nSubgroups-1)]    = part.Offset
-    sf.SubgroupParent      [skipSub:(skipSub+h.nSubgroups-1)]    = part.Parent
-    sf.SubgroupMass        [skipSub:(skipSub+h.nSubgroups-1)]    = part.Mass
-    
-    sf.SubgroupPos         [*,skipSub:(skipSub+h.nSubgroups-1)]  = part.Pos
-    sf.SubgroupVel         [*,skipSub:(skipSub+h.nSubgroups-1)]  = part.Vel
-    sf.SubgroupCM          [*,skipSub:(skipSub+h.nSubgroups-1)]  = part.CM
-    sf.SubgroupSpin        [*,skipSub:(skipSub+h.nSubgroups-1)]  = part.Spin
-    
-    sf.SubgroupVelDisp     [skipSub:(skipSub+h.nSubgroups-1)]    = part.VelDisp
-    sf.SubgroupVmax        [skipSub:(skipSub+h.nSubgroups-1)]    = part.Vmax
-    sf.SubgroupVmaxRad     [skipSub:(skipSub+h.nSubgroups-1)]    = part.VmaxRad
-        
-    sf.SubgroupHalfMassRad [skipSub:(skipSub+h.nSubgroups-1)]    = part.HalfMassRad
-    sf.SubgroupIDMostBound [skipSub:(skipSub+h.nSubgroups-1)]    = part.IDMostBound
-    sf.SubgroupGrNr        [skipSub:(skipSub+h.nSubgroups-1)]    = part.GrNr
-    ;sf.SubgroupMasstab    [*,skipSub:(skipSub+h.nSubgroups-1)]  = part.masstab
-    
-    skipSub += h.nSubgroups
-    
-    ; close file
-    close,lun
-    free_lun, lun
-  
-  endfor
-  
-  ; verify accumulated totals with last header totals
-  if (nGroupsTot ne h.nGroupsTot or $
-      (nIDsTot ne h.nIDsTot and not keyword_set(skipIDs)) or $
-      nSubgroupsTot ne h.nSubgroupsTot) then begin
-    print,'ERROR: Totals do not add up.'
-    return,0
-  endif
-  
-  if not keyword_set(skipIDs) then begin
-    ; IDs header
-    hIDs  = { headerIDs,              $
-                 nGroups:        0L,  $
-                 nGroupsTot:     0L,  $
-                 nIDs:           0L,  $
-                 nIDsTot:        0LL, $
-                 nTask:          0L,  $
-                 nPrevIDs:       0L   $
-               }
-    
-    ; IDs counters
-    nGroupsTot_IDs = 0L
-    nIDsTot_IDs    = 0L
-    
-    count = 0
-    found = 0
-    
-    ; load 0 for header
-    fName = fIDs + '.' + str(0)
-    openr,lun,fName,/GET_LUN
-    readu,lun,hIDs
-    
-    if (hIDs.nTask ne nSplit_IDs) then begin
-      print,'WARNING: h.nTask='+str(h.nTask)+' (sP.snap='+str(sP.snap)+$
-            ') differs from number of IDS split files ('+str(nSplit_IDs)+'.'
-      ;return,0
-    endif
-    
-    close,lun
-    free_lun,lun
-    
-    ; load IDs
-    for i=0,hIDs.nTask-1 do begin
-    
-      fName = fIDs + '.' + str(i)
-      
-      ; open and read header
-      openr,lun,fName,/GET_LUN
-      
-      readu,lun,hIDs
-    
-      ; add counters and error check
-      nGroupsTot_IDs    += hIDs.nGroups
-      nIDsTot_IDs       += hIDs.nIDs
-      
-      ; allocate storage if this is the first iteration
-      if (i eq 0) then begin
-        subgroupLen = hIDs.nIDsTot ; only for i==0
-        ;subgroupIDs = lon64arr(hIDs.nIDsTot)
-      endif
-      
-      ; determine number of IDs to read for this subgroup
-      if (count lt hIDs.nPrevIDs + hIDs.nIDs) then begin
-        nSkip       = count - hIDs.nPrevIDs
-        nRemaining  = hIDs.nPrevIDs + hIDs.nIDs - count
-        
-        if (subgroupLen gt nRemaining) then begin
-          nToRead = nRemaining
-        endif else begin
-          nToRead = subgroupLen
-        endelse
-      endif
-      
-      ; read IDs for this subgroup
-      if (nToRead gt 0) then begin
-        if (nSkip gt 0) then begin
-          dummy = lon64arr(nSkip)
-          readu,lun,dummy
-          print,dummy
-          return,0 ;die
-        endif
-        
-        ; read IDs for this file part
-        partIDs = ulon64arr(hIDs.nIDs)
-        readu,lun,partIDs
-        
-        ; fill sf.SubgroupIDs with this part
-        sf.SubgroupIDs[hIDs.nPrevIDs : (hIDs.nPrevIDs + hIDs.nIDs - 1)] = partIDs
-        
-        ; update counters
-        count       += nToRead
-        subgroupLen -= nToRead
-      endif
-      
-      ; close file
-      close,lun
-      free_lun, lun    
-      
-    endfor
-    
-    ; verify accumulated totals with last header totals
-    if (nGroupsTot_IDs ne hIDs.nGroupsTot or nIDsTot_IDs ne hIDs.nIDsTot) then begin
-      print,'ERROR: IDs totals do not add up.'
-      return,0
-    endif
-  
-  endif ;skipIDs
-  
-  if (verbose) then $
-    print,'Load complete. (nGroupsTot = ' + str(nGroupsTot) + ' nSubgroupsTot = ' + str(nSubgroupsTot) + $
-          ' nIDsTot = ' + str(nIDsTot) + ')'
-        
-  return,sf
-end
-
-; loadHsmlDir(): load (OLD, not HDF5) "hsmldir" with Hsml,Density,VelDisp of -all- particles
-;                may be ID ordered or "IC ID" (effectively snapshot index) ordered
-
-function loadHsmlDir, sP=sP, verbose=verbose, partType=partType, $
-                      readHsml=readHsml, readDens=readDens, readVelDisp=readVelDisp
-
-  if not keyword_set(verbose) then verbose = 0
-  if ~keyword_set(readHsml) and ~keyword_set(readDens) and ~keyword_set(readVelDisp) then $
-    message,'Error: Need to specify at least one field to read.'
-
-  ; set filename
-  ext = string(sP.snap,format='(I3.3)')
-  fName = sP.simPath + 'hsmldir_' + ext + '/hsml_' + ext
-  
-  ; check existance and multiple outputs
-  if not file_test(fName) then begin
-    if (file_test(fName+'.0')) then begin
-      ; split into multiples, get count
-      nSplit = n_elements(file_search(fName+".*"))
-    endif else begin
-      message, 'ERROR: hsmldir file ' + sP.simPath + str(sP.snap) + ' does not exist!'
-    endelse
-  endif
-  
-  if (verbose) then $
-    print,'Loading hsmldir from snapshot ('+str(sP.snap)+') in [' + str(nSplit) + '] files.'
-  
-  ; counters
-  nHSMLTot = 0L
-  skip     = 0L
-  
-  ; headers
-  h  = { nHSML:          0L,  $
-         SendOffset:     0L,  $
-         nTotal:        0LL,  $
-         nTask:          0L   }
-             
-  ; load 0 for header
-  openr,lun,fName+'.0',/GET_LUN
-  readu,lun,h
-  close,lun
-  free_lun,lun
-  
-  if (h.nTask ne nSplit) then $
-     print,'WARNING: h.nTask='+str(h.nTask)+' differs from number of split files ('+str(nSplit)
-  
-  for i=0,h.nTask-1 do begin
-  
-    fNameCur = fName + '.' + str(i)
-    
-    ; open and read header
-    openr,lun,fNameCur,/GET_LUN
-    readu,lun,h
-      
-    ; skip loading actual particle IDs
-    if keyword_set(skipIDs) then h.nIDsTot = 1
-  
-    ; add counters and error check
-    nHSMLTot    += h.nHSML
-    
-    ; allocate storage if this is the first iteration
-    if (i eq 0) then begin
-      if keyword_set(readHsml) and keyword_set(readDens) and keyword_set(readVelDisp) then $
-        hd = { hsml : fltarr(h.nTotal), density : fltarr(h.nTotal), veldisp : fltarr(h.nTotal) }
-      if keyword_set(readHsml) and keyword_set(readDens) and ~keyword_set(readVelDisp) then $
-        hd = { hsml : fltarr(h.nTotal), density : fltarr(h.nTotal) }
-      if keyword_set(readHsml) and ~keyword_set(readDens) and keyword_set(readVelDisp) then $
-        hd = { hsml : fltarr(h.nTotal), veldisp : fltarr(h.nTotal) }
-      if ~keyword_set(readHsml) and keyword_set(readDens) and keyword_set(readVelDisp) then $
-        hd = { density : fltarr(h.nTotal), veldisp : fltarr(h.nTotal) }
-      if ~keyword_set(readHsml) and ~keyword_set(readDens) and keyword_set(readVelDisp) then $
-        hd = { veldisp : fltarr(h.nTotal) }
-      if keyword_set(readHsml) and ~keyword_set(readDens) and ~keyword_set(readVelDisp) then $
-        hd = { hsml : fltarr(h.nTotal) }
-      if ~keyword_set(readHsml) and keyword_set(readDens) and ~keyword_set(readVelDisp) then $
-        hd = { density : fltarr(h.nTotal) }
-    endif
-    
-    ; allocate temporary storage for groups in this part
-    if (h.nHSML gt 0) then $
-      part = { hsml : fltarr(h.nHSML), density : fltarr(h.nHSML), veldisp : fltarr(h.nHSML) }
-    
-    ; load group data from this part
-    readu,lun,part
-    
-    ; fill hd with group data from this part
-    if keyword_set(readHsml) then hd.hsml[skip:(skip+h.nHSML-1)]       = part.hsml
-    if keyword_set(readDens) then hd.density[skip:(skip+h.nHSML-1)]    = part.density
-    if keyword_set(readVelDisp) then hd.veldisp[skip:(skip+h.nHSML-1)] = part.veldisp
-    
-    skip += h.nHSML
-    
-    ; close file
-    close,lun
-    free_lun, lun
-  
-  endfor
-  
-  ; verify accumulated totals with last header totals
-  if nHSMLTot ne h.nTotal then message,'ERROR: Totals do not add up.'
-  
-  ; restrict to a particle type if requested
-  if keyword_set(partType) then begin
-    if partType eq 'dm' then begin
-      ; ID ordered assumption
-      ids_dm    = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
-      ids_gas   = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-      ids_stars = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
-      
-      ids = [ids_dm,ids_gas,ids_stars] ; concat
-      ids_gas   = !NULL
-      ids_stars = !NULL
-      
-      idsMask = bytarr(n_elements(ids)) ; mask to keep track of DM
-      idsMask[0:n_elements(ids_dm)-1] = 1B ; DM first
-      ids_sort = sort(ids) ; ID sort ascending
-      idsMask = idsMask[ids_sort] ; sort mask
-      ids = !NULL
-      ids_sort = !NULL
-      
-      dm_hsml_inds = where(idsMask eq 1B,count) ; dm locations in hsmldir (ascending id order)
-      dm_hsml_inds = dm_hsml_inds[ids_dm-min(ids_dm)] ; put back in snapshot order
-      
-      if count ne n_elements(ids_dm) then message,'Error: Bad location search.'
-      idsMask = !NULL
-      ids_dm  = !NULL
-      
-      ; if just one field requested, return it as an array
-      if ~keyword_set(readHsml) and ~keyword_set(readDens) and keyword_set(readVelDisp) then $
-        return, hd.veldisp[dm_hsml_inds]
-      if keyword_set(readHsml) and ~keyword_set(readDens) and ~keyword_set(readVelDisp) then $
-        return, hd.hsml[dm_hsml_inds]
-      if ~keyword_set(readHsml) and keyword_set(readDens) and ~keyword_set(readVelDisp) then $
-        return, hd.density[dm_hsml_inds]
-      
-      ; otherwise modify hd and return
-      if keyword_set(readHsml) and keyword_set(readDens) and keyword_set(readVelDisp) then $
-        hd2 = { hsml : hd.hsml[dm_hsml_inds], density : hd.density[dm_hsml_inds], veldisp : hd.veldisp[dm_hsml_inds] }
-      if keyword_set(readHsml) and keyword_set(readDens) and ~keyword_set(readVelDisp) then $
-        hd2 = {  hsml : hd.hsml[dm_hsml_inds], density : hd.density[dm_hsml_inds] }
-      if keyword_set(readHsml) and ~keyword_set(readDens) and keyword_set(readVelDisp) then $
-        hd2 = {  hsml : hd.hsml[dm_hsml_inds], veldisp : hd.veldisp[dm_hsml_inds] }
-      if ~keyword_set(readHsml) and keyword_set(readDens) and keyword_set(readVelDisp) then $
-        hd2 = { density : hd.density[dm_hsml_inds], veldisp : hd.veldisp[dm_hsml_inds] }
-        
-      return,hd2
-    endif
-    message,'Error: Other part type returns not generalized yet.'
-  endif
-  
-  if (verbose) then print,'Load complete for all particle types. (nHSMLTot = ' + str(nHSMLTot) + ')'
-        
-  return,hd
 end
 
 ; getSnapFilelist(): take input path and snapshot number and find snapshot filename
@@ -1358,7 +883,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     rType = 'float'
     fieldName = 'CoolingRate'
     if (partType ne 0) then message,'Error: CoolingRate is gas only!'
-    if GFMExistsFlag then message,'Error: Old field. Use GFM_CoolingRate.'
+    if tag_exist(hdf5s,'GFM_CoolingRate') then message,'Error: Old field. Use GFM_CoolingRate.'
   endif
   if (field eq 'density' or field eq 'rho' or field eq 'dens') then begin
     rType = 'float'
@@ -1427,13 +952,11 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     rType = 'float'
     fieldName = 'GFM_CoolingRate'
     if (partType ne 0) then message,'Error: GFM_CoolingRate is gas only!'
-    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
   endif
   if (field eq 'gfm_winddmveldisp') then begin
     rType = 'float'
     fieldName = 'GFM_WindDMVelDisp'
     if (partType ne 0) then message,'Error: GFM_WindDMVelDisp is gas only!'
-    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
   endif
   if (field eq 'gfm_agnradiation' or field eq 'gfm_agnrad') then begin
     rType = 'float'
@@ -1447,20 +970,18 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     rType = 'float'
     fieldName = 'Metallicity'
     if (partType ne 0 and partType ne 4) then message,'Error: Z is gas/stars only!'
-    if GFMExistsFlag then fieldName = 'GFM_Metallicity' ; use GFM field
+    if tag_exist(hdf5s,'GFM_Metallicity') then fieldName = 'GFM_Metallicity' ; use GFM field
   endif
   if (field eq 'gfm_metallicity' or field eq 'gfm_z') then begin
     rType = 'float'
     fieldName = 'GFM_Metallicity'
     if (partType ne 0 and partType ne 4) then message,'Error: GFM_Metallicity is gas/stars only!'
-    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
   endif
   if (field eq 'gfm_metals') then begin
     rType = 'float'
     rDims = gfmNumElements
     fieldName = 'GFM_Metals'
     if (partType ne 0 and partType ne 4) then message,'Error: GFM_Metals is gas/stars only!'
-    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
   endif
   
   ; gas/stars/bh only
@@ -1482,20 +1003,22 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     rType = 'float'
     fieldName = 'GFM_InitialMass'
     if (partType ne 4) then message,'Error: GFM_InitialMass is stars only!'
-    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
   endif
   if (field eq 'gfm_stellarformationtime' or field eq 'gfm_sftime') then begin
     rType = 'float'
     fieldName = 'GFM_StellarFormationTime'
     if (partType ne 4) then message,'Error: GFM_StellarFormationTime is stars only!'
-    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
   endif
   if (field eq 'gfm_stellarphotometrics' or field eq 'gfm_sphot') then begin
     rType = 'float'
     rDims = gfmNumPhotometrics
     fieldName = 'GFM_StellarPhotometrics'
     if (partType ne 4) then message,'Error: GFM_StellarPhotometrics is stars only!'
-    if ~GFMExistsFlag then message,'Error: Snapshot does not have GFM fields!'
+  endif
+  if (field eq 'stellarformationtime' or field eq 'sftime') then begin
+    rType = 'float'
+    fieldName = 'StellarFormationTime'
+    if (partType ne 4) then message,'Error: StellarFormationTime is stars only!'
   endif
   
   ; bh only
@@ -1608,10 +1131,11 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     if (partType ne 3 and partType ne 2) then message,'Error: Fluid quantities are tracerMC/Vel only!'
   endif
   
-  if (fieldName eq '') then begin
-    print,'ERROR: Requested field -- ' + strlowcase(field) + ' -- not recognized!'
-    stop
-  endif
+  ; requested field exists?
+  if (fieldName eq '') then $
+    message,'ERROR: Requested field -- ' + strlowcase(field) + ' -- not recognized!'
+  if ~tag_exist(hdf5s,fieldName) then $
+    message,'Error: Snapshot does not have requested field!'
   
   ; I/0 planning
   ; ------------
@@ -1661,8 +1185,8 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       if nPartTot[0] gt 0 then longIDsBits = longIDsBits.partType0.particleIDs._precision else $; use gas
       if nPartTot[1] gt 0 then longIDsBits = longIDsBits.partType1.particleIDs._precision ; or dm
       
-      if longIDsBits eq 32 then r = lonarr(rDims,readSize)
-      if longIDsBits eq 64 then r = lon64arr(rDims,readSize)
+      if longIDsBits eq 32 then r = ulonarr(rDims,readSize)
+      if longIDsBits eq 64 then r = ulon64arr(rDims,readSize)
       if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
     endif else begin
       ; non-ID long field
