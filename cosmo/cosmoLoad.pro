@@ -610,11 +610,15 @@ function loadSnapshotHeader, sP=sP, verbose=verbose, subBox=subBox, fileName=fil
   fileID   = h5f_open(fileList[0])
   s = h5_parse(fileID,"Header")
   
+  ; calculate the true nPartTot with the highword
+  lowWord  = ulong64(s.numPart_Total._DATA)
+  highWord = ulong64(s.numPart_Total_Highword._DATA)
+  nPartTot = ishft(highWord, 32) OR (lowWord)
+
   ; fill header struct
   h = {                                                          $
         nPartThisFile       : s.numPart_ThisFile._DATA          ,$
-        nPartTot            : s.numPart_Total._DATA             ,$
-        nPartTotHighword    : s.numPart_Total_Highword._DATA    ,$
+        nPartTot            : nPartTot                          ,$
         massTable           : s.massTable._DATA                 ,$
         time                : s.time._DATA                      ,$
         redshift            : s.redshift._DATA                  ,$
@@ -805,39 +809,30 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   partType = strlowcase(string(PT)) ; so we don't change the input
   partType = partTypeNum(partType)
   
-  ; load particle array sizes from header of first part
-  fileID   = h5f_open(fileList[0])
-  headerID = h5g_open(fileID,"Header")
-  nPartTot = h5a_read(h5a_open_name(headerID,"NumPart_Total"))
-  nSplits  = h5a_read(h5a_open_name(headerID,"NumFilesPerSnapshot"))
-  flagDbl  = h5a_read(h5a_open_name(headerID,"Flag_DoublePrecision"))
-  h5g_close, headerID
-  h5f_close, fileID
+  ; load particle array sizes from header
+  h = loadSnapshotHeader(filename=fileList[0])
   
   ; parse for new GFM related fields
   hdf5s = h5_parse(fileList[0]) ;structure only
   GFMExistsFlag  = tag_exist(hdf5s,'GFM_Metallicity')
   if GFMExistsFlag then begin
     gfmNumElements = hdf5s.PartType0.GFM_Metals._DIMENSIONS[0]
-    if PT eq 'star' or PT eq 'stars' and hdf5s.header.numPart_Total._DATA[partType] gt 0 then $
+    if PT eq 'star' or PT eq 'stars' and h.nPartTot[partType] gt 0 then $
       gfmNumPhotometrics = hdf5s.PartType4.GFM_StellarPhotometrics._DIMENSIONS[0]
   endif
   
-  if (nSplits ne nFiles) then $
-    message,'ERROR: NumFilesPerSnapshot ['+str(nSplits)+'] differs from number of split files found ['+$
-           str(nFiles)+'].'
+  if h.numFilesPerSnapshot ne nFiles then $
+    message,'ERROR: NumFilesPerSnapshot ['+str(h.numFilesPerSnapshot)+$
+      '] differs from number of split files found ['+str(nFiles)+'].'
   
   ; double precision
-  if (flagDbl eq 1 and not keyword_set(doublePrec)) then $
+  if (h.flagDoublePrecision eq 1 and not keyword_set(doublePrec)) then $
     print,'Warning: Snapshot is double precision but only singlePrec load requested.'
-  if (flagDbl eq 0 and keyword_set(doublePrec)) then $
+  if (h.flagDoublePrecision eq 0 and keyword_set(doublePrec)) then $
     print,'Warning: Snapshot is single precision but doublePrec load requested.'
   
-  ; early exit: no particles of requested type
-  if (nPartTot[partType] eq 0) then begin
-    print,'Warning: No particles of requested type present.'
-    return,[]
-  endif
+  ; no particles of requested type?
+  if h.nPartTot[partType] eq 0 then message,'Error: No particles of requested type present.'
   
   ; input config: set fieldName and return array
   count = 0L
@@ -1157,7 +1152,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   endif
 
   ; decide I/O strategy if we have known indices to read (simple, lowN, complex)
-  readStrategy = readStrategyIO(inds=inds, indRange=indRange, nPartTot=nPartTot, $
+  readStrategy = readStrategyIO(inds=inds, indRange=indRange, nPartTot=h.nPartTot, $
                                 partType=partType, verbose=verbose, $
                                 sort_inds=sort_inds, sorted_inds=sorted_inds)
     
@@ -1165,7 +1160,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   if keyword_set(inds) or keyword_set(indRange) then $
     readSize = readStrategy.nTotRead $
   else $
-    readSize = nPartTot[partType]
+    readSize = h.nPartTot[partType]
   
   ; use rType to make return array
   if rType eq 'float' then begin
@@ -1182,8 +1177,8 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     if fieldName eq 'ParticleIDs' or fieldName eq 'ParentID' or fieldName eq 'TracerID' then begin
       ; IDs are 64bit?
       longIDsBits = h5_parse(fileList[0]) ; just parse full structure
-      if nPartTot[0] gt 0 then longIDsBits = longIDsBits.partType0.particleIDs._precision else $; use gas
-      if nPartTot[1] gt 0 then longIDsBits = longIDsBits.partType1.particleIDs._precision ; or dm
+      if h.nPartTot[0] gt 0 then longIDsBits = longIDsBits.partType0.particleIDs._precision else $; use gas
+      if h.nPartTot[1] gt 0 then longIDsBits = longIDsBits.partType1.particleIDs._precision ; or dm
       
       if longIDsBits eq 32 then r = ulonarr(rDims,readSize)
       if longIDsBits eq 64 then r = ulon64arr(rDims,readSize)
@@ -1199,10 +1194,10 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   if verbose then $
     print,'Loading "' + str(fieldName) + '" for partType=' + str(partType) + ' from snapshot (' + $
           str(sP.snap) + ') in [' + str(nFiles) + '] files. (numPartTot=' + $
-          str(nPartTot[partType]) + ' nReadSize=' + str(readSize) + ')' 
+          str(h.nPartTot[partType]) + ' nReadSize=' + str(readSize) + ')' 
    
   ; load requested field from particle type across all file parts
-  pOffset = 0UL
+  pOffset = 0ULL
   
   for i=0,nFiles-1 do begin
       fileID   = h5f_open(fileList[i])
@@ -1285,7 +1280,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
         
         ; start at this column with length equal to the dataset size
         start[0]  = fN
-        length[0] = 1
+        length[0] = 1ULL
         length[1] = dataSpaceDims[1]
         
         ; select hyperslab and create a memory space to hold the result (otherwise it is full size+sparse)
@@ -1299,12 +1294,12 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       endif else begin
         ; if more than one dimension, want all of the first (e.g. all of xyz in pos)
         if nDims gt 1 then begin
-          start[0] = 0
+          start[0] = 0ULL
           length[0] = dataSpaceDims[0]
         endif
         
         ; for the last dimension (second if multidim), add simple hyperslabs based on our read strategy
-        totReadSizeLocal = 0L
+        totReadSizeLocal = 0ULL
 		
 	  firstIndexLocal = pOffset - nPart[partType]
 	  lastIndexLocal = pOffset - 1
@@ -1336,7 +1331,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
           length[nDims-1] = readSizeBlock
           
           if verbose then print,'  Block ['+str(j)+'] local start = ' + $
-            str(bOffsetStart) + ' length = ' + str(readSizeBlock)
+            str(bOffsetStart) + ' length = ' + str(readSizeBlock) + ' cumulativeTotal = ' + str(count)
           
           h5s_select_hyperslab, dataSpaceID, start, length, reset=(totReadSizeLocal eq 0) ; clear on first
 		  
@@ -1373,9 +1368,10 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       if rDims gt 1 then r[*,count : (count + totReadSizeLocal - 1)] = groupData
       
       count += totReadSizeLocal
+      if count gt h.nPartTot[partType] then message,'Error: Read too many on file ['+str(i)+']'
   endfor
   
-  if pOffset ne nPartTot[partType] then message,'Error: Read failure.'
+  if pOffset ne h.nPartTot[partType] then message,'Error: Read failure.'
   ;if count ne readSize then message,'Error: Read failure.' ; not true if block is truncated in file
   
   ; if we have known indices and an I/O strategy, take the inds subset
