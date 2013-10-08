@@ -64,11 +64,11 @@ function getTypeSortedIDList, sP=sP, gc=gc
   
   if (count_gas + count_dm + count_trvel + count_star ne total(gc.groupLen)) then stop
   
-  start_gas   = 0ULL
-  start_dm    = 0ULL
-  start_trvel = 0ULL
-  start_star  = 0ULL
-  offset      = 0ULL
+  start_gas   = 0LL
+  start_dm    = 0LL
+  start_trvel = 0LL
+  start_star  = 0LL
+  offset      = 0LL
   
   ; DEBUG:
   ;mask_gas   = intarr(max(gc.IDs[gc_ind_gas])+1)
@@ -665,8 +665,8 @@ function readStrategyIO, inds=inds, indRange=indRange, $
        
     rs = { nBlocks     : 1                      ,$
            nTotRead    : 0LL                    ,$
-           blockStart  : [long(indRange[0])]    ,$ ; snapshot index start
-           blockEnd    : [long(indRange[1])]    ,$ ; snapshot index end
+           blockStart  : [long64(indRange[0])]    ,$ ; snapshot index start
+           blockEnd    : [long64(indRange[1])]    ,$ ; snapshot index end
            indexMin    : [0LL]                  ,$ ; unused
            indexMax    : [0LL]                   } ; unused
            
@@ -705,14 +705,15 @@ function readStrategyIO, inds=inds, indRange=indRange, $
   ; multiBlock: analyze sparsity of indices, decompose read into a reasonable number of blocks
   ;             such that we don't read too much unwanted data, but also do enough sequential
   ;             I/O and not too much random I/O
-  binSize = round(sqrt(max(inds))/10000.0) * 10000 > 10000 < 10000000 ; adjust to range
-      
+  binSize = round( max(inds)^(0.6)/10000.0 ) * 10000 > 10000 < 10000000 ; adjust to range
+  binSize = long64(binSize) ; 0.6 power is heuristic for 512^3-1820^3 sims (~2k-8k blocks to merge)
+  
   hist = histogram(inds,binsize=binsize,min=0,loc=loc)
   occBlocks = where(hist ne 0,count)
       
   nBlocks = 0
-  blockStart = []
-  blockLen   = []
+  blockStart = lon64arr(n_elements(occBlocks)) ; max possible size
+  blockLen   = lon64arr(n_elements(occBlocks))
   prevBlock = long64(-2) ; starting prevBlock+1 should not be a possibly valid starting block
   count = 0
       
@@ -722,10 +723,10 @@ function readStrategyIO, inds=inds, indRange=indRange, $
     
     ; jump detected (zero block length ge binsize)
     if occBlocks[i] ne (prevBlock+1) then begin
-      nBlocks += 1
-      blockStart = [blockStart,loc[occBlocks[i]]]
-      blockLen   = [blockLen,count]
+      blockStart[nBlocks] = loc[occBlocks[i]]
+      blockLen[nBlocks]   = count
       if i ne n_elements(occBlocks)-1 then count = 0
+      nBlocks += 1
     endif
     
     prevBlock = occBlocks[i]
@@ -733,8 +734,16 @@ function readStrategyIO, inds=inds, indRange=indRange, $
       
   ; remove first (zero) block length and add final
   count += 1
-  if nBlocks gt 1 then blockLen = [blockLen[1:*],count]
-  if nBlocks eq 1 then blockLen = [count]
+  
+  if nBlocks gt 1 then begin
+    blockStart = blockStart[0:(nBlocks-1)]
+    blockLen   = [blockLen[1:(nBlocks-1)],count]
+  endif
+  if nBlocks eq 1 then begin
+    blockStart = blockStart[0]
+    blockLen   = [count]
+  endif
+  
   if nBlocks le 0 then message,'Badness. Revert to simple?'
   
   ; determine rest of block structure
@@ -751,6 +760,8 @@ function readStrategyIO, inds=inds, indRange=indRange, $
     rs.indexMin[i] = w[0]
     rs.indexMax[i] = w[count-1]
   endfor
+  
+  if rs.nTotRead le 0 then message,'Error'
   
   efficiencyFracMulti = n_elements(inds) / float(rs.nTotRead)
   fracOfSnap = rs.nTotRead*100.0/nPartTot[partType]
@@ -1197,7 +1208,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
           str(h.nPartTot[partType]) + ' nReadSize=' + str(readSize) + ')' 
    
   ; load requested field from particle type across all file parts
-  pOffset = 0ULL
+  pOffset = 0LL
   
   for i=0,nFiles-1 do begin
       fileID   = h5f_open(fileList[i])
@@ -1241,8 +1252,8 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       
       ; for defining HDF5 subsets (start and length of requested data in each dimension)
       nDims = n_elements(dataSpaceDims)
-      start  = ulon64arr(nDims)
-      length = ulon64arr(nDims)
+      start  = lon64arr(nDims)
+      length = lon64arr(nDims)
       
       ; if multiDimSlice requested, select hyperslab
       if multiDimSliceFlag eq 1 then begin
@@ -1280,7 +1291,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
         
         ; start at this column with length equal to the dataset size
         start[0]  = fN
-        length[0] = 1ULL
+        length[0] = 1LL
         length[1] = dataSpaceDims[1]
         
         ; select hyperslab and create a memory space to hold the result (otherwise it is full size+sparse)
@@ -1294,12 +1305,12 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
       endif else begin
         ; if more than one dimension, want all of the first (e.g. all of xyz in pos)
         if nDims gt 1 then begin
-          start[0] = 0ULL
+          start[0] = 0LL
           length[0] = dataSpaceDims[0]
         endif
         
         ; for the last dimension (second if multidim), add simple hyperslabs based on our read strategy
-        totReadSizeLocal = 0ULL
+        totReadSizeLocal = 0LL
 		
 	  firstIndexLocal = pOffset - nPart[partType]
 	  lastIndexLocal = pOffset - 1
@@ -1313,11 +1324,11 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
            
           ; determine offset within this file of blockStart and blockEnd
           blockLen     = readStrategy.blockEnd[j] - readStrategy.blockStart[j] + 1
-          bOffsetStart = readStrategy.blockStart[j] - firstIndexLocal
+          bOffsetStart = readStrategy.blockStart[j] - firstIndexLocal          
           bOffsetEnd   = bOffsetStart + blockLen - 1
           
           ; truncate start and end to the local extent of this file
-          if bOffsetStart lt 0 then bOffsetStart = 0
+          if bOffsetStart lt 0 then bOffsetStart = 0LL
           if bOffsetEnd ge nPart[partType] then bOffsetEnd = nPart[partType] - 1
           
           readSizeBlock = (bOffsetEnd - bOffsetStart + 1)
@@ -1372,7 +1383,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   endfor
   
   if pOffset ne h.nPartTot[partType] then message,'Error: Read failure.'
-  ;if count ne readSize then message,'Error: Read failure.' ; not true if block is truncated in file
+  if count ne readStrategy.nTotRead then message,'Error: Read failure.' ; not true if block is truncated in file??
   
   ; if we have known indices and an I/O strategy, take the inds subset
   groupData = !NULL
