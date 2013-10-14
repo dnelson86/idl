@@ -5,7 +5,7 @@
 
 /* note the changed KERNEL_COEFF_3 with respect to allvars.h (not sure if this should be there for 1d/2d */
 
-//#define NEAREST(x) (((x)>BoxSize)?((x)-BoxSize):(((x)<0)?((x)+BoxSize):(x))) //no
+#define NEAREST_POS(x) (((x)>BoxSize)?((x)-BoxSize):(((x)<0)?((x)+BoxSize):(x))) //no
 #define NEAREST(x) (((x)>BoxHalf)?((x)-BoxSize):(((x)<-BoxHalf)?((x)+BoxSize):(x))) //yes
 
 #ifdef VERBOSE
