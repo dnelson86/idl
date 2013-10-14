@@ -55,22 +55,17 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
 
   hmax = pixelsizeX * 50;
 
-#ifdef VERBOSE
-  printf("calculating particle contributions...\n [");
+  printf("sphMap: [");
   int signal = 0;
-#endif
 	
   // loop over all particles
   for (k=0; k < NumPart; k++)
   {
-#ifdef VERBOSE
-    // output progress marker
     if (k > (signal / 100.0) * NumPart) {
       printf("x");
       fflush(stdout);
       signal++;
     }
-#endif
 
     // get particle data
     p[0] = data_pos[3*k+0];
@@ -104,10 +99,8 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
     // clip points outside box (x,y) dimensions
     if(BoxSize) // periodic
     {
-      if(NEAREST(BoxCen_X-p[axis0]) + 0.5*BoxSize_ImageX < -h || 
-         NEAREST(BoxCen_Y-p[axis1]) + 0.5*BoxSize_ImageY < -h || 
-         NEAREST(BoxCen_X-p[axis0]) - 0.5*BoxSize_ImageX > +h || 
-         NEAREST(BoxCen_Y-p[axis1]) - 0.5*BoxSize_ImageY > +h)
+      if(fabs(NEAREST(p[axis0]-BoxCen_X)) > 0.5*BoxSize_ImageX + h || 
+         fabs(NEAREST(p[axis1]-BoxCen_Y)) > 0.5*BoxSize_ImageY + h) 
         continue;
     } else {
       if(pos0 - 0 < -h || pos1 - 0 < -h || pos0 - BoxSize_ImageX > h || pos1 - BoxSize_ImageY > h)
@@ -155,10 +148,10 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
         /* coordinates of pixel center of covering pixels */
         if(BoxSize)
 	{
-	  xxx = NEAREST(x + dx * pixelsizeX);
-	  yyy = NEAREST(y + dy * pixelsizeY);
-          //xxx = NEAREST(xxx - 0.5*BoxSize_ImageX,BoxSize) + 0.5*BoxSize_ImageX;
-          //yyy = NEAREST(yyy - 0.5*BoxSize_ImageY,BoxSize) + 0.5*BoxSize_ImageY;
+	  //xxx = NEAREST(x + dx * pixelsizeX);
+	  //yyy = NEAREST(y + dy * pixelsizeY);
+          xxx = NEAREST_POS(x + dx * pixelsizeX);
+          yyy = NEAREST_POS(y + dy * pixelsizeY);
 	} else {
           xxx = x + dx * pixelsizeX;
           yyy = y + dy * pixelsizeY;
@@ -179,8 +172,8 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
             if(r2 < h2)
             {
 		// divide by sum for normalization
-		dens_out[j * Ypixels + i]  += _getkernel(h, r2) * v / sum;
-		quant_out[j * Ypixels + i] += _getkernel(h, r2) * v * w / sum;
+		dens_out[j * Xpixels + i]  += _getkernel(h, r2) * v / sum;
+		quant_out[j * Xpixels + i] += _getkernel(h, r2) * v * w / sum;
             }
           } //j
         } //i
@@ -192,12 +185,10 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
   // normalize mass weighted quantity
   for(j = 0; j < Ypixels; j++)
     for(i = 0; i < Xpixels; i++)
-      if(dens_out[j * Ypixels + i] > 0)
-        quant_out[j * Ypixels + i] /= dens_out[j * Ypixels + i];
+      if(dens_out[j * Xpixels + i] > 0)
+        quant_out[j * Xpixels + i] /= dens_out[j * Xpixels + i];
 
-#ifdef VERBOSE
   printf("]\n");
-#endif	
 	
   return 1;
 }
