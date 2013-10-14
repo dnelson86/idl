@@ -1,6 +1,6 @@
 ; externalC.pro
 ; wrappers for external C-routines
-; dnelson nov.2012
+; dnelson oct.2013
 
 ; calcHSML(): use CalcHSML external C-routine for the tree, neighbor searchings, and smoothing lengths
 
@@ -169,8 +169,8 @@ function calcSphMap, pos, hsml, mass, quant, axes=axes, boxSizeImg=boxSizeImg, b
   boxSizeImg = float(boxSizeImg)
   boxSizeSim = float(boxSizeSim)
   boxCen     = float(boxCen)
-  nPixels    = fix(nPixels)
-  axes       = fix(axes)
+  nPixels    = long(nPixels)
+  axes       = long(axes)
   
   ; check inputs
   if (n_elements(boxSizeImg) ne 3) then stop
@@ -617,4 +617,27 @@ pro calcMatchBlock, A, ind1, ind2, sP=sP, partType=partType, field=field, count=
    
   count = totCount
   
+end
+
+; CalcBoxRemap(): transform a set of positions within a periodic cube into a remapped volume
+;                 of size [L1,L2,L3] following the cuboid remapping approach of Carlson+ (2010)
+
+pro CalcBoxRemap, pos, boxsize, remapMatrix
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  ; validation
+  npos = size(pos)
+  if n_elements(boxsize) eq 0 or boxsize le 0.0 then message,'Error: Invalid boxsize.'
+  if n_elements(remapMatrix) ne 9 or total(long(remapMatrix) eq remapMatrix) ne 9 then message,'Error: Invalid matrix.'
+  if npos[0] ne 2 or npos[1] ne 3 then message,'Error: Point position array shape.'
+
+  ; prepare inputs
+  NumPart     = long64(npos[2])
+  BoxSize     = float(boxsize)
+  remapMatrix = long(remapMatrix) ; 3x3 integer matrix, row-major
+    
+  ret = Call_External('/n/home07/dnelson/idl/CalcBoxRemap/CalcBoxRemap.so', 'CalcBoxRemap', $
+                      NumPart,Pos,BoxSize,remapMatrix,/CDECL)
+
 end
