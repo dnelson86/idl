@@ -1,10 +1,10 @@
 ; slurm.pro
 ; automation and queue job related
-; dnelson sep.2013
+; dnelson oct.2013
 
-; makeArepoFoFBsub(): write slurm job file to invoke FoF/Subfind group finder post-processing
+; runArepoFoF(): write slurm job file to invoke FoF/Subfind group finder post-processing
 
-pro makeArepoFoFBsub
+pro runArepoFoF
 
   ; config
   sP = simParams(res=512,run='gadget')
@@ -94,124 +94,126 @@ pro makeArepoFoFBsub
 
 end
 
-; makeArepoProjBsub(): write bsub file to invoke three different axis aligned projections using the 
-;                      Arepo voronoi_makeimage_new() code
+; runArepoProj(): write job file to invoke a projection, slice, etc using the
+;                 Arepo voronoi_makeimage_new() code
 
-pro makeArepoProjBsub
+function runArepoProj, sP=sP, nPixels=nPixels, axes=axes, xyzCen=xyzCen, xyzSize=xyzSize
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  if n_elements(sP) eq 0 or n_elements(xyzCen) ne 3 or n_elements(nPixels) ne 2 or $
+     n_elements(axes) ne 3 or n_elements(xyzSize) ne 3 then message,'Error'
+  
+  ; config
+  subBox      = 0    ; unused
+  spawnJobs   = 0    ; execute job?
+  nCores      = 64   ; number of cores
+  cmdCode     = 5    ; projection
+  partName    = 'hernquist' ; partition to use
+  paramFile   = "param_proj.txt"
+  
+  xMin = xyzCen[0] - xyzSize[0]*0.5
+  xMax = xyzCen[0] + xyzSize[0]*0.5
+  yMin = xyzCen[1] - xyzSize[1]*0.5
+  yMax = xyzCen[1] + xyzSize[1]*0.5
+  zMin = xyzCen[2] - xyzSize[2]*0.5
+  zMax = xyzCen[2] + xyzSize[2]*0.5
+  
+  outputFilename = 'proj.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + $
+    '.cen'  + str(round(xyzCen[0]))  + '-' + str(round(xyzCen[1]))  + '-' + str(round(xyzCen[2])) + $
+    '.size' + str(round(xyzSize[0])) + '-' + str(round(xyzSize[1])) + '-' + str(round(xyzSize[2])) + $
+    '.px'   + str(nPixels[0]) + '-' + str(nPixels[1]) + $
+    '.axes' + str(axes[0]) + str(axes[1]) + str(axes[2]) + $
+    '.dat'
+  
+  ; if the requested projection is already done, load it and return
+  if file_test(outputFilename) then begin
+    openr,1,outputFilename
+      ; read header
+      nPixelsX = 0L
+      nPixelsY = 0L
 
-  ; config - path and snapshot
-  ;res = 256
-  ;run = 'tracerMC.ref'
-  ;f   = '1'
-  ;subBox = 0 ; search for subbox snapshot versus normal
-  
-  snapRange = [0,20,1]
-  
-  ; config - viewsize / object
-  ;sP = simParams(res=res,run=run,f=f,snap=snapRange[0])
-  sP = { simPath   : '/n/home07/dnelson/dev.tracerMC/gasSphere.cylTest.1e4.norot.nocool.nosg/output/' ,$
-         arepoPath : '/n/home07/dnelson/dev.tracerMC/gasSphere.cylTest.1e4.norot.nocool.nosg/',$
-         snap      : 0 }
-  h = loadSnapshotHeader(sP=sP,subBox=subBox)
-  
-  ;boxSize = h.boxSize ; full box
-  boxSize = 5000.0 ; subbox
-  
-  ;xyzCen = [1123.20,7568.80,16144.2] ;dusan 512
-  xyzCen = [boxSize/2.0,boxSize/2.0,boxSize/2.0]
-
-  sliceWidth  = boxSize ; cube sidelength
-  zoomFac     = 10.0   ; final image is boxSize/zoomFac in extent
-
-  ; render config
-  spawnJobs   = 1    ; execute bsub?
-  nProcs      = 1    ; 128^3=8, 256^3=24, 512^3=256 (minimum for memory)
-  ptile       = 1
-  dimX        = 1000  ; image dimensions (x pixels)
-  dimY        = 1000  ; image dimensions (y pixels)
-  
-  axesStr = ['0 1 2','0 2 1','1 2 0'] ;xy,xz,yz
-  
-  ; bbox and projection setup
-  cmdCode = 5 ;projection
- 
-  paramFile = "param.txt"
-  
-  xMin = xyzCen[0] - sliceWidth/2.0/zoomFac
-  xMax = xyzCen[0] + sliceWidth/2.0/zoomFac
-  yMin = xyzCen[1] - sliceWidth/2.0/zoomFac
-  yMax = xyzCen[1] + sliceWidth/2.0/zoomFac
-  zMin = xyzCen[2] - sliceWidth/2.0/zoomFac
-  zMax = xyzCen[2] + sliceWidth/2.0/zoomFac
-  
-  ; integration range for each axis depends on
-  axesBB = [[xMin,xMax,yMin,yMax,zMin,zMax],$
-            [xMin,xMax,zMin,zmax,yMin,yMax],$
-            [yMin,yMax,zMin,zMax,xMin,xMax]]
- 
-  for snap=snapRange[0],snapRange[1],snapRange[2] do begin
- 
-    ; write bjob file
-    jobFileName = sP.arepoPath+'job_proj.bsub'
-    
-    ; check before overriding
-    if file_test(jobFileName) then message,'Error: job_proj.bsub already exists'
-    
-    print,'['+str(snap)+'] Writing: '+jobFilename
+      readu,1,nPixelsX
+      readu,1,nPixelsY
       
-    openW, lun, jobFilename, /GET_LUN
+      dens = fltarr(nPixelsY, nPixelsX)
+      temp = fltarr(nPixelsY, nPixelsX)
+      readu,1,dens
+      readu,1,temp
+    close,1
+
+    dens = transpose(dens)
+    temp = transpose(temp)
+  
+    r = {nPixels:[nPixelsX,nPixelsY],dens:dens,temp:temp}
+    return,r
+  endif
+  
+  ; write bjob file
+  jobFileName = sP.arepoPath + 'job_proj.slurm'
+    
+  ; check before overriding
+  if file_test(jobFileName) then message,'Error: job_proj.slurm already exists'
+    
+  print,'['+str(sP.snap)+'] Writing: '+jobFilename
+      
+  openW, lun, jobFilename, /GET_LUN
     
     ; write header
     printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q keck'
-    printf,lun,'#BSUB -J proj_' + str(snap) + ""
-    printf,lun,'#BSUB -n ' + str(nProcs)
-    printf,lun,'#BSUB -R "rusage[mem=30000] span[ptile=' + str(ptile) + ']"'
-    printf,lun,'#BSUB -o run_proj.out'
-    printf,lun,'#BSUB -g /dnelson/proj' ; 4 concurrent jobs limit automatically
-    printf,lun,'#BSUB -cwd ' + sP.arepoPath
-    printf,lun,'#BSUB -a openmpi'
+    printf,lun,'#SBATCH --mail-user dnelson@cfa.harvard.edu'
+    printf,lun,'#SBATCH --mail-type=fail'
+    printf,lun,'#SBATCH -p ' + partName
+    printf,lun,'#SBATCH -J proj_' + str(sP.snap) + ''
+    printf,lun,'#SBATCH -o run_proj.txt'
+    printf,lun,'#SBATCH -e run_proj.txt'
+    printf,lun,'#SBATCH -t 360 # 6 hours in min'
+    printf,lun,'#SBATCH --mem=243200 # 3800MB/core'
+    printf,lun,'#SBATCH --exclusive'
+    printf,lun,'#SBATCH --ntasks ' + str(nCores)
+    printf,lun,'#SBATCH --workdir ' + sP.arepoPath
+      
     printf,lun,''
       
     ; write projection commands
-    foreach axisStr, axesStr, i do begin 
-    
-      strArray = ['mpirun.lsf ./Arepo_proj '+paramFile,$
-                  str(cmdCode),$
-                  str(snap),$
-                  str(dimX),str(dimY),$
-                  axisStr,$
-                  str(axesBB[0,i]),str(axesBB[1,i]),$
-                  str(axesBB[2,i]),str(axesBB[3,i]),$
-                  str(axesBB[4,i]),str(axesBB[5,i]),$
-                  '>> run_proj.txt']
-      printf,lun,strjoin(strArray,' ')
+    strArray = ['mpirun --mca mpi_leave_pinned 0 -n '+str(nCores),$
+                './Arepo_proj'    ,$
+                paramFile        ,$
+                str(cmdCode)     ,$
+                str(sP.snap)     ,$
+                str(nPixels[0])  ,$
+                str(nPixels[1])  ,$ 
+                str(axes[0])     ,$
+                str(axes[1])     ,$
+                str(axes[2])     ,$
+                str(xMin),str(xMax),$
+                str(yMin),str(yMax),$
+                str(zMin),str(zMax),$
+                '>> run_proj.txt']
+    printf,lun,strjoin(strArray,' ')
       
-      ; write file handling commands
-      outputFilename = 'proj_density_field_' + string(snap,format='(I3.3)') + '.' + str(i) + '.dat'
+    ; write file handling commands      
+    ;printf,lun,''
+    ;printf,lun,'mv ' + sP.simPath + 'proj_density_field_' + string(sP.snap,format='(I3.3)') + ' ' + $
+    ;           sP.derivPath + 'binnedVals/' + outputFilename
+    ;printf,lun,''
       
-      printf,lun,''
-      printf,lun,'mv ' + sP.simPath + 'proj_density_field_' + string(snap,format='(I3.3)') + ' ' + $
-                 sP.simPath + outputFilename
-      printf,lun,''
-    
-    endforeach
+  ; close
+  close,lun
+  free_lun,lun
       
-    ; close
-    close,lun
-    free_lun,lun
+  ; add to queue if requested
+  if (spawnJobs) then begin
+    spawn, 'sbatch < ' + sP.plotPath + 'job_proj.slurm', result
+    print,'  '+result
       
-    ; add to queue if requested
-    if (spawnJobs) then begin
-      spawn, 'bsub < ' + sP.arepoPath + 'job_proj.bsub', result
-      print,'  '+result
+    ; check for error
+    if strpos(result,"sbatch: error") ge 0 then message,'Error detected, paused.'
       
-      ; file cleanup
-      wait,0.5
-      spawn, 'rm ' + sP.arepoPath + 'job_proj.bsub'
-    endif
+    ; file cleanup
+    wait,0.2
+    spawn, 'rm ' + sP.plotPath + 'job_proj.slurm'
+  endif
   
-  endfor ;snapRange
+  return,-1
 
 end
 

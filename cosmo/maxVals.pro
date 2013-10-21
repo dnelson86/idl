@@ -1,14 +1,13 @@
 ; maxVals.pro
 ; gas accretion project - past temperature/entropy/density history of gas
-; dnelson sep.2013
+; dnelson oct.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; maxVals(): find maximum temperature/ent/dens for gas particles in galaxyCat from the start of the
 ;   simulation up to sP.redshift (maxTemp only while not on eEOS)
 ;
 ; NOTE: vals are only saved for gas in the galaxyCat at the end of the interval (not all gas)
-; NOTE: vals are only recorded until gas crosses 0.15rvir of main progenitor branch for the first time, 
-;       or enters wind phase (windcounter>0). sep2013 change.
+; NOTE: vals are only recorded until gas crosses 0.15rvir of main progenitor branch for the first time
 ; -----------------------------------------------------------------------------------------------------
 
 function maxVals, sP=sP, restart=restart
@@ -236,13 +235,14 @@ function maxVals, sP=sP, restart=restart
         if countAccMask gt 0 then accMask[w] = 1B
         
         ; update mask if windcounter>0
+        ; NO
         countAccWind = 0
-        if sP.gfmWinds then begin
-          windc = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
-          windc = windc[trids_ind]
-          w = where(windc gt 0,countAccWind)
-          if countAccWind gt 0 then accMask[w] = 1B
-        endif
+        ;if sP.gfmWinds then begin
+        ;  windc = loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracer_windcounter')
+        ;  windc = windc[trids_ind]
+        ;  w = where(windc gt 0,countAccWind)
+        ;  if countAccWind gt 0 then accMask[w] = 1B
+        ;endif
         
         ; maxtemp
         ; -------
@@ -411,7 +411,6 @@ function maxVals, sP=sP, restart=restart
       h = loadSnapshotHeader(sP=sP)
       w = where(at lt h.time,count)
       if count gt 0 then accMask[w] = 1B
-      if sP.gfmWinds then message,'Cannot handle consistently without tracers moving to wind.'
       
       ; maxtemp
       ; -------

@@ -29,7 +29,7 @@ pro plotPreBin, sP=sP
             sP = simParams(res=res,run=run,redshift=redshift)
         
             binv = haloMassBinValues(sP=sP,timeWindow=timeWindow,accMode=accMode)
-            ;th   = binValMaxHistos(sP=sP,timeWindow=timeWindow,accMode=accMode)
+            th   = binValMaxHistos(sP=sP,timeWindow=timeWindow,accMode=accMode)
           endforeach
         endforeach
       endforeach
@@ -50,11 +50,10 @@ pro plotByMethod
   ; config
   runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
-  timeWindow = 500.0 ; consider accretion over this past time range (Myr)
+  timeWindow = 1000.0 ; consider accretion over this past time range (Myr)
                       ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
-  tVirInd    = 0 ; plot Tmax/Tvir=1
-  res        = 512
-  redshift   = 1.0
+  res        = 256
+  redshift   = 2.0
   
   lines   = [1,0,2] ; tvircur,tviracc,const5.5
   sK      = 3 ; smoothing kernel size  

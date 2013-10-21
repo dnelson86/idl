@@ -3,9 +3,10 @@
 # export C_INCLUDE_PATH=$C_INCLUDE_PATH:/n/sw/idl-8.1/idl/idl81/external/include
 # comment out INT64_PRECISION OPT for 32bit version
 
-OPT = -DINT64_PRECISION
+OPT = -DUINT64_PRECISION
+#OPT = -DINT64_PRECISION
 
-EXEC = CalcMatch_int64.so
+EXEC = CalcMatch_uint64.so
 
 SRCS   = main.c fhtr.c
 

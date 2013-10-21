@@ -48,7 +48,6 @@ function fillZoomParams, r, res=res, hInd=hInd
     ;[ 7] hInd =   98 mass = 11.90 rvir = 218.0 vol =  63.7 zL = 2 rVirFac = 3.8 pos = [ 6994.99 16954.28 16613.29 ]
     ;ref_center = 0.3288, 0.8630, 0.8127
     ;ref_extent = 0.2229, 0.1853, 0.1929
-
     r.targetHaloInd  = 98
     r.targetHaloPos  = [6994.99, 16954.28, 16613.29]
     r.targetHaloRvir = 218.0 ; ckpc
@@ -56,6 +55,32 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.targetRedshift = 2.0
     
     if r.levelMax ge 9 then r.zoomShift = [21,-46,-40]
+  endif
+  
+  if hInd eq 2 then begin
+    ;[ 9] hInd =  104 mass = 11.82 rvir = 214.8 vol =  76.8 zL = 2 rVirFac = 3.8 pos = [ 4260.38  5453.91  6773.12 ]
+    ;boxCenter: [  0.2071 ,  0.2695 ,  0.3588 ]
+    ;boxExtent: [  0.2001 ,  0.2151 ,  0.2229 ]
+    r.targetHaloInd  = 104
+    r.targetHaloPos  = [4260.38, 5453.91, 6773.12]
+    r.targetHaloRvir = 214.8 ; ckpc
+    r.targetHaloMass = 11.82 ; log msun
+    r.targetRedshift = 2.0
+    
+    if r.levelMax ge 9 then r.zoomShift = [37,29,18]
+  endif
+  
+  if hInd eq 3 then begin
+    ;[ 0] hInd =   49 mass = 12.17 rvir = 263.3 vol =  88.2 zL = 2 rVirFac = 3.8 pos = [10805.00  8047.92  4638.30 ]
+    ;boxCenter: [  0.5658 ,  0.4138 ,  0.2570 ]
+    ;boxExtent: [  0.2306 ,  0.2681 ,  0.1782 ]
+    r.targetHaloInd  = 49
+    r.targetHaloPos  = [10805.00, 8047.92, 4638.30]
+    r.targetHaloRvir = 263.3 ; ckpc
+    r.targetHaloMass = 12.17 ; log msun
+    r.targetRedshift = 2.0
+    
+    if r.levelMax ge 9 then r.zoomShift = [-8,11,31]
   endif
   
   ; convert zoomShift to zoomShiftPhys
@@ -71,10 +96,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
 
   forward_function redshiftToSnapNum
 
-  if not keyword_set(res) or not keyword_set(run) then begin
-     print,'Error: simParams: arguments not specified.'
-     exit
-  endif
+  if not keyword_set(res) or not keyword_set(run) then $
+     message,'Error: simParams: arguments not specified.'
   
   run = strlowcase(run)
 

@@ -179,22 +179,37 @@ function calcSphMap, pos, hsml, mass, quant, axes=axes, boxSizeImg=boxSizeImg, b
   if (n_elements(nPixels) ne 2) then stop
   if (n_elements(axes)    ne 2) then stop
   
-  if (size(pos))[0] ne 2 or (size(pos))[1] ne 3 then message,'Error: Strange dimensions of pos.'
+  if (size(pos))[0] ne 2 or $
+     ( (size(pos))[1] ne 3 and (size(pos))[1] ne 2) then message,'Error: Strange dimensions of pos.'
   if (size(hsml))[0] ne 1 then message,'Error: Strange dimensions of hsml.'
-  if (size(mass))[0] ne 1 then message,'Error: Strange dimensions of mass.'
+  if n_elements(mass) ne 1 then if (size(mass))[0] ne 1 then message,'Error: Strange dimensions of mass.'
   if (size(quant))[0] ne 1 then message,'Error: Strange dimensions of quant.'
   
   if (size(pos))[2] ne (size(hsml))[1] or $
-     (size(pos))[2] ne (size(mass))[1] or $
+     ( (size(pos))[2] ne (size(mass))[1] and n_elements(mass) ne 1 ) or $
      (size(pos))[2] ne (size(quant))[1] then message,'Error: Dimension mismatch for inputs.'
   
   if (axes[0] ne 0 and axes[0] ne 1 and axes[0] ne 2) then message,'Error: Invalid axes.'
   if (axes[1] ne 0 and axes[1] ne 1 and axes[1] ne 2) then message,'Error: Invalid axes.'
   
+  ; constant mass?
+  cmStr = ''
+  if n_elements(mass) eq 1 then begin
+    cmStr = '_constantMass'
+    print,' (using constant mass sphMap)'
+  endif
+  
+  ; only input two coordinates per particle in 3D?
+  noposzStr = ''
+  if ndims eq 3 and (size(pos))[1] eq 2 then begin
+    noposzStr = '_noPosZ'
+    print,' (using noPosZ sphMap)'
+  endif
+  
   ; we direct cast so ensure everything is the right size
   pos   = float(pos)
   hsml  = float(hsml)
-  mass  = float(hsml)
+  mass  = float(mass)
   quant = float(quant)
   
   ; make return
@@ -202,7 +217,7 @@ function calcSphMap, pos, hsml, mass, quant, axes=axes, boxSizeImg=boxSizeImg, b
   quant_out = fltarr(nPixels[0],nPixels[1])
 
   ; call CalcSphMap
-  libName = '/n/home07/dnelson/idl/CalcSphMap/CalcSphMap_'+str(ndims)+'D.so'
+  libName = '/n/home07/dnelson/idl/CalcSphMap/CalcSphMap_'+str(ndims)+'D'+cmStr+noposzStr+'.so'
   ret = Call_External(libName, 'CalcSphMap', $
                       NumPart,pos,hsml,mass,quant,dens_out,quant_out,$
                       boxSizeImg[0],boxSizeImg[1],boxSizeImg[2],boxSizeSim,$
@@ -379,14 +394,15 @@ function calcSort, array, inPlace=inPlace
 
   ; sanity checks
   if n_elements(array) gt 2e9 then message,'Error: Need to use 64 bit indices.'
-  if size(array,/tname) ne 'LONG' and size(array,/tname) ne 'LONG64' then $
+  if size(array,/tname) ne 'LONG' and size(array,/tname) ne 'LONG64' and size(array,/tname) ne 'ULONG64' then $
     message,'Error: Unsupported array variable type.'
   
   ; prepare input
   NumData = long(n_elements(array))
   
-  if size(array,/tname) eq 'LONG'   then soName = 'int32'
-  if size(array,/tname) eq 'LONG64' then soName = 'int64'
+  if size(array,/tname) eq 'LONG'    then soName = 'int32'
+  if size(array,/tname) eq 'LONG64'  then soName = 'int64'
+  if size(array,/tname) eq 'ULONG64' then soName = 'uint64'
   
   ; inPlace? default method=2 is the FHTR (method=1 is glibc qsort)
   if ~keyword_set(inPlace) then begin
@@ -416,12 +432,13 @@ function calcMatchDupe, A, B, dupe_counts=dupe_counts, count=count
   
   if numA gt 2e9 or numB gt 2e9 then message,'Error: Move to 64bit.'
   if size(A,/type) ne size(B,/type) then message,'Error: A and B have different var types.'
-  if size(A,/tname) ne 'LONG' and size(A,/tname) ne 'LONG64' then $
+  if size(A,/tname) ne 'LONG' and size(A,/tname) ne 'LONG64' and size(A,/tname) ne 'ULONG64' then $
     message,'Error: Unsupported variable type in A,B.'
     
   ; prepare input
-  if size(A,/tname) eq 'LONG'   then soName = 'int32'
-  if size(A,/tname) eq 'LONG64' then soName = 'int64'
+  if size(A,/tname) eq 'LONG'    then soName = 'int32'
+  if size(A,/tname) eq 'LONG64'  then soName = 'int64'
+  if size(A,/tname) eq 'ULONG64' then soName = 'uint64'
   
   ; output
   inds_A = lindgen(numA)
@@ -458,7 +475,7 @@ pro calcMatch, A, B, ind1, ind2, count=count, noSortA=noSortA
   
   if numA gt 2e9 or numB gt 2e9 then message,'Error: Move to 64bit.'
   if size(A,/type) ne size(B,/type) then message,'Error: A and B have different var types.'
-  if size(A,/tname) ne 'LONG' and size(A,/tname) ne 'LONG64' then $
+  if size(A,/tname) ne 'LONG' and size(A,/tname) ne 'LONG64' and size(A,/tname) ne 'ULONG64' then $
     message,'Error: Unsupported variable type in A,B.'
     
   ; prepare inputs
@@ -477,8 +494,9 @@ pro calcMatch, A, B, ind1, ind2, count=count, noSortA=noSortA
   count = -1L
   
   ; pick library based on 32bit or 64bit IDs
-  if size(A,/tname) eq 'LONG'   then soName = 'int32'
-  if size(A,/tname) eq 'LONG64' then soName = 'int64'
+  if size(A,/tname) eq 'LONG'    then soName = 'int32'
+  if size(A,/tname) eq 'LONG64'  then soName = 'int64'
+  if size(A,/tname) eq 'ULONG64' then soName = 'uint64'
 
   ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_'+soName+'.so', 'CalcMatch', $
                       method,numA,numB,A,B,ind1,ind2,count,/CDECL)
@@ -622,22 +640,53 @@ end
 ; CalcBoxRemap(): transform a set of positions within a periodic cube into a remapped volume
 ;                 of size [L1,L2,L3] following the cuboid remapping approach of Carlson+ (2010)
 
-pro CalcBoxRemap, pos, boxsize, remapMatrix
+pro CalcBoxRemap, pos, boxsize, remapMatrix, inverse=inverse, skipZ_stride2=skipZ_stride2
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
-  ; validation
-  npos = size(pos)
-  if n_elements(boxsize) eq 0 or boxsize le 0.0 then message,'Error: Invalid boxsize.'
-  if n_elements(remapMatrix) ne 9 or total(long(remapMatrix) eq remapMatrix) ne 9 then message,'Error: Invalid matrix.'
-  if npos[0] ne 2 or npos[1] ne 3 then message,'Error: Point position array shape.'
+  if ~keyword_set(inverse) then begin
+    ; validation
+    npos = size(pos)
+    if n_elements(boxsize) eq 0 or boxsize le 0.0 then message,'Error: Invalid boxsize.'
+    if n_elements(remapMatrix) ne 9 or total(long(remapMatrix) eq remapMatrix) ne 9 then message,'Error: Invalid matrix.'
+    if npos[0] ne 2 or npos[1] ne 3 then message,'Error: Point position array shape.'
 
-  ; prepare inputs
-  NumPart     = long64(npos[2])
-  BoxSize     = float(boxsize)
-  remapMatrix = long(remapMatrix) ; 3x3 integer matrix, row-major
+    ; prepare inputs
+    NumPart     = long64(npos[2])
+    BoxSize     = float(boxsize)
+    remapMatrix = long(remapMatrix) ; 3x3 integer matrix, row-major
     
-  ret = Call_External('/n/home07/dnelson/idl/CalcBoxRemap/CalcBoxRemap.so', 'CalcBoxRemap', $
-                      NumPart,Pos,BoxSize,remapMatrix,/CDECL)
+    ; requesting output of (x,y) only (stride 2 instead of 3)?
+    skipZstr = ''
+    if keyword_set(skipZ_stride2) then begin
+      skipZ_str = '_skipZ'
+      print,' (skipZ_stride2)'
+    endif
+    
+    ret = Call_External('/n/home07/dnelson/idl/CalcBoxRemap/CalcBoxRemap'+skipZ_str+'.so', 'CalcBoxRemap', $
+                        NumPart,Pos,BoxSize,remapMatrix,/CDECL)
+                        
+     if keyword_set(skipZ_stride2) then begin
+        pos = reform( pos, 1, 3*NumPart, /overwrite ) ; flatten
+        pos = pos[0 : 2*NumPart-1] ; remove last third
+        pos = reform( pos, 2, NumPart, /overwrite ) ; reform into 2xN
+     endif
+  endif
+  
+  if keyword_set(inverse) then begin
+    if keyword_set(skipZ_stride2) then message,'Error: No.'
+    if n_elements(pos) ne 3 then message,'Error: Only one tuple input.'
+    if n_elements(remapMatrix) ne 9 or total(long(remapMatrix) eq remapMatrix) ne 9 then message,'Error: Invalid matrix.'
+
+    px = double(pos[0])
+    py = double(pos[1])
+    pz = double(pos[2])
+    remapMatrix = long(remapMatrix) ; 3x3 integer matrix, row-major
+    
+    ret = Call_External('/n/home07/dnelson/idl/CalcBoxRemap/CalcBoxRemap.so', 'CalcBoxRemapInv', $
+                        px,py,pz,remapMatrix,/CDECL)
+                        
+    pos = [px,py,pz] ; overwrite input
+  endif
 
 end

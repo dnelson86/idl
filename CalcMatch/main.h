@@ -14,8 +14,14 @@
 typedef long long MyInt;
 typedef int MyIndType; // can change if we need to sort more than max(int) num elements
 #else
+#ifdef UINT64_PRECISION
+typedef unsigned long long MyInt;
+typedef int MyIndType;
+#else
+// INT32_PRECISION
 typedef int MyInt;
 typedef int MyIndType;
+#endif
 #endif
 
 // globals

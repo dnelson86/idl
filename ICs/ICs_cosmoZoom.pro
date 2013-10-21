@@ -506,7 +506,7 @@ pro orderLagrangianVolumes
   ; config
   haloMassRange  = [11.8,12.2] ; log msun
   targetRedshift = 2.0 ; resimulate until this redshift only
-  zoomLevel      = 4    ; levelmax-levelmin
+  zoomLevel      = 2    ; levelmax-levelmin
   
   sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=targetRedshift)
 

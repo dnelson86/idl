@@ -153,13 +153,13 @@ function accretionTimes, sP=sP, restart=restart
           endif
           
           print,' ['+string(m,format='(i3)')+'] [-] (rhot)'+$
-            ' '+strpad(partType,5)+' accNowCounts '+string(countRTCut,format='(i7)')+' ('+$
+            ' '+strpad(partType,5)+' accNowCounts '+string(countRTCut,format='(i8)')+' ('+$
             string(float(countRTCut)/n_elements(galcat.ids)*100,format='(f4.1)')+'%)'+$
-            ' outNowCounts '+string(countRTCutOut,format='(i7)')+' ('+$
+            ' outNowCounts '+string(countRTCutOut,format='(i8)')+' ('+$
             string(float(countRTCutOut)/n_elements(galcat.ids)*100,format='(f4.1)')+'%) || cumIn '+$
-            string(accCountRT,format='(i7)')+' ('+$
+            string(accCountRT,format='(i8)')+' ('+$
             string(float(accCountRT)/n_elements(galcat.ids)*100,format='(f4.1)')+'%)'+$
-            ' cumOut '+string(outCountRT,format='(i7)')+' ('+$
+            ' cumOut '+string(outCountRT,format='(i8)')+' ('+$
             string(float(outCountRT)/n_elements(galcat.ids)*100,format='(f4.1)')+'%)'
           
         endif ; partType eq 'gas'
@@ -418,13 +418,13 @@ function accretionTimes, sP=sP, restart=restart
           endif
           
           print,' ['+string(m,format='(i3)')+'] [-] (rhot)'+$
-            ' '+strpad(partType,5)+' accNowCounts '+string(countRTCut,format='(i7)')+' ('+$
+            ' '+strpad(partType,5)+' accNowCounts '+string(countRTCut,format='(i9)')+' ('+$
             string(float(countRTCut)/n_elements(galcat.trMC_ids)*100,format='(f4.1)')+'%)'+$
-            ' outNowCounts '+string(countRTCutOut,format='(i7)')+' ('+$
+            ' outNowCounts '+string(countRTCutOut,format='(i9)')+' ('+$
             string(float(countRTCutOut)/n_elements(galcat.trMC_ids)*100,format='(f4.1)')+'%) || cumIn '+$
-            string(accCountRT,format='(i7)')+' ('+$
+            string(accCountRT,format='(i9)')+' ('+$
             string(float(accCountRT)/n_elements(galcat.trMC_ids)*100,format='(f4.1)')+'%)'+$
-            ' cumOut '+string(outCountRT,format='(i7)')+' ('+$
+            ' cumOut '+string(outCountRT,format='(i9)')+' ('+$
             string(float(outCountRT)/n_elements(galcat.trMC_ids)*100,format='(f4.1)')+'%)'
           
         endif ; partType eq 'gas'
@@ -655,9 +655,9 @@ function accretionTimes, sP=sP, restart=restart
         endelse
         
         print,' ['+string(m,format='(i3)')+'] ['+str(k)+'] r='+string(rVirFac,format='(f4.2)')+$
-          ' accreted now counts '+string(count_gal,format='(i5)')+' ('+$
+          ' accreted now counts '+string(count_gal,format='(i7)')+' ('+$
           string(float(count_gal)/n_elements(gal_pri)*100,format='(f4.1)')+'%) '+$
-          string(count_gmem,format='(i5)')+' ('+$
+          string(count_gmem,format='(i7)')+' ('+$
           string(float(count_gmem)/n_elements(gmem_pri)*100,format='(f4.1)')+'%)'
         
         ; interpolate these (time,radii) to find time crossing the virial radius

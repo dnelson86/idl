@@ -4,6 +4,8 @@
 # comment out TWODIMS OPT for 3D version
 
 #OPT = -DTWODIMS
+#OPT = -DCONSTANT_MASS # DM, save memory
+#OPT = -DCONSTANT_MASS #-DNO_POSZ # only coordinates in (axis0,axis1) input
 EXEC = CalcSphMap_3D.so
 
 SRCS   = main.c

@@ -75,14 +75,13 @@ function binValMaxHistos, sP=sP, accMode=accMode, timeWindow=timeWindow
   ; to allow histogram() to work, since they are now single numbers indexed by -1
   for i=0,n_tags(accTvir)-1 do begin
     if n_elements(accTvir.(i)) ne 1 then continue
-    if accTvir.(i) ne -1 then message,'Strange, just one single valid entry?'
-    message,'check this'
-    accTvir = mod_struct( accTvir, (tag_names(gcSP))[i], [100,100.1] )
-    maxTemp = mod_struct( maxTemp, (tag_names(gcSP))[i], [0,0.1] )
-    maxEnt  = mod_struct( maxEnt, (tag_names(gcSP))[i], [0,0.1] )
-    maxDens = mod_struct( maxDens, (tag_names(gcSP))[i], [-1,-1.1] )
-    maxMach = mod_struct( maxMach, (tag_names(gcSP))[i], [-1,-1.1] )
-    parentMass = mod_struct( parentMass, (tag_names(gcSP))[i], [0,0.1] )
+    ;if accTvir.(i) ne -1 then message,'Strange, just one single valid entry? (sometimes with bhs in 128)'
+    accTvir = mod_struct( accTvir, (tag_names(accTvir))[i], [100,100.1] )
+    maxTemp = mod_struct( maxTemp, (tag_names(accTvir))[i], [0,0.1] )
+    maxEnt  = mod_struct( maxEnt, (tag_names(accTvir))[i], [0,0.1] )
+    maxDens = mod_struct( maxDens, (tag_names(accTvir))[i], [-1,-1.1] )
+    maxMach = mod_struct( maxMach, (tag_names(accTvir))[i], [-1,-1.1] )
+    parentMass = mod_struct( parentMass, (tag_names(accTvir))[i], [0,0.1] )
   endfor
 
   ; uniform weighting by mass for 2D histograms
@@ -217,15 +216,15 @@ end
 ;                     gmem, (2) same but unnormalized by tviracc, (3) global not binned by halo mass but
 ;                     normalized by each parent tviracc, (4) same global without normalization
 
-pro plotValMaxHistos
+pro plotValMaxHistos, redshift=redshift, res=res
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   ; config
   runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
-  redshift   = 2.0
-  res        = 256
+  ;redshift   = 2.0
+  ;res        = 256
   timeWindow = 500.0 ; Myr
   accMode    = 'smooth' ;'all','smooth','clumpy','stripped','recycled'
   tagNames   = ['Tmax','TmaxTviracc','EntMax','DensMax','MachMax'] ; plot each quantity
@@ -419,15 +418,15 @@ end
 
 ; plotValMaxHistosByMode(); as above, but separated into modes (line plots only)
 
-pro plotValMaxHistosByMode
+pro plotValMaxHistosByMode, redshift=redshift, res=res
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   ; config
-  runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
-  redshift   = 2.0
-  res        = 256
+  runs       = ['tracer']; ,'gadget'];,'feedback'] ;['feedback','feedback_noZ','feedback_noFB']
+  ;redshift   = 2.0
+  ;res        = 256
   timeWindow = 500.0 ; Myr
   accModes   = ['all','smooth','clumpy','stripped','recycled']
   tagNames   = ['Tmax','TmaxTviracc','EntMax','DensMax','MachMax'] ; plot each quantity
