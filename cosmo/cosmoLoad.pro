@@ -653,7 +653,7 @@ function readStrategyIO, inds=inds, indRange=indRange, $
   ; no strategy: whole data field for all particles
   if ~keyword_set(inds) and ~keyword_set(indRange) then begin
     
-    rs = { nBlocks : 1, blockStart: [0LL], blockEnd: [nPartTot[partType]-1LL] }
+    rs = { nBlocks : 1, nTotRead : nPartTot[partType], blockStart: [0LL], blockEnd: [nPartTot[partType]-1LL] }
     
     return, rs
   endif
@@ -663,7 +663,7 @@ function readStrategyIO, inds=inds, indRange=indRange, $
     if indRange[0] ge indRange[1] or indRange[0] lt 0 or $
        indRange[1] ge nPartTot[partType] then message,'Error: Bad indRange.'
        
-    rs = { nBlocks     : 1                      ,$
+    rs = { nBlocks     : 1LL                    ,$
            nTotRead    : 0LL                    ,$
            blockStart  : [long64(indRange[0])]    ,$ ; snapshot index start
            blockEnd    : [long64(indRange[1])]    ,$ ; snapshot index end
@@ -675,14 +675,19 @@ function readStrategyIO, inds=inds, indRange=indRange, $
   endif
   
   ; for simple or multiblock we need to sort the indices to load in contiguous chunks
-  sort_inds = calcSort(inds)
+  if n_elements(inds) le 500000000 then begin
+    sort_inds = calcSort(inds)
+  endif else begin
+    sort_inds = sort(inds)
+  endelse
+  
   sorted_inds = inds[sort_inds]
          
   ; simple: whole block from min to max, then take subset
-  rsSimple = { nBlocks     : 1                      ,$
+  rsSimple = { nBlocks     : 1LL                    ,$
                nTotRead    : 0LL                    ,$
-               blockStart  : [min(inds)]            ,$ ; snapshot index start
-               blockEnd    : [max(inds)]            ,$ ; snapshot index end
+               blockStart  : [long64(min(inds))]    ,$ ; snapshot index start
+               blockEnd    : [long64(max(inds))]    ,$ ; snapshot index end
                indexMin    : [0LL]                  ,$ ; start of subset of inds handled
                indexMax    : [n_elements(inds)-1LL]  } ; end of subset of inds handled
                      
@@ -711,29 +716,29 @@ function readStrategyIO, inds=inds, indRange=indRange, $
   hist = histogram(inds,binsize=binsize,min=0,loc=loc)
   occBlocks = where(hist ne 0,count)
       
-  nBlocks = 0
+  nBlocks = 0LL
   blockStart = lon64arr(n_elements(occBlocks)) ; max possible size
   blockLen   = lon64arr(n_elements(occBlocks))
   prevBlock = long64(-2) ; starting prevBlock+1 should not be a possibly valid starting block
-  count = 0
+  count = 0LL
       
   ; search for contiguous id blocks
   for i=0,n_elements(occBlocks)-1 do begin
-    count += 1
+    count += 1LL
     
     ; jump detected (zero block length ge binsize)
     if occBlocks[i] ne (prevBlock+1) then begin
-      blockStart[nBlocks] = loc[occBlocks[i]]
+      blockStart[nBlocks] = long64( loc[occBlocks[i]] )
       blockLen[nBlocks]   = count
-      if i ne n_elements(occBlocks)-1 then count = 0
-      nBlocks += 1
+      if i ne n_elements(occBlocks)-1 then count = 0LL
+      nBlocks += 1LL
     endif
     
     prevBlock = occBlocks[i]
   endfor
       
   ; remove first (zero) block length and add final
-  count += 1
+  count += 1LL
   
   if nBlocks gt 1 then begin
     blockStart = blockStart[0:(nBlocks-1)]
@@ -748,7 +753,7 @@ function readStrategyIO, inds=inds, indRange=indRange, $
   
   ; determine rest of block structure
   rs = { nBlocks     : nBlocks                                ,$
-         nTotRead    : round(total(blockLen * binSize))       ,$
+         nTotRead    : round(total(blockLen * binSize,/int))  ,$
          blockStart  : blockStart                             ,$ ; snapshot index start
          blockEnd    : blockStart + blockLen * binSize - 1    ,$ ; snapshot index end
          indexMin    : lon64arr(nBlocks)                      ,$ ; start of subset of inds handled
@@ -846,10 +851,39 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   if h.nPartTot[partType] eq 0 then message,'Error: No particles of requested type present.'
   
   ; input config: set fieldName and return array
-  count = 0L
+  count = 0LL
   field = strlowcase(field)
   rDims = 1 ;override if needed
   fieldName = ''
+  
+  ; composite fields (combine two or more fields) (not extremely memory efficient)
+  ; ----------------
+  if (field eq 'temp' or field eq 'temperature') then begin
+    if partType ne partTypeNum('gas') then message,'Error: Only gas has temperature.'  
+    u     = loadSnapshotSubset(sP=sP, fileName=fileName, partType=PT, field='u', verbose=verbose, $
+                               inds=inds, indRange=indRange, doublePrec=doublePrec, subBox=subBox)
+    nelec = loadSnapshotSubset(sP=sP, fileName=fileName, partType=PT, field='nelec', verbose=verbose, $
+                               inds=inds, indRange=indRange, doublePrec=doublePrec, subBox=subBox)
+    
+    return, convertUtoTemp(u,nelec,/log)
+  endif
+  
+  if (field eq 'ent' or field eq 'entr' or field eq 'entropy') then begin
+    if partType ne partTypeNum('gas') then message,'Error: Only gas has temperature.'  
+    u    = loadSnapshotSubset(sP=sP, fileName=fileName, partType=PT, field='u', verbose=verbose, $
+                              inds=inds, indRange=indRange, doublePrec=doublePrec, subBox=subBox)
+    dens = loadSnapshotSubset(sP=sP, fileName=fileName, partType=PT, field='dens', verbose=verbose, $
+                               inds=inds, indRange=indRange, doublePrec=doublePrec, subBox=subBox)
+      
+    return, calcEntropyCGS(u,dens,/log,sP=sP)
+  endif
+  
+  if (field eq 'vmag' or field eq 'velmag') then begin
+    vel = loadSnapshotSubset(sP=sP, fileName=fileName, partType=PT, field='vel', verbose=verbose, $
+                             inds=inds, indRange=indRange, doublePrec=doublePrec, subBox=subBox)
+
+    return, reform( sqrt(vel[0,*]^2.0 + vel[1,*]^2.0 + vel[2,*]^2.0) )
+  endif
 
   ; common fields (all besides tracersMC)
   ; -------------------------------------
@@ -1097,9 +1131,10 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   endif
   if (field eq 'subfind_hsml' or field eq 'subfind_smoothinglength') then begin
     rType = 'float'
-    fieldName = 'SubfindHSML'
+    fieldName = 'SubfindHsml'
   endif
-  if (field eq 'subfind_veldisp' or field eq 'subfind_dmveldisp') then begin
+  if (field eq 'subfind_veldisp' or field eq 'subfind_dmveldisp' or $
+      field eq 'veldisp' or field eq 'vdisp') then begin
     rType = 'float'
     fieldName = 'SubfindVelDisp'
   endif
@@ -1166,13 +1201,13 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   readStrategy = readStrategyIO(inds=inds, indRange=indRange, nPartTot=h.nPartTot, $
                                 partType=partType, verbose=verbose, $
                                 sort_inds=sort_inds, sorted_inds=sorted_inds)
-    
+
   ; decide size of return array
   if keyword_set(inds) or keyword_set(indRange) then $
     readSize = readStrategy.nTotRead $
   else $
     readSize = h.nPartTot[partType]
-  
+    
   ; use rType to make return array
   if rType eq 'float' then begin
     ; double precision requested?
@@ -1181,7 +1216,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     else $
       r = fltarr(rDims,readSize)
   endif
-  
+
   if rType eq 'int'   then r = intarr(rDims,readSize)
   
   if rType eq 'long'  then begin
@@ -1200,7 +1235,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     endelse
   endif
   
-  r = reform(r)
+  r = reform( temporary(r) )
   
   if verbose then $
     print,'Loading "' + str(fieldName) + '" for partType=' + str(partType) + ' from snapshot (' + $
@@ -1209,7 +1244,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
    
   ; load requested field from particle type across all file parts
   pOffset = 0LL
-  
+
   for i=0,nFiles-1 do begin
       fileID   = h5f_open(fileList[i])
       
@@ -1383,7 +1418,8 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   endfor
   
   if pOffset ne h.nPartTot[partType] then message,'Error: Read failure.'
-  if count ne readStrategy.nTotRead then message,'Error: Read failure.' ; not true if block is truncated in file??
+  ;not true since block could be truncated in (extend past the end of) a file:
+  ;if count ne readStrategy.nTotRead then message,'Error: Read failure.'
   
   ; if we have known indices and an I/O strategy, take the inds subset
   groupData = !NULL

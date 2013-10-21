@@ -14,11 +14,10 @@
 #include "main.h"
 
 /* project spline kernel */
-inline double _getkernel(float h, float r2)
+inline double _getkernel(double hinv, double r2)
 {
-  double hinv, u;
+  double u;
 
-  hinv = 1.0 / h;
   u = sqrt(r2) * hinv;
 
   if(u < 0.5)
@@ -33,13 +32,14 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
                        float* dens_out, float* quant_out)
 {
   // working
-  double pos0, pos1, h, v, w, r2, h2;
+  double pos0, pos1, h, v, w, r2, h2, hinv;
   double p[3];
   double x, y;
   double pixelsizeX, pixelsizeY;
   double sum, pixelarea;
   double hmin, hmax;
-  int nx, ny, dx, dy, i, j, k;
+  int nx, ny, dx, dy, i, j;
+  long long int k;
   double xx, yy, xxx, yyy;
   unsigned int binned_particles=0;
 
@@ -53,7 +53,10 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
   else
     hmin = 1.001 * pixelsizeY / 2;
 
-  hmax = pixelsizeX * 50;
+  if(pixelsizeX > pixelsizeY)
+    hmax = pixelsizeY * 50;
+  else
+    hmax = pixelsizeX * 50;
 
   printf("sphMap: [");
   int signal = 0;
@@ -61,21 +64,33 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
   // loop over all particles
   for (k=0; k < NumPart; k++)
   {
-    if (k > (signal / 100.0) * NumPart) {
+    if (k > (signal * 0.01) * NumPart) {
       printf("x");
       fflush(stdout);
       signal++;
     }
 
     // get particle data
-    p[0] = data_pos[3*k+0];
+#ifdef NO_POSZ // do not input along projection axis, do not clip along this axis (stride 2)
+    p[0] = data_pos[2*k+0];
+    p[1] = data_pos[2*k+1];
+#else
+    p[0] = data_pos[3*k+0]; // (stride 3)
     p[1] = data_pos[3*k+1];
     p[2] = data_pos[3*k+2];
+#endif
     h    = data_hsml[k];
+    
+#ifdef CONSTANT_MASS // for DM, save memory
+    v    = data_mass[0];
+#else
     v    = data_mass[k];
+#endif
+
     w    = data_quant[k];
 		
     // clip points outside box (z) dimension
+#ifndef NO_POSZ
     if(BoxSize)
     {
       if(fabs(NEAREST(p[3-axis0-axis1]-BoxCen_Z)) > 0.5*BoxSize_ImageZ)
@@ -84,6 +99,7 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
       if(fabs(p[3 - axis0 - axis1] - BoxCen_Z) > 0.5*BoxSize_ImageZ)
         continue;
     }
+#endif
 
     // position relative to box (x,y) minimum
     pos0 = p[axis0] - (BoxCen_X - 0.5*BoxSize_ImageX);
@@ -110,6 +126,7 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
     binned_particles++;
 
     h2 = h * h;
+    hinv = 1.0 / h;
 
     /* number of pixels covered by particle */
     nx = h / pixelsizeX + 1;
@@ -132,12 +149,14 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
         r2 = xx * xx + yy * yy;
 
         if(r2 < h2)
-          sum += _getkernel(h, r2);
+          sum += _getkernel(hinv, r2);
        }
     }
 
     if (sum < 1.0e-10)
       continue;
+			
+    double v_over_sum = v / sum;
 
     // calculate contribution
     for(dx = -nx; dx <= nx; dx++)
@@ -148,8 +167,6 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
         /* coordinates of pixel center of covering pixels */
         if(BoxSize)
 	{
-	  //xxx = NEAREST(x + dx * pixelsizeX);
-	  //yyy = NEAREST(y + dy * pixelsizeY);
           xxx = NEAREST_POS(x + dx * pixelsizeX);
           yyy = NEAREST_POS(y + dy * pixelsizeY);
 	} else {
@@ -172,8 +189,8 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
             if(r2 < h2)
             {
 		// divide by sum for normalization
-		dens_out[j * Xpixels + i]  += _getkernel(h, r2) * v / sum;
-		quant_out[j * Xpixels + i] += _getkernel(h, r2) * v * w / sum;
+		dens_out[j * Xpixels + i]  += _getkernel(hinv, r2) * v_over_sum;
+		quant_out[j * Xpixels + i] += _getkernel(hinv, r2) * v_over_sum * w;
             }
           } //j
         } //i
@@ -251,6 +268,14 @@ int CalcSphMap(int argc, void* argv[])
   printf("BoxCen      = %g %g %g\n", BoxCen_X, BoxCen_Y, BoxCen_Z);
   printf("axes        = %d %d\n", axis0, axis1);
   printf("nPixels     = %d %d\n", Xpixels, Ypixels);
+#endif
+
+#ifdef NO_POSZ
+  if( axis0 != 0 || axis1 != 1 )
+  {
+    IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSphMap ERROR. Must have axis0=0 and axis1=1 without posZ.");
+    return 0;
+  }
 #endif
 
   // calculate density projection map

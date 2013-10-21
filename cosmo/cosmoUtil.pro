@@ -143,11 +143,10 @@ function mergerTreeChild, Parent, ChildPrev=ChildPrev
   return, Child
 end
 
-; correctPeriodicDistVecs(): enforce periodic B.C. for distance vecotrs (effectively component by 
+; correctPeriodicDistVecs(): enforce periodic B.C. for distance vectors (effectively component by 
 ;                            component), input vecs in format fltarr[3,n]
 
 pro correctPeriodicDistVecs, vecs, sP=sP
-
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   w = where(vecs gt sP.boxSize*0.5,count)
@@ -157,6 +156,21 @@ pro correctPeriodicDistVecs, vecs, sP=sP
   w = where(vecs lt -sP.boxSize*0.5,count)
   if (count ne 0) then $
     vecs[w] = sP.boxSize + vecs[w]
+
+end
+
+; correctPeriodicPosVecs(): enforce periodic B.C. for positions (add boxSize to any negative
+;                           points, subtract boxSize from any points outside boxSize)
+
+pro correctPeriodicPosVecs, vecs, boxSize=boxSize, sP=sP
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  if n_elements(boxSize) eq 0 then boxSize = sP.boxSize
+  
+  w = where(vecs lt 0.0, count)
+  if count ne 0 then vecs[w] += boxSize
+  
+  w = where(vecs gt boxSize,count)
+  if count ne 0 then vecs[w] -= boxSize
 
 end
 

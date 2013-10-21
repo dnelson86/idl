@@ -1,6 +1,6 @@
 ; helper.pro
 ; helper functions (NOTE: all my IDL routines loaded at bottom of this file)
-; dnelson apr.2013
+; dnelson oct.2013
 
 ; one line utility functions
 ; --------------------------
@@ -84,15 +84,16 @@ end
 function closest, arr, x
   w = where( abs(arr-x) eq min(abs(arr-x)), count )
   if count eq 0 then message,'error'
-  if count gt 1 then w = w[0]
+  if count ge 1 then w = w[0]
   return,w
 end
 
-pro reportMemory
+pro reportMemory, msg=msg
+  if ~keyword_set(msg) then msg = ''
   mem = memory()
-  high_GB = string( float(mem[3]) / (1024L^3), format='(f5.2)')
-  cur_GB  = string( float(mem[0]) / (1024L^3), format='(f5.2)')
-  print,'Memory highwater: ['+high_GB+'] GB, current: ['+cur_GB+'] GB. ('+str(mem[1])+' '+str(mem[2])+')'
+  high_GB = string( float(mem[3]) / (1024L^3), format='(f6.2)')
+  cur_GB  = string( float(mem[0]) / (1024L^3), format='(f6.2)')
+  print,msg+': memory highwater: ['+high_GB+'] GB, current: ['+cur_GB+'] GB. ('+str(mem[1])+' '+str(mem[2])+')'
 end
 
 ; general algorithms
@@ -593,17 +594,29 @@ end
 ; loadColorTable(): load a custom or builtin IDL color table into the display
 ;                   if rgb_table specified do not load into display, just return the table
 
-pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
+pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse, gamma=GA_in, $
+  GA_double2=GA_double2
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
+  ; sabotage CT at beginning to make sure we load something
+  tvlct,fltarr(256,3)
+  
   ; cubehelix CT implementation
   if ctName eq 'helix' then begin
     ; helix parameters
-    start = 2.0  ; color, 1=r,2=g,3=b,0.5=purple
-    rots  = 1.5  ; color rotations, typically -1.5 to 1.5
-    hue   = 1.0  ; hue intensity scaling, typically 0 (BW) to 1
-    gamma = 0.75 ; gamma intensity expontent (1=normal/linear,<1 emphasize low vals,>1 emphasize high vals)
+    ;start = 2.0  ; color, 1=r,2=g,3=b,0.5=purple
+    ;rots  = 1.5  ; color rotations, typically -1.5 to 1.5
+    ;hue   = 1.0  ; hue intensity scaling, typically 0 (BW) to 1
+    ;gamma = 0.75 ; gamma intensity expontent (1=normal/linear,<1 emphasize low vals,>1 emphasize high vals)
+    
+    ; illustris dm_dens:
+    start = 2.5
+    rots = 1.3
+    hue = 1.0
+    gamma = 1.0
+    
+    if n_elements(GA_in) gt 0 then gamma = GA_in
     
     ; calculate R,G,B based on helix parameters
     nlev = 256
@@ -627,69 +640,114 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse
     RGB *= 255.0 ; cubehelix creates RGB in [0,1] but we use [0,255] for IDL display devices
     RGB = fix(round(RGB)) ; rounded INT
     
-    ; reverse (light=low to dark=high) if requested
-    if keyword_set(reverse) then begin
-      RGB = reverse(RGB)
-      RGB[0,*] = [0,0,0]
-    endif
-    
     ; fill rgb_table if requested, or if not, load RGB into display
     if arg_present(rgb_table) then rgb_table = RGB
 
-    if not arg_present(rgb_table) then begin
-      ; start above zero on the CT?
-      cbot = 0
-      if n_elements(bottom) gt 0 then cbot = bottom > 0 < nlev-1
+    ; start above zero on the CT?
+    cbot = 0
+    if n_elements(bottom) gt 0 then cbot = bottom > 0 < nlev-1
       
-      tvlct, RGB, cbot
-    endif
-    return
+    tvlct, RGB, cbot
+    
   endif
   
-  ; otherwise, load normal IDL table
+  ; normal IDL tables
   if ctName eq 'bw linear'          then loadct,0,bottom=bottom,/silent
+  if ctName eq 'red-temp'           then loadct,3,bottom=bottom,/silent
+  if ctName eq 'prism'              then loadct,6,bottom=bottom,/silent
   if ctName eq 'green-white linear' then loadct,8,bottom=bottom,/silent
   if ctName eq 'green-white exp'    then loadct,9,bottom=bottom,/silent
   if ctName eq 'blue-red'           then loadct,11,bottom=bottom,/silent
+  if ctName eq 'rainbow'            then loadct,13,bottom=bottom,/silent
+  if ctName eq 'purple-red-stripes' then loadct,23,bottom=bottom,/silent
+  if ctName eq 'hardcandy'          then loadct,28,bottom=bottom,/silent
+  if ctName eq 'nature'             then loadct,29,bottom=bottom,/silent
   if ctName eq 'plasma'             then loadct,32,bottom=bottom,/silent
   if ctName eq 'blue-red2'          then loadct,33,bottom=bottom,/silent
+  if ctName eq 'waves'              then loadct,37,bottom=bottom,/silent
   
   ; brewer (nice diverging options, both ends dark, light in middle) (17-26)
-  if ctName eq 'brewer-brownpurple' then cgLoadct,18,ncolors=255,bottom=bottom,/brewer
-  if ctName eq 'brewer-browngreen'  then cgLoadct,19,ncolors=255,bottom=bottom,/brewer
-  if ctName eq 'brewer-purplegreen' then cgLoadct,20,ncolors=255,bottom=bottom,/brewer
-  if ctName eq 'brewer-pinkgreen'   then cgLoadct,21,ncolors=255,bottom=bottom,/brewer
-  if ctName eq 'brewer-redblue'     then cgLoadct,22,ncolors=255,bottom=bottom,/brewer
-  if ctName eq 'brewer-redpurple'   then cgLoadct,25,ncolors=255,bottom=bottom,/brewer
-  if ctName eq 'brewer-redgreen'    then cgLoadct,26,ncolors=255,bottom=bottom,/brewer
+  if ctName eq 'brewer-brownpurple' then cgLoadct,18,ncolors=256,bottom=bottom,/brewer
+  if ctName eq 'brewer-browngreen'  then cgLoadct,19,ncolors=256,bottom=bottom,/brewer
+  if ctName eq 'brewer-purplegreen' then cgLoadct,20,ncolors=256,bottom=bottom,/brewer
+  if ctName eq 'brewer-pinkgreen'   then cgLoadct,21,ncolors=256,bottom=bottom,/brewer
+  if ctName eq 'brewer-redblue'     then cgLoadct,22,ncolors=256,bottom=bottom,/brewer
+  if ctName eq 'brewer-redpurple'   then cgLoadct,25,ncolors=256,bottom=bottom,/brewer
+  if ctName eq 'brewer-redgreen'    then cgLoadct,26,ncolors=256,bottom=bottom,/brewer
  
  ; brewer (convergent, light->dark)
- if ctName eq 'brewerc-yellowblue'      then cgLoadct,1,ncolors=255,bottom=bottom,/brewer
- if ctName eq 'brewerc-whitegreen'      then cgLoadct,3,ncolors=255,bottom=bottom,/brewer
- if ctName eq 'brewerc-purplebluegreen' then cgLoadct,4,ncolors=255,bottom=bottom,/brewer
- if ctName eq 'brewerc-redpurple'       then cgLoadct,7,ncolors=255,bottom=bottom,/brewer
- if ctName eq 'brewerc-orangered'       then cgLoadct,9,ncolors=255,bottom=bottom,/brewer
- if ctName eq 'brewerc-blues'           then cgLoadct,13,ncolors=255,bottom=bottom,/brewer
- if ctName eq 'brewerc-greens'          then cgLoadct,14,ncolors=255,bottom=bottom,/brewer
- if ctName eq 'brewerc-reds'            then cgLoadct,16,ncolors=255,bottom=bottom,/brewer
+ if ctName eq 'brewerC-yellowgreen'     then cgLoadct,0,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-yellowblue'      then cgLoadct,1,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-yellowgreenblue' then cgLoadct,2,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-whitegreen'      then cgLoadct,3,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-purplebluegreen' then cgLoadct,4,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-purpleblue'      then cgLoadct,5,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-whitebluepurple' then cgLoadct,6,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-redpurple'       then cgLoadct,7,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-whiteredpink'    then cgLoadct,8,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-orangered'       then cgLoadct,9,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-blues'           then cgLoadct,13,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-greens'          then cgLoadct,14,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-reds'            then cgLoadct,16,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-cubehelix'       then cgLoadCt,28,ncolors=256,bottom=bottom,/brewer
+ if ctName eq 'brewerC-cool'            then cgLoadCt,29,ncolors=256,bottom=bottom,/brewer
  
  ; reversed brewer (convergent, dark->light)
- if ctName eq 'brewerR-yellowblue'      then cgLoadct,1,ncolors=255,bottom=bottom,/brewer,/reverse
- if ctName eq 'brewerR-whitegreen'      then cgLoadct,3,ncolors=255,bottom=bottom,/brewer,/reverse
- if ctName eq 'brewerR-purplebluegreen' then cgLoadct,4,ncolors=255,bottom=bottom,/brewer,/reverse
- if ctName eq 'brewerR-redpurple'       then cgLoadct,7,ncolors=255,bottom=bottom,/brewer,/reverse
- if ctName eq 'brewerR-orangered'       then cgLoadct,9,ncolors=255,bottom=bottom,/brewer,/reverse
- if ctName eq 'brewerR-blues'           then cgLoadct,13,ncolors=255,bottom=bottom,/brewer,/reverse
- if ctName eq 'brewerR-greens'          then cgLoadct,14,ncolors=255,bottom=bottom,/brewer,/reverse
- if ctName eq 'brewerR-reds'            then cgLoadct,16,ncolors=255,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-yellowgreen'     then cgLoadct,0,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-yellowblue'      then cgLoadct,1,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-yellowgreenblue' then cgLoadct,2,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-whitegreen'      then cgLoadct,3,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-purplebluegreen' then cgLoadct,4,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-purpleblue'      then cgLoadct,5,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-whitebluepurple' then cgLoadct,6,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-redpurple'       then cgLoadct,7,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-whiteredpink'    then cgLoadct,8,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-orangered'       then cgLoadct,9,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-blues'           then cgLoadct,13,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-greens'          then cgLoadct,14,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-reds'            then cgLoadct,16,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-cubehelix'       then cgLoadCt,28,ncolors=256,bottom=bottom,/brewer,/reverse
+ if ctName eq 'brewerR-cool'            then cgLoadCt,29,ncolors=256,bottom=bottom,/brewer,/reverse
  
-  ; reverse normal/brewer if requested
-  if keyword_set(reverse) then begin
-    tvlct,r,g,b,/get
-    tvlct,reverse(r),reverse(g),reverse(b)
-  endif
+ ; matplotlib
+ if ctName eq 'spectral'                then vis_loadct,15,/mpl
  
-  ; brewer (sequential) (0-16)
+ ; cpt-city (name specifications must include directory)
+ if strpos(ctName,"/") ge 1 and strpos(ctName,"R/") eq -1 then vis_loadct,cpt_filename=ctName
+ if strpos(ctName,"R/") ge 1 then vis_loadct,cpt_filename=str_replace(ctName,"R/","/"),/reverse
+ 
+ ; make sure we loaded something
+ tvlct,rgb,/get
+ if total(rgb,/int) eq 0 then message,'Error: Probably unrecognized CT name.'
+ 
+ ; reverse if requested
+ if keyword_set(reverse) then begin
+   tvlct,r,g,b,/get
+   tvlct,reverse(r),reverse(g),reverse(b)
+ endif
+  
+ ; gamma scaling?
+ if keyword_set(GA_in) and ctName ne 'helix' then begin
+   tvlct,r,g,b,/get
+   n = n_elements(r)
+   s = long(n*((findgen(n)/n)^GA_in))
+   r = r[s] & g = g[s] & b = b[s]
+   tvlct,r,g,b
+ endif
+ 
+ if keyword_set(GA_double2) then begin
+   ; experimental
+   tvlct,r,g,b,/get
+   n = n_elements(r)
+   
+   GA_try = findgen(n)/(n+1) * GA_double2 - 0.5*GA_double2 + 1.0
+   GA_try = reverse(GA_try)
+   print,GA_try
+   
+   ss = long(n*((findgen(n)/n)^GA_try))
+   r = r[ss] & g = g[ss] & b = b[ss]
+   tvlct,r,g,b
+ endif
 
 end
 
@@ -833,7 +891,7 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig
             
 end
 
-pro end_PS, pngResize=pngResize, deletePS=deletePS, im_options=im_options
+pro end_PS, pngResize=pngResize, density=density, deletePS=deletePS, im_options=im_options
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -843,7 +901,7 @@ pro end_PS, pngResize=pngResize, deletePS=deletePS, im_options=im_options
     PS_End
     
   if keyword_set(pngResize) then $
-    PS_End, /PNG, Delete_PS=deletePS, im_options=im_options, Resize=pngResize, /nofix;, /showcmd
+    PS_End, /PNG, Delete_PS=deletePS, im_options=im_options, Resize=pngResize, density=density, /nofix;, /showcmd
 
 end
 
@@ -1040,6 +1098,7 @@ end
 @maxVals
 @timeScales
 @timeScalesPlot
+@growthRates
 
 ;@accretionRates
 @accretionTraj
@@ -1047,9 +1106,13 @@ end
 @cosmoVis
 @cosmoVisMap
 @cosmoVisMovie
+@cosmoVisStars
 ;@cosmoVisTry
 ;@cosmoOverDens
 ;@haloCompProj
+
+@illustrisVisCutout
+@illustrisVis
 
 @sphere
 @spherePlot

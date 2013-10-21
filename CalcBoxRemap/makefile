@@ -2,14 +2,15 @@
 # in ~/.bashrc include the line:
 # export C_INCLUDE_PATH=$C_INCLUDE_PATH:/n/sw/idl-8.1/idl/idl81/external/include
 
-EXEC = CalcBoxRemap.so
+OPT = -DSKIPZ_STRIDE2
+EXEC = CalcBoxRemap_skipZ.so
 
 SRCS   = main.cpp cuboid.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 INCL    = -L/usr/lib64 -L/usr/local/lib64 -shared
 
-CFLAGS =  -fPIC -m64 -O3 -g -Wall -march=bdver2 -mprefer-avx128 #holynoke nodes only
+CFLAGS =  -fPIC -m64 -O3 -g -Wall #-march=bdver1 -mprefer-avx128 #ITC/holynoke nodes only
 
 LIBS   =  -lm
 

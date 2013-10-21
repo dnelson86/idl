@@ -131,18 +131,16 @@ end
 
 pro makeVTKColorTable
 
-  ; load colortable into rgb[N,3]
-  ;loadColorTable,'helix',rgb_table=rgb
+  start_PS,'dummy.eps' ; need DEVICE access somewhere
   
-  ; idl builtins
-  loadct,13
+  ; load colortable into
+  loadColorTable,'ncl/WhiteBlueGreenYellowRed'
+  fileName = 'ncl_WhiteBlueGreenYellowRed.tbl'
+  
+  ; load RGB[3,N]
   tvlct,rgb,/get
-  
   start = 0
-  
   nVals = n_elements(rgb[*,0])
-
-  fileName = 'idl_13_rainbow.tbl'
 
   ; alpha channel
   alpha = fltarr(nVals) + 1.0 ; uniform
@@ -164,6 +162,9 @@ pro makeVTKColorTable
   
   close,lun
   free_lun, lun
+    
+  end_PS
+  spawn,'rm dummy.eps'
     
   stop
 

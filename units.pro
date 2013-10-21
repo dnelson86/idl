@@ -115,7 +115,7 @@ end
 
 ; meanmolwt(): from Monaco+ (2007) eqn 14, for hot halo gas
 
-function meanmolwt, Y=Y, Z=Z ; helium fraction (0.25) and metallicity
+function meanmolwt, Y=Y, Z=Z ; helium fraction (0.25) and metallicity (non-log metal mass/total mass)
   mu = 4.0 / (8 - 5*Y - 6*Z)
   return,mu
 end
@@ -128,7 +128,12 @@ function codeMassToVirTemp, mass, redshift=redshift, sP=sP, meanmolwt=meanmolwt,
   units = getUnits()
   
   if n_elements(redshift) eq 0 then redshift = sP.redshift
-  if redshift eq -1 then stop
+  if redshift eq -1 then begin
+    h = loadSnapshotHeader(sP=sP)
+    redshift = 1/h.time-1
+    print,redshift
+  endif
+  if redshift eq -1 or redshift lt 0.0 or redshift gt 20.0 then message,'Error: Still do not know redshift.'
 
   ; mean molecular weight default (valid for ComparisonProject at ionized T>10^4 K)
   if not keyword_set(meanmolwt) then meanmolwt = 0.6
@@ -262,7 +267,7 @@ function convertUtoTemp, u, nelec, gamma=gamma, hmassfrac=hmassfrac, log=log
   if keyword_set(log) then begin
     w = where(temp eq 0.0,count)
     if (count ne 0) then temp[w] = 1.0
-    temp = alog10(temp)
+    temp = alog10( temporary(temp) )
   endif
   
   return, float(temp)
