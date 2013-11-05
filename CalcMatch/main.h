@@ -18,14 +18,19 @@ typedef int MyIndType; // can change if we need to sort more than max(int) num e
 typedef unsigned long long MyInt;
 typedef int MyIndType;
 #else
+#ifdef UINT32_PRECISION
+typedef unsigned int MyInt;
+typedef int MyIndType;
+#else
 // INT32_PRECISION
 typedef int MyInt;
 typedef int MyIndType;
 #endif
 #endif
+#endif
 
 // globals
-MyIndType NumData;
+long long NumData;
 MyInt *DataIn;
 MyIndType *inds_out;
 MyInt *A, *B;
