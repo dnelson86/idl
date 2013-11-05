@@ -1,6 +1,6 @@
 ; cosmoVisMap.pro
 ; cosmological boxes - 2d visualization based on sph kernel maps
-; dnelson sep.2013
+; dnelson nov.2013
 
 ; sphMapBox: run sph kernel density projection on whole box
 
@@ -140,7 +140,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
     cgPlot, /nodata, xMinMax, yMinMax, pos=posTop, xs=5, ys=5, /noerase
     
     ; circle at virial radius
-    tvcircle,config.haloVirRad,0,0,cgColor('light gray'),thick=0.8,/data
+    tvcircle,config.rVirCirc * config.haloVirRad,0,0,cgColor('light gray'),thick=0.8,/data
     
     ; particle loop for velocity vector plotting
     nCutoutLeft = n_elements(scatter.pos_left[0,*])
@@ -156,7 +156,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
     ; cold gas / dark matter (right panel)
     cgPlot, /nodata, xMinMax, yMinMax, pos=posBottom, xs=5, ys=5, /noerase
 
-    tvcircle,config.haloVirRad,0,0,cgColor('light gray'),thick=0.8,/data
+    tvcircle,config.rVirCirc * config.haloVirRad,0,0,cgColor('light gray'),thick=0.8,/data
         
     ; particle loop for velocity vector plotting (cold gas only)
     nCutoutRight = n_elements(scatter.pos_right[0,*])
@@ -228,7 +228,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
   tv, sphmap.quant_out,posBottom[0],posBottom[1],/normal,xsize=pWidth ; mass-weighted quantity
 
   ; circle at virial radius
-  tvcircle,config.haloVirRad,0,0,cgColor('white'),thick=0.8,/data    
+  tvcircle,config.rVirCirc * config.haloVirRad,0,0,cgColor('white'),thick=0.8,/data    
   
   ; scale bar
   if ~keyword_set(right) and ~keyword_set(two) and ~keyword_set(three) then begin
@@ -276,18 +276,21 @@ pro sphScatterAndMapHaloComp
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  redshift = 2.0
-  res      = [9,9]
-  runs     = ['zoom_20mpc','zoom_20mpc_derefgal_nomod'] ;['feedback','feedback_noZ','feedback_noFB']
+  redshift = 3.0
+  res      = [9,10,11]
+  runs     = ['zoom_20mpc','zoom_20mpc','zoom_20mpc'] ;['feedback','feedback_noZ','feedback_noFB']
                                          ;['gadget','tracer','feedback']  ; two or three supported
+                                                
   hInd     = 0 ; for zooms only
   haloID   = 0 ;zoom.0 z2.304 z2.301 z2.130 z2.64
   
-  sizeFacMap  = 3.5       ; times rvir
-  sizeFacScat = 3.5       ; times rvir
-  nPixels  = [800,800]    ; px
+  sizeFacMap  = 1.0       ; times rvir (image width, e.g. 2.0 shows out to the virial radius)
+  sizeFacScat = 1.0       ; times rvir
+  rVirCirc    = 0.1       ; times rvir to draw a circle
+  hsmlFac  = 2.5          ; times each cell hsml for sph projections
+  nPixels  = [1600,1600]  ; px
+  xySize   = 3            ; final image is xySize*nPixels[0] high
   axisPair = [0,1]        ; xy
-  hsmlFac  = 2            ; times each cell hsml for sph projections
   nbottom  = 50           ; lift minimum scatterplot color from zero (to distinguish from black)
   secondGt = 0            ; 1=show greater than cut, 0=show less than cut
   singleColorScale = 1    ; 1=use same color scale for right panel, 0=rescale
@@ -313,7 +316,7 @@ pro sphScatterAndMapHaloComp
   saveFilename = 'sc.map.'+str(sP.(0).res)+'.'+runsStr+'axes'+str(axisPair[0])+str(axisPair[1])+'_'+$
                   colorField+'.eps'
                  
-  start_PS, sP.(0).plotPath + saveFilename, xs=3*numRuns, ys=3*3 
+  start_PS, sP.(0).plotPath + saveFilename, xs=xySize*numRuns, ys=xySize*3 
   
   ; loop over runs
   for i=0,numRuns-1 do begin
@@ -328,17 +331,21 @@ pro sphScatterAndMapHaloComp
     mapCutout.loc_hsml *= hsmlFac
     mapCutout.boxSizeImg *= 0.95
   
-    ; config
-    interval = 8^(sP.(i).zoomLevel-2) ; plot only every 8th point for L10 (match visual density)
+    ; config (1): plot only every 8th/64th point for L10/L11 (match visual density)
+    ;interval = 8^(sP.(i).zoomLevel-2)
+    ;lineThick = 1.0
+    
+    ; config (2): plot all points, reduce line thickness
     interval = 1
+    lineThick = 1.5 / 2.0^(sP.(i).zoomLevel-2)
     
     config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:fieldMinMax,$
               gcID:gcIDs[i],haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
               boxCen:[0,0,0],boxSizeImg:mapCutout.boxSizeImg,boxSizeScat:cutout.boxSizeImg,$
               ctNameScat:'helix',ctNameMap:'',sP:sP.(i),bartype:'none',scaleBarLen:200.0,$
-              lineThick:1.0,interval:interval,colorField:colorField,secondText:'',$
+              lineThick:lineThick,interval:interval,colorField:colorField,secondText:'',$
               nbottom:nbottom,secondGt:secondGt,singleColorScale:singleColorScale,$
-              secondCutVal:secondCutVal,mapMinMax:mapMinMax}
+              secondCutVal:secondCutVal,mapMinMax:mapMinMax,rVirCirc:rVirCirc}
           
     print,' boxSize ['+str(cutout.boxSizeImg[0])+'] kpc around subhalo center ['+$
           str(cutout.boxCen[0])+' '+str(cutout.boxCen[1])+' '+str(cutout.boxCen[2])+'] interval: '+str(interval)
@@ -352,7 +359,7 @@ pro sphScatterAndMapHaloComp
   
   endfor
   
-  end_PS, pngResize=60, /deletePS
+  end_PS, density=(nPixels[0]/xySize), pngResize=100, /deletePS
   
   stop
 

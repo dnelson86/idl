@@ -50,18 +50,18 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
   ; load u,nelec,dens and calculate temperature,entropy
   u     = loadSnapshotSubset(sP=sP,partType='gas',field='u')
   nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec')
-  temp  = alog10(convertUtoTemp(u,nelec))
+  temp  = convertUtoTemp(u,nelec)
   nelec = !NULL
   dens  = loadSnapshotSubset(sP=sP,partType='gas',field='dens')
-  ent   = calcEntropyCGS(u,dens,/log,sP=sP)
+  ent   = calcEntropyCGS(u,dens,sP=sP)
   u     = !NULL
   
   if metalsFlag then begin
     metal = loadSnapshotSubset(sP=sP,partType='gas',field='metallicity')
     ; convert to log(metallicity) for positive values, otherwise set GFM_MIN_METAL = -20 (log)
-    w = where(metal gt 0.0,count,comp=wc,ncomp=ncomp)
-    if count gt 0 then metal[w] = alog10(metal[w])
-    if ncomp gt 0 then metal[wc] = -20.0
+    ;w = where(metal gt 0.0,count,comp=wc,ncomp=ncomp)
+    ;if count gt 0 then metal[w] = alog10(metal[w])
+    ;if ncomp gt 0 then metal[wc] = -20.0
   endif
     
   ; load HSMLs or volumes (convert to sizes)
@@ -487,10 +487,10 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
   units = getUnits()
   
   ; create color index mapping
-  if config.colorField eq 'temp'      then fieldVal = cutout.loc_temp
-  if config.colorField eq 'entropy'   then fieldVal = cutout.loc_ent
+  if config.colorField eq 'temp'      then fieldVal = alog10( cutout.loc_temp )
+  if config.colorField eq 'entropy'   then fieldVal = alog10( cutout.loc_ent )
   if config.colorField eq 'density'   then fieldVal = cutout.loc_dens
-  if config.colorField eq 'metal'     then fieldVal = cutout.loc_metal
+  if config.colorField eq 'metal'     then fieldVal = alog10( cutout.loc_metal )
   if config.colorField eq 'vrad'      then fieldVal = reform(cutout.loc_vrad)
   if config.colorField eq 'vradnorm'  then fieldVal = reform(cutout.loc_vrad)/cutout.haloV200
   if config.colorField eq 'coolTime'  then fieldVal = cutout.loc_coolTime
@@ -578,7 +578,12 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
     sphmap = calcSphMap(mapCutout.loc_pos,mapCutout.loc_hsml,mapCutout.loc_mass,fieldValMap,$
                         boxSizeImg=mapCutout.boxSizeImg,boxSizeSim=0,boxCen=[0,0,0],$
                         nPixels=config.nPixels,axes=config.axes,ndims=3)
-  
+                        
+    ; take log?
+    if config.colorField eq 'temp'    then sphMap.quant_out = alog10( sphMap.quant_out )
+    if config.colorField eq 'entropy' then sphMap.quant_out = alog10( sphMap.quant_out )
+    if config.colorField eq 'metal'   then sphMap.quant_out = alog10( sphMap.quant_out )
+    
     ; set minimum for sphmap (mass-weighted quantity, do nothing with projected density)
     w = where(sphmap.quant_out eq 0.0,count,comp=wc)
     if count gt 0 then sphmap.quant_out[w] = min(sphmap.quant_out[wc])
