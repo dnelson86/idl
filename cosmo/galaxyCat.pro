@@ -256,6 +256,7 @@ function galaxyCat, sP=sP, skipSave=skipSave
           nGroups: gc.nSubgroupsTot }
           
     if size(gc.IDs,/tname) eq 'LONG'    then r = create_struct(r, {IDs:lonarr(countTot)})
+    if size(gc.IDs,/tname) eq 'ULONG'   then r = create_struct(r, {IDs:ulonarr(countTot)})
     if size(gc.IDs,/tname) eq 'LONG64'  then r = create_struct(r, {IDs:lon64arr(countTot)})
     if size(gc.IDs,/tname) eq 'ULONG64' then r = create_struct(r, {IDs:ulon64arr(countTot)})
     

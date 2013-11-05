@@ -507,6 +507,7 @@ pro orderLagrangianVolumes
   haloMassRange  = [11.8,12.2] ; log msun
   targetRedshift = 2.0 ; resimulate until this redshift only
   zoomLevel      = 2    ; levelmax-levelmin
+  outputPtFile   = 98   ; write ascii file for ellipsoid/convex hull test
   
   sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=targetRedshift)
 
@@ -615,6 +616,27 @@ pro orderLagrangianVolumes
             ' pos = ['+string(halo.pos[0],format='(f8.2)')+' '+$
                        string(halo.pos[1],format='(f8.2)')+' '+$
                        string(halo.pos[2],format='(f8.2)')+' ]'
+                       
+    ; write ascii point file for bounding ellipsoid / convex hull tests?
+    ; note that we are generating the convex hull of the lagrangian region which includes
+    ; all DM particles with rVirFac * rvir of the target halo at the target redshift
+    if outputPtFile eq halo.hInd then begin
+      ; make zstart_pos_halo in [0,1] box normalized coordinates
+      zstart_pos_halo /= double(sP.boxSize)
+      
+      ; open file and write
+      ptFileName = 'points_hInd_' + str(halo.hInd) + '.txt'
+      openW,lun,ptFileName,/GET_LUN
+  
+      for j=0,n_elements(halo.ids)-1 do $
+        printf,lun,string(zstart_pos_halo[0,j],format='(f10.8)') + ' ' + $
+                   string(zstart_pos_halo[1,j],format='(f10.8)') + ' ' + $
+                   string(zstart_pos_halo[2,j],format='(f10.8)')
+  
+      close,lun
+      free_lun, lun
+      print,'Wrote: ['+ptFileName+']'
+    endif
     
   endfor
  
