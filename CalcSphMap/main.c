@@ -206,6 +206,7 @@ int CalcSphMap_natural(float* data_pos, float* data_hsml, float* data_mass, floa
         quant_out[j * Xpixels + i] /= dens_out[j * Xpixels + i];
 
   printf("]\n");
+  fflush(stdout);
 	
   return 1;
 }

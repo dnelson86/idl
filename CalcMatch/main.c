@@ -20,7 +20,10 @@ int inplace_comparison_func(const void *a, const void *b)
 {
   MyInt id1 = *(MyInt *)a;
   MyInt id2 = *(MyInt *)b;
-  return ( id1 - id2 );
+  //return ( id1 - id2 ); // if id1-id2>(32 bits) the overflow kills the return!
+  if( id1 > id2 ) return 1;
+  if( id1 < id2 ) return -1;
+  return 0;
 }
 
 int inplace_indcomp_func(const void *a, const void *b) // unused
@@ -36,20 +39,29 @@ int indexing_comp_func(const void *a, const void *b)
 {
   MyInt id1 = DataIn[ *(MyIndType *)a ];
   MyInt id2 = DataIn[ *(MyIndType *)b ];
-  return ( id1 - id2 );
+  //return ( id1 - id2 );
+  if( id1 > id2 ) return 1;
+  if( id1 < id2 ) return -1;
+  return 0;
 }
 
 int indexA_comp_func(const void *a, const void *b)
 {
   MyInt id1 = A[ *(MyIndType *)a ];
   MyInt id2 = A[ *(MyIndType *)b ];
-  return ( id1 - id2 );
+  //return ( id1 - id2 );
+  if( id1 > id2 ) return 1;
+  if( id1 < id2 ) return -1;
+  return 0;
 }
 int indexB_comp_func(const void *a, const void *b)
 {
   MyInt id1 = B[ *(MyIndType *)a ];
   MyInt id2 = B[ *(MyIndType *)b ];
-  return ( id1 - id2 );
+  //return ( id1 - id2 );
+  if( id1 > id2 ) return 1;
+  if( id1 < id2 ) return -1;
+  return 0;
 }
 
 // variant of indexB which uses the addresses of B to insure stability for the CalcMatchDupe case
@@ -112,7 +124,7 @@ int CalcSort(int argc, void* argv[])
 #endif
 
   // inputs and return by reference
-  NumData  = *(MyIndType *)argv[0];
+  NumData  = *(long long *)argv[0];
 
   // (double memory usage)
   DataIn   = (MyInt *)argv[1];

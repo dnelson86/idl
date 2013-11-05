@@ -394,20 +394,22 @@ function calcSort, array, inPlace=inPlace
 
   ; sanity checks
   if n_elements(array) gt 2e9 then message,'Error: Need to use 64 bit indices.'
-  if size(array,/tname) ne 'LONG' and size(array,/tname) ne 'LONG64' and size(array,/tname) ne 'ULONG64' then $
-    message,'Error: Unsupported array variable type.'
+  if size(array,/tname) ne 'LONG'   and size(array,/tname) ne 'ULONG' and $
+     size(array,/tname) ne 'LONG64' and size(array,/tname) ne 'ULONG64' then $
+    message,'Error: Unsupported variable type in A,B.'
   
   ; prepare input
-  NumData = long(n_elements(array))
+  NumData = long64(n_elements(array))
   
   if size(array,/tname) eq 'LONG'    then soName = 'int32'
+  if size(array,/tname) eq 'ULONG'   then soName = 'uint32'
   if size(array,/tname) eq 'LONG64'  then soName = 'int64'
   if size(array,/tname) eq 'ULONG64' then soName = 'uint64'
   
   ; inPlace? default method=2 is the FHTR (method=1 is glibc qsort)
   if ~keyword_set(inPlace) then begin
     method = 2L
-    inds = lindgen(NumData)
+    inds = lindgen(NumData) ; 32bit
   endif
   
   if keyword_set(inPlace) then begin
@@ -417,6 +419,12 @@ function calcSort, array, inPlace=inPlace
   
   ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_'+soName+'.so','CalcSort',$
                       NumData,array,inds,method,/CDECL)
+                      
+  ; minimal verification
+  if ~keyword_set(inPlace) then $
+    if array[inds[0]] ne min(array) then message,'Error: CalcSort fail!'
+  if keyword_set(inPlace) then $
+    if array[0] ne min(array) then message,'Error: CalcSort fail!'
                       
   if keyword_set(inPlace) then return,ret
   if ~keyword_set(inPlace) then return,inds
@@ -432,11 +440,13 @@ function calcMatchDupe, A, B, dupe_counts=dupe_counts, count=count
   
   if numA gt 2e9 or numB gt 2e9 then message,'Error: Move to 64bit.'
   if size(A,/type) ne size(B,/type) then message,'Error: A and B have different var types.'
-  if size(A,/tname) ne 'LONG' and size(A,/tname) ne 'LONG64' and size(A,/tname) ne 'ULONG64' then $
+  if size(A,/tname) ne 'LONG'   and size(A,/tname) ne 'ULONG' and $
+     size(A,/tname) ne 'LONG64' and size(A,/tname) ne 'ULONG64' then $
     message,'Error: Unsupported variable type in A,B.'
     
   ; prepare input
   if size(A,/tname) eq 'LONG'    then soName = 'int32'
+  if size(A,/tname) eq 'ULONG'   then soName = 'uint32'
   if size(A,/tname) eq 'LONG64'  then soName = 'int64'
   if size(A,/tname) eq 'ULONG64' then soName = 'uint64'
   
@@ -475,7 +485,8 @@ pro calcMatch, A, B, ind1, ind2, count=count, noSortA=noSortA
   
   if numA gt 2e9 or numB gt 2e9 then message,'Error: Move to 64bit.'
   if size(A,/type) ne size(B,/type) then message,'Error: A and B have different var types.'
-  if size(A,/tname) ne 'LONG' and size(A,/tname) ne 'LONG64' and size(A,/tname) ne 'ULONG64' then $
+  if size(A,/tname) ne 'LONG'   and size(A,/tname) ne 'ULONG' and $
+     size(A,/tname) ne 'LONG64' and size(A,/tname) ne 'ULONG64' then $
     message,'Error: Unsupported variable type in A,B.'
     
   ; prepare inputs
@@ -495,6 +506,7 @@ pro calcMatch, A, B, ind1, ind2, count=count, noSortA=noSortA
   
   ; pick library based on 32bit or 64bit IDs
   if size(A,/tname) eq 'LONG'    then soName = 'int32'
+  if size(A,/tname) eq 'ULONG'   then soName = 'uint32'
   if size(A,/tname) eq 'LONG64'  then soName = 'int64'
   if size(A,/tname) eq 'ULONG64' then soName = 'uint64'
 

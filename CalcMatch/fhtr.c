@@ -7,8 +7,6 @@
 
 #include "main.h"
 
-//typedef int (*comparer)(const void *, const void *);
-
 #define THREAD_THRESHOLD 8192
 
 void _qsort (size_t element_size, void *arr, int left, int right, comparer cmp);
@@ -332,6 +330,7 @@ void* my_qsort (void *arr, size_t length, size_t element_size, comparer cmp)
     _qsort_4 (arr, 0, length-1, cmp);
   else if (element_size == 8)
     _qsort_8 (arr, 0, length-1, cmp);
+  // I no longer understand this below comment, could be a problem:
   // 4+4 will collide with 8, otherwise 8+4 (64bit int indices) or 8+8 (64bit long indices)
   //else if (element_size == sizeof(struct sort_data))
   //  _qsort_SD (arr, 0, length-1, cmp);
