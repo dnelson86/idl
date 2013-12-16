@@ -423,7 +423,7 @@ pro tvim,a,scale=scale,range=range,xrange=xrange,yrange=yrange,$
         rgb_nodata=rgb_nodata,barwidth=barwidth,position=position,rct=rct,$
         xmargin=xmargin,ymargin=ymargin,xtickname=xtickname,ytickname=ytickname,$
         xticks=xticks,yticks=yticks,xtickv=xtickv,ytickv=ytickv,$
-        xlog=xlog,ylog=ylog,noerase=noerase ;DNELSON pass to final plot
+        xlog=xlog,ylog=ylog,noerase=noerase,notv=notv ;DNELSON pass to final plot
 
 if n_params() eq 0 then begin
   xhelp,'tvim'
@@ -588,6 +588,7 @@ if not keyword_set(interp) then interp=0
 
 if iinodata(0) ne -1 then aa(iinodata)=1
 
+if ~keyword_set(notv) then begin ; DNELSON
 if !d.name eq 'PS' then begin
   tv,aa,px(0),py(0),xsize=xsize,ysize=ysize,/device
 endif else begin
@@ -599,6 +600,7 @@ endif else begin
                       ny*findgen(ysize)/(ysize-1)-.5,/grid),px(0),py(0)
   endelse
 endelse
+endif
 
 ;
 if keyword_set(xtitle) eq 0 then xtitle=''

@@ -22,6 +22,19 @@ pro checkBHDerefGal
   
 end
 
+; checkLowResStars(): are stars spawning from low res gas cells? if so which parttype do they have?
+
+pro checkLowResStars
+
+  sP = simParams(res=9,run='zoom_20mpc',hind=0,redshift=2.0)
+  h = loadSnapshotHeader(sP=sP)
+  
+  print,h.nparttot
+  
+  stop
+
+end
+
 pro checkZoomDerefineGal
 
   ; config
@@ -710,13 +723,13 @@ end
 pro checkDMContamination
 
   ; config
-  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=2.0) )
-  sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_20Mpc',res=9,hInd=1,redshift=2.0) )
-  ;sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_20Mpc_dm',res=9,hInd=0,redshift=2.0) )
-  ;sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_dm',res=10,hInd=0,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_20Mpc',res=10,hInd=0,redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_20Mpc_convhull',res=9,hInd=1,redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_convhull',res=10,hInd=1,redshift=2.0) )
   ;sPs = mod_struct( sPs, 'sP4', simParams(run='zoom_20Mpc_dm',res=11,hInd=0,redshift=2.0) )
   
-  colors = ['red','blue','green','orange']
+  colors = ['red','blue','green','orange','purple']
   nn     = 99
   
   start_PS,sPs.(0).plotPath + 'radialContamination_DM.eps'
@@ -777,7 +790,7 @@ end
 pro checkGasContamination
 
   ; config
-  sP = simParams(run='zoom_20Mpc',res=9,hInd=1,redshift=2.0)
+  sP = simParams(run='zoom_20Mpc_convhull',res=10,hInd=1,redshift=2.0)
 
   ; load
   h = loadSnapshotHeader(sP=sP)

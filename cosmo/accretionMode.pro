@@ -570,12 +570,19 @@ end
 
 ; accModeInds(): subselect for a particular accretion mode (indices are for galcat.ids or galcat.trMC_ids)
 
-function accModeInds, at=at, sP=sP, accMode=accMode
+function accModeInds, at=at, mt=mt, sP=sP, accMode=accMode
 
-  if n_elements(at) eq 0 or n_elements(accMode) eq 0 then message,'Error: Inputs'
+  if (n_elements(at) eq 0 and n_elements(mt) eq 0) or n_elements(accMode) eq 0 then message,'Error: Inputs'
   if ~sP.gfmWinds and accMode eq 'recycled' then message,'Error: Request recycled on non-winds run.'
   
-  at_w = lindgen(n_elements(at.accTime[0,*]))
+  if n_elements(at) gt 0 then nElem = n_elements(at.accTime[0,*])
+  if n_elements(mt) gt 0 then begin
+    if sP.trMCPerCell gt 0 then nElem = n_elements(mt.gcIndOrigTrMC)
+    if sP.trMCPerCell eq 0 then nElem = n_elements(mt.gcIndOrig)
+    if sP.trMCPerCell lt 0 then nElem = n_elements(mt.gcIndOrigTrVel)
+  endif
+  
+  at_w = lindgen(nElem)
   
   ; select on accretion mode by modifying gal_w, gmem_w, and stars_w
   if accMode ne 'all' then begin
@@ -598,7 +605,7 @@ function accModeInds, at=at, sP=sP, accMode=accMode
   endif
 
   ; make mask
-  mask = bytarr(n_elements(at.accTime[0,*]))
+  mask = bytarr(nElem)
   mask[at_w] = 1B
   
   ; load galaxyCat to replicate type for each tracer

@@ -329,12 +329,6 @@ function galaxyCat, sP=sP, skipSave=skipSave
       r = mod_struct( r, 'trMC_ids', galcat_trids )
     endif
     
-    if sP.trVelPerCell gt 0 then begin
-      galcat_trids = cosmoTracerVelChildren(sP=sP,/getIDs,gasIDs=r.ids,child_counts=galcat_cc)
-      r = mod_struct( r, 'trVel_cc', galcat_cc )
-      r = mod_struct( r, 'trVel_ids', galcat_trids )
-    endif
-    
     ; calculate radius and radial velocity for each member
     h = loadSnapshotHeader(sP=sP)
     gcParIDs = galCatRepParentIDs(galcat=r)
@@ -347,7 +341,7 @@ function galaxyCat, sP=sP, skipSave=skipSave
       ; skip non-existent particle types
       if h.nPartTot[partTypeNum(parType)] eq 0 then continue
 
-	  ; sub-match to parents of this type
+	; sub-match to parents of this type
       ids_type = loadSnapshotSubset(sP=sP,partType=parType,field='ids')
        
       calcMatch,r.ids,ids_type,galcat_ind,ids_type_ind,count=countType
@@ -359,6 +353,26 @@ function galaxyCat, sP=sP, skipSave=skipSave
       gcParIDs_type = gcParIDs[galcat_ind]
       
       if countType eq 0 then print,'Warning: Skipping parent type '+parType
+    
+      ; trVel has only GAS parents, must pass in only gas ids
+      ; DISABLED, not working well
+      if 0 and sP.trVelPerCell gt 0 then begin
+        galcat_cc = !NULL
+        galcat_trids = cosmoTracerVelChildren(sP=sP,/getIDs,gasIDs=r.ids[galcat_ind],child_counts=galcat_cc)
+        
+        ; replicate return child_counts such that zero for non-gas members of galcat
+        if size(galcat_cc,/tname) eq 'LONG' then galcat_cc_rep = lonarr(r.countTot)
+        if size(galcat_cc,/tname) eq 'UINT' then galcat_cc_rep = uintarr(r.countTot)
+        if size(galcat_cc,/tname) ne 'LONG' and size(galcat_cc,/tname) ne 'UINT' then message,'Error'
+        galcat_cc_rep[galcat_ind] = galcat_cc
+        
+        r = mod_struct( r, 'trVel_cc', galcat_cc_rep )
+        r = mod_struct( r, 'trVel_ids', galcat_trids )
+        
+        galcat_cc = !NULL
+        galcat_cc_rep = !NULL
+        galcat_trids = !NULL
+      endif
     
       ids_type = !NULL
     
@@ -854,7 +868,7 @@ function gcSubsetProp, sP=sP, gcIDList=gcIDList, $
     ; separate and return
     for i=0,n_tags(galcat.types)-1 do $
       r = mod_struct( r, (tag_names(galcat.types))[i], val[galcatInds.(i)] )
-	  
+
     return,r
 
   endif

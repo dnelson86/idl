@@ -1,22 +1,31 @@
 ; plotVsRedshift.pro
 ; feedback - plots skipping tconst/tvircur/tviracc definitions in favor of redshift panels
-; dnelson aug.2013
+; dnelson nov.2013
 
 ; plotRatesFracsInRedshift():
 
 pro plotRatesFracsInRedshift
 
   ; config
-  runs       = ['feedback','gadget']
-  redshifts  = [3.0,2.0,1.0]
+  runs       = ['feedback','tracer','gadget']
+  redshifts  = [3.0,2.0,1.0,0.0]
   res        = 512
   accMode    = 'smooth' ; accretion mode: all, smooth, clumpy, stripped, recycled
   timeWindow = 500.0    ; consider accretion over this past time range (Myr)
                         ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0        ; use Tmax/Tviracc=1 to separate hot vs. cold
-  massBinInd = 4        ; plot 11.0<logM<11.5 halos for Tmax histos
-  
+
   accModes   = ['all','smooth','clumpy','stripped','recycled'] ; for fractional plot
+  skipFracs  = 0 ; or skip this plot
+  
+  ; max histograms config
+  massBinInd = 4        ; plot 11.0<logM<11.5 halos for ValMax histos
+  tagNames   = ['Tmax','TmaxTviracc','EntMax','DensMax','MachMax'] ; plot each quantity
+  pParams = { TmaxTviracc : {xrange:[-2.2,1.4], xtickv:[-2,-1,0,1],   xlabel : "log ( T_{max} / T_{vir,acc} )"} ,$
+              Tmax        : {xrange:[3.5,7.5],  xtickv:[4,5,6,7],     xlabel : "log ( T_{max} )"}               ,$
+              EntMax      : {xrange:[4.5,10.0], xtickv:[5,6,7,8,9],   xlabel : "log ( S_{max} ) [K cm^{2 }]"}   ,$
+              DensMax     : {xrange:[-10,0],    xtickv:[-8,-6,-4,-2], xlabel : "log ( \rho_{max} )"}            ,$
+              MachMax     : {xrange:[0,100],    xtickv:[10,30,50,80], xlabel : "M_{max}"} }
   
   ; plot config
   lines   = [0,1]       ; gal/both,gmem
@@ -27,8 +36,6 @@ pro plotRatesFracsInRedshift
   xrange_halo = [9.0,12.0]
   yrange_frac = [0.0,1.0]
   yrange_rate = [-5,-1.0]
-  
-  xrange_tmax = [-2.0,1.5]
   yrange_hist = [6e-4,2e-1]
   
   ; load
@@ -46,16 +53,18 @@ pro plotRatesFracsInRedshift
       ; for each redshift, make for all the accretion modes
       mbv_mode = {}
       
+      if ~skipFracs then begin
       foreach amCur,accModes,k do begin
         if amCur eq 'recycled' and sP_z.(j).gfmWinds eq 0 then continue ; skip recycled for nonWinds  
         mbv_mode = mod_struct(mbv_mode, 'mode'+str(k), $
           haloMassBinValues(sP=sP_z.(j),accMode=amCur,timeWindow=timeWindow))
       endforeach
-      
       mode_z = mod_struct(mode_z, 'redshift'+str(j), mbv_mode)
+      endif
     endforeach
     
     ; put this mode collection into mbv, once per run, and sP collection also
+    if ~skipFracs then $
     amv = mod_struct(amv, 'amv'+str(i), mode_z)
     mbv = mod_struct(mbv, 'mbv'+str(i), mbv_z)
     bth = mod_struct(bth, 'bth'+str(i), bth_z)
@@ -188,28 +197,35 @@ pro plotRatesFracsInRedshift
     endfor
 
   end_PS
-  
-  ; maximum temp histos (allgal,gmem) (one halo mass bin)
-  start_PS, sP.(0).(0).plotPath + 'maxTempHistosRedshift.massBin' + $
-            str(massBinInd) + '.' + plotStr + '.eps', /big
+
+  ; maximum val (temp,temp/tvir,ent,dens,mach) histos (allgal,gmem) (one halo mass bin)
+  foreach tagName,tagNames do begin
+    bVind   = ( where(tag_names(bth.(0).(0).allGal) eq strupcase(tagName)) )[0]
+    pPind   = ( where(tag_names(pParams) eq strupcase(tagName)) )[0]
+    
+    xrange = pParams.(pPind).xrange
+    xtickv = pParams.(pPind).xtickv
+    
+    start_PS, sP.(0).(0).plotPath + 'maxHistosRedshift_' + tagName + '.massBin' + $
+              str(massBinInd) + '.' + plotStr + '.eps', /big
     
     for zind=0,3 do begin
-      cgPlot,[0],[0],/nodata,xrange=xrange_tmax,yrange=yrange_hist,/xs,/ys,/ylog,yminor=0,$
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_hist,/xs,/ys,/ylog,yminor=0,$
         ytitle=textoidl("Gas Mass Fraction"),$
-        xtitle=textoidl("log ( T_{max} / T_{vir,acc} )"),$
-        /noerase,pos=pos[zind],xticks=4,xtickv=[-2,-1,0,1,1.5]
+        xtitle=textoidl( pParams.(pPind).xlabel ),$
+        /noerase,pos=pos[zind],xticks=n_elements(xtickv)-1,xtickv=xtickv
     
       for i=0,n_tags(sP)-1 do begin
       
         ; gal
-        xvals = bth.(i).(zind).params.binLoc.TmaxTviracc
-        yvals = float( bth.(i).(zind).allGal.TmaxTviracc[massBinInd,*] ) / $
-                total( bth.(i).(zind).allGal.TmaxTviracc[j,*] )
+        xvals = bth.(i).(zind).params.binLoc.(bVind)
+        yvals = float( bth.(i).(zind).allGal.(bVind)[massBinInd,*] ) / $
+                total( bth.(i).(zind).allGal.(bVind)[j,*] )
         cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[0],/overplot ; allgal
         
         ; gmem
-        yvals = float( bth.(i).(zind).gmem.TmaxTviracc[massBinInd,*] ) / $
-                total( bth.(i).(zind).gmem.TmaxTviracc[j,*] )
+        yvals = float( bth.(i).(zind).gmem.(bVind)[massBinInd,*] ) / $
+                total( bth.(i).(zind).gmem.(bVind)[j,*] )
         cgPlot,xvals,yvals,color=sP.(i).(zind).colors[cInd],line=lines[1],/overplot ; gmem
       endfor
       
@@ -228,9 +244,11 @@ pro plotRatesFracsInRedshift
         legend,simNames,textcolors=simColors,box=0,/top,/left,charsize=!p.charsize-0.2
     endfor
 
-  end_PS
+    end_PS
+  endforeach ;tagName
   
   ; fraction of accretion by mode (galaxy)
+  if ~skipFracs then begin
   pos_local = plot_pos(total=2*n_elements(redshifts),/gap)
   if accModes[0] ne 'all' then message,'Error: Not going to work.'
   
@@ -291,6 +309,8 @@ pro plotRatesFracsInRedshift
     cgText,mean( (pos_local[1])[0:2:2] ), (pos_local[1])[3]+0.02, "Cold Mode",alignment=0.5,/normal
 
   end_PS
+  endif ;0
+  
   stop
 end
 

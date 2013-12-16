@@ -1,6 +1,6 @@
 ; accretionTimes.pro
 ; gas accretion project - past radial history of gas elements (virial radius crossing)
-; dnelson sep.2013
+; dnelson dec.2013
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionTimes(): for each gas particle/tracer, starting at some redshift, track backwards in time

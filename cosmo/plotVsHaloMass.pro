@@ -15,7 +15,7 @@ pro plotPreBin, sP=sP
 
   runs        = [sP.run] ;['feedback','gadget'] ;tracer
   resolutions = [sP.res]
-  timeWindows = list(500.0,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
+  timeWindows = list(500.0) ;,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
   accModes    = list('all','smooth','clumpy','stripped','recycled')
   
   ;foreach redshift,redshifts do begin
@@ -23,10 +23,10 @@ pro plotPreBin, sP=sP
       foreach run,runs do begin
         foreach res,resolutions do begin
           foreach accMode,accModes do begin
-            if (run eq 'gadget' or run eq 'tracer') and accMode eq 'recycled' then continue ; skip
+            if sP.gfmWinds eq 0 and accMode eq 'recycled' then continue ; skip
             
             print,run,res,redshift,timeWindow,accMode
-            sP = simParams(res=res,run=run,redshift=redshift)
+            sP = simParams(res=res,run=run,redshift=redshift,hind=sP.hInd)
         
             binv = haloMassBinValues(sP=sP,timeWindow=timeWindow,accMode=accMode)
             th   = binValMaxHistos(sP=sP,timeWindow=timeWindow,accMode=accMode)
@@ -50,7 +50,7 @@ pro plotByMethod
   ; config
   runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
-  timeWindow = 1000.0 ; consider accretion over this past time range (Myr)
+  timeWindow = 500.0 ; consider accretion over this past time range (Myr)
                       ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   res        = 256
   redshift   = 2.0
@@ -67,6 +67,7 @@ pro plotByMethod
   ; add any zoom run single points?
   ;sPz = mod_struct( sPz, 'sPz0', simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=redshift) )
   ;sPz = mod_struct( sPz, 'sPz1', simParams(run='zoom_20Mpc',res=10,hInd=0,redshift=redshift) )
+  ;sPz = mod_struct( sPz, 'sPz2', simParams(run='zoom_20Mpc',res=11,hInd=0,redshift=redshift) )
 
   ; load
   foreach run,runs,i do begin
@@ -402,8 +403,8 @@ pro plotByMode
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  redshift   = 2.0
-  res        = 128
+  redshift   = 0.0
+  res        = 512
   timeWindow = 500.0
   runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   accModes   = ['all','smooth','clumpy','stripped','recycled']
@@ -891,13 +892,13 @@ pro plotByRes
   
   ; config
   accMode     = 'smooth'
-  redshift    = 2.0
-  timeWindow  = 1000.0 ; Myr
-  resolutions = [256,128]
-  runs        = ['gadget'] ;['gadget','tracer','feedback']
+  redshift    = 0.0
+  timeWindow  = 500.0 ; Myr
+  resolutions = [512,256,128]
+  runs        = ['gadget','tracer','feedback']
 
   ; plot config
-  lines  = [0,2];,3] ; 128,512,256
+  lines  = [0,2,3] ; 512,256,128
   sK     = 3 ; smoothing kernel size
   cInd   = 1 ; color index
   virInd = 0 ; 1.0 Tvir

@@ -7,15 +7,17 @@
 pro runArepoFoF
 
   ; config
-  sP = simParams(res=512,run='gadget')
+  ;sP = simParams(res=1,run='scylla',redshift=2.0)
+  sP = simparams(res=512,run='tracer',snap=314)
 
-  snapRange = [251,314,1]
+  snapRange = [sP.snap,sP.snap,1]
   ;snaps = [257]
 
   ; job config
   spawnJobs = 1   ; execute sbatch?
   nSimul    = 4   ; how many maximum to execute simultaneously? 0=all
-  nProcs    = 128 ; needed nodes: 512^3 use 128, <=256^3 use 64
+  nProcs    = 8   ; needed nodes: 512^3 use 128, <=256^3 use 64
+  nPerNode  = 4
   cmdCode   = 3   ; fof/substructure post process
   partName  = "hernquist"
   paramFile = "param_fof.txt"
@@ -48,6 +50,7 @@ pro runArepoFoF
     printf,lun,'#SBATCH --mem=236800 # 3700MB/core'
     printf,lun,'#SBATCH --exclusive'
     printf,lun,'#SBATCH --ntasks ' + str(nProcs)
+    printf,lun,'#SBATCH --ntasks-per-node=' + str(nPerNode)
     printf,lun,'#SBATCH --workdir ' + sP.arepoPath
     
     ; enforce maximum simultaneous jobs by adding a dependency on a previously subbmited jobID
@@ -58,7 +61,7 @@ pro runArepoFoF
       
     ; write projection commands
     strArray = ['mpirun --mca mpi_leave_pinned 0 -n '+str(nProcs),$
-               './Arepo_fof',$
+               './Arepo_fof_new',$
                 paramFile,$
                 str(cmdCode),$
                 str(snap),$
@@ -79,7 +82,7 @@ pro runArepoFoF
       
       ; file cleanup
       wait,0.2
-      spawn, 'rm ' + sP.plotPath + 'job_fof.slurm'
+      ;spawn, 'rm ' + sP.plotPath + 'job_fof.slurm'
     endif
     
     if nSimul gt 0 then begin

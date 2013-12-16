@@ -224,13 +224,16 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
   ; load number of split files from header of first part
   hdf5s    = h5_parse(fileList[0]) ;structure only
   NumFiles = hdf5s.Header.NumFiles._DATA
-  
+
   ; what additional fields do we have?
   SubfindExistsFlag    = tag_exist(hdf5s,'SubhaloLen')
   NewSubfindExistsFlag = tag_exist(hdf5s,'SubhaloSFRinRad')
   GFMExistsFlag        = tag_exist(hdf5s,'GroupGasMetalFractions')
   if GFMExistsFlag then gfmNumElements = hdf5s.Group.GroupGasMetalFractions._DIMENSIONS[0]
-  if GFMExistsFlag then gfmNumPhotometrics = hdf5s.Subhalo.SubhaloStellarPhotometrics._DIMENSIONS[0]
+  
+  gfmNumPhotometrics = 0
+  if tag_exist(hdf5s,'SubhaloStellarPhotometrics') then $
+    gfmNumPhotometrics = hdf5s.Subhalo.SubhaloStellarPhotometrics._DIMENSIONS[0]
   
   if (NumFiles ne nFiles) then $
     message,'ERROR: NumFiles ['+str(NumFiles)+'] differs from number of files found ['+str(nFiles)+'].'
@@ -356,9 +359,12 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
         SubgroupGasMetalFractionsSFR  : fltarr(gfmNumElements,h.nSubgroupsTot)    ,$
         SubgroupGasMetallicity        : fltarr(h.nSubgroupsTot)                   ,$
         SubgroupGasMetallicitySFR     : fltarr(h.nSubgroupsTot)                   ,$
-        SubgroupStarMetalFractions    : fltarr(gfmNumElements,h.nSubgroupsTot)       ,$
-        SubgroupStarMetallicity       : fltarr(h.nSubgroupsTot)                      ,$
-        SubgroupStellarPhotometrics   : fltarr(gfmNumPhotometrics,h.nSubgroupsTot)    }
+        SubgroupStarMetalFractions    : fltarr(gfmNumElements,h.nSubgroupsTot)    ,$
+        SubgroupStarMetallicity       : fltarr(h.nSubgroupsTot)                      }
+        
+        if gfmNumPhotometrics gt 0 then $
+          sfsub = mod_struct( sfsub, 'SubgroupStellarPhotometrics', $
+                                     fltarr(gfmNumPhotometrics,h.nSubgroupsTot) )
         
         sf = create_struct(sf,sfsub)
       endif
@@ -451,8 +457,10 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
         sf.SubgroupGasMetallicitySFR   [skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloGasMetallicitySfr"))
         sf.SubgroupStarMetalFractions  [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloStarMetalFractions"))
         sf.SubgroupStarMetallicity     [skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloStarMetallicity"))
-        sf.SubgroupStellarPhotometrics [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloStellarPhotometrics"))
       endif
+      
+      if gfmNumPhotometrics gt 0 then $
+        sf.SubgroupStellarPhotometrics [*,skipSub:(skipSub+h.nSubgroups-1)] = h5d_read(h5d_open(fileID,"Subhalo/SubhaloStellarPhotometrics"))
       
       endif ; h.nSubgroups>0
       
@@ -883,6 +891,14 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
                              inds=inds, indRange=indRange, doublePrec=doublePrec, subBox=subBox)
 
     return, reform( sqrt(vel[0,*]^2.0 + vel[1,*]^2.0 + vel[2,*]^2.0) )
+  endif
+  
+  if (field eq 'cellsize' or field eq 'cellrad') then begin
+    vol = loadSnapshotSubset(sP=sP, fileName=fileName, partType=PT, field='vol', verbose=verbose, $
+                             inds=inds, indRange=indRange, doublePrec=doublePrec, subBox=subBox)
+    vol = (temporary(vol) * 3.0 / (4*!pi))^(1.0/3.0) ;cellrad [ckpc]
+    
+    return, vol
   endif
 
   ; common fields (all besides tracersMC)

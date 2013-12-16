@@ -8,7 +8,7 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
   units = getUnits()
 
   ; config
-  sP=simParams(res=512,run='gadget',redshift=2.0)
+  sP=simParams(res=128,run='feedback',redshift=2.0)
   timeWindow = 500.0 ; Myr or 'all'
   
   ; load net accretion rates for these same galaxies over the same timewindow (must be accMode=all)
@@ -35,9 +35,9 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
   
   ; load galaxyCatalog at this end of the timeWindow
   galcatCur = galaxyCat(sP=sP)
-  
-  countCur = total(galcatCur.len gt 0,/int)
-  
+  gcCur     = loadGroupCat(sP=sP,/skipIDs,/skipOffsets)
+  countCur  = total(galcatCur.len gt 0,/int)
+
   ; save arrays
   curMasses  = { galaxy : fltarr(galcatCur.nGroups), halo : fltarr(galcatCur.nGroups) }
   targMasses = { galaxy : fltarr(galcatCur.nGroups), halo : fltarr(galcatCur.nGroups) }
@@ -131,6 +131,8 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
   ; plots
   xyrange = [0.05,10.0]
   linexy  = [0.07,8.0]
+  ratiorange = [0.2,5.0]
+  massrange  = [9.0,12.0]
   
   start_PS,sP.plotPath + 'mass_vs_mass_gal_'+sP.plotPrefix+str(sP.res)+'.eps'
     cgPlot,curMasses.galaxy[wValidGal],targMasses.galaxy[wValidGal],psym=4,$
@@ -164,10 +166,10 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
       
     cgPlot,linexy,linexy,line=0,color=cgColor('orange'),/overplot
     
-    offset = mean(mbvGal[wValidGal] / growthRates.galaxy[wValidGal],/nan)
-    cgPlot,linexy,linexy*offset,line=0,color=cgColor('blue'),/overplot
+    ;offset = mean(mbvGal[wValidGal] / growthRates.galaxy[wValidGal],/nan)
+    ;cgPlot,linexy,linexy*offset,line=0,color=cgColor('blue'),/overplot
     
-    legend,['1-to-1','offset = '+str(offset)],textcolor=['orange','blue'],/bottom,/right
+    legend,['1-to-1'],textcolor=['orange'],/bottom,/right
   end_PS
   
   start_PS,sP.plotPath + 'growthRate_vs_netRate_halo_'+sP.plotPrefix+str(sP.res)+'.eps'
@@ -178,13 +180,56 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
     
     cgPlot,linexy,linexy,line=0,color=cgColor('orange'),/overplot
     
-    offset = mean(mbvHalo[wValidHalo] / growthRates.halo[wValidHalo],/nan)
-    cgPlot,linexy,linexy*offset,line=0,color=cgColor('blue'),/overplot
+    ;offset = mean(mbvHalo[wValidHalo] / growthRates.halo[wValidHalo],/nan)
+    ;cgPlot,linexy,linexy*offset,line=0,color=cgColor('blue'),/overplot
     
-    legend,['1-to-1','offset = '+str(offset)],textcolor=['orange','blue'],/bottom,/right
+    legend,['1-to-1'],textcolor=['orange'],/bottom,/right
     
   end_PS
   
-  stop
+  ; plot ratio net/growth as a function of growth
+  start_PS,sP.plotPath + 'ratio_vs_growthRate_gal_'+sP.plotPrefix+str(sP.res)+'.eps'
+    cgPlot,growthRates.galaxy[wValidGal],mbvGal[wValidGal]/growthRates.galaxy[wValidGal],psym=4,$
+      xrange=xyrange,yrange=ratiorange,/xs,/ys,/xlog,/ylog,yminor=0,xminor=0,$
+      xtitle="Galaxy Growth Rate [Msun/yr]",ytitle="Net Gal Inflow Rate / Growth Rate",$
+      title="tW: "+str(timeWindow)+" "+sP.run+" "+str(sP.res)
+      
+    cgPlot,linexy,[1.0,1.0],line=0,color=cgColor('orange'),/overplot
+    legend,['1-to-1'],textcolor=['orange'],/bottom,/right
+  end_PS
   
+  start_PS,sP.plotPath + 'ratio_vs_growthRate_halo_'+sP.plotPrefix+str(sP.res)+'.eps'
+    cgPlot,growthRates.halo[wValidHalo],mbvHalo[wValidHalo]/growthRates.halo[wValidHalo],psym=4,$
+      xrange=xyrange,yrange=ratiorange,/xs,/ys,/xlog,/ylog,yminor=0,xminor=0,$
+      xtitle="Halo Growth Rate [Msun/yr]",ytitle="Net Halo Inflow Rate / Growth Rate",$
+      title="tW: "+str(timeWindow)+" "+sP.run+" "+str(sP.res)
+    
+    cgPlot,linexy,[1.0,1.0],line=0,color=cgColor('orange'),/overplot
+    legend,['1-to-1'],textcolor=['orange'],/bottom,/right
+  end_PS
+  
+  ; plot ratio net/growth as a function of current halo mass
+  start_PS,sP.plotPath + 'ratio_vs_haloMass_gal_'+sP.plotPrefix+str(sP.res)+'.eps'
+    cgPlot,codeMassToLogMsun(gcCur.subgroupMass[wValidGal]),$
+      mbvGal[wValidGal]/growthRates.galaxy[wValidGal],psym=4,$
+      xrange=massrange,yrange=ratiorange,/ys,/ylog,yminor=0,$
+      xtitle="log ( Current Halo Mass [Msun] )",ytitle="Net Gal Inflow Rate / Growth Rate",$
+      title="tW: "+str(timeWindow)+" "+sP.run+" "+str(sP.res)
+      
+    cgPlot,linexy,[1.0,1.0],line=0,color=cgColor('orange'),/overplot
+    legend,['1-to-1'],textcolor=['orange'],/bottom,/right
+  end_PS
+  
+  start_PS,sP.plotPath + 'ratio_vs_haloMass_halo_'+sP.plotPrefix+str(sP.res)+'.eps'
+    cgPlot,codeMassToLogMsun(gcCur.subgroupMass[wValidGal]),$
+      mbvHalo[wValidHalo]/growthRates.halo[wValidHalo],psym=4,$
+      xrange=massrange,yrange=ratiorange,/xs,/ys,/ylog,yminor=0,$
+      xtitle="log ( Current Halo Mass [Msun] )",ytitle="Net Halo Inflow Rate / Growth Rate",$
+      title="tW: "+str(timeWindow)+" "+sP.run+" "+str(sP.res)
+    
+    cgPlot,linexy,[1.0,1.0],line=0,color=cgColor('orange'),/overplot
+    legend,['1-to-1'],textcolor=['orange'],/bottom,/right
+  end_PS
+  
+    
 end
