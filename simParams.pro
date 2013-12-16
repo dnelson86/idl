@@ -83,6 +83,22 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax ge 9 then r.zoomShift = [-8,11,31]
   endif
   
+  ; colors as a function of resolution
+  if r.res eq 9 then $
+    r.colors = [getColor24(['ff'x,'40'x,'40'x]), $ ; red, light to dark (L9/default)
+                getColor24(['ff'x,'00'x,'00'x]), $
+                getColor24(['a6'x,'00'x,'00'x])]
+                
+  if r.res eq 10 then $
+    r.colors = [getColor24(['ff'x,'5b'x,'00'x]), $ ; red, light to dark (L9/default)
+                getColor24(['ff'x,'7c'x,'00'x]), $
+                getColor24(['ff'x,'9d'x,'00'x])]
+                  
+  if r.res eq 11 then $
+    r.colors = [getColor24(['ff'x,'00'x,'5b'x]), $ ; red, light to dark (L9/default)
+                getColor24(['ff'x,'00'x,'7c'x]), $
+                getColor24(['ff'x,'00'x,'9d'x])]  
+  
   ; convert zoomShift to zoomShiftPhys
   r.zoomShiftPhys = r.zoomShift / 2.0^r.levelMin * r.boxSize
   
@@ -153,8 +169,10 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
        radIndHaloAcc: 0,$     ; 1.0 rvir crossing for halo accretion
        radIndGalAcc:  4,$     ; 0.15 rvir crossing for galaxy accretion (or entering rho,temp definition)
        atIndMode:     -1,$     ; use first 1.0 rvir crossing to determine mode
+       accRateInd:    -2,$     ; use first 0.15 rvir crossing to determine new accretion rates
        TcutVals:      [5.3,5.5,5.7],$ ; log(K) for constant threshold comparisons
        TvirVals:      [1.0,0.8,0.4],$ ; T/Tvir coefficients for variable threshold comparisons
+       newAccRates:   0,$ ; nov2013 calculation based on membership at earlier snap, not accretionTimes
        $
        $ ; plotting/vis parameters:
        colors:        [0L,0L,0L] ,$ ; color sequence for res 128,256,512
@@ -278,7 +296,9 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
   endif
   
   ; zoom project: DM+gas single halo zooms (now all in 20Mpc box, add boxsize to run label later)
-  if run eq 'zoom_20mpc' or run eq 'zoom_20mpc_derefgal' or run eq 'zoom_20mpc_derefgal_nomod' then begin
+  if run eq 'zoom_20mpc'                or run eq 'zoom_20mpc_derefgal' or $
+     run eq 'zoom_20mpc_derefgal_nomod' or run eq 'zoom_20mpc_convhull' or $
+     run eq 'zoom_20mpc_derefgal_nomod2' then begin
     if n_elements(hInd) eq 0 then message,'Error: Must specify hInd (halo index) to load zoom.'
     
     r.minNumGasPart  = -1 ; no additional cut
@@ -303,17 +323,20 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     
     r.trMassConst = r.targetGasMass / r.trMCPerCell
     
-    if run eq 'zoom_20mpc_derefgal' then pathStr = pathStr + '_derefgal'
+    if run eq 'zoom_20mpc_derefgal'       then pathStr = pathStr + '_derefgal'
     if run eq 'zoom_20mpc_derefgal_nomod' then pathStr = pathStr + '_derefgal'
+    if run eq 'zoom_20mpc_derefgal_nomod2' then pathStr = pathStr + '_derefgal'
+    if run eq 'zoom_20mpc_convhull'       then pathStr = pathStr + '_convhull'
     
     dirStr = ''
     if run eq 'zoom_20mpc_derefgal_nomod' then dirStr = '_noMod'
+    if run eq 'zoom_20mpc_derefgal_nomod2' then dirStr = '_noMod2'
         
     r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'/output'+dirStr+'/'
     r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/'
     r.savPrefix  = 'Z'
-    r.simName    = 'ZOOM_L'+str(r.levelMax)
-    r.saveTag    = 'zL'+str(r.levelMax)
+    r.simName    = 'ZOOM_h' + str(hInd) + 'L' + str(r.levelMax)
+    r.saveTag    = 'zH'+str(hInd)+'L'+str(r.levelMax)
     r.plotPrefix = 'zL'+str(r.levelMax)
     r.plotPath   = '/n/home07/dnelson/plots/'
     r.derivPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/data.files'+dirStr+'/'
@@ -326,16 +349,51 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
       r.saveTag = r.saveTag + 'drN'
       r.simName = r.simName + '_drN'
     endif
+    if run eq 'zoom_20mpc_convhull' then begin
+      r.saveTag = r.saveTag + 'CH'
+      r.simName = r.simName + '_CH'
+    endif
     
-    r.colors = [getColor24(['ff'x,'40'x,'40'x]), $ ; red, light to dark (L9/default)
-                getColor24(['ff'x,'00'x,'00'x]), $
-                getColor24(['a6'x,'00'x,'00'x])]
-                
-    if r.res eq 10 then $
-      r.colors = [getColor24(['ff'x,'5b'x,'00'x]), $ ; red, light to dark (L9/default)
-                  getColor24(['ff'x,'7c'x,'00'x]), $
-                  getColor24(['ff'x,'9d'x,'00'x])]
-                  
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return, r
+  endif
+  
+  ; paul/bullock/maller/ryan 'scylla' zoom
+  if run eq 'scylla' then begin
+    r.minNumGasPart  = -1 ; no additional cut
+    r.trVelPerCell   = 0
+    r.trMCPerCell    = 0
+    r.trMCFields     = replicate(-1,13)
+    r.gfmNumElements = 0
+    r.gfmWinds       = 0
+    r.gfmBHs         = 0
+    r.boxSize        = 25000.0
+    r.levelMin       = 7 ; not really
+    r.levelMax       = 11 ; not really
+    r.snapRange      = [0,135]
+    r.groupCatRange  = [21,135] ; z6=45, z5=49, z4=54, z3=60, z2=68, z1=85, z0=135
+    
+    ; fillZoomParams:
+    r.res        = r.levelMax
+    r.zoomLevel  = r.levelMax - r.levelMin
+    r.hInd       = -1 ; unused
+    r.zoomShift  = [0,0,0] ; TODO, then also zoomShiftPhys
+    r.ids_offset = 0L ; TODO
+    
+    r.targetGasMass = 4.76446157e-03 ; TODO
+    r.gravSoft      = 0.2
+    
+    r.simPath    = '/n/home07/dnelson/sims.zooms/scylla/output/'
+    r.arepoPath  = '/n/home07/dnelson/sims.zooms/scylla/'
+    r.savPrefix  = 'S'
+    r.simName    = 'SCY'
+    r.saveTag    = 'sCY'
+    r.plotPrefix = 'sCY'
+    r.plotPath   = '/n/home07/dnelson/plots/'
+    r.derivPath  = '/n/home07/dnelson/sims.zooms/scylla/data.files/'
+    
     ; if redshift passed in, convert to snapshot number and save
     if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
     
@@ -351,6 +409,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.gfmNumElements = 9
     r.gfmWinds       = 1
     r.gfmBHs         = 1
+    r.newAccRates    = 3
     
     if res eq 512 then r.subboxCen  = [5500,7000,7500]
     if res eq 512 then r.subboxSize = [4000,4000,4000]
@@ -451,6 +510,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 0  ; none (SPH)
     r.trMCFields    = intarr(13)-1 ; none (SPH)
+    r.newAccRates   = 3
     
     if keyword_set(f) then stop ; shouldn't be specified
     if res ne 128 and res ne 256 and res ne 512 then stop ; only resolutions that exist now
@@ -493,6 +553,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 10
     r.trVelPerCell  = 1
+    r.newAccRates   = 3
     
     if res eq 128 or res eq 256 then $
       r.trMCFields    = [0,1,5,2,-1,3,4,-1,-1,-1,-1,-1,-1] ; even older code version than tracer.512, indices specified manually in Config.sh

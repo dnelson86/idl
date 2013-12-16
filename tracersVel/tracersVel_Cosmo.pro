@@ -110,9 +110,12 @@ function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
     if n_elements(gasIDs) eq 0 then stop ; IDs required if indices not specified
     gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
     idsIndMap = getIDIndexMap(gas_ids,minid=minid)
-    gas_ids = !NULL
-    
     gasInds = idsIndMap[gasIDs-minid]
+    
+    ; trVel parents are ONLY gas, if input gasIDs contains non-gas then cosmoTracerVelChildren fails
+    if ~array_equal(gas_ids[gasInds],gasIDs) then message,'Error: Non gas input gasIDs?'
+    
+    gas_ids = !NULL
     idsIndMap = !NULL
   endif
 
@@ -133,9 +136,8 @@ function cosmoTracerVelChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   if (count eq 0) then return, []
   
   ; add all children tracer indices to keeper array
-  if total(child_counts,/int) gt 2e9 then stop ; change tr_inds to lon64arr
   tr_inds = lon64arr(total(child_counts,/int))
-  start = 0L
+  start = 0LL
   
   foreach gasInd,gasInds[w],i do begin
     tr_inds[start:start+child_counts[w[i]]-1] = child_inds[child_inds[gasInd]:child_inds[gasInd+1]-1]

@@ -9,11 +9,11 @@ pro scatterPlotBox
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  res      = 9 ;128
-  run      = 'zoom_20Mpc_dm'
+  res      = 10 ;9 ;128
+  run      = 'zoom_20mpc'
   hInd     = 0
   redshift = 2.0
-  partType = 'dm_highres' ;tracervel, tracermc, dm
+  partType = 'stars' ;tracervel, tracermc, dm
 
   ; plot config
   zoomFac   = 1     ; only in axes, not along projection direction

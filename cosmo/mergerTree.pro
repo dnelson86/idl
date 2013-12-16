@@ -318,15 +318,15 @@ function mergerTreeSubset, sP=sP, verbose=verbose
        times:times,minSnap:minSnap,maxSnap:maxSnap,smoothKer:smoothKer}
 
   if sP.trMCPerCell gt 0 then begin
-    galcat = galaxyCat(sP=sP)
     gcIndOrigTrMC = galCatRepParentIDs(galcat=galcat,child_counts=galcat.trMC_cc)
     r = mod_struct( r, 'gcIndOrigTrMC', gcIndOrigTrMC )
   endif
   
   if sP.trVelPerCell gt 0 then begin
-    galcat = galaxyCat(sP=sP)
-    gcIndOrigTrVel = galCatRepParentIDs(galcat=galcat,child_counts=galcat.trVel_cc)
-    r = mod_struct( r, 'gcIndOrigTrVel', gcIndOrigTrVel )
+    if n_elements(galcat.trVel_cc) gt 1 then begin ; is just -1 if not included
+      gcIndOrigTrVel = galCatRepParentIDs(galcat=galcat,child_counts=galcat.trVel_cc)
+      r = mod_struct( r, 'gcIndOrigTrVel', gcIndOrigTrVel )
+    endif
   endif
        
   ; save

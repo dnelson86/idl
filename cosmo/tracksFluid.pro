@@ -1,6 +1,6 @@
 ; tracksFluid.pro
 ; feedback project - time series analysis of history of gas element properties
-; dnelson jul.2013
+; dnelson nov.2013
 
 ; tracksFluid(): record tracks in (temp,ent,dens,rad) space back in time for each snapshot for each gas element/tracer
 
@@ -169,7 +169,7 @@ function tracksFluid, sP=sP
       
       ; convert densities into log(rho ratio to crit)
       w = where(tr_maxdens ne 0,comp=wc,ncomp=ncomp)
-      tr_maxdens[w] = alog10( rhoRatioToCrit(10.0^tr_maxdens[w], sP=sP) )
+      tr_maxdens[w] = alog10( rhoRatioToCrit(tr_maxdens[w], sP=sP) )
       if ncomp gt 0 then tr_maxdens[wc] = -10.0 ; very small
   
       rtr.dens[m-minSnap,*] = tr_maxdens[trids_ind] ; zero if still in star, or in wind
@@ -247,6 +247,8 @@ function tracksFluid, sP=sP
     message,'todo'
   endif
   
+  return,rtr
+  
 end
 
 ; plotFluidTracks():
@@ -261,8 +263,8 @@ pro plotTracksSingle, tracks=tracks, val_ind=val_ind, inds=inds, colors=colors, 
   
   ; loop over each requested individual track
   for i=0,n_elements(inds)-1 do begin
-    yy = (tracks.(val_ind))[*,inds[i]]
-    ff = tracks.flag[*,inds[i]]
+    yy = (tracks.gal.(val_ind))[*,inds[i]]
+    ff = tracks.gal.flag[*,inds[i]]
   
     ; non-zero values
     w = where(yy ne 0,count,comp=wc,ncomp=ncomp)
@@ -305,8 +307,7 @@ pro plotFluidTracks
   units = getUnits()
 
   ; config
-  sP = simParams(res=256,run='feedback',redshift=0.0)
-  ;sgSelect = 'pri'
+  sP = simParams(res=128,run='feedback',redshift=2.0)
   gcIDList = getMatchedIDs(simParams=sP,haloID=304)
 
   ; tracks config
@@ -325,8 +326,8 @@ pro plotFluidTracks
   radRange  = [0.5,3.0]  ; log kpc
 
   ; load
-  tracks = gcSubsetProp(sP=sP,gcIDList=gcIDList,select=sgSelect,/tracksFluid)
-  ids    = gcSubsetProp(sP=sP,gcIDList=gcIDList,select=sgSelect,/elemIDs)
+  tracks = gcSubsetProp(sP=sP,gcIDList=gcIDList,/tracksFluid)
+  ids    = gcSubsetProp(sP=sP,gcIDList=gcIDList,/elemIDs)
   
   ; calculate maximum temps and times for galaxy
   maxtemp = max(tracks.gal.temp, maxind, dim=1)
@@ -337,29 +338,20 @@ pro plotFluidTracks
   gc = loadGroupCat(sP=sP,/skipIDs)
   mt = mergerTreeSubset(sP=sP)
   
-  ; if we want to choose based on accretion mode, just crossmatch the tracer IDs
-  ;ids_mode = gcSubsetProp(sP=sP,select='pri',accMode=accMode,/accretionTimeSubset,/elemIDs)
-  ;calcMatch,ids,ids_mode,ind1,ind2,count=countMatch
-  mode_mask = intarr(n_elements(ids))+1
-  ;mode_mask[ind1] = 1
-  
-  ; find mt index of this halo, and rvir and tvir history
-  mtInd = ( where(mt.galcatIDList eq gcIDList,count) )[0]
-  if count eq 0 then message,'Error: haloID not in mtS?'
-  
-  haloTvir_t = reverse( mt.hVirTemp[*,mtInd] )
-  haloRvir_t = mylog10( reverse( mt.hVirRad[*,mtInd] ) )
+  ; find rvir and tvir history
+  haloTvir_t = reverse( mt.hVirTemp[*,gcIDList] )
+  haloRvir_t = mylog10( reverse( mt.hVirRad[*,gcIDList] ) )
   halo_t     = reverse( redshiftToAgeFlat(1/mt.times-1) )
   
   ; make a rough hot/cold selection in addition to the mode restriction
   haloTvir = codeMassToVirTemp(gc.subgroupMass[gcIDList],sP=sP,/log)
 
   if randType eq 'all' then $
-    w_select = where(mode_mask eq 1, count_select)
+    w_select = where(ids.gal gt 0, count_select)
   if randType eq 'hot' then $
-    w_select  = where(10.0^maxtemp / 10.0^haloTvir ge 2.0 and mode_mask eq 1,count_select)
+    w_select  = where(10.0^maxtemp / 10.0^haloTvir ge 2.0,count_select)
   if randType eq 'cold' then $
-    w_select = where(10.0^maxtemp / 10.0^haloTvir le 0.5 and mode_mask eq 1,count_select)
+    w_select = where(10.0^maxtemp / 10.0^haloTvir le 0.5,count_select)
     
   ; make random indice selection
   nRand = nRand < count_select ; limit for low res
@@ -367,7 +359,7 @@ pro plotFluidTracks
   rnd_inds = w_select[ rnd_inds[ uniq(rnd_inds, sort(rnd_inds)) ] ] 
   
   ; convert rad into log(r)
-  tracks.rad   = mylog10( tracks.rad )
+  tracks.gal.rad   = mylog10( tracks.gal.rad )
   
   ; plot (0) - composite 4x1 (rad,ent,dens,temp) vs. time
   plotStr = '.'+randType+'-'+accMode+'.'+str(sP.res)+'.'+sP.plotPrefix+'.'+str(sP.snap)
@@ -471,8 +463,7 @@ pro meanFluidTracks
   units = getUnits()
 
   ; config
-  sP = simParams(res=256,run='tracer',redshift=2.0)
-  sgSelect = 'pri'
+  sP = simParams(res=128,run='feedback',redshift=2.0)
 
   sK       = 3
   hcSplit  = [0.5,1.5] ; required tmax/tviracc ratio above or below which is hot or cold
@@ -485,10 +476,10 @@ pro meanFluidTracks
   radRange  = [0.5,4.0]  ; log kpc
 
   ; load
-  tracks  = gcSubsetProp(sP=sP,select=sgSelect,accMode=accMode,/accretionTimeSubset,/tracksFluid)
-  ids     = gcSubsetProp(sP=sP,select=sgSelect,accMode=accMode,/accretionTimeSubset,/elemIDs)
-  maxtemp = gcSubsetProp(sP=sP,select=sgSelect,accMode=accMode,/accretionTimeSubset,/maxPastTemp)
-  tviracc = gcSubsetProp(sP=sP,select=sgSelect,accMode=accMode,/accretionTimeSubset,/accTvir)
+  tracks  = gcSubsetProp(sP=sP,accMode=accMode,/accretionTimeSubset,/tracksFluid)
+  ids     = gcSubsetProp(sP=sP,accMode=accMode,/accretionTimeSubset,/elemIDs)
+  maxtemp = gcSubsetProp(sP=sP,accMode=accMode,/accretionTimeSubset,/maxPastTemp)
+  tviracc = gcSubsetProp(sP=sP,accMode=accMode,/accretionTimeSubset,/accTvir)
 
   ; make a hot/cold selection in addition to the mode restriction
   w_hot = { gal   : where(10.0^maxtemp.gal / 10.0^tviracc.gal ge hcSplit[1])     ,$

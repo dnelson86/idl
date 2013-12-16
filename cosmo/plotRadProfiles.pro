@@ -1,17 +1,17 @@
 ; plotRadProfiles.pro
 ; gas accretion project - plots of gas quantities vs radius (stacked in mass bins)
-; dnelson jul.2013
+; dnelson nov.2013
 
 ; plotVerticalSlices(): helper called by the subsequent 4 plot routines
   
 pro plotVerticalSlices,rad_gal,rad_gmem,temp_gal,temp_gmem,plotName,binSizeTemp,temprange,xtitle
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  !except = 0 ;suppress floating point underflow/overflow errors
   
   ; config
-  radBinEdges = [0.0,0.1,0.2,0.5,0.8,1.0,1.5] ;quasi-log spacing
-  
+  yrange = alog10([1e-2,1.2])
+  radBinEdges = [0.0,0.07,0.15,0.5,0.8,1.0,1.5] ;quasi-log spacing
+
   start_PS, plotName, xs=8, ys=6
   
     !p.multi = [0,3,2]
@@ -20,22 +20,23 @@ pro plotVerticalSlices,rad_gal,rad_gmem,temp_gal,temp_gmem,plotName,binSizeTemp,
     !y.margin -= [0.5,0.5]
   
     for i=0,n_elements(radBinEdges)-2 do begin
-      radBin = [radBinEdges[i],radBinEdges[i+1]]
-      fsc_plot,[0],[0],/nodata,xrange=temprange,yrange=[0,1],/xs,/ys,ytitle="",xtitle=xtitle               
+      radBin = alog10( [radBinEdges[i],radBinEdges[i+1]] )
+      cgPlot,[0],[0],/nodata,xrange=temprange,yrange=yrange,/xs,/ys,ytitle="",xtitle=xtitle               
     
       ; select in radial bin
       w = where(rad_gal ge radBin[0] and rad_gal lt radBin[1],count_gal)
       if count_gal gt 0 then $  
-        h1_gal = histogram(temp_gal[w],binsize=binSizeTemp,min=temprange[0],max=temprange[1],locations=xpts)
+        h1_gal = histogram(temp_gal[w],binsize=binSizeTemp,min=temprange[0],max=temprange[1],loc=xpts)
                           
       w = where(rad_gmem ge radBin[0] and rad_gmem lt radBin[1],count_gmem)
       if count_gmem gt 0 then $                 
-        h1_gmem = histogram(temp_gmem[w],binsize=binSizeTemp,min=temprange[0],max=temprange[1],locations=xpts)
+        h1_gmem = histogram(temp_gmem[w],binsize=binSizeTemp,min=temprange[0],max=temprange[1],loc=xpts)
 
       ; skip when we have no points in this bin
+      print,i,count_gal,count_gmem
       if ~count_gal and ~count_gmem then continue
-      if n_elements(h1_gal) eq 0 then h1_gal = xpts*0
-      if n_elements(h1_gmem) eq 0 then h1_gmem = xpts*0
+      if count_gal eq 0 then h1_gal = xpts*0
+      if count_gmem eq 0 then h1_gmem = xpts*0
 
       ; move xpts to bin centers and normalize histograms
       xpts += binSizeTemp/2.0
@@ -43,23 +44,22 @@ pro plotVerticalSlices,rad_gal,rad_gmem,temp_gal,temp_gmem,plotName,binSizeTemp,
       h1_both = h1_gal + h1_gmem
       normfac = 1.0 / max(h1_both)
       
-      h1_gal  *= normfac
-      h1_gmem *= normfac
-      h1_both *= normfac
+      h1_gal  = alog10( h1_gal * normfac )
+      h1_gmem = alog10( h1_gmem * normfac )
+      h1_both = alog10( h1_both * normfac )
       
       ; plot
-      fsc_plot,xpts,h1_gal,color=getColor(16),thick=!p.thick+2,/overplot
-      fsc_plot,xpts,h1_gmem,color=getColor(17),thick=!p.thick+2,/overplot
-      fsc_plot,xpts,h1_both,color=getColor(0),line=1,thick=!p.thick+2,/overplot
+      cgPlot,xpts,h1_gal,color=cgColor('red'),thick=!p.thick+1,/overplot
+      cgPlot,xpts,h1_gmem,color=cgColor('blue'),thick=!p.thick+1,/overplot
+      cgPlot,xpts,h1_both,color=cgColor('black'),line=1,thick=!p.thick+1,/overplot
       
-      binStr = string(radBin[0],format='(f3.1)') + "-" + string(radBin[1],format='(f3.1)')
-      fsc_text,(temprange[1]-temprange[0])*0.82,0.9,binStr,alignment=0.5,charsize=!p.charsize-0.5
+      binStr = string(10.0^radBin[0],format='(f4.2)') + "-" + string(10.0^radBin[1],format='(f4.2)')
+      cgText,temprange[1]*0.78,alog10(0.9),binStr,alignment=0.5,charsize=!p.charsize-0.5
     endfor
   
   !p.multi = 0
   
   end_PS
-  !except = 1
 end
 
 ; plot2DRadHistos(): helper function used by the subsequent 4 plot routines
@@ -68,116 +68,79 @@ pro plot2DRadHistos,plotBase,sP,h2rt_gal,h2rt_gmem,xrange,yrange,ytitle,$
                     virTempRange=virTempRange,massBinStr=massBinStr
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  !except = 0 ;suppress floating point underflow/overflow errors
   
   if sP.trMCPerCell eq 0 then  titleName = 'gadget'
   if sP.trMCPerCell eq -1 then titleName = 'tracerVel'
   if sP.trMCPerCell gt 0 then  titleName = 'tracerMC'
   
-  h2rt_both = h2rt_gal + h2rt_gmem
-  
   exp = 0.5 ; gamma exponent for non-linear color scaling
   ndivs = 5 ; number of divisions on colorbar  
   
   redshift = snapNumToRedshift(sP=sP)
-
-  start_PS, sP.plotPath + plotBase + '_rad_both.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
+  
+  pContainer = { p0 : { label: "both", h2rt : h2rt_gal + h2rt_gmem } ,$
+                 p1 : { label: "gal",  h2rt : h2rt_gal             } ,$
+                 p2 : { label: "gmem", h2rt : h2rt_gmem            } }
+  
+  for i=0,2 do begin
+  
+    label = pContainer.(i).label
+    h2rt  = pContainer.(i).h2rt
     
-    ;loadct, 33, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
-    ;cgLoadCT,13,/brewer,bottom=1
-    loadColorTable, 'helix', /reverse
+    start_PS, sP.plotPath + plotBase + '_rad_'+label+'.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
     
-    tvim,h2rt_both^exp,pcharsize=!p.charsize,scale=0,clip=-1,$;,/c_map,range=[5e10,1e8,5e9];,/rct
-         xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle=ytitle,$
-         barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=xrange,yrange=yrange,$
-         /xlog,xticks=5,xtickv=[0.01,0.05,0.1,0.2,0.5,1.0],$
-         xtickname=['0.01','0.05','0.1','0.2','0.5','1'],xmargin=2.0
-         ;title=str(sP.res)+textoidl("^3")+" "+titleName+" (z="+string(redshift,format='(f3.1)')+") gal+gmem",$
-
-     barvals = findgen(ndivs+1)/ndivs*(max(h2rt_both^exp)-min(h2rt_both^exp)) + min(h2rt_both^exp)
+      loadColorTable, 'helix', /reverse ; data
+      tvim,h2rt^exp,scale=0,clip=-1,pos=[0.14,0.14,0.85,0.9],/noframe
+          
+      loadColorTable,'bw linear' ; axes/frame
+      tvim,h2rt^exp,/notv,pcharsize=!p.charsize,scale=0,clip=-1,$;,/c_map,range=[5e10,1e8,5e9];,/rct
+        xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle=ytitle,$
+        barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=xrange,yrange=yrange,$
+        /xlog,xticks=5,xtickv=[0.01,0.05,0.1,0.2,0.5,1.0],$
+        xtickname=['0.01','0.05','0.1','0.2','0.5','1'],xmargin=2.0,pos=[0.14,0.14,0.85,0.9],/noerase
+    
+     ; cellsize, plot grav softening
+     cgPlot, [0.02,1.0], replicate(alog10(sP.gravSoft),2), line=2, /overplot
+     cgText, 0.5, alog10(sP.gravSoft)-0.15, textoidl("\epsilon_G")
+     
+     cgPlot, [0.02,1.0], replicate(alog10(sP.gravSoft/2.5),2), line=0, /overplot
+     cgText, 0.5, alog10(sP.gravSoft/2.5)-0.15, textoidl("\epsilon_G / 2.5")
+    
+     barvals = findgen(ndivs+1)/ndivs*(max(h2rt^exp)-min(h2rt^exp)) + min(h2rt^exp)
      ticknames = textoidl('10^{'+str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)'))+'}')
      ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
-     colorbar,bottom=1,range=minmax(h2rt_both),position=[0.83,0.155,0.87,0.925],$
+     
+     loadColorTable, 'helix', /reverse ; data
+     cgColorbar,bottom=1,range=minmax(h2rt),position=[0.87,0.14,0.91,0.9],$
        /vertical,/right,title=textoidl("M_{gas} [_{ }log M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
             
       if keyword_set(virTempRange) then begin
-        fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('black')
-        fsc_text,xrange[0]*1.6,virTempRange[1]*1.02,"T"+textoidl("_{vir}"),alignment=0.5,color=fsc_color('yellow')
-        fsc_plot,xrange,[virTempRange[0],virTempRange[0]],line=0,color=fsc_color('yellow'),/overplot
-        fsc_plot,xrange,[virTempRange[1],virTempRange[1]],line=0,color=fsc_color('yellow'),/overplot
+        cgText,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=cgColor('black')
+        cgText,xrange[0]*1.6,virTempRange[1]*1.02,"T"+textoidl("_{vir}"),alignment=0.5,color=cgColor('yellow')
+        cgPlot,xrange,[virTempRange[0],virTempRange[0]],line=0,color=cgColor('yellow'),/overplot
+        cgPlot,xrange,[virTempRange[1],virTempRange[1]],line=0,color=cgColor('yellow'),/overplot
       endif
              
-  end_PS
+    end_PS
   
-  start_PS, sP.plotPath + plotBase + '_rad_gal.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
-    
-    ;loadct, 33, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
-    ;cgLoadCT,13,/brewer,bottom=1
-    loadColorTable, 'helix', /reverse
-    
-    tvim,h2rt_gal^exp,pcharsize=!p.charsize,scale=0,clip=-1,$;,/c_map
-         xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle=ytitle,$
-         barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=xrange,yrange=yrange,$
-         /xlog,xticks=5,xtickv=[0.01,0.05,0.1,0.2,0.5,1.0],$
-         xtickname=['0.01','0.05','0.1','0.2','0.5','1'],xmargin=2.0
-         ;title=str(sP.res)+textoidl("^3")+" "+titleName+" (z="+string(redshift,format='(f3.1)')+") gal",$
-
-     barvals = findgen(ndivs+1)/ndivs*(max(h2rt_gal^exp)-min(h2rt_gal^exp)) + min(h2rt_gal^exp)
-     ticknames = textoidl('10^{'+str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)'))+'}')
-     ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
-     colorbar,bottom=1,range=minmax(h2rt_gal),position=[0.83,0.155,0.87,0.925],$
-       /vertical,/right,title=textoidl("M_{gas} [_{ }log M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
-         
-      if keyword_set(virTempRange) then begin
-        fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('black')
-        fsc_text,xrange[0]*1.6,virTempRange[1]*1.02,"T"+textoidl("_{vir}"),alignment=0.5,color=fsc_color('yellow')
-        fsc_plot,xrange,[virTempRange[0],virTempRange[0]],line=0,color=fsc_color('orange'),/overplot
-        fsc_plot,xrange,[virTempRange[1],virTempRange[1]],line=0,color=fsc_color('orange'),/overplot
-      endif
-      
-  end_PS
+  endfor
   
-  start_PS, sP.plotPath + plotBase + '_rad_gmem.'+sP.run+'.'+str(sP.res)+'_'+str(sP.snap)+'.eps'
-    
-    ;loadct, 33, bottom=1, /silent ;bw linear=0, white-green exp=9 (33=blue-red)
-    ;cgLoadCT,13,/brewer,bottom=1
-    loadColorTable, 'helix', /reverse
-    
-    tvim,h2rt_gmem^exp,pcharsize=!p.charsize,scale=0,clip=-1,$;,/c_map
-         xtitle="r"+textoidl("_{gas}")+" / r"+textoidl("_{vir}"),ytitle=ytitle,$
-         barwidth=0.75,lcharsize=!p.charsize-0.2,xrange=xrange,yrange=yrange,$
-         /xlog,xticks=5,xtickv=[0.01,0.05,0.1,0.2,0.5,1.0],$
-         xtickname=['0.01','0.05','0.1','0.2','0.5','1'],xmargin=2.0
-         ;title=str(sP.res)+textoidl("^3")+" "+titleName+" (z="+string(redshift,format='(f3.1)')+") gmem",$
-
-     barvals = findgen(ndivs+1)/ndivs*(max(h2rt_gmem^exp)-min(h2rt_gmem^exp)) + min(h2rt_gmem^exp)
-     ticknames = textoidl('10^{'+str(string(round(alog10(barvals^(1/exp))*10.0)/10.0,format='(f4.1)'))+'}')
-     ticknames = ['0',ticknames[1:n_elements(ticknames)-1]]
-     colorbar,bottom=1,range=minmax(h2rt_gmem),position=[0.83,0.155,0.87,0.925],$
-       /vertical,/right,title=textoidl("M_{gas} [_{ }log M_{sun }]"),divisions=ndivs,ticknames=ticknames,ncolors=255
-         
-      if keyword_set(virTempRange) then begin
-        fsc_text,xrange[1]*0.45,(yrange[1]-yrange[0])*0.92+yrange[0],massBinStr,alignment=0.5,color=fsc_color('black')
-        fsc_text,xrange[0]*1.6,virTempRange[1]*1.02,"T"+textoidl("_{vir}"),alignment=0.5,color=fsc_color('yellow')
-        fsc_plot,xrange,[virTempRange[0],virTempRange[0]],line=0,color=fsc_color('orange'),/overplot
-        fsc_plot,xrange,[virTempRange[1],virTempRange[1]],line=0,color=fsc_color('orange'),/overplot
-      endif
-      
-  end_PS
-  !except = 1
 end
 
 ; plot2DHisto(): plot 2d histogram of gas temperature (or other quantity) as a function of r_gas/r_vir
 ;                as well as vertical slices
 
-pro plot2DHisto, sP=sP
+pro plot2DHisto
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
 
   ; config
+  sP = simParams(res=11,run='zoom_20mpc',hind=0,redshift=3.0)
   ;massBins = [0.0,1000.0] ; no massbins
-  massBins = [9.0,9.5,10.0,10.5,11.0,11.5,12.0,12.5] ; log(M)
+  ;massBins = [9.0,9.5,10.0,10.5,11.0,11.5,12.0,12.5] ; log(M)
+  massBins = [11.8,12.0] ; zoom z2
+  massBins = [11.5,11.6] ; zoom z3
   
   ; select one of:
   maxPastTemp  = 0 ; maximum previous temperature
@@ -186,13 +149,16 @@ pro plot2DHisto, sP=sP
   accTvir      = 0 ; virial temperature of parent halo at time of accretion
   
   curGasVal = 1 ; current single gas value
-    curField = 'coolingrate' ; temp
+    curField = 'cellsize' ; temp
   
   tVirNorm    = 0  ; normalize temperature by virial temp of parent halo at the starting time
   tVirAccNorm = 0  ; normalize temperature by virial temp of parent halo at the time of accretion
   
   ; consider only the subset with recorded accretion times for certain types of plots
   accretionTimeSubset = 0
+  
+  ; override trMC->0 to plot only 1 per gas cell instead of 1 per trMC
+  sP.trMCPerCell = 0
   
   if accTime or accTvir or tVirAccNorm then accretionTimeSubset = 1
   
@@ -212,18 +178,18 @@ pro plot2DHisto, sP=sP
   gcRad = gcSubsetProp(sP=sP,/rVirNorm,accretionTimeSubset=accretionTimeSubset)
 
   ; get current or maxPast temperature, or accretion time / tvir at accretion
-  gcTemp = gcSubsetProp(sP=sP,maxPastTemp=maxPastTemp,$
-                        maxTempTime=maxTempTime,accTime=accTime,accTvir=accTvir,$
-                        accretionTimeSubset=accretionTimeSubset,$
-                        curGasVal=curGasVal,curField=curField)
+  gcVal = gcSubsetProp(sP=sP,maxPastTemp=maxPastTemp,$
+                       maxTempTime=maxTempTime,accTime=accTime,accTvir=accTvir,$
+                       accretionTimeSubset=accretionTimeSubset,$
+                       curGasVal=curGasVal,curField=curField)
 
   ; normalize by halo Tvir at current time
   if tVirNorm then begin
     ; calculate temperatures of parents and take (log) ratio
     gcVirTemp = gcSubsetProp(sP=sP,/virTemp)
     
-    gcTemp.gal  = alog10(10.0^gcTemp.gal / 10.0^gcVirTemp.gal)
-    gcTemp.gmem = alog10(10.0^gcTemp.gmem / 10.0^gcVirTemp.gmem)
+    for i=0,n_tags(gcVal)-1 do $
+      gcVal.(i)  = alog10(10.0^gcVal.(i) / 10.0^gcVirTemp.(i))
   endif
   
   ; normalize by halo Tvir at time of accretion
@@ -231,16 +197,16 @@ pro plot2DHisto, sP=sP
     ; calculate temperatures of parents at time of accretion and take (log) ratio
     gcAccTvir = gcSubsetProp(sP=sP,/accTvir,accretionTimeSubset=accretionTimeSubset)
     
-    gcTemp.gal  = alog10(10.0^gcTemp.gal / 10.0^gcAccTvir.gal)
-    gcTemp.gmem = alog10(10.0^gcTemp.gmem / 10.0^gcAccTvir.gmem)
+    for i=0,n_tags(gcVal)-1 do $
+      gcVal.(i)  = alog10(10.0^gcVal.(i) / 10.0^gcAccTvir.(i))
   endif
   
-  ; log coolingrate
-  if curSingleVal then begin
-    w = where(gcTemp.gal ne 0)
-    gcTemp.gal[w] = alog10( gcTemp.gal[w] )
-    w = where(gcTemp.gmem ne 0)
-    gcTemp.gmem[w] = alog10( gcTemp.gmem[w] )
+  ; log coolingrate or cellsize
+  if curGasVal then begin
+    for i=0,n_tags(gcVal)-1 do begin
+      w = where(gcVal.(i) ne 0.0,count)
+      if count gt 0 then gcVal.(i)[w] = alog10( gcVal.(i)[w] )
+    endfor
   endif
   
   ; load gas masses if necessary (sph or byGas arepo)
@@ -253,10 +219,10 @@ pro plot2DHisto, sP=sP
   for j=0,n_elements(massBins)-2 do begin
   
     ; plot config
-    xrange = alog10([0.01,1.0])
+    xrange = alog10([0.01,2.0])
     yrange = [4.0,7.0]
   
-    binSizeRad  = 0.0035 ;0.014 / (sP.res/128) ;0.04
+    binSizeRad  = 0.007 ;0.014 / (sP.res/128) ;0.04
     binSizeTemp = 0.0125 ;0.05 / (sP.res/128) ;0.04
     
     ; preserve number of bins in log(rad) histogram and if changing yrange
@@ -274,9 +240,15 @@ pro plot2DHisto, sP=sP
       binSizeTemp = (yrange[1]-yrange[0])/(nBinsTemp-1)
     endif
     
-    if curSingleVal then begin
-      yrange = [3.5,8.5]
-      binSizeTemp = 0.022
+    if curGasVal then begin
+      if curField eq 'coolingrate' then begin
+        yrange = [3.5,8.5]
+        binSizeTemp = 0.022
+      endif
+      if curField eq 'cellsize' then begin
+        yrange = [-1.4,1.4]
+        binSizeTemp = 0.015
+      endif
     endif
     
     ; select members of this parent mass bins and r>0<inf
@@ -288,15 +260,11 @@ pro plot2DHisto, sP=sP
     ; count for output
     wGCMassBin = where(subgroupMasses gt massBins[j] and subgroupMasses le massBins[j+1],count_gc)
     
-    count_mt = 0
-    if n_elements(mt) gt 0 then $
-      wMTMassBin = where(hMass gt massBins[j] and hMass le massBins[j+1],count_mt)
-    
-    print,j,count1,count2,count_gc,count_mt
+    print,j,count1,count2,count_gc
     
     ; select all particles/tracers in this mass bin
-    temp_gal  = gcTemp.gal[wGal]
-    temp_gmem = gcTemp.gmem[wGmem]
+    temp_gal  = gcVal.gal[wGal]
+    temp_gmem = gcVal.gmem[wGmem]
     
     rad_gal   = alog10( gcRad.gal[wGal] )
     rad_gmem  = alog10( gcRad.gmem[wGmem] )
@@ -338,42 +306,36 @@ pro plot2DHisto, sP=sP
     endelse
 
     ; 2d histo plot config
-    if maxPastTemp then begin
-      plotBase = "tmax_"+sgSelect+'_'+parNorm
-      ytitle   = "log ( T"+textoidl("_{max}")+" )"
-    endif
-    
-    if maxTempTime then begin
-      plotBase = "tmaxtime_"+sgSelect+'_'+parNorm
-      ytitle   = "Maximum Temperature Redshift"
-    endif
-    if accTime then begin
-      plotBase = "acctime_"+sgSelect+'_'+parNorm
-      ytitle   = "Accretion Redshift"
-    endif
-    if accTvir then begin
-      plotBase = "acctvir_"+sgSelect+'_'+parNorm
-      ytitle   = "Parent "+textoidl("T_{vir}")+" at "+textoidl("t_{acc}")
-    endif
-    
-    if curSingleVal then begin
-      if curField eq 'coolingrate' then begin
-        plotBase = "coolrate_"+sgSelect+"_"+parNorm
-        ytitle   = "Cooling Rate"
-      endif
+    pConfig = { $
+      maxPastTemp : { plotBase : "tMax",     ytitle : "log ( T"+textoidl("_{max}")+" )"     } ,$
+      maxTempTime : { plotBase : "tMaxTime", ytitle : "Maximum Temperature Redshift"        } ,$
+      accTime     : { plotBase : "accTime",  ytitle : "Accretion Redshift"                  } ,$
+      accTvir     : { plotBase : "accTvir",  ytitle : textoidl("Parent T_{vir} at t_{acc}") } ,$
+      coolingRate : { plotBase : "coolRate", ytitle : "Cooling Rate"                        } ,$
+      temp        : { plotBase : "tCur",     ytitle : "log ( T"+textoidl("_{cur}")+" )"     } ,$
+      cellSize    : { plotBase : "cellSize", ytitle : textoidl("log ( r_{cell} ) [ckpc]")   }  $
+      }
       
-      if curField eq 'temp' then begin
-        plotBase = "tcur_"+sgSelect+'_'+parNorm
-        ytitle   = "log ( T"+textoidl("_{cur}")+" )"
-      endif
+    if maxPastTemp then pConfInd = (where( tag_names(pConfig) eq 'MAXPASTTEMP' ) )[0]
+    if maxTempTime then pConfInd = (where( tag_names(pConfig) eq 'MAXTEMPTIME' ) )[0]
+    if accTime     then pConfInd = (where( tag_names(pConfig) eq 'ACCTIME' ) )[0]
+    if accTvir     then pConfInd = (where( tag_names(pConfig) eq 'ACCTVIR' ) )[0]
+    
+    if curGasVal then begin
+      if curField eq 'coolingrate' then pConfInd = (where( tag_names(pConfig) eq 'COOLINGRATE' ) )[0]
+      if curField eq 'temp'        then pConfInd = (where( tag_names(pConfig) eq 'TEMP' ) )[0]
+      if curField eq 'cellsize'    then pConfInd = (where( tag_names(pConfig) eq 'CELLSIZE' ) )[0]
     endif
+    
+    plotBase = pConfig.(pConfInd).plotBase
+    ytitle   = pConfig.(pConfInd).ytitle
     
     if tVirNorm then begin
-      plotBase = strmid(plotBase,0,4)+"_tvirNorm_"+sgSelect+'_'+parNorm
+      plotBase = strmid(plotBase,0,4)+"_tvirNorm"
       ytitle   = strmid(ytitle,0,strlen(ytitle)-2) + " / T"+textoidl("_{vir,cur}"+" )")
     endif
     if tVirAccNorm then begin
-      plotBase = strmid(plotBase,0,4)+"_tvirAccNorm_"+sgSelect+'_'+parNorm
+      plotBase = strmid(plotBase,0,4)+"_tvirAccNorm"
       ytitle   = strmid(ytitle,0,strlen(ytitle)-2) + " / T"+textoidl("_{vir,acc}"+" )")
     endif
     

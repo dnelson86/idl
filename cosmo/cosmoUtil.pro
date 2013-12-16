@@ -12,8 +12,8 @@ function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose, subBox=subBox
   if ~keyword_set(sP) then message,'Error: Must input sP.'
   if n_elements(redshiftList) eq 0 then redshiftList = [sP.redshift]
   
-  sbstr = ''
-  if keyword_set(subBox) then sbstr = 'subbox0_'  
+  if keyword_set(subBox) then sbstr = 'subbox0_' else sbstr = ''
+  if keyword_set(subBox) then sbst2 = 'subbox0/' else sbst2 = ''
   
   saveFileName = sP.derivPath + sP.savPrefix + '_' + sbstr + 'snapnum.redshift.sav'
 
@@ -33,18 +33,24 @@ function redshiftToSnapNum, redshiftList, sP=sP, verbose=verbose, subBox=subBox
         ext = string(m,format='(I4.4)')
         
       ; format filename
-      f = sP.simPath + 'snapdir_' + sbstr + ext + '/snap_' + sbstr + ext + '.0.hdf5'
+      f = sP.simPath + sbst2 + 'snapdir_' + sbstr + ext + '/snap_' + sbstr + ext + '.0.hdf5'
       
       ; single file per group catalog
       if (not file_test(f)) then $
-        f = sP.simPath + 'snap_' + sbstr + ext + '.hdf5'
+        f = sP.simPath + sbst2 + 'snap_' + sbstr + ext + '.hdf5'
         
       ; single groupordered file per group catalog
       if (not file_test(f)) then $
-        f = sP.simPath + 'snap-groupordered_' + ext + '.hdf5'
+        f = sP.simPath + sbst2 + 'snap-groupordered_' + ext + '.hdf5'
       
       ; if file doesn't exist yet, skip (e.g. every other file deleted)
       if (not file_test(f)) then continue
+      
+      ; corrupt/non-HDF5?
+      if ~h5f_is_hdf5(f) then begin
+        print,'CORRUPT, SKIPPING: ',f
+        continue
+      endif
     
       ; load hdf5 header and save time+redshift
       fileID   = h5f_open(f)
@@ -565,5 +571,74 @@ pro exportParticlesAscii
   
   close,lun
   free_lun,lun
+
+end
+
+; exportGroupCatAscii(): export some part of a group catalog as text (for MySQL import)
+;
+;   % mysql --local-infile -u <username> -p <DatabaseName>
+;
+;   LOAD DATA LOCAL INFILE 'out.txt'
+;   INTO TABLE snap_135
+;   COLUMNS TERMINATED BY ' ' LINES TERMINATED BY '\n'
+;   (id,pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,mass,r200,primary_flag)
+;   set point_xy = PointFromText(CONCAT('POINT(',pos_x,' ',pos_y,')'));
+;
+;   then add SPATIAL INDEX on points_xy
+
+pro exportGroupCatAscii
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  forward_function simParams, loadGroupCat
+  
+  ; config
+  sP = simParams(res=1820,run='illustris',redshift=0.0)
+  
+  fileName   = 'out.txt'
+  minNumPart = 100
+  zWidth     = 15000.0 ; cMpc/h centered on fof0 group position (or 0 to disable)
+  
+  ; load group catalog and select subgroups for export
+  gc = loadGroupCat(sP=sP,/skipIDs,/skipOffsets)
+  
+  zBounds = [-0.1, sP.boxSize + 0.1]
+  if zWidth gt 0 then begin
+    zBounds[0] = gc.groupPos[2,0] - zWidth*0.5
+    zBounds[1] = gc.groupPos[2,0] + zWidth*0.5
+  endif
+  
+  w = where(gc.subgroupLen ge minNumPart and $
+            gc.subgroupPos[2,*] ge zBounds[0] and $
+            gc.subgroupPos[2,*] le zBounds[1],count)
+  print,'Exporting ['+str(count)+'] SUBGROUPS.'
+
+  ; fill output buffer
+  outBuf = strarr(count)
+  
+  for i=0,count-1 do begin
+    gInd = gc.SubgroupGrNr[w[i]]
+    pri_flag = gc.groupFirstSub[gInd] eq w[i]
+    
+    outBuf[i] = str(string(w[i],                     format='(I8)'))    + " " + $ ; ID
+                str(string(gc.SubgroupPos[0,w[i]],   format='(f12.6)')) + " " + $ ; pos_x
+                str(string(gc.SubgroupPos[1,w[i]],   format='(f12.6)')) + " " + $ ; pos_y
+                str(string(gc.SubgroupPos[2,w[i]],   format='(f12.6)')) + " " + $ ; pos_z
+                str(string(gc.SubgroupVel[0,w[i]],   format='(f12.6)')) + " " + $ ; vel_x
+                str(string(gc.SubgroupVel[1,w[i]],   format='(f12.6)')) + " " + $ ; vel_y
+                str(string(gc.SubgroupVel[2,w[i]],   format='(f12.6)')) + " " + $ ; vel_z
+                str(string(gc.SubgroupMass[w[i]],    format='(f12.6)')) + " " + $ ; mass
+                str(string(gc.group_r_crit200[gInd], format='(f8.2)'))  + " " + $ ; r200
+                str(string(pri_flag,format='(I1)'))                               ; primary_flag
+                
+  endfor
+  
+  ; open ascii, write and close
+  openW,lun,fileName,/get_lun
+  
+    printf,lun,outBuf
+  
+  close,lun
+  free_lun,lun
+
+  stop
 
 end

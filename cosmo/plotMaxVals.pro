@@ -20,9 +20,22 @@ function binValMaxHistos, sP=sP, accMode=accMode, timeWindow=timeWindow
   nMassBins  = n_elements(massBins)-1
   
   ; config (2D)
-  binSizeMass = 0.10 / (sP.res/128)
-  mmMass2D    = [9.0,12.0]-[0.0,0.0001] ; log(mhalo [msun])
-  nMassBins2D = ceil( (mmMass2D[1]-mmMass2D[0]) / binSizeMass )
+  if sP.zoomLevel eq 0 then begin
+    binSizeMass = 0.10 / (sP.res/128)
+    mmMass2D    = [9.0,12.0]-[0.0,0.0001] ; log(mhalo [msun])
+    nMassBins2D = ceil( (mmMass2D[1]-mmMass2D[0]) / binSizeMass )
+  endif else begin
+    ; for zoom run, only process the target halo (make one narrow mass bin)
+    binSizeMass = 0.20 / 2*(sP.res-7)
+    
+    gc = loadGroupCat(sP=sP,/skipIDs,/skipOffsets)
+    hInd = zoomTargetHalo(sP=sP,gc=gc)
+    if hInd ne 0 then message,'Strange is not most massive, better check.'
+    hMass = codeMassToLogMsun( gc.subgroupMass[hInd] )
+    
+    mmMass2D    = hMass + [-0.01,0.01] ; log(mhalo [msun])
+    nMassBins2D = 1
+  endelse
   
   ; value binning config
   nValBins = ( mmMass[1] - mmMass[0] ) / binSizeMass
@@ -116,7 +129,7 @@ function binValMaxHistos, sP=sP, accMode=accMode, timeWindow=timeWindow
     
   for i=0,n_elements(typeLabels)-1 do $
     r = mod_struct( r, typeLabels[i], template)
-        
+
   ; loop over halo mass bins
   for j=0,n_elements(massBins)-2 do begin
   
@@ -267,7 +280,7 @@ pro plotValMaxHistos, redshift=redshift, res=res
   yrange  = [6e-4,2.0]
   yrangeG = [1e-4,0.3]
   pParams = { TmaxTviracc : {xrange:[-2.2,1.4], xtickv:[-2,-1,0,1],   ylabel : "log ( T_{max} / T_{vir,acc} )"} ,$
-              Tmax        : {xrange:[3.0,8.0],  xtickv:[4,5,6,7],     ylabel : "log ( T_{max} )"}               ,$
+              Tmax        : {xrange:[3.5,7.5],  xtickv:[4,5,6,7],     ylabel : "log ( T_{max} )"}               ,$
               EntMax      : {xrange:[4.5,10.0], xtickv:[5,6,7,8,9],   ylabel : "log ( S_{max} ) [K cm^{2 }]"}   ,$
               DensMax     : {xrange:[-10,0],    xtickv:[-8,-6,-4,-2], ylabel : "log ( \rho_{max} )"}            ,$
               MachMax     : {xrange:[0,100],    xtickv:[10,30,50,80], ylabel : "M_{max}"}                        }     
@@ -343,7 +356,7 @@ pro plotValMaxHistos, redshift=redshift, res=res
       ; color range (same for all three panels, NOT used)
       ;h2all = []
       ;for i=0,n_tags(sP)-1 do h2all = [h2all,bV.(i).allGal.(bVind2d)]
-      ;crange = minmax(h2all[where(h2all ne 0.0)]) ;* [2.0,0.7]
+      ;crange = minmax(h2all[where(h2all ne 0.0)]) * [3.0,0.7]
       ;print,crange
       
       ; loop over each run
@@ -359,10 +372,15 @@ pro plotValMaxHistos, redshift=redshift, res=res
         h2mt   = bV.(i).allGal.(bVind2d)
         crange = minmax(h2mt[where(h2mt ne 0.0)])
         
-        loadColorTable, 'helix', /reverse
-        tvim,h2mt^exp,scale=0,clip=-1,xtitle=xtitle,ytitle=ytitle,xrange=xrange2D,yrange=yrange2D,$
-           xticks=n_elements(xtickv)-1,xtickv=xtickv,position=pos2D[i],noerase=(i gt 0),range=crange^exp
-           
+        loadColorTable, 'helix',/reverse ; data
+        tvim,h2mt^exp,scale=0,clip=-1,range=crange^exp,/noframe,$
+          position=pos2D[i],noerase=(i gt 0)
+          
+        loadColorTable,'bw linear' ; axes/frame
+        tvim,h2mt^exp,/notv,scale=0,clip=-1,range=crange^exp,$
+          xtitle=xtitle,ytitle=ytitle,xrange=xrange2D,yrange=yrange2D,$
+          xticks=n_elements(xtickv)-1,xtickv=xtickv,position=pos2D[i],/noerase
+          
         ; simName
         legend,[sP.(i).simName],textcolor=[sP.(i).colors[cInd]],/bottom,/left
            
@@ -413,6 +431,7 @@ pro plotValMaxHistos, redshift=redshift, res=res
     end_PS
         
   endforeach ; tagNames
+  stop
   
 end
 
@@ -424,7 +443,7 @@ pro plotValMaxHistosByMode, redshift=redshift, res=res
   units = getUnits()
   
   ; config
-  runs       = ['tracer']; ,'gadget'];,'feedback'] ;['feedback','feedback_noZ','feedback_noFB']
+  runs       = ['tracer','gadget','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   ;redshift   = 2.0
   ;res        = 256
   timeWindow = 500.0 ; Myr

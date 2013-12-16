@@ -98,25 +98,20 @@ end
 
 ; plotScatterAndSphmap(): plot side by side projection results from CalcSphMap
 
-pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
-                          left=left, right=right, one=one, two=two, three=three
-
+pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, col=col
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
-  if ~keyword_set(left) and ~keyword_set(right) and ~keyword_set(one) and $
-     ~keyword_set(two) and ~keyword_set(three) then message,'error'
+  if ~keyword_set(sphmap) or ~keyword_set(scatter) or $
+     ~keyword_set(config) or ~keyword_set(col) then $
+    message,'Error: Specify all inputs.'
+    
+  ; decide column configuration
+  curCol  = float(col[0])
+  totCols = col[1]
   
-  ; 2 col, 3 rows
-  if keyword_set(left) then leftOffset = 0.0
-  if keyword_set(right) then leftOffset = 0.5
-  if keyword_set(left) or keyword_set(right) then pWidth = 0.5
+  pWidth = 1.0 / totCols
+  leftOffset = pWidth * curCol
   
-  ; 3 col, 3 rows
-  if keyword_set(one) then leftOffset = 0.0
-  if keyword_set(two) then leftOffset = 0.333
-  if keyword_set(three) then leftOffset = 0.666
-  if keyword_set(one) or keyword_set(two) or keyword_set(three) then pWidth = 0.333
-
   ; UPPER TWO PANELS - scatter
 
     xMinMax = [-config.boxSizeScat[0]/2.0,config.boxSizeScat[0]/2.0]
@@ -130,7 +125,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
     !p.charsize = 0.8
   
     ; fill with black background
-    if ~keyword_set(right) and ~keyword_set(two) and ~keyword_set(three) then $
+    if curCol eq 0 then $
       cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('black')
   
     ; color table and establish temperature -> color mapping
@@ -140,7 +135,8 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
     cgPlot, /nodata, xMinMax, yMinMax, pos=posTop, xs=5, ys=5, /noerase
     
     ; circle at virial radius
-    tvcircle,config.rVirCirc * config.haloVirRad,0,0,cgColor('light gray'),thick=0.8,/data
+    foreach rVirCirc,config.rVirCircs do $
+      tvcircle,rVirCirc * config.haloVirRad,0,0,cgColor('light gray'),thick=0.8,/data
     
     ; particle loop for velocity vector plotting
     nCutoutLeft = n_elements(scatter.pos_left[0,*])
@@ -156,7 +152,8 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
     ; cold gas / dark matter (right panel)
     cgPlot, /nodata, xMinMax, yMinMax, pos=posBottom, xs=5, ys=5, /noerase
 
-    tvcircle,config.rVirCirc * config.haloVirRad,0,0,cgColor('light gray'),thick=0.8,/data
+    foreach rVirCirc,config.rVirCircs do $
+      tvcircle,rVirCirc * config.haloVirRad,0,0,cgColor('light gray'),thick=0.8,/data
         
     ; particle loop for velocity vector plotting (cold gas only)
     nCutoutRight = n_elements(scatter.pos_right[0,*])
@@ -165,7 +162,7 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
              [scatter.pos_right[config.axes[1],i],scatter.pos_right2[config.axes[1],i]],$
              line=0,color=scatter.cinds_right[i],thick=config.lineThick
   
-    if ~keyword_set(right) and ~keyword_set(two) and ~keyword_set(three) then begin
+    if curCol eq 0 then begin
       len = 100.0 ;kpc
       
       xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+len]
@@ -194,19 +191,21 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
       labelText = "log T_{gas} [K]"
       
       ; one colorbar (centered)
-      offset = 0.333
-      pos = [offset+0.01,0.3,offset+0.034,0.7]
+      offset = 0.333 ; vertical
+      x_left  = 0.5 - pWidth*0.4
+      x_right = 0.5 + pWidth*0.4
+      pos = [offset+0.01,x_left,offset+0.034,x_right]
+      
       loadColorTable,config.ctNameScat
       cgColorbar,position=pos,divisions=0,charsize=0.000001,bottom=50,ticklen=0.00001
       
       ; colorbar labels
-      ;cbLabels = str([fix(config.fieldMinMax[0]),fix(config.fieldMinMax[1])]
       cbLabels = str(string([fix(10*config.fieldMinMax[0])/10,fix(10*config.fieldMinMax[1])/10],format='(f3.1)'))
       rAdjust = 0.01*(strlen(cbLabels[1])-1)
       
       cgText,0.5,offset+0.018,textoidl(labelText),alignment=0.5,color=cgColor('black'),/normal
-      cgText,0.324,offset+0.017,cbLabels[0],alignment=0.5,color=cgColor('black'),/normal
-      cgText,0.692-rAdjust,offset+0.017,cbLabels[1],alignment=0.5,color=cgColor('black'),/normal
+      cgText,x_left + 0.024,offset+0.017,cbLabels[0],alignment=0.5,color=cgColor('black'),/normal
+      cgText,x_right -0.008-rAdjust,offset+0.017,cbLabels[1],alignment=0.5,color=cgColor('black'),/normal
     endif
     
     !x.thick = xthick
@@ -228,10 +227,11 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
   tv, sphmap.quant_out,posBottom[0],posBottom[1],/normal,xsize=pWidth ; mass-weighted quantity
 
   ; circle at virial radius
-  tvcircle,config.rVirCirc * config.haloVirRad,0,0,cgColor('white'),thick=0.8,/data    
+  foreach rVirCirc,config.rVirCircs do $
+    tvcircle,rVirCirc * config.haloVirRad,0,0,cgColor('white'),thick=0.8,/data    
   
   ; scale bar
-  if ~keyword_set(right) and ~keyword_set(two) and ~keyword_set(three) then begin
+  if curCol eq 0 then begin
     xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+config.scaleBarLen]
     ypos = replicate(yMinMax[1]*0.93,2)
     
@@ -243,20 +243,20 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, $
   endif
   
   ; redshift and halo mass
-  if ~keyword_set(left) and ~keyword_set(one) and ~keyword_set(two) then begin
-    cgText,0.99,0.666-0.02,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
+  if config.haloMass ne -1 then $
+    cgText,posTop[2]-0.01,0.666-0.02,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
            color=cgColor('white'),/normal
-    if config.haloMass ne -1 then $
-      cgText,0.99,0.666-0.04,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
-             color=cgColor('white'),/normal
-  endif
+             
+  if curCol eq totCols-1 then $
+    cgText,0.99,0.666-0.04,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
+           color=cgColor('white'),/normal
   
   ; simulation name
   cgText,mean(posTop[[0,2]]),0.97,config.sP.simName,charsize=!p.charsize+0.5,$
     alignment=0.5,/normal,color=cgColor('white')
           
   ; quantity name
-  if keyword_set(right) or keyword_set(three) then begin
+  if curCol eq totCols-1 then begin
     cgText,0.99,0.676,"all gas",charsize=!p.charsize+0.3,alignment=1.0,/normal,color=cgColor('white')
     cgText,0.99,0.343,config.secondText,charsize=!p.charsize+0.3,alignment=1.0,/normal,color=cgColor('white')
     cgText,0.99,0.03,"projected",charsize=!p.charsize+0.3,alignment=1.0,/normal,color=cgColor('white')
@@ -276,24 +276,27 @@ pro sphScatterAndMapHaloComp
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  redshift = 3.0
-  res      = [9,10,11]
-  runs     = ['zoom_20mpc','zoom_20mpc','zoom_20mpc'] ;['feedback','feedback_noZ','feedback_noFB']
-                                         ;['gadget','tracer','feedback']  ; two or three supported
+  redshift = 2.0
+  res      = [10,10,10,10]
+  runs     = ['zoom_20mpc','zoom_20mpc','zoom_20mpc','zoom_20mpc']
+    ;['zoom_20mpc','zoom_20mpc_derefgal','zoom_20mpc_derefgal_nomod']
+    ;['feedback','feedback_noZ','feedback_noFB']
+    ;['gadget','tracer','feedback']  ; two or three supported
                                                 
-  hInd     = 0 ; for zooms only
+  hInds    = [0,1,2,3] ; for zooms only
   haloID   = 0 ;zoom.0 z2.304 z2.301 z2.130 z2.64
   
-  sizeFacMap  = 1.0       ; times rvir (image width, e.g. 2.0 shows out to the virial radius)
-  sizeFacScat = 1.0       ; times rvir
-  rVirCirc    = 0.1       ; times rvir to draw a circle
+  sizeFacMap  = 3.5       ; times rvir (image width, e.g. 2.0 shows out to the virial radius)
+  sizeFacScat = 3.5       ; times rvir
+  rVirCircs   = [0.1,0.5,1.0] ; times rvir to draw a circle
   hsmlFac  = 2.5          ; times each cell hsml for sph projections
-  nPixels  = [1600,1600]  ; px
+  nPixels  = [800,800]    ; px
   xySize   = 3            ; final image is xySize*nPixels[0] high
   axisPair = [0,1]        ; xy
   nbottom  = 50           ; lift minimum scatterplot color from zero (to distinguish from black)
   secondGt = 0            ; 1=show greater than cut, 0=show less than cut
   singleColorScale = 1    ; 1=use same color scale for right panel, 0=rescale
+  plotAllPts       = 1    ; if 0 skip some points in higher res runs to match visual density of L9
   
   ; use which field and minmax for color mappings? cut value for right panel?
   colorField = 'temp' & fieldMinMax = [4.0,6.2] & mapMinMax = [4.4,6.2] & secondCutVal = 5.0 ; log(K)
@@ -306,7 +309,7 @@ pro sphScatterAndMapHaloComp
   runsStr = ''
   gcIDs = []
   foreach run,runs,i do begin
-    sP = mod_struct(sP, 'sP'+str(i), simParams(res=res[i],run=run,redshift=redshift,hInd=hInd))
+    sP = mod_struct(sP, 'sP'+str(i), simParams(res=res[i],run=run,redshift=redshift,hInd=hInds[i]))
     gcIDs = [ gcIDs, getMatchedIDs(simParams=sP.(i),haloID=haloID) ]
     runsStr += sP.(i).saveTag + '.' + str(sP.(i).snap) + '.h' + str(gcIDs[i]) + '-'
   endforeach
@@ -314,7 +317,8 @@ pro sphScatterAndMapHaloComp
   numRuns = n_tags(sP)
   
   saveFilename = 'sc.map.'+str(sP.(0).res)+'.'+runsStr+'axes'+str(axisPair[0])+str(axisPair[1])+'_'+$
-                  colorField+'.eps'
+                  'sf' + str(fix(sizeFacMap*10)) + '_px' + str(nPixels[0]) + '_all' + $
+                  str(plotAllPts) + '_' + colorField+'.eps'
                  
   start_PS, sP.(0).plotPath + saveFilename, xs=xySize*numRuns, ys=xySize*3 
   
@@ -331,21 +335,23 @@ pro sphScatterAndMapHaloComp
     mapCutout.loc_hsml *= hsmlFac
     mapCutout.boxSizeImg *= 0.95
   
-    ; config (1): plot only every 8th/64th point for L10/L11 (match visual density)
-    ;interval = 8^(sP.(i).zoomLevel-2)
-    ;lineThick = 1.0
-    
-    ; config (2): plot all points, reduce line thickness
-    interval = 1
-    lineThick = 1.5 / 2.0^(sP.(i).zoomLevel-2)
+    if plotAllPts eq 1 then begin
+      ; config (1): plot all points, reduce line thickness
+      interval = 1
+      lineThick = 1.5 / 2.0^(sP.(i).zoomLevel-2)
+    endif else begin
+      ; config (1): plot only every 8th/64th point for L10/L11 (match visual density)
+      interval = 8^(sP.(i).zoomLevel-2)
+      lineThick = 1.0
+    endelse
     
     config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:fieldMinMax,$
               gcID:gcIDs[i],haloMass:cutout.haloMass,haloVirRad:cutout.haloVirRad,$
               boxCen:[0,0,0],boxSizeImg:mapCutout.boxSizeImg,boxSizeScat:cutout.boxSizeImg,$
-              ctNameScat:'helix',ctNameMap:'',sP:sP.(i),bartype:'none',scaleBarLen:200.0,$
+              ctNameScat:'helix',ctNameMap:'',sP:sP.(i),bartype:'1bar',scaleBarLen:200.0,$
               lineThick:lineThick,interval:interval,colorField:colorField,secondText:'',$
               nbottom:nbottom,secondGt:secondGt,singleColorScale:singleColorScale,$
-              secondCutVal:secondCutVal,mapMinMax:mapMinMax,rVirCirc:rVirCirc}
+              secondCutVal:secondCutVal,mapMinMax:mapMinMax,rVirCircs:rVirCircs}
           
     print,' boxSize ['+str(cutout.boxSizeImg[0])+'] kpc around subhalo center ['+$
           str(cutout.boxCen[0])+' '+str(cutout.boxCen[1])+' '+str(cutout.boxCen[2])+'] interval: '+str(interval)
@@ -353,13 +359,13 @@ pro sphScatterAndMapHaloComp
     sub = cosmoVisCutoutSub(cutout=cutout,mapCutout=mapCutout,config=config)
     
     ; plot
-    plotScatterAndSphmap, map=sub, scatter=sub, config=config, $
-      left=(i eq 0 and numRuns eq 2), right=(i eq 1 and numRuns eq 2), $
-      one=(i eq 0 and numRuns eq 3), two=(i eq 1 and numRuns eq 3), three=(i eq 2 and numRuns eq 3)
+    plotScatterAndSphmap, map=sub, scatter=sub, config=config, col=[i,numRuns]
+      ;left=(i eq 0 and numRuns eq 2), right=(i eq 1 and numRuns eq 2), $
+      ;one=(i eq 0 and numRuns eq 3), two=(i eq 1 and numRuns eq 3), three=(i eq 2 and numRuns eq 3)
   
   endfor
   
-  end_PS, density=(nPixels[0]/xySize), pngResize=100, /deletePS
+  end_PS, density=ceil(nPixels[0]/xySize), pngResize=100, /deletePS
   
   stop
 

@@ -17,6 +17,12 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   ; hash container
   sgIDs = hash()
   
+  ; if haloID==0 (most massive/fof0/zoom target halo) return immediately zero
+  if haloID eq 0 then begin
+    if keyword_set(simParams) then return, [0]
+    return, { a:0, g:0, axes:[0,1] }
+  endif
+  
   ; return 8 matched IDs for mosaic?
   if keyword_set(mosaicIDs) then begin
     ; 512^3 z=2
@@ -117,8 +123,12 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   
   ; z0 h304 (tracked forward from z=2)
   sgIDs['z0_h304_res256_tracer']   = 1310
-  sgIDs['z0_h304_res256_gadget']   = 0
+  sgIDs['z0_h304_res256_gadget']   = 1822
   sgIDs['z0_h304_res256_feedback'] = 1379
+  
+  sgIDs['z0_h304_res128_tracer']   = 310
+  sgIDs['z0_h304_res128_gadget']   = 431
+  sgIDs['z0_h304_res128_feedback'] = 321
   
   ; z2.301
   sgIDs['z2_h301_res512_tracer']   = 1948
@@ -145,19 +155,39 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z2_h64_res512_arepo']     = 5097
   sgIDs['z2_h64_res512_feedback']  = 5363
   
-  ; zoom.0 (target halo)
-  sgIDs['z2_h0_res9_zoom_20mpc_hind0']  = 0
-  sgIDs['z2_h0_res10_zoom_20mpc_hind0'] = 0
-  sgIDs['z2_h0_res9_zoom_20mpc_derefgal_hind0'] = 0
-  sgIDs['z2_h0_res9_zoom_20mpc_derefgal_nomod_hind0'] = 0
+  ; zoom.0 z2 (target halo)
+  ;sgIDs['z2_h0_res9_zoom_20mpc_hind0']  = 0
+  ;sgIDs['z2_h0_res10_zoom_20mpc_hind0'] = 0
+  ;sgIDs['z2_h0_res11_zoom_20mpc_hind0'] = 0
+  ;sgIDs['z2_h0_res9_zoom_20mpc_derefgal_hind0'] = 0
+  ;sgIDs['z2_h0_res9_zoom_20mpc_derefgal_nomod_hind0'] = 0
 
-  ; illustris.0 (most massive halo in box at z=0)
-  sgIDs['snap123_h0_res455_illustris']  = 0
-  sgIDs['snap123_h0_res910_illustris']  = 0
-  sgIDs['snap123_h0_res1820_illustris'] = 0
+  ;sgIDs['z2_h0_res11_scylla_hind-1'] = 0
   
-  sgIDs['z0_h0_res128_feedback'] = 0 ; fake it for testing
-  sgIDs['z0_h0_res256_feedback'] = 0 ; fake it for testing
+  ; zoom.0 z3
+  ;sgIDs['z3_h0_res9_zoom_20mpc_hind0']  = 0
+  ;sgIDs['z3_h0_res10_zoom_20mpc_hind0'] = 0
+  ;sgIDs['z3_h0_res11_zoom_20mpc_hind0'] = 0
+  
+  ; illustris.0 (most massive halo in box at z=0,1,2,4)
+  ;sgIDs['snap123_h0_res455_illustris']  = 0
+  ;sgIDs['snap123_h0_res910_illustris']  = 0
+  ;sgIDs['snap123_h0_res1820_illustris'] = 0
+  
+  ;sgIDs['snap135_h0_res455_illustris']  = 0
+  ;sgIDs['snap135_h0_res910_illustris']  = 0
+  ;sgIDs['snap135_h0_res1820_illustris'] = 0
+  
+  ;sgIDs['z0_h0_res455_illustris']  = 0
+  ;sgIDs['z0_h0_res910_illustris']  = 0
+  ;sgIDs['z0_h0_res1820_illustris'] = 0
+  
+  ;sgIDs['z1_h0_res1820_illustris'] = 0
+  ;sgIDs['z2_h0_res1820_illustris'] = 0
+  ;sgIDs['z4_h0_res1820_illustris'] = 0
+  
+  ;sgIDs['z0_h0_res128_feedback'] = 0 ; fake it for testing
+  ;sgIDs['z0_h0_res256_feedback'] = 0 ; fake it for testing
   
   ; illustris.1000 (~10^12 example at z=0)
   sgIDs['snap123_h1000_res455_illustris']  = 15912
@@ -210,13 +240,13 @@ pro rematch
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function loadGroupCat
 
-  sP1 = simParams(res=455,run='illustris',snap=123)
-  sP2 = simParams(res=1820,run='illustris',snap=123)
+  sP1 = simParams(res=256,run='gadget',redshift=0.0)
+  sP2 = simParams(res=128,run='gadget',redshift=0.0)
 
   gc1 = loadGroupCat(sP=sP1,/skipIDs,/skipOffsets)
   gc2 = loadGroupCat(sP=sP2,/skipIDs,/skipOffsets)
 
-  known1gcIDs = [15912]
+  known1gcIDs = [1822]
   
   foreach gcID,known1gcIDs do begin
     ; find closest spatial match
@@ -387,6 +417,7 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
   if strcmp(partType,'all') then begin
     ; allocate return
     if size(gc.IDs,/tname) eq 'LONG'   then subgroupPIDs  = lonarr(total(gc.subGroupLen[valGCids],/int))
+    if size(gc.IDs,/tname) eq 'ULONG'  then subgroupPIDs  = ulonarr(total(gc.subGroupLen[valGCids],/int))
     if size(gc.IDs,/tname) eq 'LONG64' then subgroupPIDs  = lon64arr(total(gc.subGroupLen[valGCids],/int))
     if size(gc.IDs,/tname) eq 'ULONG64' then subgroupPIDs = ulon64arr(total(gc.subGroupLen[valGCids],/int))
     
@@ -409,6 +440,7 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
   if total(gc.subgroupLenType[partType,valGCids] gt 0) then begin
     ; allocate return
     if size(gc.IDs,/tname) eq 'LONG'    then subgroupPIDs = lonarr(total(gc.subGroupLenType[partType,valGCids],/int))
+    if size(gc.IDs,/tname) eq 'ULONG'   then subgroupPIDs = ulonarr(total(gc.subGroupLenType[partType,valGCids],/int))
     if size(gc.IDs,/tname) eq 'LONG64'  then subgroupPIDs = lon64arr(total(gc.subGroupLenType[partType,valGCids],/int))
     if size(gc.IDs,/tname) eq 'ULONG64' then subgroupPIDs = ulon64arr(total(gc.subGroupLenType[partType,valGCids],/int))
     

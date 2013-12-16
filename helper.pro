@@ -729,9 +729,20 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse,
  ; gamma scaling?
  if keyword_set(GA_in) and ctName ne 'helix' then begin
    tvlct,r,g,b,/get
+   nElem = n_elements(r)
+   
+   r = rebin(r,nElem*100)
+   g = rebin(g,nElem*100)
+   b = rebin(b,nElem*100)
+   
    n = n_elements(r)
    s = long(n*((findgen(n)/n)^GA_in))
    r = r[s] & g = g[s] & b = b[s]
+   
+   r = rebin(r,nElem)
+   g = rebin(g,nElem)
+   b = rebin(b,nElem)
+   
    tvlct,r,g,b
  endif
  
@@ -1094,6 +1105,7 @@ end
 @galaxyHaloCat
 @accretionMode
 @accretionTimes
+@accretionFlags
 ;@accretionVel
 @maxVals
 @timeScales
