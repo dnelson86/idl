@@ -1,6 +1,6 @@
 ; cosmoLoad.pro
 ; cosmological simulations - loading procedures (snapshots, fof/subhalo group cataloges)
-; dnelson oct.2013
+; dnelson jan.2014
 
 ; getTypeSortedIDList(): within the group catalog ID list rearrange the IDs for each FOF group to be 
 ;                        ordered first by type (not by SubNr since Subfind was run) such that the
@@ -61,6 +61,8 @@ function getTypeSortedIDList, sP=sP, gc=gc
     gc_ind_star  = gc_ind_star[sort(gc_ind_star)]
     if (count_star ne total(gc.groupLenType[partTypeNum('stars'),*])) then stop
   endif
+  
+  if gfmBHs gt 0 then message,'Not yet implemented.'
   
   if (count_gas + count_dm + count_trvel + count_star ne total(gc.groupLen)) then stop
   
@@ -147,6 +149,135 @@ function getTypeSortedIDList, sP=sP, gc=gc
   return, sortedIDList
 
 end
+
+; getGroupCatIDListFromGroupSortedSnap(): to allow all existing analysis routines to work 
+;   with group sorted snapshots. In this case 'IDs' does not exist in the group catalog, but
+;   instead the group/subgroup lengths and offsets refer to the snapshots themselves. So, by 
+;   reconstructing the 'IDs' field we can, non-optimally, disregard the particular ordering
+;   scheme used in the snapshots.
+
+function getGroupCatIDListFromGroupSortedSnap, sP=sP, sf=sf, gcHeader=gcHeader
+
+  h = loadSnapshotHeader(sP=sP)
+  nTypes = 6
+      
+  if gcHeader.longIDsBits eq 32 then groupCatSavedIDs = ulonarr(gcHeader.nIDsTot)
+  if gcHeader.longIDsBits eq 64 then groupCatSavedIDs = ulon64arr(gcHeader.nIDsTot)
+  groupCatMask = intarr(gcHeader.nIDsTot)
+  skipIDs = 0LL
+  
+  ; construct the -by type- offset tables to reference into the snapshot
+  snapGroupOffset        = lonarr(gcHeader.nGroupsTot)
+  snapGroupOffsetType    = lonarr(6,gcHeader.nGroupsTot)
+  snapSubgroupOffset     = lonarr(gcHeader.nSubgroupsTot)
+  snapSubgroupOffsetType = lonarr(6,gcHeader.nSubgroupsTot)
+  
+  snapFuzzOffsetType     = lonarr(6,gcHeader.nGroupsTot)
+  snapFuzzLenType        = lonarr(6,gcHeader.nGroupsTot)
+  sfFuzzOffsetType       = lonarr(6,gcHeader.nGroupsTot)
+      
+  ; group      
+  for i=1L,gcHeader.nGroupsTot-1 do begin
+    snapGroupOffset[i] = snapGroupOffset[i-1] + sf.groupLen[i-1]
+  endfor
+  
+  for j=0,nTypes-1 do begin
+    for i=1L,gcHeader.nGroupsTot-1 do begin
+      snapGroupOffsetType[j,i] = snapGroupOffsetType[j,i-1] + sf.groupLenType[j,i-1]
+    endfor
+  endfor
+  
+  ; subgroup
+  for i=1L,gcHeader.nSubgroupsTot-1 do begin
+    snapSubgroupOffset[i] = snapSubgroupOffset[i-1] + sf.subGroupLen[i-1]
+  endfor
+  
+  for j=0,nTypes-1 do begin
+    for i=1L,gcHeader.nSubgroupsTot-1 do begin
+      snapSubgroupOffsetType[j,i] = snapSubgroupOffsetType[j,i-1] + sf.subGroupLenType[j,i-1]
+    endfor
+  endfor
+  
+  ; fuzz
+  for i=0L,gcHeader.nGroupsTot-1 do begin
+    ; for saving into the gc.IDs, the save offset is the group offset moved to the end of all 
+    ; subgroups (the sum of all subgroup lengths, over all types), plus the cumulative sum 
+    ; of previous fuzz types
+    tot_subs_length = 0L
+    sfFuzzOffsetCumSumGroup = 0L
+    
+    for k=0,sf.groupNSubs[i]-1 do begin
+      tot_subs_length += sf.subgroupLen[sf.groupFirstSub[i]+k]
+    endfor
+    
+    for j=0,nTypes-1 do begin
+      ; calculate total length of all subgroups of this group, for this particle type
+      tot_subs_length_type = 0L
+      
+      for k=0,sf.groupNSubs[i]-1 do begin
+        tot_subs_length_type += sf.subgroupLenType[j, sf.groupFirstSub[i]+k]
+      endfor
+      
+      ; calculate fuzz offset past the group offset by this total subgroup amount
+      ; and the fuzz length as the total group length minus this total subgroup amount
+      snapFuzzOffsetType[j,i] = snapGroupOffsetType[j,i] + tot_subs_length_type
+      snapFuzzLenType[j,i] = sf.groupLenType[j,i] - tot_subs_length_type
+      
+      ; save offset
+      sfFuzzOffsetType[j,i] = sf.groupOffset[i] + tot_subs_length + sfFuzzOffsetCumSumGroup
+      sfFuzzOffsetCumSumGroup += snapFuzzLenType[j,i]
+    endfor
+  endfor
+      
+  ; check overflow on offsets
+  if min(snapSubgroupOffset) lt 0 or min(snapSubgroupOffsetType) lt 0 then message,'Error'
+  if min(snapGroupOffset) lt 0 or min(snapGroupOffsetType) lt 0 then message,'Error'
+  if min(snapFuzzLenType) lt 0 or min(snapFuzzOffsetType) or min(sfFuzzOffsetType) lt 0 then message,'Error'
+
+  for partType=0,n_elements(h.nPartTot)-1 do begin
+    ; particle type 2 used (empty), and particle type 3 (tracerMC) not in group catalogs
+    if h.nPartTot[partType] eq 0 or partType eq partTypeNum('tracerMC') then begin
+      print,' Skipping ids... ['+str(partType)+']'
+      continue
+    endif
+    
+    ; load ids of this particle type
+    print,' Loading ids...  ['+str(partType)+']'
+    ids_type = loadSnapshotSubset(sP=sP,partType=partType,field='ids')
+        
+    ; loop over all subgroups
+    for SubNr=0,sf.nSubGroupsTot-1 do begin
+      offset = snapSubgroupOffsetType[partType,SubNr]
+      number = sf.subgroupLenType[partType,SubNr]
+          
+      if number gt 0 then begin
+        save_offset = sf.subgroupOffsetType[partType,SubNr]
+        groupCatSavedIDs[save_offset : save_offset+number-1] = ids_type[offset : offset+number-1]
+        groupCatMask[save_offset : save_offset+number-1] += 1
+      endif
+    endfor
+    
+    ; handle fuzz
+    for GrNr=0,sf.nGroupsTot-1 do begin
+      offset = snapFuzzOffsetType[partType,GrNr]
+      number = snapFuzzLenType[partType,GrNr]
+      
+      if number gt 0 then begin
+        save_offset = sfFuzzOffsetType[partType,GrNr]
+        groupCatSavedIDs[save_offset : save_offset+number-1] = ids_type[offset : offset+number-1]
+        groupCatMask[save_offset : save_offset+number-1] += 1
+      endif
+    endfor
+    
+  endfor ; partType
+  
+  if min(groupCatSavedIDs) le 0 then message,'Error'
+  if min(groupCatMask) ne 1 or max(groupCatMask) ne 1 then message,'Error'
+
+  return, groupCatSavedIDs
+
+end
+
 
 ; getGroupCatFilename(): take input path and snapshot number and find fof/subfind group catalog filename
 
@@ -242,18 +373,21 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
     print,'Loading group catalog from snapshot ('+str(sP.snap)+') in [' + str(NumFiles) + '] files.'  
   
   ; IDs are 64bit?
-  longIDsBits = h5_parse(fileList[0]) ; just parse full structure of first file
-  longIDsBits = longIDsBits.Subhalo.SubhaloIDMostBound._precision
+  longIDsBits = hdf5s.Subhalo.SubhaloIDMostBound._precision
   if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
+  
+  ; no IDs actually in group catalog (snapshot is group ordered)?
+  idsInGroupCatFlag = 0
+  if tag_exist(hdf5s.IDs,'ID') then idsInGroupCatFlag = 1
   
   ; counters
   nGroupsTot    = 0L
-  nIDsTot       = 0L
   nSubgroupsTot = 0L
+  nIDsTot       = 0LL
   
   skip    = 0L
   skipSub = 0L
-  skipIDs = 0L
+  skipIDs = 0LL
   
   ; load across all file parts
   for i=0,nFiles-1 do begin
@@ -270,7 +404,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
           nSubgroups          : s.nSubgroups_ThisFile._DATA       ,$
           nSubgroupsTot       : s.nSubgroups_Total._DATA          ,$
           numFiles            : s.NumFiles._DATA                  ,$
-          flagDoublePrecision : s.flagDoublePrecision._DATA       $
+          flagDoublePrecision : s.flagDoublePrecision._DATA       ,$
+          longIDsBits         : longIDsBits                        $
         }
          
     ; add counters
@@ -469,7 +604,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
     endif ; SubfindExistsFlag
     
     ; fill sf with IDs from this part (if requested)
-    if keyword_set(readIDs) then begin
+    if keyword_set(readIDs) and idsInGroupCatFlag eq 1 then begin
+      ; IDs.ID actually exists (snapshot is -not- group ordered), read now
       sf.IDs[skipIDs:(skipIDs+h.nIDs-1)] = h5d_read(h5d_open(fileID,"IDs/ID"))
       skipIDs += h.nIDs
     endif
@@ -479,7 +615,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
   
   endfor
   
-  if ~keyword_set(skipOffsets) then begin
+  ; must make offsets if we are requested to readIDs and snapshot is group ordered
+  if ~keyword_set(skipOffsets) or (keyword_set(readIDs) and idsInGroupCatFlag eq 0) then begin
   
   ; create group offset table
   ; when subfind is run, sort to create ID list is: (1) GrNr, (2) SubNr, (3) Type, (4) BindingEnergy
@@ -519,6 +656,26 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
   endfor
   
   endif ; skipOffsets
+  
+  ; IDs.ID do not exist in group catalog (snapshot -is- group ordered), reconstruct now
+  if keyword_set(readIDs) and idsInGroupCatFlag eq 0 then begin
+    idsSavePath = sP.derivPath + 'groupIDs/ids_' + str(sP.snap) + '.sav'
+    
+    if file_test(idsSavePath) then begin
+      restore,idsSavePath
+      sf.IDs = groupCatSavedIDs
+    endif else begin
+      ; do not have the Group.IDs already made, make it now, by particle type
+      print,'Making new groupCatSavedIDs.'
+      groupCatSavedIDs = getGroupCatIDListFromGroupSortedSnap(sP=sP,sf=sf,gcHeader=h)
+      sf.IDs = groupCatSavedIDs
+      
+      ; save
+      save,groupCatSavedIDs,filename=idsSavePath
+      print,'Saved: '+strmid(idsSavePath,strlen(sp.derivPath))
+    endelse
+    
+  endif
   
   ; if ID read requested, create typeSortedIDList (and save), add to return structure
   if keyword_set(readIDs) and keyword_set(getSortedIDs) then begin
@@ -841,7 +998,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   GFMExistsFlag  = tag_exist(hdf5s,'GFM_Metallicity')
   if GFMExistsFlag then begin
     gfmNumElements = hdf5s.PartType0.GFM_Metals._DIMENSIONS[0]
-    if PT eq 'star' or PT eq 'stars' and h.nPartTot[partType] gt 0 then $
+    if str(PT) eq 'star' or str(PT) eq 'stars' and h.nPartTot[partType] gt 0 then $
       gfmNumPhotometrics = hdf5s.PartType4.GFM_StellarPhotometrics._DIMENSIONS[0]
   endif
   
