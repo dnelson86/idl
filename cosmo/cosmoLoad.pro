@@ -271,7 +271,6 @@ function getGroupCatIDListFromGroupSortedSnap, sP=sP, sf=sf, gcHeader=gcHeader
     
   endfor ; partType
   
-  if min(groupCatSavedIDs) le 0 then message,'Error'
   if min(groupCatMask) ne 1 or max(groupCatMask) ne 1 then message,'Error'
 
   return, groupCatSavedIDs
