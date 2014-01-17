@@ -1,6 +1,6 @@
 ; tracersMC.pro
 ; dev for MC tracer particles (spherically symmetric setups)
-; dnelson nov.2012
+; dnelson jan.2014
 
 ; checkSnapshotIntegrity(): check the tracer output in a snapshot makes sense
 
@@ -184,10 +184,18 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
     tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
   
   if useExternalLowMem eq 0 then begin
-  
+
+    ; shift ID arrays by a minimum to handle the huge offsets from zero
+    min_val = min( [min(gasIDs),min(tr_parids)] )
+
+    gasIDs    = temporary(gasIDs) - min_val
+    tr_parids = temporary(tr_parids) - min_val
+
     ; (option 1) use reverse histogram approach
     prevMax = max(tr_parids)
-    child_counts = histogram(tr_parids,min=0,max=prevMax+1,rev=child_inds,/L64)
+    hist_max = max( [prevMax,max(gasIDs)] )
+    
+    child_counts = histogram(tr_parids,min=0,max=hist_max+1,rev=child_inds,/L64)
 
     if min(child_inds) lt 0 then message,'Error: Corrupt RI.'
     if max(tr_parids) ne prevMax then message,'Error: Corrupted histo input.'
@@ -210,6 +218,10 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
       tr_inds[start:start+child_counts[w[i]]-1] = child_inds[child_inds[gasID]:child_inds[gasID+1]-1]
       start += child_counts[w[i]]
     endforeach
+    
+    ; undo ID shift in case we use them later
+    gasIDs    = temporary(gasIDs) + min_val
+    tr_parids = temporary(tr_parids) + min_val
   
   endif else begin
   
