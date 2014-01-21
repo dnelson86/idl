@@ -1,6 +1,6 @@
 ; helper.pro
 ; helper functions (NOTE: all my IDL routines loaded at bottom of this file)
-; dnelson oct.2013
+; dnelson jan.2014
 
 ; one line utility functions
 ; --------------------------
@@ -1134,6 +1134,7 @@ end
 
 @plotGalCat
 @plotMaxVals
+@plotAccTimes
 @binVsHaloMass
 @plotVsHaloMass
 ;@plotRadProfiles

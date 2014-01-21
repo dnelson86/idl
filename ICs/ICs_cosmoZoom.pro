@@ -517,16 +517,32 @@ end
 pro orderLagrangianVolumes
 
   ; config
-  haloMassRange  = [11.8,12.2] ; log msun
-  targetRedshift = 2.0 ; resimulate until this redshift only
-  zoomLevel      = 2    ; levelmax-levelmin
-  outputPtFile   = 98   ; write ascii file for ellipsoid/convex hull test
+  ; ------
+  ;haloMassRange  = [11.8,12.2] ; log msun
+  ;targetRedshift = 2.0  ; resimulate until this redshift only
+  ;zoomLevel      = 2    ; levelmax-levelmin
+  ;outputPtFile   = 98   ; write ascii file for ellipsoid/convex hull test
+  ;readICsAsSnapZero = 0 ; 0=assume snap0 are the ICs, 1=read ICs directly (snap0 not at starting redshift)
   
-  sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=targetRedshift)
-
+  ;sP = simParams(res=256,run='zoom_10Mpc_dm',redshift=targetRedshift)
+  
   ; Onorbe+ (2013) suggested R_tb / rVirFac (requires >~4000 particles in halo in fullbox
   ; we just about satisfy this, ~2500-3500 for a 10^12 halo @ 20Mpc/128 or 40Mpc/256
-  rVirFac = (-0.1 * zoomLevel + 4) ; shy's formula
+  ;rVirFac = (-0.1 * zoomLevel + 4) ; shy's formula
+  ;print,'Using rVirFac: '+str(rVirFac)+' for zoomLevel='+str(zoomLevel)
+  
+  ; laura config
+  ; ------------
+  haloMassRange  = [10.5,11.0] ; log msun
+  targetRedshift = 0.0    ; resimulate until this redshift only
+  zoomLevel      = 1      ; levelmax-levelmin
+  outputPtFile   = 2504   ; write ascii file for ellipsoid/convex hull test
+  readICsAsSnapZero = 1   ; 0=assume snap0 are the ICs, 1=read ICs directly (snap0 not at starting redshift)
+  
+  sP = simParams(res=256,run='zoom_10Mpc_dm',redshift=targetRedshift)
+
+  ; relax shy's formula somewhat
+  rVirFac = (0.0 * zoomLevel + 4)
   print,'Using rVirFac: '+str(rVirFac)+' for zoomLevel='+str(zoomLevel)
   
   ; load z=target
@@ -574,11 +590,20 @@ pro orderLagrangianVolumes
   
   ; load z=zstart dm_ids
   ; --------------------
-  sP.snap = sP.snapRange[0]
-  sP.redshift = snapNumToRedshift(sP=sP)
+  if keyword_set(readICsAsSnapZero) then begin
+    fileName = sP.arepoPath + 'ics.hdf5'
+    sP.snap = -1
+    sP.redshift = -1
+    
+    zstart_ids = loadSnapshotSubset(fileName=fileName,partType='dm',field='ids')
+    zstart_pos = loadSnapshotSubset(fileName=fileName,partType='dm',field='pos')
+  endif else begin
+    sP.snap = sP.snapRange[0]
+    sP.redshift = snapNumToRedshift(sP=sP)
   
-  zstart_ids = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
-  zstart_pos = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
+    zstart_ids = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
+    zstart_pos = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
+  endelse
   
   ; make id->index map
   idIndexMap = getIDIndexMap(zstart_ids,minid=minid)

@@ -229,15 +229,15 @@ end
 ;                     gmem, (2) same but unnormalized by tviracc, (3) global not binned by halo mass but
 ;                     normalized by each parent tviracc, (4) same global without normalization
 
-pro plotValMaxHistos, redshift=redshift, res=res
+pro plotValMaxHistos ;, redshift=redshift, res=res
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   ; config
   runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
-  ;redshift   = 2.0
-  ;res        = 256
+  redshift   = 2.0
+  res        = 512
   timeWindow = 500.0 ; Myr
   accMode    = 'smooth' ;'all','smooth','clumpy','stripped','recycled'
   tagNames   = ['Tmax','TmaxTviracc','EntMax','DensMax','MachMax'] ; plot each quantity
@@ -437,15 +437,15 @@ end
 
 ; plotValMaxHistosByMode(); as above, but separated into modes (line plots only)
 
-pro plotValMaxHistosByMode, redshift=redshift, res=res
+pro plotValMaxHistosByMode ;, redshift=redshift, res=res
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   ; config
   runs       = ['tracer','gadget','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
-  ;redshift   = 2.0
-  ;res        = 256
+  redshift   = 2.0
+  res        = 512
   timeWindow = 500.0 ; Myr
   accModes   = ['all','smooth','clumpy','stripped','recycled']
   tagNames   = ['Tmax','TmaxTviracc','EntMax','DensMax','MachMax'] ; plot each quantity
@@ -491,9 +491,9 @@ pro plotValMaxHistosByMode, redshift=redshift, res=res
   yrange  = [6e-4,2.0]
   yrangeG = [1e-4,0.3]
   pParams = { TmaxTviracc : {xrange:[-2.2,1.4], xtickv:[-2,-1,0,1],   ylabel : "log ( T_{max} / T_{vir,acc} )"} ,$
-              Tmax        : {xrange:[3.0,8.0],  xtickv:[4,5,6,7],     ylabel : "log ( T_{max} )"}               ,$
-              EntMax      : {xrange:[4.5,10.0], xtickv:[5,6,7,8,9],   ylabel : "log ( S_{max} ) [K cm^{2 }]"}   ,$
-              DensMax     : {xrange:[-10,0],    xtickv:[-8,-6,-4,-2], ylabel : "log ( \rho_{max} )"}            ,$
+              Tmax        : {xrange:[3.5,7.5],  xtickv:[4,5,6,7],     ylabel : "log ( T_{max} )"}               ,$
+              EntMax      : {xrange:[4.5,9.5],  xtickv:[5,6,7,8,9],   ylabel : "log ( S_{max} ) [K cm^{2 }]"}   ,$
+              DensMax     : {xrange:[-9,-1],    xtickv:[-8,-6,-4,-2], ylabel : "log ( \rho_{max} )"}            ,$
               MachMax     : {xrange:[0,100],    xtickv:[10,30,50,80], ylabel : "M_{max}"}                        }     
               
   foreach tagName,tagNames do begin

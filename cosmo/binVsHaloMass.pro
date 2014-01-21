@@ -158,6 +158,7 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
       af = accretionFlags(sP=sP,targetSnap=targetSnap)
       
       ; now we also need quite a few values for the galcatTarget members
+      origSnap = sP.snap
       sP.snap = targetSnap
       
       mtTarget  = mergerTreeSubset(sP=sP)
@@ -180,6 +181,7 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
       curTvirTarget = gcSubsetProp(sP=sP,/virTemp,/accretionTimeSubset,accMode=accMode)
       maxTempTarget = gcSubsetProp(sP=sP,/maxPastTemp,/accretionTimeSubset,accMode=accMode)
       
+      sP.snap = origSnap
     endelse
   endif else begin
     ; (0) accretionRates based on accretionTimes (crossing of certain radii in certain directions)
@@ -244,11 +246,14 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
       if (tag_names(wAm))[k] ne (tag_names(rev))[k] then message,'Check'
       
       ; local indices of this type for this halo
-      loc_rev  = rev.(k)
+      loc_rev = rev.(k)
 	  
-	if loc_rev[i] eq loc_rev[i+1] then continue ; no particles of type in this group, or whole group empty (secondary)
-	  
-      loc_inds = loc_rev[ loc_rev[i] : loc_rev[i+1]-1 ]
+      origSkipFlag = 1
+      
+	if loc_rev[i] ne loc_rev[i+1] then begin ; no particles of type in this group, or whole group empty (secondary)
+	  origSkipFlag = 0
+        loc_inds = loc_rev[ loc_rev[i] : loc_rev[i+1]-1 ]
+      endif
       
       ; targetSnap: local indices of this type for this halo (the tracked progenitor of this halo)
       if sP.newAccRates eq 3 then begin
@@ -262,7 +267,9 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
       endif
       
       ; --- GALAXY ACCRETION ---
-
+      nloc = 0
+      
+      if origSkipFlag eq 0 then begin
       if sP.newAccRates gt 0 then begin
         if sP.newAccRates eq 1 then begin
           loc_atime = reform( at.accTime[ sP.accRateInd, (wAm.(k))[ loc_inds ] ] )
@@ -272,6 +279,7 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
         
           w = where(curtime - loc_atime le loc_timeWindow, nloc)
         endif else begin
+          ; (3) use the group membership information from accretionFlags()
           loc_accFlag = af.accFlag[ (wAm.(k))[loc_inds] ]
           
           w = where(loc_accFlag eq 1, nloc) ; 1 = galaxy tracer accretion
@@ -337,17 +345,16 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
           galaxy.accRate.(k).hot.tVirAcc[j,i]  = count_hot
         endfor
       endif ;nloc>0
+      endif ;origSkipFlag
       
       ; --- GALAXY OUTFLOW ---
+      nloc = 0
       
       if sP.newAccRates gt 0 then begin
         if sP.newAccRates eq 1 then begin
           ; (1) no outflow under this model
-          nloc = 0
         endif else begin
           ; (3) use the values at targetSnap for outflow calculation
-          nloc = 0
-          
           if targetSkipFlag eq 0 then begin
             loc_accFlagTarg = af.accFlagTarg[ (wAmTarget.(k))[loc_inds_target] ]
           
@@ -362,23 +369,25 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
           
         endelse ; (nAR: 1/3)
       endif else begin
-        loc_atime = reform( at.outTimeRT[ (wAm.(k))[loc_inds] ] )
+        if origSkipFlag eq 0 then begin
+          loc_atime = reform( at.outTimeRT[ (wAm.(k))[loc_inds] ] )
       
-        ; those that satisfy at sP.snap (e.g. gal gas), use failing the cut as the outflow time
-        w = where( at.outTimeRT[ (wAm.(k))[loc_inds] ] eq maxOutTimeRT, count)
-        if count gt 0 then loc_atime[w] = at.accTimeRT[ (wAm.(k))[loc_inds[w]] ]
+          ; those that satisfy at sP.snap (e.g. gal gas), use failing the cut as the outflow time
+          w = where( at.outTimeRT[ (wAm.(k))[loc_inds] ] eq maxOutTimeRT, count)
+          if count gt 0 then loc_atime[w] = at.accTimeRT[ (wAm.(k))[loc_inds[w]] ]
       
-        if count_noCut gt 0 then loc_atime[w_noCut] = -1 ; see above
+          if count_noCut gt 0 then loc_atime[w_noCut] = -1 ; see above
       
-        ; modify by 0.15rvir crossing time
-        r_crossing_time = reform( at.outTime[ sP.radIndGalAcc, (wAm.(k))[ loc_inds ] ] )
-        w = where(r_crossing_time gt loc_atime, count)
-        if count gt 0 then loc_atime[w] = r_crossing_time[w]
+          ; modify by 0.15rvir crossing time
+          r_crossing_time = reform( at.outTime[ sP.radIndGalAcc, (wAm.(k))[ loc_inds ] ] )
+          w = where(r_crossing_time gt loc_atime, count)
+          if count gt 0 then loc_atime[w] = r_crossing_time[w]
       
-        loc_atime = 1/loc_atime - 1 ; redshift
-        loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
+          loc_atime = 1/loc_atime - 1 ; redshift
+          loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
       
-        w = where(curtime - loc_atime le loc_timeWindow, nloc)
+          w = where(curtime - loc_atime le loc_timeWindow, nloc)
+        endif
         
         if nloc gt 0 then begin
           ; maximum past temps, cur and acc tvirs for only those particles in the time window
@@ -414,7 +423,9 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
       endif ;nloc>0
       
       ; --- HALO ACCRETION ---
+      nloc = 0
       
+      if origSkipFlag eq 0 then begin
       if sP.newAccRates gt 0 then begin
         if sP.newAccRates eq 1 then begin
           loc_atime = reform( at.accTime[ sP.atIndMode, (wAm.(k))[ loc_inds ] ] )
@@ -424,6 +435,7 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
           
           w = where(curtime - loc_atime le loc_timeWindow, nloc)
         endif else begin
+          ; (3) use the group membership information from accretionFlags()
           loc_accFlag = af.accFlag[ (wAm.(k))[loc_inds] ]
           
           w = where(loc_accFlag eq 2, nloc) ; 2 = halo tracer accretion
@@ -472,17 +484,16 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
           halo.accRate.(k).hot.tVirAcc[j,i]  = count_hot
         endfor
       endif ;nloc>0
+      endif ;origSkipFlag
       
       ; --- HALO OUTFLOW ---
+      nloc = 0
       
       if sP.newAccRates gt 0 then begin
         if sP.newAccRates eq 1 then begin
           ; no outflow under this model
-          nloc = 0
         endif else begin
           ; (3) use the values at targetSnap for outflow calculation
-          nloc = 0
-          
           if targetSkipFlag eq 0 then begin
             loc_accFlagTarg = af.accFlagTarg[ (wAmTarget.(k))[loc_inds_target] ]
           
@@ -497,11 +508,13 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
           
         endelse
       endif else begin
-        loc_atime = reform( at.outTime[ sP.radIndHaloAcc, (wAm.(k))[ loc_inds ] ] )      
-        loc_atime = 1/loc_atime - 1 ; redshift
-        loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
+        if origSkipFlag eq 0 then begin
+          loc_atime = reform( at.outTime[ sP.radIndHaloAcc, (wAm.(k))[ loc_inds ] ] )      
+          loc_atime = 1/loc_atime - 1 ; redshift
+          loc_atime = redshiftToAgeFlat(loc_atime) * 1e9 ; yr
       
-        w = where(curtime - loc_atime le loc_timeWindow, nloc)
+          w = where(curtime - loc_atime le loc_timeWindow, nloc)
+        endif
         
         if nloc gt 0 then begin
           ; maximum past temps, cur and acc tvirs for only those particles in the time window
@@ -514,7 +527,7 @@ function haloMassBinValues, sP=sP, accMode=accMode, timeWindow=TW
       ; process outflow members (common)
       halo.outRate.(k).cold.num[i]  = nloc
       
-      if nloc gt 0 then begin        
+      if nloc gt 0 then begin
         ; count mass elements with Tmax below each constant temperature threshold
         for j=0,nCuts-1 do begin
           w = where(loc_maxTemp le sP.TcutVals[j],count_cold,ncomp=count_hot)

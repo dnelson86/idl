@@ -255,6 +255,47 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     return, r  
   endif
   
+  ; laura's dwarf zoom project: DM only single halo zooms (L=8/256 for fullbox)
+  if run eq 'zoom_10mpc_dm' then begin
+  
+    r.minNumGasPart  = -1 ; no additional cut
+    r.trVelPerCell   = 0
+    r.trMCPerCell    = 0
+    r.trMCFields     = replicate(-1,13)
+    r.gfmNumElements = 0
+    r.gfmWinds       = 0
+    r.gfmBHs         = 0
+    r.boxSize        = 10000.0
+    r.levelMin       = 8 ; uniform box @ 256
+    r.levelMax       = 8 ; default
+    r.snapRange      = [0,135]
+    r.groupCatRange  = [21,135] ; z6=46, z5=50, z4=55, z3=61, z2=69, z1=87, z0=138
+    r.targetGasMass  = 0.0
+    r.trMassConst    = 0.0
+    
+    ;if n_elements(hInd) gt 0 then r = fillZoomParams(r,res=res,hInd=hInd)
+    if n_elements(hInd) gt 0 then message,'Error: Need to make separate fillZoomParams for this project.'     
+     
+    if r.levelMin ne r.levelMax then $
+      pathStr = '256_' + str(fix(r.boxSize/1000)) + 'Mpc_h' + str(hInd) + '_L' + str(r.levelMax) $
+    else $
+      pathStr = '256_' + str(fix(r.boxSize/1000)) + 'Mpc'
+              
+    r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/output/'
+    r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/'
+    r.savPrefix  = 'Z'
+    r.simName    = 'ZOOM_L'+str(r.levelMax)+'_DM'
+    r.saveTag    = 'zDmL'+str(r.levelMax)
+    r.plotPrefix = 'zDmL'+str(r.levelMax)
+    r.plotPath   = '/n/home07/dnelson/plots/'
+    r.derivPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/data.files/'
+    
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return, r
+  endif  
+  
   ; zoom project: DM only single halo zooms (L=7/128 for fullbox)
   if run eq 'zoom_20mpc_dm' then begin
   
