@@ -16,7 +16,7 @@ pro plotRatesFracsInRedshift
   tVirInd    = 0        ; use Tmax/Tviracc=1 to separate hot vs. cold
 
   accModes   = ['all','smooth','clumpy','stripped','recycled'] ; for fractional plot
-  skipFracs  = 0 ; or skip this plot
+  skipFracs  = 1 ; or skip this plot
   
   ; max histograms config
   massBinInd = 4        ; plot 11.0<logM<11.5 halos for ValMax histos
@@ -45,8 +45,8 @@ pro plotRatesFracsInRedshift
     ; make for all the redshifts
     foreach redshift,redshifts,j do begin
       sP_z  = mod_struct(sP_z, 'redshift'+str(j), simParams(res=res,run=run,redshift=redshift))
-      mbv_z = mod_struct(mbv_z, 'redshift'+str(j), $
-        haloMassBinValues(sP=sP_z.(j),accMode=accMode,timeWindow=timeWindow))
+      ;mbv_z = mod_struct(mbv_z, 'redshift'+str(j), $
+      ;  haloMassBinValues(sP=sP_z.(j),accMode=accMode,timeWindow=timeWindow))
       bth_z = mod_struct(bth_z, 'redshift'+str(j), $
         binValMaxHistos(sP=sP_z.(j),accMode=accMode,timeWindow=timeWindow))
         
@@ -66,7 +66,7 @@ pro plotRatesFracsInRedshift
     ; put this mode collection into mbv, once per run, and sP collection also
     if ~skipFracs then $
     amv = mod_struct(amv, 'amv'+str(i), mode_z)
-    mbv = mod_struct(mbv, 'mbv'+str(i), mbv_z)
+    ;mbv = mod_struct(mbv, 'mbv'+str(i), mbv_z)
     bth = mod_struct(bth, 'bth'+str(i), bth_z)
     sP  = mod_struct(sP, 'sP'+str(i), sP_z)
   endforeach
@@ -90,6 +90,7 @@ pro plotRatesFracsInRedshift
   pos = plot_pos(total=n_elements(redshifts),/gap) ; plot positioning (3x2, 2x2, or 1x2 with gaps)
   
   ; cold fraction (galaxy,halo)
+  if 0 then begin
   start_PS, sP.(0).(0).plotPath + 'coldFracRedshift.galaxy-halo.' + plotStr + '.eps', /big
     
     for zind=0,3 do begin
@@ -197,6 +198,7 @@ pro plotRatesFracsInRedshift
     endfor
 
   end_PS
+  endif ;0
 
   ; maximum val (temp,temp/tvir,ent,dens,mach) histos (allgal,gmem) (one halo mass bin)
   foreach tagName,tagNames do begin

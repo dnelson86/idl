@@ -1,6 +1,6 @@
 ; plotVsHaloMass.pro
 ; gas accretion project - plots as a function of halo mass
-; dnelson sep.2013
+; dnelson jan.2014
 
 ; plotPreBin():
 
@@ -52,7 +52,7 @@ pro plotByMethod
   accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
   timeWindow = 500.0 ; consider accretion over this past time range (Myr)
                       ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
-  res        = 256
+  res        = 512
   redshift   = 2.0
   
   lines   = [1,0,2] ; tvircur,tviracc,const5.5

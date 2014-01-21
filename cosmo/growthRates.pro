@@ -1,6 +1,6 @@
 ; growthRates.pro
 ; feedback project - calculate actual growth rates of galaxies/halos, compare to net inflow rates
-; dnelson sep.2013
+; dnelson jan.2014
 
 pro growthRates;, sP=sP, timeWindow=timeWindow
   forward_function cosmoTracerChildren, cosmoTracerVelParents
@@ -8,7 +8,13 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
   units = getUnits()
 
   ; config
-  sP=simParams(res=128,run='feedback',redshift=2.0)
+  runs = ['feedback']
+  resolutions = [512]
+  
+  foreach run,runs do begin
+  foreach res,resolutions do begin
+  
+  sP=simParams(res=res,run=run,redshift=2.0)
   timeWindow = 500.0 ; Myr or 'all'
   
   ; load net accretion rates for these same galaxies over the same timewindow (must be accMode=all)
@@ -230,6 +236,9 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
     cgPlot,linexy,[1.0,1.0],line=0,color=cgColor('orange'),/overplot
     legend,['1-to-1'],textcolor=['orange'],/bottom,/right
   end_PS
+  
+  endforeach ;res
+  endforeach ;run
   
     
 end
