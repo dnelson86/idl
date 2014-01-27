@@ -518,35 +518,35 @@ pro orderLagrangianVolumes
 
   ; config
   ; ------
-  ;haloMassRange  = [11.8,12.2] ; log msun
+  ;haloMassRange  = [11.7,12.3] ; log msun
   ;targetRedshift = 2.0  ; resimulate until this redshift only
-  ;zoomLevel      = 2    ; levelmax-levelmin
-  ;outputPtFile   = 98   ; write ascii file for ellipsoid/convex hull test
+  ;outputPtFile   = 134 ; write ascii file for ellipsoid/convex hull test
   ;readICsAsSnapZero = 0 ; 0=assume snap0 are the ICs, 1=read ICs directly (snap0 not at starting redshift)
-  
-  ;sP = simParams(res=256,run='zoom_10Mpc_dm',redshift=targetRedshift)
   
   ; Onorbe+ (2013) suggested R_tb / rVirFac (requires >~4000 particles in halo in fullbox
   ; we just about satisfy this, ~2500-3500 for a 10^12 halo @ 20Mpc/128 or 40Mpc/256
-  ;rVirFac = (-0.1 * zoomLevel + 4) ; shy's formula
-  ;print,'Using rVirFac: '+str(rVirFac)+' for zoomLevel='+str(zoomLevel)
+    ;zoomLevel = 2    ; levelmax-levelmin
+    ;rVirFac = (-0.1 * zoomLevel + 4) ; shy's formula (used for all 20Mpc, MUSIC v1.3b ICs)
+    ;rVirFac = (0.1 * zoomLevel + 4) ; jan.2014 for most 128 zooms h>=2
+  
+  ;rVirFac = 4.4
+  
+  ;sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=targetRedshift)
   
   ; laura config
   ; ------------
-  haloMassRange  = [10.5,11.0] ; log msun
+  haloMassRange  = [10.46,10.54] ; log msun
   targetRedshift = 0.0    ; resimulate until this redshift only
-  zoomLevel      = 1      ; levelmax-levelmin
   outputPtFile   = 2504   ; write ascii file for ellipsoid/convex hull test
   readICsAsSnapZero = 1   ; 0=assume snap0 are the ICs, 1=read ICs directly (snap0 not at starting redshift)
   
+  rVirFac = 5.6
+  
   sP = simParams(res=256,run='zoom_10Mpc_dm',redshift=targetRedshift)
-
-  ; relax shy's formula somewhat
-  rVirFac = (0.0 * zoomLevel + 4)
-  print,'Using rVirFac: '+str(rVirFac)+' for zoomLevel='+str(zoomLevel)
   
   ; load z=target
   ; -------------
+  print,'' & print,' --- Using rVirFac: '+str(rVirFac)+' ---' & print,''
   gc = loadGroupCat(sP=sP,/readIDs)
   
   gcIDs    = gcIDList(gc=gc,select='pri')
@@ -628,6 +628,12 @@ pro orderLagrangianVolumes
     volume     = (boundBox.x[1]-boundBox.x[0]) * (boundBox.y[1]-boundBox.y[0]) * (boundBox.z[1]-boundBox.z[0])
     volume    /= (1000.0^3) ;kpc^3 -> Mpc^3
     
+    ; compute convex hull with qhull and then calculate volume
+    qhull, zstart_pos_halo, tetra_inds, /delaunay
+    connectivity = reform( tetra_inds, n_elements(tetra_inds) ) ; linearize
+    vol_chull = tetra_volume( zstart_pos_halo, connectivity )
+    vol_chull /= (1000.0)^3 ; Mpc^3
+    
     ; box center and extent
     boxCenter = { x : mean(boundBox.x), y : mean(boundBox.y), z : mean(boundBox.z) }
     boxExtent = { x : boundBox.x[1]-boundBox.x[0], y : boundBox.y[1]-boundBox.y[0], z : boundBox.z[1]-boundBox.z[0] }  
@@ -638,11 +644,11 @@ pro orderLagrangianVolumes
       if abs(boundBox.(i)[1]-boundBox.(i)[0]) gt sP.boxSize/2 then wrap = 1 ; bad
       
     ; add entry to haloStats
-    haloStat = { massCenter:massCenter, boundBox:boundBox, volume:volume, $
+    haloStat = { massCenter:massCenter, boundBox:boundBox, volume:volume, vol_chull:vol_chull, $
                  boxCenter:boxCenter, boxExtent:boxExtent, wrap:wrap }
                  
     haloStats = mod_struct(haloStats, 'hInd'+str(halo.hInd), haloStat )
-    volumes = [volumes,volume]
+    volumes = [volumes,vol_chull]
     
     ; if we don't wrap, print out this halo
     if wrap eq 0 then $
@@ -650,7 +656,8 @@ pro orderLagrangianVolumes
             ' hInd = '+string(halo.hInd,format='(i4)')+$
             ' mass = '+string(halo.mass,format='(f5.2)')+$
             ' rvir = '+string(halo.rVir,format='(f5.1)')+$
-            ' vol = '+ string(haloStat.volume,format='(f5.1)')+$
+            ' vol_bbox = '+ string(haloStat.volume,format='(f5.1)')+$
+            ' vol_chull = '+ string(haloStat.vol_chull,format='(f5.1)')+$
             ' pos = ['+string(halo.pos[0],format='(f8.2)')+' '+$
                        string(halo.pos[1],format='(f8.2)')+' '+$
                        string(halo.pos[2],format='(f8.2)')+' ]'
@@ -663,7 +670,7 @@ pro orderLagrangianVolumes
       zstart_pos_halo /= double(sP.boxSize)
       
       ; open file and write
-      ptFileName = 'points_hInd_' + str(halo.hInd) + '.txt'
+      ptFileName = 'points_hInd_' + str(halo.hInd) + '_rVirFac' + str(fix(rVirFac*10)) + '.txt'
       openW,lun,ptFileName,/GET_LUN
   
       for j=0,n_elements(halo.ids)-1 do $
@@ -682,7 +689,7 @@ pro orderLagrangianVolumes
   sort_inds = sort(volumes)
   
   print,''
-  print,'Sorted by ascending Lagrangian volume, non-wrapping final candidates in mass range:'
+  print,'Sorted by ascending Lagrangian convex_hull volume, non-wrapping final candidates in mass range:'
   print,'(Showing MUSIC fractional boxCenter and boxExtent parameters at z='+str(fix(sP.redshift))+')'
   print,''
   
@@ -692,14 +699,13 @@ pro orderLagrangianVolumes
     halo = halos.(ind)
     haloStat = haloStats.(ind)
     
-    print,'['+string(ind,format='(i2)')+']'+$
-          ' hInd = '+string(halo.hInd,format='(i4)')+$
-          ' mass = '+string(halo.mass,format='(f5.2)')+$
-          ' rvir = '+string(halo.rVir,format='(f5.1)')+$
-          ' vol = '+ string(haloStat.volume,format='(f5.1)')+$
-          ' zL = '+str(zoomLevel)+$
-          ' rVirFac = '+string(rVirFac,format='(f3.1)')+$
-          ' pos = ['+string(halo.pos[0],format='(f8.2)')+' '+$
+    print,'hInd= '+string(halo.hInd,format='(i4)')+$
+          ' mass= '+string(halo.mass,format='(f5.2)')+$
+          ' rvir= '+string(halo.rVir,format='(f5.1)')+$
+          ' vol_bbox= '+ string(haloStat.volume,format='(f5.1)')+$
+          ' vol_chull= '+ string(haloStat.vol_chull,format='(f5.1)')+$
+          ' rVirFac= '+string(rVirFac,format='(f3.1)')+$
+          ' pos= ['+string(halo.pos[0],format='(f8.2)')+' '+$
                      string(halo.pos[1],format='(f8.2)')+' '+$
                      string(halo.pos[2],format='(f8.2)')+' ]'
     print,'      boxCenter: [ '+$
@@ -748,11 +754,11 @@ end
 pro checkDMContamination
 
   ; config
-  ;sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=2.0) )
-  ;sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_20Mpc',res=10,hInd=0,redshift=2.0) )
-  sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_20Mpc_convhull',res=9,hInd=1,redshift=2.0) )
-  sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_convhull',res=10,hInd=1,redshift=2.0) )
-  ;sPs = mod_struct( sPs, 'sP4', simParams(run='zoom_20Mpc_dm',res=11,hInd=0,redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc_dm',res=11,hInd=1,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_20Mpc',res=9,hInd=5,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_20Mpc_convhull',res=9,hInd=1,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_convhull',res=10,hInd=1,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP4', simParams(run='zoom_10Mpc_dm_box',res=9,hInd=0,redshift=0.0) )
   
   colors = ['red','blue','green','orange','purple']
   nn     = 99
@@ -778,14 +784,13 @@ pro checkDMContamination
     print,' nCoarseSubhalo ['+str(nCoarseSubhalo)+'] nCoarseFof ['+str(nCoarseFof)+']'
   
     ; spatial check: load lowres DM positions
-    rVirFac = (1.5 * sP.zoomLevel + 1)
     pos = loadSnapshotSubset(sP=sP,partType='lowres_dm',field='pos')
   
     dists = periodicDists(gc.subgroupPos[*,hInd],pos,sP=sP)
     dists /= gc.group_r_crit200[ gc.subgroupGrNr[hInd] ] ; divide by found rvir
   
-    w = where(dists le rVirFac,nRvirFac)
-    print,' Spatial within rVirFac='+str(rVirFac)+' have ['+str(nRvirFac)+'] coarse DM.'
+    w = where(dists le sP.rVirFac,nRvirFac)
+    print,' Spatial within rVirFac='+str(sP.rVirFac)+' have ['+str(nRvirFac)+'] coarse DM.'
     w = where(dists le 1.5,n15rvir)
     print,' Spatial within rVirFac=1.5 have ['+str(n15rvir)+'] coarse DM.'
   
@@ -794,7 +799,7 @@ pro checkDMContamination
     ; out to what radius are we uncontaminated?
     dists = dists[sort(dists)]
     print,' Zero lowres DM out to radius of ['+string(min(dists),format='(f4.2)')+' rvir] ('+$
-      string(min(dists)/rVirFac,format='(f4.2)')+')'
+      string(min(dists)/sP.rVirFac,format='(f4.2)')+')'
   
     ; add cumulative histogram to plot
     strings = [strings, str(sP.simName)+' h'+str(sP.hInd)+' ('+str(2^sP.res)+')']
@@ -815,7 +820,7 @@ end
 pro checkGasContamination
 
   ; config
-  sP = simParams(run='zoom_20Mpc_convhull',res=10,hInd=1,redshift=2.0)
+  sP = simParams(run='zoom_20Mpc',res=9,hInd=5,redshift=2.0)
 
   ; load
   h = loadSnapshotHeader(sP=sP)
