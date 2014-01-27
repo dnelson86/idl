@@ -1,6 +1,6 @@
 ; simParams.pro
 ; return structure of simulation and analysis parameters with consistent information
-; dnelson sep.2013
+; dnelson jan.2014
 
 function fillZoomParams, r, res=res, hInd=hInd
 
@@ -32,7 +32,7 @@ function fillZoomParams, r, res=res, hInd=hInd
   if r.levelMax eq 11 then r.ids_offset = 500000000L
   
   if hInd eq 0 then begin
-    ;[ 6] hInd =   95 mass = 11.97 rvir = 239.9 vol =  69.3 pos = [ 7469.41  5330.66  3532.18 ]
+    ;hInd =   95 mass = 11.97 rvir = 239.9 vol =  69.3 pos = [ 7469.41  5330.66  3532.18 ]
     ;ref_center = 0.3938, 0.2466, 0.1794
     ;ref_extent = 0.2450, 0.1850, 0.1778
     r.targetHaloInd  = 95
@@ -42,46 +42,237 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.targetRedshift = 2.0
     
     if r.levelMax ge 9 then r.zoomShift = [13,32,41]
+    r.rVirFac = -0.1 * r.zoomLevel + 4.0
   endif
   
   if hInd eq 1 then begin
-    ;[ 7] hInd =   98 mass = 11.90 rvir = 218.0 vol =  63.7 zL = 2 rVirFac = 3.8 pos = [ 6994.99 16954.28 16613.29 ]
-    ;ref_center = 0.3288, 0.8630, 0.8127
-    ;ref_extent = 0.2229, 0.1853, 0.1929
+    ;hInd=   98 mass= 11.90 rvir= 218.0 vol_bbox=  75.9 vol_chull=  38.2 rVirFac= 4.4 pos= [ 6994.99 16954.28 16613.29 ]
+    ;hInd=   98 mass= 11.90 rvir= 218.0 vol_bbox=  79.2 vol_chull=  39.7 rVirFac= 4.6 pos= [ 6994.99 16954.28 16613.29 ]
+    ;hInd=   98 mass= 11.90 rvir= 218.0 vol_bbox=  79.3 vol_chull=  41.4 rVirFac= 4.8 pos= [ 6994.99 16954.28 16613.29 ]
     r.targetHaloInd  = 98
     r.targetHaloPos  = [6994.99, 16954.28, 16613.29]
     r.targetHaloRvir = 218.0 ; ckpc
     r.targetHaloMass = 11.90 ; log msun
     r.targetRedshift = 2.0
     
-    if r.levelMax ge 9 then r.zoomShift = [21,-46,-40]
+    if r.levelMax eq 9  then r.zoomShift = [21,-46,-40]
+    if r.levelMax eq 10 then r.zoomShift = [21,-45,-40]
+    if r.levelMax eq 11 then r.zoomShift = [21,-45,-40]
+    r.rVirFac = 0.2 * r.zoomLevel + 4.0
   endif
   
   if hInd eq 2 then begin
-    ;[ 9] hInd =  104 mass = 11.82 rvir = 214.8 vol =  76.8 zL = 2 rVirFac = 3.8 pos = [ 4260.38  5453.91  6773.12 ]
-    ;boxCenter: [  0.2071 ,  0.2695 ,  0.3588 ]
-    ;boxExtent: [  0.2001 ,  0.2151 ,  0.2229 ]
+    ;hInd=  104 mass= 11.82 rvir= 214.8 vol_bbox=  91.7 vol_chull=  47.5 rVirFac= 4.4 pos= [ 4260.38  5453.91  6773.12 ]
+    ;hInd=  104 mass= 11.82 rvir= 214.8 vol_bbox=  94.9 vol_chull=  49.3 rVirFac= 4.6 pos= [ 4260.38  5453.91  6773.12 ]
+    ;hInd=  104 mass= 11.82 rvir= 214.8 vol_bbox=  95.1 vol_chull=  50.6 rVirFac= 4.8 pos= [ 4260.38  5453.91  6773.12 ]
     r.targetHaloInd  = 104
     r.targetHaloPos  = [4260.38, 5453.91, 6773.12]
     r.targetHaloRvir = 214.8 ; ckpc
     r.targetHaloMass = 11.82 ; log msun
     r.targetRedshift = 2.0
     
-    if r.levelMax ge 9 then r.zoomShift = [37,29,18]
+    if r.levelMax eq 9  then r.zoomShift = [37,29,18]
+    if r.levelMax eq 10 then r.zoomShift = [37,29,18]
+    if r.levelMax eq 11 then r.zoomShift = [37,29,18]
+    r.rVirFac = 0.2 * r.zoomLevel + 4.0
   endif
   
   if hInd eq 3 then begin
-    ;[ 0] hInd =   49 mass = 12.17 rvir = 263.3 vol =  88.2 zL = 2 rVirFac = 3.8 pos = [10805.00  8047.92  4638.30 ]
-    ;boxCenter: [  0.5658 ,  0.4138 ,  0.2570 ]
-    ;boxExtent: [  0.2306 ,  0.2681 ,  0.1782 ]
+    ;hInd=   49 mass= 12.17 rvir= 263.3 vol_bbox=  88.4 vol_chull=  46.3 rVirFac= 4.2 pos= [10805.00  8047.92  4638.30 ]
+    ;hInd=   49 mass= 12.17 rvir= 263.3 vol_bbox=  94.5 vol_chull=  47.3 rVirFac= 4.3 pos= [10805.00  8047.92  4638.30 ]
+    ;hInd=   49 mass= 12.17 rvir= 263.3 vol_bbox=  98.4 vol_chull=  48.8 rVirFac= 4.4 pos= [10805.00  8047.92  4638.30 ]
     r.targetHaloInd  = 49
     r.targetHaloPos  = [10805.00, 8047.92, 4638.30]
     r.targetHaloRvir = 263.3 ; ckpc
     r.targetHaloMass = 12.17 ; log msun
     r.targetRedshift = 2.0
     
-    if r.levelMax ge 9 then r.zoomShift = [-8,11,31]
+    if r.levelMax eq 9  then r.zoomShift = [-8,11,31]
+    if r.levelMax eq 10 then r.zoomShift = [-8,10,30]
+    if r.levelMax eq 11 then r.zoomShift = [-8,10,31]
+    r.rVirFac = 0.1 * r.zoomLevel + 4.0
   endif
+  
+  if hInd eq 4 then begin
+    ;hInd =  101 mass = 11.86 rvir = 217.2 vol = 107.4 zL = 2 rVirFac = 4.2 pos = [ 4400.06  6559.38  5376.06 ]
+    r.targetHaloInd  = 101
+    r.targetHaloPos  = [4400.06, 6559.38, 5376.06]
+    r.targetHaloRvir = 217.2 ; ckpc
+    r.targetHaloMass = 11.86 ; log msun
+    r.targetRedshift = 2.0
+    
+    if r.levelMax eq 9  then r.zoomShift = [37,20,27]
+    if r.levelMax eq 10 then r.zoomShift = [37,20,27]
+    if r.levelMax eq 11 then r.zoomShift = [37,20,27]
+    r.rVirFac = 4.2
+  endif
+  
+  if hInd eq 5 then begin
+    ;hInd=   87 mass= 11.99 rvir= 203.7 vol_bbox= 132.4 vol_chull=  61.4 rVirFac= 4.4 pos= [ 9018.07  9343.99 15998.66 ]
+    ;hInd=   87 mass= 11.99 rvir= 203.7 vol_bbox= 135.8 vol_chull=  64.7 rVirFac= 4.6 pos= [ 9018.07  9343.99 15998.66 ]
+    ;hInd=   87 mass= 11.99 rvir= 203.7 vol_bbox= 139.1 vol_chull=  69.1 rVirFac= 4.8 pos= [ 9018.07  9343.99 15998.66 ]
+    r.targetHaloInd  = 87
+    r.targetHaloPos  = [9018.07, 9343.99, 15998.66]
+    r.targetHaloRvir = 203.7 ; ckpc
+    r.targetHaloMass = 11.99 ; log msun
+    r.targetRedshift = 2.0
+    
+    if r.levelMax eq 9  then r.zoomShift = [12,0,-36]
+    if r.levelMax eq 10 then r.zoomShift = [12,0,-36]
+    if r.levelMax eq 11 then r.zoomShift = [12,0,-36]
+    r.rVirFac = 0.2 * r.zoomLevel + 4.0
+  endif
+  
+  if hInd eq 6 then begin
+    ;hInd=   92 mass= 11.95 rvir= 238.9 vol_bbox= 177.0 vol_chull=  68.4 rVirFac= 4.0 pos= [12557.16  6163.17 16039.71 ]
+    ;hInd=   92 mass= 11.95 rvir= 238.9 vol_bbox= 182.4 vol_chull=  70.2 rVirFac= 4.1 pos= [12557.16  6163.17 16039.71 ]
+    ;hInd=   92 mass= 11.95 rvir= 238.9 vol_bbox= 200.8 vol_chull=  79.0 rVirFac= 4.2 pos= [12557.16  6163.17 16039.71 ]
+    r.targetHaloInd  = 92
+    r.targetHaloPos  = [12557.16, 6163.17, 16039.71]
+    r.targetHaloRvir = 238.9 ; ckpc
+    r.targetHaloMass = 11.95 ; log msun
+    r.targetRedshift = 2.0
+    
+    if r.levelMax eq 9  then r.zoomShift = [-17,26,-38]
+    if r.levelMax eq 10 then r.zoomShift = [-17,25,-38]
+    if r.levelMax eq 11 then r.zoomShift = [-19,25,-39]
+    r.rVirFac = 0.1 * r.zoomLevel + 3.8
+  endif
+  
+  if hInd eq 7 then begin
+    ;hInd=  132 mass= 11.74 rvir= 191.5 vol_bbox=  35.1 vol_chull=  15.3 rVirFac= 4.2 pos= [ 3435.06 13498.76 12175.02 ]
+    ;hInd=  132 mass= 11.74 rvir= 191.5 vol_bbox=  35.1 vol_chull=  15.6 rVirFac= 4.3 pos= [ 3435.06 13498.76 12175.02 ]
+    ;hInd=  132 mass= 11.74 rvir= 191.5 vol_bbox=  35.2 vol_chull=  15.9 rVirFac= 4.4 pos= [ 3435.06 13498.76 12175.02 ]
+    r.targetHaloInd  = 132
+    r.targetHaloPos  = [3435.06, 13498.76, 12175.02]
+    r.targetHaloRvir = 191.5 ; ckpc
+    r.targetHaloMass = 11.74 ; log msun
+    r.targetRedshift = 2.0
+    
+    if r.levelMax eq 9  then r.zoomShift = [42,-19,-12]
+    if r.levelMax eq 10 then r.zoomShift = [42,-19,-12]
+    if r.levelMax eq 11 then r.zoomShift = [42,-19,-12]
+    r.rVirFac = 0.1 * r.zoomLevel + 4.0
+  endif
+  
+  if hInd eq 8 then begin
+    ;hInd=  134 mass= 11.74 rvir= 200.7 vol_bbox=  29.5 vol_chull=  15.2 rVirFac= 4.2 pos= [13688.10 17932.56 12944.52 ]
+    ;hInd=  134 mass= 11.74 rvir= 200.7 vol_bbox=  29.5 vol_chull=  15.5 rVirFac= 4.3 pos= [13688.10 17932.56 12944.52 ]
+    ;hInd=  134 mass= 11.74 rvir= 200.7 vol_bbox=  29.5 vol_chull=  15.7 rVirFac= 4.4 pos= [13688.10 17932.56 12944.52 ]
+    r.targetHaloInd  = 134
+    r.targetHaloPos  = [13688.10, 17932.56, 12944.52]
+    r.targetHaloRvir = 200.7 ; ckpc
+    r.targetHaloMass = 11.74 ; log msun
+    r.targetRedshift = 2.0
+    
+    if r.levelMax eq 9  then r.zoomShift = [-25,-47,-15]
+    if r.levelMax eq 10 then r.zoomShift = [-25,-47,-15]
+    if r.levelMax eq 11 then r.zoomShift = [-25,-47,-15]
+    r.rVirFac = 0.1 * r.zoomLevel + 4.0
+  endif
+  
+  if hInd eq 9 then begin
+    ;hInd=   75 mass= 11.79 rvir= 196.8 vol_bbox= 122.3 vol_chull=  46.8 rVirFac= 4.2 pos= [ 9767.34  9344.03 16377.18 ]
+    ;hInd=   75 mass= 11.79 rvir= 196.8 vol_bbox= 122.3 vol_chull=  48.1 rVirFac= 4.3 pos= [ 9767.34  9344.03 16377.18 ]
+    ;hInd=   75 mass= 11.79 rvir= 196.8 vol_bbox= 122.3 vol_chull=  49.0 rVirFac= 4.4 pos= [ 9767.34  9344.03 16377.18 ]
+    r.targetHaloInd  = 75
+    r.targetHaloPos  = [9767.34, 9344.03, 16377.18]
+    r.targetHaloRvir = 196.8 ; ckpc
+    r.targetHaloMass = 11.79 ; log msun
+    r.targetRedshift = 2.0
+    
+    if r.levelMax eq 9  then r.zoomShift = [6,0,-39]
+    if r.levelMax eq 10 then r.zoomShift = [6,0,-39]
+    if r.levelMax eq 11 then r.zoomShift = [6,0,-39]
+    r.rVirFac = 0.1 * r.zoomLevel + 4.0
+  endif
+  
+  ; colors as a function of resolution
+  if r.res eq 9 then $
+    r.colors = [getColor24(['ff'x,'40'x,'40'x]), $ ; red, light to dark (L9/default)
+                getColor24(['ff'x,'00'x,'00'x]), $
+                getColor24(['a6'x,'00'x,'00'x])]
+                
+  if r.res eq 10 then $
+    r.colors = [getColor24(['ff'x,'5b'x,'00'x]), $ ; red, light to dark (L9/default)
+                getColor24(['ff'x,'7c'x,'00'x]), $
+                getColor24(['ff'x,'9d'x,'00'x])]
+                  
+  if r.res eq 11 then $
+    r.colors = [getColor24(['ff'x,'00'x,'5b'x]), $ ; red, light to dark (L9/default)
+                getColor24(['ff'x,'00'x,'7c'x]), $
+                getColor24(['ff'x,'00'x,'9d'x])]  
+  
+  ; convert zoomShift to zoomShiftPhys
+  r.zoomShiftPhys = r.zoomShift / 2.0^r.levelMin * r.boxSize
+  
+  if r.targetHaloMass eq 0.0 then message,'Error: Unrecognized zoom hInd.'
+  if r.zoomLevel eq 0 then message,'Strange'
+  
+  return, r
+end
+
+function fillZoomParamsDwarf, r, res=res, hInd=hInd
+
+  ; convert res to levelMax if needed
+  r.levelMax = res
+  if r.levelMax ge 64 then r.levelMax = alog10(r.levelMax)/alog10(2)
+  if r.levelMax-round(r.levelMax) gt 1e-6 then message,'Error: Bad res'
+  r.levelMax = round(r.levelMax)
+  r.res      = r.levelMax
+
+  if r.levelMin lt 7 or r.levelMax gt 11 or r.levelMax lt r.levelMin then message,'res error'
+  if r.levelMax eq 8 then message,'Error: Does not exist.'
+  
+  if r.levelMin ne r.levelMax then $
+    if n_elements(hInd) eq 0 then message,'Error: Must specify hInd to load zoom.'
+  
+  r.zoomLevel = r.levelMax - r.levelMin
+  r.hInd      = hInd
+  r.zoomShift = [0,0,0] ; for levelMax=8 (unigrid)
+
+  r.targetGasMass = 5.95556796e-04 ; L7 (128 in 10Mpc)
+  r.targetGasMass /= (8^r.zoomLevel) ; factor of eight decrease at each increasing zoom level
+  
+  r.gravSoft = 2.0 ; L7 (128 in 10Mpc)
+  r.gravSoft /= (2^r.zoomLevel) ; factor of two decrease at each increasing zoom level
+  
+  if r.levelMax eq 9  then r.ids_offset =  10000000L
+  if r.levelMax eq 10 then r.ids_offset =  10000000L ; TODO
+  if r.levelMax eq 11 then r.ids_offset = 100000000L ; TODO
+  
+  if hInd eq 0 then begin
+    ;hInd= 2504 mass= 10.52 rvir=  50.1 vol_bbox=   4.3 vol_chull=   1.3 rVirFac= 5.2 pos= [ 9711.95  8777.39  1952.12 ]
+    ;hInd= 2504 mass= 10.52 rvir=  50.1 vol_bbox=   4.4 vol_chull=   1.3 rVirFac= 5.4 pos= [ 9711.95  8777.39  1952.12 ]
+    ;hInd= 2504 mass= 10.52 rvir=  50.1 vol_bbox=   4.9 vol_chull=   1.4 rVirFac= 5.6 pos= [ 9711.95  8777.39  1952.12 ]
+    r.targetHaloInd  = 2504
+    r.targetHaloPos  = [9711.95, 8777.39, 1952.12]
+    r.targetHaloRvir = 50.1 ; ckpc
+    r.targetHaloMass = 10.52 ; log msun
+    r.targetRedshift = 0.0
+    
+    if r.levelMax eq 9  then r.zoomShift = [-35,-45,44]
+    if r.levelMax eq 10 then r.zoomShift = [-35,-45,44]
+    if r.levelMax eq 11 then r.zoomShift = [-37,-45,44]
+    r.rVirFac = 0.2 * r.zoomLevel + 4.8
+  endif
+  
+  if hInd eq 1 then begin
+    ;hInd= 2545 mass= 10.48 rvir=  47.4 vol_bbox=   1.6 vol_chull=   0.6 rVirFac= 4.2 pos= [  324.20  4363.37  1364.59 ]
+    ;hInd= 2545 mass= 10.48 rvir=  47.4 vol_bbox=   1.6 vol_chull=   0.6 rVirFac= 4.4 pos= [  324.20  4363.37  1364.59 ]
+    ;hInd= 2545 mass= 10.48 rvir=  47.4 vol_bbox=   1.6 vol_chull=   0.6 rVirFac= 4.6 pos= [  324.20  4363.37  1364.59 ]
+    r.targetHaloInd  = 2545
+    r.targetHaloPos  = [324.20, 4363.37, 1364.59]
+    r.targetHaloRvir = 47.4 ; ckpc
+    r.targetHaloMass = 10.48 ; log msun
+    r.targetRedshift = 0.0
+    
+    if r.levelMax eq 9  then r.zoomShift = [-47,8,57]
+    if r.levelMax eq 10 then r.zoomShift = [-47,8,57]
+    if r.levelMax eq 11 then r.zoomShift = [-47,8,57]
+    r.rVirFac = 0.2 * r.zoomLevel + 3.8
+  endif
+    
   
   ; colors as a function of resolution
   if r.res eq 9 then $
@@ -143,6 +334,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
        levelmin:       0,$     ; power of two minimum level parameter (e.g. MUSIC L7=128, L8=256, L9=512, L10=1024)
        levelmax:       0,$     ; power of two maximum level parameter (equals levelmin for non-zoom runs)
        zoomLevel:      0,$     ; levelmax-levelmin
+       rVirFac:        0.0,$   ; size of cutout in units of rvir tracer back from targetRedshift
        hInd:           0,$     ; zoom halo index (as in path)
        zoomShift:      [0,0,0]       ,$ ; Music output: "Domain will be shifted by (X, X, X)"
        zoomShiftPhys:  [0.0,0.0,0.0] ,$ ; the domain shift in box units
@@ -256,7 +448,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
   endif
   
   ; laura's dwarf zoom project: DM only single halo zooms (L=8/256 for fullbox)
-  if run eq 'zoom_10mpc_dm' then begin
+  if run eq 'zoom_10mpc_dm' or run eq 'zoom_10mpc_dm_box' then begin
   
     r.minNumGasPart  = -1 ; no additional cut
     r.trVelPerCell   = 0
@@ -266,20 +458,22 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.gfmWinds       = 0
     r.gfmBHs         = 0
     r.boxSize        = 10000.0
-    r.levelMin       = 8 ; uniform box @ 256
-    r.levelMax       = 8 ; default
+    r.levelMin       = 7 ; uniform box @ 128 (unigrid run @L8 but coarsest level in zooms is L7)
+    r.levelMax       = 7 ; default
     r.snapRange      = [0,135]
     r.groupCatRange  = [21,135] ; z6=46, z5=50, z4=55, z3=61, z2=69, z1=87, z0=138
     r.targetGasMass  = 0.0
     r.trMassConst    = 0.0
+    r.gravSoft       = 1.0 ; L8 (10Mpc@256)
     
-    ;if n_elements(hInd) gt 0 then r = fillZoomParams(r,res=res,hInd=hInd)
-    if n_elements(hInd) gt 0 then message,'Error: Need to make separate fillZoomParams for this project.'     
+    if n_elements(hInd) gt 0 then r = fillZoomParamsDwarf(r,res=res,hInd=hInd)    
      
     if r.levelMin ne r.levelMax then $
       pathStr = '256_' + str(fix(r.boxSize/1000)) + 'Mpc_h' + str(hInd) + '_L' + str(r.levelMax) $
     else $
       pathStr = '256_' + str(fix(r.boxSize/1000)) + 'Mpc'
+              
+    if run eq 'zoom_10mpc_dm_box' then pathStr = pathStr + '_box'          
               
     r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/output/'
     r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/'
@@ -450,7 +644,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.gfmNumElements = 9
     r.gfmWinds       = 1
     r.gfmBHs         = 1
-    r.newAccRates    = 3
+    r.newAccRates    = 0 ;3
     
     if res eq 512 then r.subboxCen  = [5500,7000,7500]
     if res eq 512 then r.subboxSize = [4000,4000,4000]
@@ -551,7 +745,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 0  ; none (SPH)
     r.trMCFields    = intarr(13)-1 ; none (SPH)
-    r.newAccRates   = 3
+    r.newAccRates   = 0 ;3
     
     if keyword_set(f) then stop ; shouldn't be specified
     if res ne 128 and res ne 256 and res ne 512 then stop ; only resolutions that exist now
@@ -594,7 +788,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 10
     r.trVelPerCell  = 1
-    r.newAccRates   = 3
+    r.newAccRates   = 0 ;3
     
     if res eq 128 or res eq 256 then $
       r.trMCFields    = [0,1,5,2,-1,3,4,-1,-1,-1,-1,-1,-1] ; even older code version than tracer.512, indices specified manually in Config.sh
