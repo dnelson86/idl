@@ -616,9 +616,7 @@ function accretionFlags, sP=sP, targetSnap=targetSnap
       trMaskDebugTarg[w] += 1
         
     ; ambiguities:
-    ; 1. what about material that is in the galaxy at targetSnap but not at origSnap?
-    ;    this is somehow net outflow, do we subtract it or not? (NO)
-    ; 2. what about material in gmem at origSnap and in gal/stars/bh/inter at targetSnap?
+    ; 1. what about material in gmem at origSnap and in gal/stars/bh/inter at targetSnap?
     ;    this is somehow net inflow into the halo, from within? (do not include as halo acc)
     
     w = where(trMaskDebug ne 1,count)
