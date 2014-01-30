@@ -1,6 +1,6 @@
 ; accretionTimes.pro
 ; gas accretion project - past radial history of gas elements (virial radius crossing)
-; dnelson dec.2013
+; dnelson jan.2014
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionTimes(): for each gas particle/tracer, starting at some redshift, track backwards in time
@@ -226,7 +226,7 @@ function accretionTimes, sP=sP, restart=restart
               r.accTime[k,curInd] = time
           
               ; record Tvir at the first rvir crossing
-              if k eq n_elements(sP.rVirFacs) then begin
+              if k eq n_elements(sP.rVirFacs)+1 then begin
                 tvir = [ mt.hVirTemp[mt.maxSnap-m-1,mt.gcIndOrig[curInd]], $
                          mt.hVirTemp[mt.maxSnap-m,mt.gcIndOrig[curInd]] ]
                 if tvir[0] eq 0.0 or abs(tvir[0]-tvir[1]) gt 0.5 then tvir[0]=tvir[1]
@@ -487,13 +487,13 @@ function accretionTimes, sP=sP, restart=restart
             ; accretion/inflow
             for i=0,count_rad-1 do begin
               curInd = galcat_ind_inPar[rad_w[i]]
-          
+              
               radii = [ prevRad[curInd],rad_pri[rad_w[i]] ]
               time = interpol(times,radii,rVirFac) ; lerp time to r/rvir=rVirFac
               r.accTime[k,curInd] = time
           
               ; record Tvir at the first rvir crossing
-              if k eq n_elements(sP.rVirFacs) then begin
+              if k eq n_elements(sP.rVirFacs)+1 then begin
                 tvir = [ mt.hVirTemp[mt.maxSnap-m-1,mt.gcIndOrigTrMC[curInd]], $
                          mt.hVirTemp[mt.maxSnap-m,mt.gcIndOrigTrMC[curInd]] ]
                 if tvir[0] eq 0.0 or abs(tvir[0]-tvir[1]) gt 0.5 then tvir[0]=tvir[1]
@@ -525,7 +525,7 @@ function accretionTimes, sP=sP, restart=restart
             outCount[k] += count_out
           endelse
         
-        endforeach
+        endforeach ;rVirFacs
       
         ; adaptive: update mask, mark all children of halos whose tracking ends at this snapshot
         w = where(trMinSnap eq sP.snap,count)
@@ -637,7 +637,7 @@ function accretionTimes, sP=sP, restart=restart
         count_rad = 0
         count_out = 0
         
-        if k ge n_elements(sP.rVirFacs) then begin
+        if k ge n_elements(sP.rVirFacs)+1 then begin
           ; for the last two iterations, take 0.15/1.0rvir and do not use accMask
           ; thereby recording the earliest/highest redshift crossing
           if count_inPar gt 0 then begin

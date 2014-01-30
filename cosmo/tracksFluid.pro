@@ -1,6 +1,6 @@
 ; tracksFluid.pro
 ; feedback project - time series analysis of history of gas element properties
-; dnelson nov.2013
+; dnelson jan.2014
 
 ; tracksFluid(): record tracks in (temp,ent,dens,rad) space back in time for each snapshot for each gas element/tracer
 
@@ -10,19 +10,16 @@ function tracksFluid, sP=sP
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
 
-  ; set minimum snapshot (maxmimum redshift)
-  zStart = 6.0
-  minSnap = redshiftToSnapnum(zStart,sP=sP)
-
-  ; set maximum snapshot (minimum redshift)
-  maxSnap = sP.snap
-  
-  snapRange = [minSnap,maxSnap]
-  nSnaps = maxSnap - minSnap + 1
-  
   ; load mtS for radial tracking
   mt = mergerTreeSubset(sP=sP,/verbose)
   
+  ; set minimum snapshot (maxmimum redshift) and maximum snapshot (minimum redshift)
+  minSnap = mt.minSnap
+  maxSnap = mt.maxSnap
+  
+  snapRange = [minSnap,maxSnap]
+  nSnaps = maxSnap - minSnap + 1
+
   ; set saveFilename and check for existence
   saveFilename = sP.derivPath + 'tracksFluid.'+sP.saveTag+'.'+sP.savPrefix+str(sP.res)+'.'+$
                  str(minSnap)+'-'+str(maxSnap)+'.sav'
@@ -58,13 +55,14 @@ function tracksFluid, sP=sP
       rr = { snaps : lonarr(nSnaps), times : fltarr(nSnaps), redshifts : fltarr(nSnaps) }
       
       ; store the main arrays for all tracers as structures so we can write them directly
-      rtr  = { temp : fltarr(nSnaps,n_elements(galcat.trMC_ids))  ,$
+      rtr = { temp  : fltarr(nSnaps,n_elements(galcat.trMC_ids))  ,$
                ent  : fltarr(nSnaps,n_elements(galcat.trMC_ids))  ,$
                dens : fltarr(nSnaps,n_elements(galcat.trMC_ids))  ,$
                rad  : fltarr(nSnaps,n_elements(galcat.trMC_ids))  ,$
                flag : intarr(nSnaps,n_elements(galcat.trMC_ids))  , rr : rr }
              
       ; for determining flags
+      zStart = snapNumToRedshift(snap=minSnap,sP=sP)
       lastTime = 1.0/(1+zStart)
       tr_wc_last = intarr(n_elements(galcat.trMC_ids))
       
@@ -109,9 +107,11 @@ function tracksFluid, sP=sP
       tr_parids = tr_parids[trids_ind]
       
       ; --- for each each possible parent particle type, match child tracers and save times ---
-      parPartTypes = ['gas','stars']
+      parPartTypes = ['gas','stars','BHs']
       
       foreach partType,parPartTypes do begin
+        if partType eq 'BHs' and sP.gfmBHs eq 0 then continue
+        
         ; if we are outside [mt.minSnap,mt.maxSnap] cannot record rad, so skip
         if m lt mt.minSnap or m gt mt.maxSnap then continue
         
@@ -251,7 +251,7 @@ function tracksFluid, sP=sP
   
 end
 
-; plotFluidTracks():
+; plotFluidTracks(): of a single halo
 
 pro plotTracksSingle, tracks=tracks, val_ind=val_ind, inds=inds, colors=colors, $
                       xlines=xlines, yrange=yrange ; vertical lines along the x-axes
