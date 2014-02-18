@@ -52,7 +52,7 @@ pro plotByMethod
   accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
   timeWindow = 500.0 ; consider accretion over this past time range (Myr)
                       ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
-  res        = 512
+  res        = 256
   redshift   = 2.0
   
   lines   = [1,0,2] ; tvircur,tviracc,const5.5
@@ -97,7 +97,8 @@ pro plotByMethod
     simColors = [simColors, sPz.(i).colors[cInd]]
   endfor
 
-  plotStr += str(res) + '_' + str(sP.(0).snap) + '_tw' + twStr + '_am-' + accMode
+  plotStr += str(res) + '_' + str(sP.(0).snap) + '_tw' + twStr + $
+             '_am-' + accMode + '_model-' + str(sP.(0).accRateModel)
   
   ; --- cold fractions ---
   

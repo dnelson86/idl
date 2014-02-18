@@ -8,8 +8,8 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
   units = getUnits()
 
   ; config
-  runs = ['feedback']
-  resolutions = [512]
+  runs = ['gadget','tracer','feedback']
+  resolutions = [256]
   
   foreach run,runs do begin
   foreach res,resolutions do begin
@@ -140,19 +140,23 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
   ratiorange = [0.2,5.0]
   massrange  = [9.0,12.0]
   
-  start_PS,sP.plotPath + 'mass_vs_mass_gal_'+sP.plotPrefix+str(sP.res)+'.eps'
+  plotStr = sP.plotPrefix + str(sP.res) + "_model-" + str(sP.accRateModel)
+  
+  if 0 then begin
+  start_PS,sP.plotPath + 'mass_vs_mass_gal_' + plotStr + '.eps'
     cgPlot,curMasses.galaxy[wValidGal],targMasses.galaxy[wValidGal],psym=4,$
       xtitle="Gal Mass Current",ytitle="Gal Mass Target",$
       /xlog,/ylog,xminor=0,yminor=0,xrange=xyrange,yrange=xyrange
     cgPlot,linexy,linexy,line=0,color=cgColor('orange'),/overplot
   end_PS
   
-  start_PS,sP.plotPath + 'mass_vs_mass_halo_'+sP.plotPrefix+str(sP.res)+'.eps'
+  start_PS,sP.plotPath + 'mass_vs_mass_halo_' + plotStr + '.eps'
     cgPlot,curMasses.halo[wValidHalo],targMasses.halo[wValidHalo],psym=4,$
       xtitle="Halo Mass Current",ytitle="Halo Mass Target",$
       /xlog,/ylog,xminor=0,yminor=0,xrange=xyrange,yrange=xyrange
     cgPlot,linexy,linexy,line=0,color=cgColor('orange'),/overplot
   end_PS
+  endif ;0
   
   ; how do the actual growthRates compare to the net inflow rates over the same tW?
   ; 0 index = 1.0 tvir (total is independent of this choice)
@@ -164,7 +168,7 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
   xyrange = [0.05,100]
   linexy  = [0.07,70]
   
-  start_PS,sP.plotPath + 'growthRate_vs_netRate_gal_'+sP.plotPrefix+str(sP.res)+'.eps'
+  start_PS,sP.plotPath + 'growthRate_vs_netRate_gal_' + plotStr + '.eps'
     cgPlot,growthRates.galaxy[wValidGal],mbvGal[wValidGal],psym=4,$
       xrange=xyrange,yrange=xyrange,/xs,/ys,/xlog,/ylog,xminor=0,yminor=0,$
       xtitle="Galaxy Growth Rate [Msun/yr]",ytitle="Net Gal Inflow Rate [Msun/yr]",$
@@ -178,7 +182,7 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
     legend,['1-to-1'],textcolor=['orange'],/bottom,/right
   end_PS
   
-  start_PS,sP.plotPath + 'growthRate_vs_netRate_halo_'+sP.plotPrefix+str(sP.res)+'.eps'
+  start_PS,sP.plotPath + 'growthRate_vs_netRate_halo_' + plotStr + '.eps'
     cgPlot,growthRates.halo[wValidHalo],mbvHalo[wValidHalo],psym=4,$
       xrange=xyrange,yrange=xyrange,/xs,/ys,/xlog,/ylog,xminor=0,yminor=0,$
       xtitle="Halo Growth Rate [Msun/yr]",ytitle="Net Halo Inflow Rate [Msun/yr]",$
@@ -194,7 +198,8 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
   end_PS
   
   ; plot ratio net/growth as a function of growth
-  start_PS,sP.plotPath + 'ratio_vs_growthRate_gal_'+sP.plotPrefix+str(sP.res)+'.eps'
+  if 0 then begin
+  start_PS,sP.plotPath + 'ratio_vs_growthRate_gal_' + plotStr + '.eps'
     cgPlot,growthRates.galaxy[wValidGal],mbvGal[wValidGal]/growthRates.galaxy[wValidGal],psym=4,$
       xrange=xyrange,yrange=ratiorange,/xs,/ys,/xlog,/ylog,yminor=0,xminor=0,$
       xtitle="Galaxy Growth Rate [Msun/yr]",ytitle="Net Gal Inflow Rate / Growth Rate",$
@@ -204,7 +209,7 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
     legend,['1-to-1'],textcolor=['orange'],/bottom,/right
   end_PS
   
-  start_PS,sP.plotPath + 'ratio_vs_growthRate_halo_'+sP.plotPrefix+str(sP.res)+'.eps'
+  start_PS,sP.plotPath + 'ratio_vs_growthRate_halo_' + plotStr + '.eps'
     cgPlot,growthRates.halo[wValidHalo],mbvHalo[wValidHalo]/growthRates.halo[wValidHalo],psym=4,$
       xrange=xyrange,yrange=ratiorange,/xs,/ys,/xlog,/ylog,yminor=0,xminor=0,$
       xtitle="Halo Growth Rate [Msun/yr]",ytitle="Net Halo Inflow Rate / Growth Rate",$
@@ -213,9 +218,9 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
     cgPlot,linexy,[1.0,1.0],line=0,color=cgColor('orange'),/overplot
     legend,['1-to-1'],textcolor=['orange'],/bottom,/right
   end_PS
-  
+
   ; plot ratio net/growth as a function of current halo mass
-  start_PS,sP.plotPath + 'ratio_vs_haloMass_gal_'+sP.plotPrefix+str(sP.res)+'.eps'
+  start_PS,sP.plotPath + 'ratio_vs_haloMass_gal_' + plotStr + '.eps'
     cgPlot,codeMassToLogMsun(gcCur.subgroupMass[wValidGal]),$
       mbvGal[wValidGal]/growthRates.galaxy[wValidGal],psym=4,$
       xrange=massrange,yrange=ratiorange,/ys,/ylog,yminor=0,$
@@ -226,7 +231,7 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
     legend,['1-to-1'],textcolor=['orange'],/bottom,/right
   end_PS
   
-  start_PS,sP.plotPath + 'ratio_vs_haloMass_halo_'+sP.plotPrefix+str(sP.res)+'.eps'
+  start_PS,sP.plotPath + 'ratio_vs_haloMass_halo_' + plotStr + '.eps'
     cgPlot,codeMassToLogMsun(gcCur.subgroupMass[wValidGal]),$
       mbvHalo[wValidHalo]/growthRates.halo[wValidHalo],psym=4,$
       xrange=massrange,yrange=ratiorange,/xs,/ys,/ylog,yminor=0,$
@@ -236,7 +241,7 @@ pro growthRates;, sP=sP, timeWindow=timeWindow
     cgPlot,linexy,[1.0,1.0],line=0,color=cgColor('orange'),/overplot
     legend,['1-to-1'],textcolor=['orange'],/bottom,/right
   end_PS
-  
+  endif ;0
   endforeach ;res
   endforeach ;run
   
