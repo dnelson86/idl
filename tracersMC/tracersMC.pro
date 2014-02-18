@@ -2,6 +2,119 @@
 ; dev for MC tracer particles (spherically symmetric setups)
 ; dnelson jan.2014
 
+; cosmoTracerChildren(): return indices (or optionally IDs) of child tracer particles of 
+;                        specified gas cells/stars (by indices gasInds or ids gasIDs or ids starIDs)
+; note: for MC tracers should not mix gas and stellar searches, do separately
+
+function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
+                              gasInds=gasInds, gasIDs=gasIDs, starIDs=starIDs, $ ; input: gas cells/stars to search
+                              tr_parids=tr_parids, $ ; optional input, if already loaded
+                              child_counts=child_counts ; optional output
+                              
+  compile_opt idl2, hidden, strictarr, strictarrsubs               
+  useExternalLowMem = 1 ; roughly 50% slower, but half the peak memory usage
+                        ; required for illustris due to IDs spanning full 64bit range (cannot histogram)
+                      
+  if (n_elements(gasInds) eq 0 and n_elements(gasIDs) eq 0 and n_elements(starIDs) eq 0) then message,'Input required.'
+  if (not keyword_set(getInds) and not keyword_set(getIDs)) then message,'Output type required.'
+  if (n_elements(gasIDs) gt 0 and n_elements(starIDs) gt 0) then message,'Either gas or stars.'
+  
+  if n_elements(gasIDs) eq 0 and n_elements(starIDs) eq 0 then begin
+    ; convert input gas indices into IDs
+    if n_elements(gasInds) eq 0 then stop ; gas indices required if IDs not specified (no starInds support)
+    gasIDs = loadSnapshotSubset(sP=sP,partType='gas',field='ids',inds=gasInds)
+  endif
+  
+  pt = 'gas'
+  
+  ; if we input stars, switch particle type and override gasIDs with starIDs
+  if n_elements(starIDs) gt 0 then begin
+    pt = 'stars'
+    gasIDs = starIDs
+    starIDs = !NULL
+  endif
+  
+  ; get tracer parent IDs
+  if ~keyword_set(tr_parids) then $
+    tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
+  
+  if useExternalLowMem eq 0 then begin
+
+    ; shift ID arrays by a minimum to handle the huge offsets from zero
+    min_val = min( [min(gasIDs),min(tr_parids)] )
+
+    gasIDs    = temporary(gasIDs) - min_val
+    tr_parids = temporary(tr_parids) - min_val
+
+    ; (option 1) use reverse histogram approach
+    prevMax = max(tr_parids)
+    hist_max = max( [prevMax,max(gasIDs)] )
+    
+    child_counts = histogram(tr_parids,min=0,max=hist_max+1,rev=child_inds,/L64)
+
+    if min(child_inds) lt 0 then message,'Error: Corrupt RI.'
+    if max(tr_parids) ne prevMax then message,'Error: Corrupted histo input.'
+  
+    ; number of child tracers for each requested parent
+    child_counts = child_counts[gasIDs]
+  
+    ; reduce memory usage if possible
+    if max(child_counts) lt 32767 then child_counts = long(child_counts)
+
+    ; find gas cells with at least one child tracer
+    w = where(child_counts gt 0,count)
+    if (count eq 0) then return, []
+  
+    ; add all children tracer indices to keeper array
+    tr_inds = lon64arr(total(child_counts,/int))
+    start = 0LL
+  
+    foreach gasID,gasIDs[w],i do begin
+      tr_inds[start:start+child_counts[w[i]]-1] = child_inds[child_inds[gasID]:child_inds[gasID+1]-1]
+      start += child_counts[w[i]]
+    endforeach
+    
+    ; undo ID shift in case we use them later
+    gasIDs    = temporary(gasIDs) + min_val
+    tr_parids = temporary(tr_parids) + min_val
+  
+  endif else begin
+  
+    ; (option 2) use external routine
+    tr_inds = calcMatchDupe(gasIDs,tr_parids,dupe_counts=child_counts,count=count)
+    
+  endelse
+  
+  ; check for 32 bit long overflow
+  if min(tr_inds) lt 0 or min(child_counts) lt 0 then message,'Error: Likely overflow.'
+  
+  ; DEBUG: sanity check on child counts
+  ;gas_ids = loadSnapshotSubset(sP=sP,partType=pt,field='ids')
+  ;placeMap = getIDIndexMap(gas_ids,minid=minid)
+  ;gas_ids = !NULL
+  ;num_tr = loadSnapshotSubset(sP=sP,partType=pt,field='numtr',inds=placeMap[gasIDs-minid])
+  ;placeMap = !NULL
+  ;if not array_equal(child_counts,num_tr) then message,'Error: Tracer child count mismatch.'
+  
+  ; DEBUG: sanity check (slower loop with concat)
+  ;tr_inds2 = []
+  ;foreach gasID,gasIDs do begin
+  ;  ; if number of children is nonzero, add tracer indices to keeper array
+  ;  if (child_inds[gasID+1]-1-child_inds[gasID] ge 0) then $
+  ;    tr_inds2 = [tr_inds2,child_inds[child_inds[gasID]:child_inds[gasID+1]-1]]
+  ;endforeach
+  ;if not array_equal(tr_inds,tr_inds2) then stop
+  
+  if keyword_set(getIDs) then begin
+    ; if tracer IDs requested, load tracer IDs and return subset
+    return, loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids',inds=tr_inds)
+  endif else begin
+    ; return children tracer indices
+    return, tr_inds
+  endelse
+  
+end
+
 ; checkSnapshotIntegrity(): check the tracer output in a snapshot makes sense
 
 pro checkSnapshotIntegrity
@@ -148,116 +261,123 @@ pro checkSnapshotIntegrity
   endforeach ;snaps
 end
 
-; cosmoTracerChildren(): return indices (or optionally IDs) of child tracer particles of 
-;                        specified gas cells/stars (by indices gasInds or ids gasIDs or ids starIDs)
-; note: for MC tracers should not mix gas and stellar searches, do separately
+; checkTracerGroupOrdering(): in group ordered snapshots, allthough GroupLenType[3,*] and
+;   SubhaloLenType[3,*] are zero, the tracer may be ordered correctly, so make the LenType
+;   by summing NumTracers, as well as OffsetType, then check if all the supposed tracers
+;   belonging to a subgroup have parents in that subgroup
 
-function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
-                              gasInds=gasInds, gasIDs=gasIDs, starIDs=starIDs, $ ; input: gas cells/stars to search
-                              tr_parids=tr_parids, $ ; optional input, if already loaded
-                              child_counts=child_counts ; optional output
-                              
-  compile_opt idl2, hidden, strictarr, strictarrsubs               
-  useExternalLowMem = 0 ; roughly 50% slower, but half the peak memory usage
-                      
-  if (n_elements(gasInds) eq 0 and n_elements(gasIDs) eq 0 and n_elements(starIDs) eq 0) then message,'Input required.'
-  if (not keyword_set(getInds) and not keyword_set(getIDs)) then message,'Output type required.'
-  if (n_elements(gasIDs) gt 0 and n_elements(starIDs) gt 0) then message,'Either gas or stars.'
-  
-  if n_elements(gasIDs) eq 0 and n_elements(starIDs) eq 0 then begin
-    ; convert input gas indices into IDs
-    if n_elements(gasInds) eq 0 then stop ; gas indices required if IDs not specified (no starInds support)
-    gasIDs = loadSnapshotSubset(sP=sP,partType='gas',field='ids',inds=gasInds)
-  endif
-  
-  pt = 'gas'
-  
-  ; if we input stars, switch particle type and override gasIDs with starIDs
-  if n_elements(starIDs) gt 0 then begin
-    pt = 'stars'
-    gasIDs = starIDs
-    starIDs = !NULL
-  endif
-  
-  ; get tracer parent IDs
-  if ~keyword_set(tr_parids) then $
-    tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
-  
-  if useExternalLowMem eq 0 then begin
+pro checkTracerGroupOrdering
 
-    ; shift ID arrays by a minimum to handle the huge offsets from zero
-    min_val = min( [min(gasIDs),min(tr_parids)] )
-
-    gasIDs    = temporary(gasIDs) - min_val
-    tr_parids = temporary(tr_parids) - min_val
-
-    ; (option 1) use reverse histogram approach
-    prevMax = max(tr_parids)
-    hist_max = max( [prevMax,max(gasIDs)] )
+  sP = simParams(res=455,run='illustris',redshift=0.0)
+  targetGCInd = 100 ; subgroup
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  
+  parPartTypes = ['gas','star','bhs']
+  
+  numTr = { gas   : loadSnapshotSubset(sP=sP, partType='gas', field='numtr') ,$
+            dm    : -1,$
+            pt2   : -1,$
+            pt3   : -1,$
+            stars : loadSnapshotSubset(sP=sP, partType='stars', field='numtr') ,$
+            bhs   : loadSnapshotSubset(sP=sP, partType='bhs', field='numtr')    }
+  
+  offsets = { gas   : [0, (total(gc.subgroupLenType[0,*],/int,/cum))[0:-2]] ,$
+              dm    : -1,$
+              pt2   : -1,$
+              pt3   : -1,$
+              stars : [0, (total(gc.subgroupLenType[4,*],/int,/cum))[0:-2]] ,$
+              bhs   : [0, (total(gc.subgroupLenType[5,*],/int,/cum))[0:-2]]    }
+  
+  ; make length table
+  lenTrMC = lonarr(gc.nSubgroupsTot)
+  
+  lenTrMCType = { gas   : lonarr(gc.nSubgroupsTot) ,$
+                  dm    : -1,$
+                  pt2   : -1,$
+                  pt3   : -1,$
+                  stars : lonarr(gc.nSubgroupsTot) ,$
+                  bhs   : lonarr(gc.nSubgroupsTot)  }
+  
+  for gcInd=0L,gc.nSubgroupsTot-1 do begin
+  
+    numTr_local = 0
     
-    child_counts = histogram(tr_parids,min=0,max=hist_max+1,rev=child_inds,/L64)
-
-    if min(child_inds) lt 0 then message,'Error: Corrupt RI.'
-    if max(tr_parids) ne prevMax then message,'Error: Corrupted histo input.'
-  
-    ; number of child tracers for each requested parent
-    child_counts = child_counts[gasIDs]
-  
-    ; reduce memory usage if possible
-    if max(child_counts) lt 32767 then child_counts = long(child_counts)
-
-    ; find gas cells with at least one child tracer
-    w = where(child_counts gt 0,count)
-    if (count eq 0) then return, []
-  
-    ; add all children tracer indices to keeper array
-    tr_inds = lon64arr(total(child_counts,/int))
-    start = 0LL
-  
-    foreach gasID,gasIDs[w],i do begin
-      tr_inds[start:start+child_counts[w[i]]-1] = child_inds[child_inds[gasID]:child_inds[gasID+1]-1]
-      start += child_counts[w[i]]
+    ; loop over possible parent types
+    foreach ptNum,[0,4,5] do begin
+      if gc.subgroupLenType[ptNum,gcInd] eq 0 then continue
+      
+      indRange_loc = offsets.(ptNum)[gcInd]
+      indRange_loc = [indRange_loc + 0, indRange_loc + gc.subgroupLenType[ptNum,gcInd]-1]
+      
+      ; accumulate numTr in this parent type for whole group
+      numTr_localType = total( numTr.(ptNum)[ indRange_loc[0] : indRange_loc[1] ], /int)
+      
+      lenTrMCType.(ptNum)[gcInd] = numTr_localType
+      numTr_local += numTr_localType
     endforeach
     
-    ; undo ID shift in case we use them later
-    gasIDs    = temporary(gasIDs) + min_val
-    tr_parids = temporary(tr_parids) + min_val
+    ; save length
+    lenTrMC[gcInd] = numTr_local
+  endfor
   
-  endif else begin
+  ; make offset table by subgroup
+  offTrMC = [ 0, (total( lenTrMC, /cum, /int ))[0:-2] ]
   
-    ; (option 2) use external routine
-    tr_inds = calcMatchDupe(gasIDs,tr_parids,dupe_counts=child_counts,count=count)
+  ; make offset table by type within subgroup
+  offTrMCType = { gas   : [ 0, (total( lenTrMCType.(0), /cum, /int ))[0:-2] ] ,$
+                  dm    : -1,$
+                  pt2   : -1,$
+                  pt3   : -1,$
+                  stars : [ 0, (total( lenTrMCType.(4), /cum, /int ))[0:-2] ] ,$
+                  bhs   : [ 0, (total( lenTrMCType.(5), /cum, /int ))[0:-2] ]  }
+  
+  ; check 1 particular subhalo
+  parID = loadSnapshotSubset(sP=sP, partType='tracerMC', field='parentID')
+  
+  ID_local     = []
+  numTR_local  = []
+  parLen_local = []
+  parID_local  = []
+  
+  foreach parPartType,parPartTypes do begin
+    ptNum = partTypeNum(parPartType)
+    print,parPartType,ptNum
     
-  endelse
+    if gc.subgroupLenType[ptNum,targetGCInd] eq 0 then message,'Error (continue)'
+    
+    ; subgroup index range for this particle type
+    indRange_loc = offsets.(ptNum)[targetGCInd]
+    indRange_loc = [indRange_loc + 0, indRange_loc + gc.subgroupLenType[ptNum,targetGCInd]-1]
+    inds = lindgen( gc.subgroupLenType[ptNum,targetGCInd] ) + offsets.(ptNum)[targetGCInd]
+    
+    ; load NumTracer counts, only for this group
+    ID_local    = [ ID_local, $
+      loadSnapshotSubset(sP=sP, partType=parPartType, field='ids', inds=inds) ]
+    numTr_local = [ numTr_local, $
+      loadSnapshotSubset(sP=sP, partType=parPartType, field='numtr', inds=inds) ]
+    
+    parLen_local = [ parLen_local, $
+      gc.subgroupLenType[ptNum,targetGCInd] ]
+    
+    ; tracerMC index range for this subgroup
+    indRange_trLoc = offTrMC[targetGCInd]
+    indRange_trLoc = [indRange_trLoc + 0, indRange_trLoc + lenTrMC[targetGCInd]-1]
+    
+    ; load parID (check with global)
+    parID_local = [ parID_local, $
+      loadSnapshotSubset(sP=sP, partType='tracerMC', field='parentID', indRange=indRange_trLoc) ]
+    print,array_equal(parID_local, parID[indRange_trLoc[0] : indRange_trLoc[1]])
+
+  endforeach
   
-  ; check for 32 bit long overflow
-  if min(tr_inds) lt 0 or min(child_counts) lt 0 then message,'Error: Likely overflow.'
+  ; match
+  calcMatch,parID_local,ID_local,ind1,ind2,count=countMatch
+  print,'Matched '+str(countMatch)+' of '+str(n_elements(ID_local))+' ('+str(n_elements(parID_local))+')'
+  print,'Have summed numtr of parents: '+str(total(numTR_local,/int))
   
-  ; DEBUG: sanity check on child counts
-  ;gas_ids = loadSnapshotSubset(sP=sP,partType=pt,field='ids')
-  ;placeMap = getIDIndexMap(gas_ids,minid=minid)
-  ;gas_ids = !NULL
-  ;num_tr = loadSnapshotSubset(sP=sP,partType=pt,field='numtr',inds=placeMap[gasIDs-minid])
-  ;placeMap = !NULL
-  ;if not array_equal(child_counts,num_tr) then message,'Error: Tracer child count mismatch.'
-  
-  ; DEBUG: sanity check (slower loop with concat)
-  ;tr_inds2 = []
-  ;foreach gasID,gasIDs do begin
-  ;  ; if number of children is nonzero, add tracer indices to keeper array
-  ;  if (child_inds[gasID+1]-1-child_inds[gasID] ge 0) then $
-  ;    tr_inds2 = [tr_inds2,child_inds[child_inds[gasID]:child_inds[gasID+1]-1]]
-  ;endforeach
-  ;if not array_equal(tr_inds,tr_inds2) then stop
-  
-  if keyword_set(getIDs) then begin
-    ; if tracer IDs requested, load tracer IDs and return subset
-    return, loadSnapshotSubset(sP=sP,partType='tracerMC',field='tracerids',inds=tr_inds)
-  endif else begin
-    ; return children tracer indices
-    return, tr_inds
-  endelse
-  
+  stop
+
+
 end
 
 ; checkTracerDistInGal()
