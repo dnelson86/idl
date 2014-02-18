@@ -578,13 +578,17 @@ end
 ;
 ;   % mysql --local-infile -u <username> -p <DatabaseName>
 ;
+;   USE subgroups;
 ;   LOAD DATA LOCAL INFILE 'out.txt'
 ;   INTO TABLE snap_135
 ;   COLUMNS TERMINATED BY ' ' LINES TERMINATED BY '\n'
-;   (id,pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,mass,r200,primary_flag)
-;   set point_xy = PointFromText(CONCAT('POINT(',pos_x,' ',pos_y,')'));
+;   (id,pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,mass,r200,masstype_0,masstype_1,masstype_4,
+;    masstype_5,spin_x,spin_y,spin_z,veldisp,velmax,velmaxrad,halfmassrad_0,halfmassrad_1,
+;    halfmassrad_4,grnr,sfr,phot_U,phot_B,phot_V,phot_K,phot_G,phot_R,phot_I,phot_Z,fits_dirnr,
+;    primary_flag,image_x,image_y)
+;   set point_xy = PointFromText(CONCAT('POINT(',image_x,' ',image_y,')'));
 ;
-;   then add SPATIAL INDEX on points_xy
+;   then add SPATIAL INDEX on point_xy
 
 pro exportGroupCatAscii
   compile_opt idl2, hidden, strictarr, strictarrsubs
@@ -595,28 +599,48 @@ pro exportGroupCatAscii
   
   fileName   = 'out.txt'
   minNumPart = 100
-  zWidth     = 15000.0 ; cMpc/h centered on fof0 group position (or 0 to disable)
+  zWidth     = 0 ; 15000.0 ; cMpc/h centered on fof0 group position (or 0 to disable)
   
   ; load group catalog and select subgroups for export
   gc = loadGroupCat(sP=sP,/skipIDs,/skipOffsets)
-  
+
   zBounds = [-0.1, sP.boxSize + 0.1]
   if zWidth gt 0 then begin
     zBounds[0] = gc.groupPos[2,0] - zWidth*0.5
     zBounds[1] = gc.groupPos[2,0] + zWidth*0.5
   endif
   
+  ; make image (fof0 centered) coordinates
+  image_x = reform( gc.subgroupPos[0,*] )
+  image_y = reform( gc.subgroupPos[1,*] )
+  image_x = image_x - gc.subgroupPos[0,0] + sP.boxSize*0.5
+  image_y = image_y - gc.subgroupPos[1,0] + sP.boxSize*0.5
+
+  correctPeriodicPosVecs, image_x, sP=sP
+  correctPeriodicPosVecs, image_y, sP=sP
+
+  ; make export selection
   w = where(gc.subgroupLen ge minNumPart and $
             gc.subgroupPos[2,*] ge zBounds[0] and $
             gc.subgroupPos[2,*] le zBounds[1],count)
   print,'Exporting ['+str(count)+'] SUBGROUPS.'
 
+  ; load paul's additional array
+  pt_directory = '/n/ghernquist/ptorrey/Illustris/SubfindParsedSnapshots/Illustris-1/snapshot_135/directory.txt'
+  readcol,pt_directory,pt_subnr,pt_dirnr,format='L,L'
+  
+  pt_full_dirnr_array = intarr(gc.nSubgroupsTot) - 1   ; set all to -1
+  pt_full_dirnr_array[pt_subnr] = pt_dirnr             ; set directory elements
+
   ; fill output buffer
   outBuf = strarr(count)
   
   for i=0,count-1 do begin
+    if i mod round(count*0.1) eq 0 then print,i,count
+    
     gInd = gc.SubgroupGrNr[w[i]]
     pri_flag = gc.groupFirstSub[gInd] eq w[i]
+    pt_full_dirnr = pt_full_dirnr_array[w[i]]
     
     outBuf[i] = str(string(w[i],                     format='(I8)'))    + " " + $ ; ID
                 str(string(gc.SubgroupPos[0,w[i]],   format='(f12.6)')) + " " + $ ; pos_x
@@ -627,7 +651,33 @@ pro exportGroupCatAscii
                 str(string(gc.SubgroupVel[2,w[i]],   format='(f12.6)')) + " " + $ ; vel_z
                 str(string(gc.SubgroupMass[w[i]],    format='(f12.6)')) + " " + $ ; mass
                 str(string(gc.group_r_crit200[gInd], format='(f8.2)'))  + " " + $ ; r200
-                str(string(pri_flag,format='(I1)'))                               ; primary_flag
+                str(string(gc.SubgroupMassType[0,w[i]],            format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupMassType[1,w[i]],            format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupMassType[4,w[i]],            format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupMassType[5,w[i]],            format='(f12.6)')) + " " + $
+		    str(string(gc.SubgroupSpin[0,w[i]],                format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupSpin[1,w[i]],                format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupSpin[2,w[i]],                format='(f12.6)')) + " " + $
+		    str(string(gc.SubgroupVelDisp[w[i]],               format='(f12.6)')) + " " + $
+		    str(string(gc.SubgroupVmax[w[i]],                  format='(f12.6)')) + " " + $
+		    str(string(gc.SubgroupVmaxRad[w[i]],               format='(f12.6)')) + " " + $
+		    str(string(gc.SubgroupHalfMassRadType[0,w[i]], 	 format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupHalfMassRadType[1,w[i]], 	 format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupHalfMassRadType[4,w[i]], 	 format='(f12.6)')) + " " + $
+		    str(string(gc.SubgroupGrnr[w[i]],                  format='(I8)'))    + " " + $
+		    str(string(gc.SubgroupSFR[w[i]],                   format='(f12.6)')) + " " + $
+		    str(string(gc.SubgroupStellarPhotometrics[0,w[i]], format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupStellarPhotometrics[1,w[i]], format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupStellarPhotometrics[2,w[i]], format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupStellarPhotometrics[3,w[i]], format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupStellarPhotometrics[4,w[i]], format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupStellarPhotometrics[5,w[i]], format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupStellarPhotometrics[6,w[i]], format='(f12.6)')) + " " + $
+                str(string(gc.SubgroupStellarPhotometrics[7,w[i]], format='(f12.6)')) + " " + $
+		    str(string(pt_full_dirnr,	                         format='(I4)'))    + " " + $
+                str(string(pri_flag,                               format='(I1)'))    + " " + $ ; pri_flag
+                str(string(image_x[w[i]],                          format='(f12.6)')) + " " + $ ; image_x
+                str(string(image_y[w[i]],                          format='(f12.6)'))           ; image_y
                 
   endfor
   

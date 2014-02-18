@@ -1,6 +1,6 @@
 ; galaxyCat.pro
 ; gas accretion project - gas selections of interest (galaxy/halo catalogs)
-; dnelson jul.2013
+; dnelson feb.2014
 
 ; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
 ;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)
@@ -471,13 +471,16 @@ end
 ; rVir=1     : virial radius (r_200 critical)
 ; rVirNorm=1 : virial radius / r200
 ; vCirc=1    : circular velocity (v_200)
+; dynTime=1  : dynamical time of the halo (virRad/circVel)
 
 function galCatParentProperties, sP=sP, galcat=galcat, trRep=trRep, $
-                                 virTemp=virTemp, mass=mass, rVir=rVir, rVirNorm=rVirNorm, vCirc=vCirc
+                                 virTemp=virTemp, mass=mass, rVir=rVir, $
+                                 rVirNorm=rVirNorm, vCirc=vCirc, dynTime=dynTime
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function galaxyCat, snapNumToRedshift, codeMassToLogMsun
-
+  units = getUnits()
+  
   ; load group catalog for masses, galaxy catalog
   gc = loadGroupCat(sP=sP,/skipIDs)
   if ~keyword_set(galcat) then galcat = galaxyCat(sP=sP)
@@ -510,14 +513,18 @@ function galCatParentProperties, sP=sP, galcat=galcat, trRep=trRep, $
     ; note: since using most bound particle for subgroup centers, one per subgroup will have r=0
     r = gc.subgroupGrnr[gcInd]
     r = gc.group_r_crit200[r]
-	r = galcat.rad / r ; r/rvir
+    r = galcat.rad / r ; r/rvir
   endif
   
   if keyword_set(vCirc) then begin
-    units = getUnits()
-    
     r = gc.subgroupGrnr[gcInd]
     r = sqrt(units.G * gc.group_m_crit200[r] / gc.group_r_crit200[r])
+  endif
+  
+  if keyword_set(dynTime) then begin
+    r = gc.subgroupGrnr[gcInd]
+    vCirc = sqrt(units.G * gc.group_m_crit200[r] / gc.group_r_crit200[r])
+    r = gc.group_r_crit200[r] / vCirc
   endif
   
   ; replicate for tracers?
@@ -688,6 +695,7 @@ end
 ;  timeWindow : either in Myr, or 'all', the time over which to include accretion events
 ;  accTime,accTvir : time of accretion (in redshift) or virial temp of parent halo at time of accretion
 ;  accMode : return values only for one accretionMode (all,smooth,bclumpy,sclumpy,smooth)
+;  accTimeDelta=[a,b] : time difference (in Gyr) between two indices of the accretionTime
 
 function gcSubsetProp, sP=sP, gcIDList=gcIDList, $
            rVirNorm=rVirNorm, virTemp=virTemp, parMass=parMass, $
@@ -696,12 +704,13 @@ function gcSubsetProp, sP=sP, gcIDList=gcIDList, $
            elemIDs=elemIDs, tracksFluid=tracksFluid, $
            curGasVal=curGasVal, curTracerVal=curTracerVal, curField=curField, $
            accretionTimeSubset=accretionTimeSubset, timeWindow=TW, $
-           accTime=accTime,accTvir=accTvir,accMode=accMode ; for accretionTimeSubset only
+           accTime=accTime,accTvir=accTvir,accMode=accMode,accTimeDelta=accTimeDelta ; for accretionTimeSubset only
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; check combinations of input options for validity
-  if (keyword_set(accTime) or keyword_set(accTvir)) and ~keyword_set(accretionTimeSubset) then $
+  if (keyword_set(accTime) or keyword_set(accTvir) or keyword_set(accTimeDelta)) $
+    and ~keyword_set(accretionTimeSubset) then $
     message,'Error: Can only return accretion time or Tvir at accretion time for atS.'
   if keyword_set(accMode) and ~keyword_set(accretionTimeSubset) then $
     message,'Error: Can only return accretion mode subsets of the accretionTime subset.'
@@ -732,6 +741,7 @@ function gcSubsetProp, sP=sP, gcIDList=gcIDList, $
     if keyword_set(TW) then begin
 	
       ; NOTE: this TW option only used for maxVals binning, is not consistent with TW approach for accRates
+      print,'WARNING: consider timeWindow definition in gcSubsetProp().'
       
       ; current time
       h = loadSnapshotHeader(sP=sP)
@@ -854,6 +864,20 @@ function gcSubsetProp, sP=sP, gcIDList=gcIDList, $
       r = mod_struct( r, (tag_names(galcat.types))[i], $
         at.accHaloTvir[galcatInds.(i)] )
 
+    return,r
+  endif
+  
+  if keyword_set(accTimeDelta) then begin
+    ; take difference between two recorded accTimes based on radial index
+    ; accTimeDelta[0] = earlierInd, accTimeDelta[1] = laterInd
+    age_earlier = reform( redshiftToAgeFlat( 1.0/at.accTime[accTimeDelta[0],*]-1.0 ) )
+    age_later   = reform( redshiftToAgeFlat( 1.0/at.accTime[accTimeDelta[1],*]-1.0 ) )
+  
+    age_later -= age_earlier
+    
+    for i=0,n_tags(galcat.types)-1 do $
+      r = mod_struct( r, (tag_names(galcat.types))[i], reform( age_later[galcatInds.(i)] ) )
+        
     return,r
   endif
 

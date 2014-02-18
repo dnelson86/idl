@@ -1,110 +1,513 @@
 ; plotAccTimes.pro
 ; gas accretion project - past radial history of gas elements (plotting)
-; dnelson jan.2014
+; dnelson feb.2014
+
+; helper functions:
+
+function selectAccTimeDelta, sP=sP, at=at, galcat=galcat, $
+                             earlierInd=earlierInd, laterInd=laterInd, $
+                             gcType=gcType, norm=norm
+
+  units = getUnits()
+  
+  ; all times are interpolated, so if exactly the same exclude with strict LT
+  if gcType eq 'all' then $
+    w = where(at.accTime[earlierInd,*] ge 0 and at.accTime[laterInd,*] ge 0 and $
+              at.accTime[earlierInd,*] lt at.accTime[laterInd,*],count)
+  if gcType eq 'gal' then $
+    w = where(at.accTime[earlierInd,*] ge 0 and at.accTime[laterInd,*] ge 0 and $
+              at.accTime[earlierInd,*] lt at.accTime[laterInd,*] and $
+              (types eq galcat.types.gal or types eq galcat.types.stars),count)
+  if gcType eq 'gmem' then $
+    w = where(at.accTime[earlierInd,*] ge 0 and at.accTime[laterInd,*] ge 0 and $
+              at.accTime[earlierInd,*] lt at.accTime[laterInd,*] and $
+              types eq galcat.types.gmem,count)
+  if gcType eq 'inter' then $
+    w = where(at.accTime[earlierInd,*] ge 0 and at.accTime[laterInd,*] ge 0 and $
+              at.accTime[earlierInd,*] lt at.accTime[laterInd,*] and $
+              types eq galcat.types.inter,count)
+              
+  age_earlier = reform( redshiftToAgeFlat( 1.0/at.accTime[earlierInd,w]-1.0 ) )
+  age_later   = reform( redshiftToAgeFlat( 1.0/at.accTime[laterInd,w]-1.0 ) )
+  
+  val = age_later - age_earlier
+  
+  if count eq 0 then message,'Error'
+  
+  if keyword_set(norm) then val /= age_earlier
+  
+  return, {w:w,val:val}
+end
+
+function colorMapAccTime, h2, logHist=logHist, byRow=byRow
+  ; config
+  min = 10.0
+  max = 255.0
+  
+  h2_cmap = h2
+  
+  ; take values to log and lift all zeros to minimum nonzero
+  if keyword_set(logHist) then begin
+    w = where(h2_cmap gt 0,count)
+    if count gt 0 then h2_cmap[w] = alog10(h2_cmap[w])
+  endif
+  
+  w = where(h2_cmap eq 0,count)
+  if count gt 0 then h2_cmap[w] = min(h2_cmap[where(h2_cmap gt 0)])
+  print,minmax(h2_cmap)
+    
+  ; normalization by row?
+  if keyword_set(byRow) then begin
+    nRows = n_elements(h2_cmap[0,*])
+    
+    for i=0,nRows-1 do begin
+      curRow = reform( h2_cmap[*,i] )
+      curRow = fix( (curRow-min(curRow))/(max(curRow)-0.0) * (max-min) + min )
+      h2_cmap[*,i] = curRow
+    endfor
+  endif else begin
+    ; linear stretch from 10 (non-white) to 255
+    h2_cmap = fix( (h2_cmap-min(h2_cmap))/(max(h2_cmap)-0.0) * (max-min) + min )
+  endelse
+  
+    
+  return, h2_cmap
+end
+
+function colorMapAccTimeDelta, h2a, h2b, fracMin=fracMin, fracMax=fracMax
+  ; config
+  min = 10.0
+  max = 255.0
+  
+  if n_elements(fracMin) eq 0 or n_elements(fracMax) eq 0 then message,'Error'
+  
+  h2d_cmap = h2a*0.0 + 255/2 ; center missing values at white
+ 
+  ; row by row
+  nRows = n_elements(h2d_cmap[0,*])
+
+  for i=0,nRows-1 do begin
+    ; extract
+    aRow = reform( h2a[*,i] )
+    bRow = reform( h2b[*,i] )
+    
+    ; normalize each to their total (now a fraction)
+    aTotal = total(aRow,/int)
+    bTotal = total(bRow,/int)
+    
+    if aTotal eq 0 or bTotal eq 0 then continue ; leave output as zero diff
+    aRow /= aTotal
+    bRow /= bTotal
+    
+    ; stretch fractional difference between preset bounds
+    dRow = alog10( aRow / bRow )
+    ;dRow = (aRow - bRow) ;/ bRow
+    dRow = (dRow-fracMin)/(fracMax-fracMin) * (max-min) + min
+    ;dRow = fix( (dRow-min(dRow))/max(dRow) * (max-min) + min )
+    
+    ; set any non-finite (e.g. a=0 || b=0) to center value
+    w = where( ~finite(dRow), count )
+    if count gt 0 then dRow[w] = 255/2
+    
+    h2d_cmap[*,i] = dRow
+  endfor
+  
+  ; convert to byte, clamp to [0,255]
+  dRow = fix(dRow)
+  dRow = dRow > 0 < 255
+  return, h2d_cmap
+end
 
 ; plotAccTimeDeltas():
 
 pro plotAccTimeDeltas
 
   ; config
-  redshifts = [3.0,2.0,1.0,0.0]
-  runs      = ['feedback','tracer']
+  redshifts = [2.0] ;[3.0,2.0,1.0,0.0]
+  runs      = ['feedback','tracer','gadget']
   res       = 128
   
   ; index selection for difference ([1.0,0.75,0.5,0.25,0.15,0.05,0.01,first0.15,first1.0])
-  earlierInd = -1 
-  laterInd   = -2
-
+  rVirFacs = ['1.0 rvir','0.75 rvir','0.5 rvir','0.25 rvir','0.15 rvir','0.05 rvir',$
+              '0.01 rvir','first 0.15 rvir','first 1.0 rvir']
+  earlierInd = -1 ; -1  ; 0
+  laterInd   = -2 ; -2  ; 4
+  gcType     = 'all' ; all, gal (includes stars), gmem, inter
+  
   ; plot config
-  yrange     = [0.0,1.0]
-  xrange     = [0.0,5.0] ;[-5.0,5.0]
-  xrangeNorm = [-1.0,1.5]
-  nBins      = 20
+  yrange     = [1e-4,0.2]
+  xrange     = [0.0,5.0]
+  xrangeNorm = [7e-3,1.5]
+  nBins      = 100
   colorInd   = 1
   
   sP = simParams(res=res,run=runs[0],redshift=redshifts[0])
   
-  start_PS,sP.plotPath+'accTimeDeltas_'+str(res)+'.eps', xs=3*3.5, ys=4*3.5
+  plotName = 'accTimeDeltas_'+str(res)+'_'+str(earlierInd)+'_'+str(laterInd)+'_'+gcType+'.eps'
+  start_PS,sP.plotPath + plotName, xs=3*3.5, ys=4*3.5
   
     pos = plot_pos(rows=4,cols=2,/gap)
     colors = []
+    pinfo = {}
+    
+    cgText,0.5,0.98,textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
+      ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+')',alignment=0.5,/normal
     
     foreach redshift,redshifts,i do begin
     
-    xrange = [-1,1] * redshiftToAgeFlat(redshift)
+    xrangeNorm = [7e-3,1.5 + (3-redshift)*1]
+    xrange = [0.0,0.7] * redshiftToAgeFlat(redshift)
     
     ; plot (1)
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,title="",$
       xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),$
-      ytitle="Fraction",/xs,/ys,pos=pos[i*2],/noerase
-	
-	; plot histogram for each run/redshift combination
-      foreach run,runs,j do begin
-        print,redshift,run
-        sP_cur = simParams(res=res,run=run,redshift=redshift)
-        at     = accretionTimes(sP=sP_cur)
-        
-        w = where(at.accTime[earlierInd,*] ge 0 and at.accTime[laterInd,*] ge 0,count)
-        if count eq 0 then message,'Error'
-        
-        age_earlier = reform( redshiftToAgeFlat( 1.0/at.accTime[earlierInd,w]-1.0 ) )
-        age_later   = reform( redshiftToAgeFlat( 1.0/at.accTime[laterInd,w]-1.0 ) )
-        
-        val = age_later - age_earlier
-
-        if min(val) lt xrange[0] or max(val) gt xrange[1] then begin
-          print,'Warning: val min = ',min(val),' max = ',max(val)
-        endif
-        
-        binSize = (xrange[1] - xrange[0]) / float(nBins)
-	  h = histogram(val, bin=binSize, loc=loc, min=xrange[0], max=xrange[1])
-	  h = float(h)/total(h)
-	  
-        colors = [colors,sP_cur.colors[colorInd]]
-	  cgPlot,loc+binSize*0.5,h,color=colors[-1],/overplot
-	endforeach
-	
-	; legend
-	legend,['z = '+string(redshift,format='(f3.1)'),runs],textcolors=[0L,colors],/top,/right
-	
+      ytitle="Fraction",/xs,/ys,pos=pos[i*2],/noerase,/ylog,yminor=0
+    p1 = !P & x1 = !X & y1 = !Y
+      
     ; plot (2)
     cgPlot,[0],[0],/nodata,xrange=xrangeNorm,yrange=yrange,title="",$
-      xtitle=textoidl("( t_{1} - t_{2} ) / t_{1}"),$
-      ytitle="Fraction",/xs,/ys,pos=pos[i*2+1],/noerase
-	
+      xtitle=textoidl("( t_{1} - t_{2} ) / t_{2}"),$
+      ytitle="Fraction",/xs,/ys,pos=pos[i*2+1],/noerase,/ylog,yminor=0,/xlog,xminor=0
+    p2 = !P & x2 = !X & y2 = !Y
+      
 	; plot histogram for each run/redshift combination
       foreach run,runs,j do begin
-        print,redshift,run
+        print, '['+str(j)+'] redshift = '+string(redshift,format='(f4.1)')+' run = '+run
+        
         sP_cur = simParams(res=res,run=run,redshift=redshift)
         at     = accretionTimes(sP=sP_cur)
+        galcat = galaxyCat(sP=sP_cur)
         
-        w = where(at.accTime[earlierInd,*] ge 0 and at.accTime[laterInd,*] ge 0,count)
-        if count eq 0 then message,'Error'
+        if sP_cur.trMCPerCell gt 0 then types = ( galcat.type[ replicate_var(galcat.trMC_cc) ] )
+        if sP_cur.trMCPerCell eq 0 then types = ( galcat.type )
+        if sP_cur.trMCPerCell lt 0 then types = ( galcat.type[ replicate_var(galcat.trVel_cc) ] )
         
-        age_earlier = reform( redshiftToAgeFlat( 1.0/at.accTime[earlierInd,w]-1.0 ) )
-        age_later   = reform( redshiftToAgeFlat( 1.0/at.accTime[laterInd,w]-1.0 ) )
+        ; add to plot (1)
+        delta = selectAccTimeDelta(sP=sP, at=at, galcat=galcat, earlierInd=earlierInd, $
+                                 laterInd=laterInd, gcType=gcType)
+
+        !P = p1 & !X = x1 & !Y = y1
         
-        val = age_later - age_earlier
-        val /= age_earlier
+        ;DEBUG
+        maxTemp = gcSubsetProp(sP=sP,/maxPastTemp,/accretionTimeSubset,accMode='all')
+        delta2 = gcSubsetProp(sP=sP,accTimeDelta=[earlierInd,laterInd],/accretionTimeSubset,accMode='all')
+        stop
         
-        if min(val) lt xrange[0] or max(val) gt xrange[1] then begin
-          print,'Warning: norm val min = ',min(val),' max = ',max(val)
+        ;DEBUG (match to fluidTracks)
+        if 0 then begin
+          ww = where(delta.val lt -0.4 and delta.val gt -0.5)
+          tInd = w[ww[1]]
+        
+          tracks = tracksFluid(sP=sP_cur)
+          mt     = mergerTreeSubset(sP=sP_cur)
+        
+          gcIDList = mt.gcIndOrigTrMC[tInd]
+          print,tInd,gcIDList
+        
+          haloTvir_t = reverse( mt.hVirTemp[*,gcIDList] )
+          haloRvir_t = reverse( mt.hVirRad[*,gcIDList] )
+          halo_ages  = reverse( redshiftToAgeFlat(1/mt.times-1) )
+          halo_times = reverse( mt.times )
+        
+          rad_track = tracks.rad[*,tInd] / haloRvir_t
+        
+          print,rad_track
+          print,at.accTime[*,tInd]
+          stop
         endif
+        ;END DEBUG
         
         binSize = (xrange[1] - xrange[0]) / float(nBins)
-	  h = histogram(val, bin=binSize, loc=loc, min=xrange[0], max=xrange[1])
+	  h = histogram(delta.val, bin=binSize, loc=loc, min=xrange[0], max=xrange[1])
 	  h = float(h)/total(h)
         
-	  cgPlot,loc+binSize*0.5,h,color=colors[j],/overplot
-	endforeach
-	
-	; legend
-	legend,['z = '+string(redshift,format='(f3.1)'),runs],textcolors=[0L,colors],/top,/right
-	
+        colors = [colors,sP_cur.colors[colorInd]]
+	  cgPlot,loc+binSize*0.5,h,color=colors[-1],/overplot
+        
+        ; add to plot (2)
+        delta = selectAccTimeDelta(sP=sP, at=at, galcat=galcat, earlierInd=earlierInd, $
+                                 laterInd=laterInd, gcType=gcType, /norm)
+                                 
+        !P = p2 & !X = x2 & !Y = y2
+        
+        xrNormLog = alog10(xrangeNorm)
+        binSize = (xrNormLog[1] - xrNormLog[0]) / float(nBins)
+	  h = histogram(alog10(delta.val), bin=binSize, loc=loc, min=xrNormLog[0], max=xrNormLog[1])
+	  h = float(h)/total(h)
+        
+	  cgPlot,10.0^(loc+binSize*0.5),h,color=colors[j],/overplot
+	endforeach ; runs
+      
+      ; legends
+      !P = p1 & !X = x1 & !Y = y1
+      legend,['z = '+string(redshift,format='(f3.1)'),runs],textcolors=[0L,colors],/top,/right 
+      !P = p2 & !X = x2 & !Y = y2
+      legend,['z = '+string(redshift,format='(f3.1)'),runs],textcolors=[0L,colors],/top,/left
+      
     endforeach ;redshifts
       
   end_PS
   stop
+end
+
+; plotAccTimeDeltaVsValMax()
+
+pro plotAccTimeDeltaVsValMax
+
+  ; config
+  redshifts = [2.0] ;[3.0,2.0,1.0,0.0]
+  runs      = ['feedback','tracer','gadget']
+  res       = 128
+  
+  ; index selection for difference ([1.0,0.75,0.5,0.25,0.15,0.05,0.01,first0.15,first1.0])
+  rVirFacs = ['1.0 rvir','0.75 rvir','0.5 rvir','0.25 rvir','0.15 rvir','0.05 rvir',$
+              '0.01 rvir','first 0.15 rvir','first 1.0 rvir']
+  earlierInd = -1 ; -1  ; 0
+  laterInd   = -2 ; -2  ; 4
+  gcType     = 'all' ; all, gal (includes stars), gmem, inter
+  
+  ; plot config
+  yrange     = [3.0,8.0]
+  yrangeNorm = [0.2,5.0]
+  xrange     = [0.0,5.0]
+  nBins      = 100
+  colorInd   = 1
+  
+  sP = simParams(res=res,run=runs[0],redshift=redshifts[0])
+  
+  plotName = 'accTimeDeltasVsValMax_'+str(res)+'_'+str(earlierInd)+'_'+str(laterInd)+'_'+gcType+'.eps'
+  start_PS,sP.plotPath + plotName, xs=3*3.5, ys=4*3.5
+  
+    pos = plot_pos(rows=4,cols=2,/gap)
+    colors = []
+    pinfo = {}
+    
+    cgText,0.5,0.98,textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
+      ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+')',alignment=0.5,/normal
+    
+    foreach redshift,redshifts,i do begin
+    
+    xrange = [0.0,0.7] * redshiftToAgeFlat(redshift)
+    
+    ; plot (1)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,title="",$
+      xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),$
+      ytitle="Tmax [log K]",/xs,/ys,pos=pos[i*2],/noerase
+    p1 = !P & x1 = !X & y1 = !Y
+      
+    ; plot (2)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeNorm,title="",$
+      xtitle=textoidl("( t_{1} - t_{2} ) / t_{2}"),$
+      ytitle="Tmax / Tvir",/xs,/ys,pos=pos[i*2+1],/noerase;,/ylog,yminor=0
+    p2 = !P & x2 = !X & y2 = !Y
+      
+	; plot histogram for each run/redshift combination
+      foreach run,runs,j do begin
+        print, '['+str(j)+'] redshift = '+string(redshift,format='(f4.1)')+' run = '+run
+        
+        sP_cur = simParams(res=res,run=run,redshift=redshift)
+        at     = accretionTimes(sP=sP_cur)
+        galcat = galaxyCat(sP=sP_cur)
+        
+        if sP_cur.trMCPerCell gt 0 then types = ( galcat.type[ replicate_var(galcat.trMC_cc) ] )
+        if sP_cur.trMCPerCell eq 0 then types = ( galcat.type )
+        if sP_cur.trMCPerCell lt 0 then types = ( galcat.type[ replicate_var(galcat.trVel_cc) ] )
+        
+        ; add to plot (1)
+        delta = selectAccTimeDelta(sP=sP, at=at, galcat=galcat, earlierInd=earlierInd, $
+                                 laterInd=laterInd, gcType=gcType)
+
+        !P = p1 & !X = x1 & !Y = y1
+        
+        ;DEBUG
+        maxVals = maxVals(sP=sP_cur)
+        
+        colors = [colors,sP_cur.colors[colorInd]]
+        
+        yy = maxVals.maxTemps[delta.w]
+	  cgPlot,delta.val,yy,color=colors[-1],psym=3,/overplot
+        
+        ; add to plot (2)
+        !P = p2 & !X = x2 & !Y = y2
+        
+        yy = 10.0^maxVals.maxTemps[delta.w] / 10.0^at.accHaloTvir[delta.w]
+        cgPlot,delta.val,yy,color=colors[-1],psym=3,/overplot
+       ; 
+       ; xrNormLog = alog10(xrangeNorm)
+       ; binSize = (xrNormLog[1] - xrNormLog[0]) / float(nBins)
+	 ; h = histogram(alog10(delta.val), bin=binSize, loc=loc, min=xrNormLog[0], max=xrNormLog[1])
+	 ; h = float(h)/total(h)
+       ; 
+	 ; cgPlot,10.0^(loc+binSize*0.5),h,color=colors[j],/overplot
+	endforeach ; runs
+      
+      ; legends
+      !P = p1 & !X = x1 & !Y = y1
+      legend,['z = '+string(redshift,format='(f3.1)'),runs],textcolors=[0L,colors],/top,/right 
+      !P = p2 & !X = x2 & !Y = y2
+      legend,['z = '+string(redshift,format='(f3.1)'),runs],textcolors=[0L,colors],/top,/left
+      
+    endforeach ;redshifts
+      
+  end_PS
+  stop
+end
+
+; plotAccTimeDeltasVsHaloMass()
+
+pro plotAccTimeDeltasVsHaloMass
+
+  ; config
+  sP = simParams(res=256,run='feedback',redshift=2.0)
+  sP2 = simParams(res=256,run='tracer',redshift=2.0)
+  
+  ; index selection for difference ([1.0,0.75,0.5,0.25,0.15,0.05,0.01,first0.15,first1.0])
+  rVirFacs = ['1.0 rvir','0.75 rvir','0.5 rvir','0.25 rvir','0.15 rvir','0.05 rvir',$
+              '0.01 rvir','first 0.15 rvir','first 1.0 rvir']
+  earlierInd = -1 ; -1 (0) ; 0 ; 2
+  laterInd   = -2 ; -2 (4) ; 2 ; 5
+  gcType     = 'all' ; all, gal (includes stars), gmem, inter
+
+  ; plot config
+  yrange     = [9.5,12.5]
+  binSize_yy = 0.1
+  logX       = 1
+  norm       = 0
+  
+  ; load
+  at     = accretionTimes(sP=sP)
+  galcat = galaxyCat(sP=sP)
+    
+  if sP.trMCPerCell gt 0 then types = ( galcat.type[ replicate_var(galcat.trMC_cc) ] )
+  if sP.trMCPerCell eq 0 then types = ( galcat.type )
+  if sP.trMCPerCell lt 0 then types = ( galcat.type[ replicate_var(galcat.trVel_cc) ] )
+  
+  parentMass = galCatParentProperties(sP=sP,galcat=galcat,trRep=(sP.trMCPerCell ne 0),/mass)
+  yrange[1] = max(parentMass) - binSize_yy*0.48
+    
+  ; plot (1) - 2d histogram
+  plotStr = sP.savPrefix + str(sP.res) + '_' + str(earlierInd) + '_' + str(laterInd) + '_' + gcType + $
+            "_log=" + str(logX) + "_norm=" + str(norm)
+  
+  start_PS,sP.plotPath + 'accTimeDeltasVsMass_' + plotStr + '.eps'
+  
+    cgText,0.5,0.96,textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
+      ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+')',alignment=0.5,/normal
+                   
+    ; add to plot
+    delta = selectAccTimeDelta(at=at, galcat=galcat, earlierInd=earlierInd, $
+                             laterInd=laterInd, gcType=gcType, norm=norm)
+
+    yy = parentMass[delta.w]
+    
+    weights = fltarr(n_elements(delta.val)) + 1.0
+    
+    if logX eq 1 then begin
+      xx = alog10( delta.val )
+      xrange = [5e-3,3.0]
+      xrangeLog = alog10( xrange )
+      binSize_xx = 0.05
+      xtickv = [0.01,0.05,0.1,0.2,0.5,1.0,2.0,3.0]
+      xtickname = ['0.01','0.05','0.1','0.2','0.5','1','2','3']
+    endif else begin
+      xx = delta.val
+      xrange = [0.0,0.5]
+      xrangeLog = xrange
+      binSize_xx = 0.01
+      xtickv = [0.0,0.1,0.2,0.3,0.4,0.5]
+      xtickname = ['0','0.1','0.2','0.3','0.4','0.5']
+    endelse
+    
+    ; if not normalizing, extend (t1-t2) axis as a function of the current redshift
+    if norm eq 0 then xrange[1] = 0.7 * redshiftToAgeFlat(sP.redshift)
+    
+    h2 = hist_nd_weight( transpose( [[xx],[yy]] ), weight=weights, [binSize_xx,binSize_yy], $
+        min=[xrangeLog[0]-binSize_xx*0.5,yrange[0]-binSize_yy*0.5],$
+        max=[xrangeLog[1]+binSize_xx*0.49,yrange[1]+binSize_yy*0.49])
+    
+    ; colormap (each halo mass row individually scaled)
+    logHist = 0
+    h2_cmap = colorMapAccTime(h2,logHist=logHist,/byRow)
+    
+    ; plot
+    pos = [0.14,0.14,0.92,0.9]
+    
+    loadColorTable, 'helix', /reverse ; data
+    tvim,h2_cmap,scale=0,pos=pos,/c_map,/noframe,/noerase
+          
+    if norm eq 1 then xtitle = textoidl("( t_{1} - t_{2} ) / t_{2}")
+    if norm eq 0 then xtitle = textoidl("( t_{1} - t_{2} ) [Gyr]")
+    ytitle = textoidl("M_{halo}")
+          
+    loadColorTable,'bw linear' ; axes/frame
+    tvim,h2_cmap,/notv,pcharsize=!p.charsize,scale=0,clip=-1,$
+      xtitle=xtitle,ytitle=ytitle,barwidth=0.75,lcharsize=!p.charsize-0.2,$
+      xrange=xrange,yrange=yrange,xmargin=2.0,pos=pos,/noerase,$
+      xlog=logX,xticks=n_elements(xtickv)-1,xtickv=xtickv,xtickname=xtickname
+        
+  end_PS
+  
+  if n_elements(sP2) eq 0 then stop
+  
+  ; make 2d histogram difference
+  at2     = accretionTimes(sP=sP2)
+  galcat2 = galaxyCat(sP=sP2)
+    
+  if sP.trMCPerCell gt 0 then types2 = ( galcat2.type[ replicate_var(galcat2.trMC_cc) ] )
+  if sP.trMCPerCell eq 0 then types2 = ( galcat2.type )
+  if sP.trMCPerCell lt 0 then types2 = ( galcat2.type[ replicate_var(galcat2.trVel_cc) ] )
+  
+  parentMass2 = galCatParentProperties(sP=sP2,galcat=galcat2,trRep=(sP2.trMCPerCell ne 0),/mass)
+  
+  ; plot (2) - 2d difference
+  start_PS,sP.plotPath + 'accTimeDeltasVsMassDiff_' + plotStr + '.eps'
+    cgText,0.5,0.96,textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
+      ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+')',alignment=0.5,/normal
+                       
+    ; calculate second histogram (same min/max/binsize/etc)
+    delta2 = selectAccTimeDelta(at=at2, galcat=galcat2, earlierInd=earlierInd, $
+                              laterInd=laterInd, gcType=gcType, norm=norm)
+                              
+    yy = parentMass2[delta2.w]
+    
+    weights = fltarr(n_elements(delta2.val)) + 1.0
+    
+    if logX eq 1 then xx = alog10( delta2.val ) $
+    else xx = delta2.val
+  
+    h2b = hist_nd_weight( transpose( [[xx],[yy]] ), weight=weights, [binSize_xx,binSize_yy], $
+         min=[xrangeLog[0]-binSize_xx*0.5,yrange[0]-binSize_yy*0.5],$
+         max=[xrangeLog[1]+binSize_xx*0.49,yrange[1]+binSize_yy*0.49])
+    
+    ; colormap
+    fracMin = -0.6 ; 0.25
+    fracMax = 0.6 ; 4.0
+    
+    h2_cmap = colorMapAccTimeDelta(h2,h2b,fracMin=fracMin,fracMax=fracMax)
+    
+    ; add difference of two histograms to plot
+    pos_plot = [0.14,0.14,0.86,0.9]
+    pos_cbar = [0.87,0.14,0.91,0.9]
+    ndivs = 5
+    
+    loadColorTable, 'brewer-purplegreen' ; data
+    tvim,h2_cmap,scale=0,pos=pos_plot,/c_map,/noframe,/noerase
+          
+    loadColorTable,'bw linear' ; axes/frame
+    tvim,h2_cmap,/notv,pcharsize=!p.charsize,scale=0,clip=-1,$
+      xtitle=xtitle,ytitle=ytitle,barwidth=0.75,lcharsize=!p.charsize-0.2,$
+      xrange=xrange,yrange=yrange,xmargin=2.0,pos=pos_plot,/noerase,$
+      xlog=logX,xticks=n_elements(xtickv)-1,xtickv=xtickv,xtickname=xtickname
+     
+   loadColorTable, 'brewer-purplegreen' ; data
+   cgColorbar,bottom=1,range=[fracMin,fracMax],position=pos_cbar,$
+     /vertical,/right,divisions=ndivs,$ ;,ticknames=ticknames,ncolors=255
+     title=textoidl("log ( f_{"+sP.plotPrefix+"} / f_{"+sP2.plotPrefix+"} )")
+
+  end_PS
+  
+  stop
+  
 end
 
 ; shyPlot(): at a target redshift, make a selection of galaxy star tracers which were in gas cells

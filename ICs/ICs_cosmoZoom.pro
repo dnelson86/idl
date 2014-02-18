@@ -1,6 +1,6 @@
 ; ICs_cosmoZoom.pro
 ; zoom project - helper for generating zoom ICs with MUSIC (O. Hahn)
-; dnelson sep.2013
+; dnelson feb.2014
 
 ; checkBHDerefGal(): debugging
 
@@ -518,10 +518,10 @@ pro orderLagrangianVolumes
 
   ; config
   ; ------
-  ;haloMassRange  = [11.7,12.3] ; log msun
-  ;targetRedshift = 2.0  ; resimulate until this redshift only
-  ;outputPtFile   = 134 ; write ascii file for ellipsoid/convex hull test
-  ;readICsAsSnapZero = 0 ; 0=assume snap0 are the ICs, 1=read ICs directly (snap0 not at starting redshift)
+  haloMassRange  = [11.7,12.3] ; log msun
+  targetRedshift = 2.0  ; resimulate until this redshift only
+  outputPtFile   = 79   ; write ascii file for ellipsoid/convex hull test
+  readICsAsSnapZero = 0 ; 0=assume snap0 are the ICs, 1=read ICs directly (snap0 not at starting redshift)
   
   ; Onorbe+ (2013) suggested R_tb / rVirFac (requires >~4000 particles in halo in fullbox
   ; we just about satisfy this, ~2500-3500 for a 10^12 halo @ 20Mpc/128 or 40Mpc/256
@@ -529,20 +529,20 @@ pro orderLagrangianVolumes
     ;rVirFac = (-0.1 * zoomLevel + 4) ; shy's formula (used for all 20Mpc, MUSIC v1.3b ICs)
     ;rVirFac = (0.1 * zoomLevel + 4) ; jan.2014 for most 128 zooms h>=2
   
-  ;rVirFac = 4.4
+  rVirFac = 5.0
   
-  ;sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=targetRedshift)
+  sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=targetRedshift)
   
   ; laura config
   ; ------------
-  haloMassRange  = [10.46,10.54] ; log msun
-  targetRedshift = 0.0    ; resimulate until this redshift only
-  outputPtFile   = 2504   ; write ascii file for ellipsoid/convex hull test
-  readICsAsSnapZero = 1   ; 0=assume snap0 are the ICs, 1=read ICs directly (snap0 not at starting redshift)
+  ;haloMassRange  = [10.46,10.54] ; log msun
+  ;targetRedshift = 0.0    ; resimulate until this redshift only
+  ;outputPtFile   = 2545  ; write ascii file for ellipsoid/convex hull test
+  ;readICsAsSnapZero = 1   ; 0=assume snap0 are the ICs, 1=read ICs directly (snap0 not at starting redshift)
   
-  rVirFac = 5.6
+  ;rVirFac = 14.5
   
-  sP = simParams(res=256,run='zoom_10Mpc_dm',redshift=targetRedshift)
+  ;sP = simParams(res=256,run='zoom_10Mpc_dm',redshift=targetRedshift)
   
   ; load z=target
   ; -------------
@@ -651,7 +651,7 @@ pro orderLagrangianVolumes
     volumes = [volumes,vol_chull]
     
     ; if we don't wrap, print out this halo
-    if wrap eq 0 then $
+    ;if wrap eq 0 then $
       print,'['+string(k,format='(i2)')+']'+$
             ' hInd = '+string(halo.hInd,format='(i4)')+$
             ' mass = '+string(halo.mass,format='(f5.2)')+$
@@ -665,7 +665,7 @@ pro orderLagrangianVolumes
     ; write ascii point file for bounding ellipsoid / convex hull tests?
     ; note that we are generating the convex hull of the lagrangian region which includes
     ; all DM particles with rVirFac * rvir of the target halo at the target redshift
-    if outputPtFile eq halo.hInd then begin
+    if str(outputPtFile) eq str(halo.hInd) or str(outputPtFile) eq 'all' then begin
       ; make zstart_pos_halo in [0,1] box normalized coordinates
       zstart_pos_halo /= double(sP.boxSize)
       
@@ -694,7 +694,7 @@ pro orderLagrangianVolumes
   print,''
   
   foreach ind,sort_inds do begin
-    if haloStats.(ind).wrap eq 1 then continue
+    ;if haloStats.(ind).wrap eq 1 then continue
     
     halo = halos.(ind)
     haloStat = haloStats.(ind)
@@ -704,7 +704,7 @@ pro orderLagrangianVolumes
           ' rvir= '+string(halo.rVir,format='(f5.1)')+$
           ' vol_bbox= '+ string(haloStat.volume,format='(f5.1)')+$
           ' vol_chull= '+ string(haloStat.vol_chull,format='(f5.1)')+$
-          ' rVirFac= '+string(rVirFac,format='(f3.1)')+$
+          ' rVirFac='+string(rVirFac,format='(f4.1)')+$
           ' pos= ['+string(halo.pos[0],format='(f8.2)')+' '+$
                      string(halo.pos[1],format='(f8.2)')+' '+$
                      string(halo.pos[2],format='(f8.2)')+' ]'
@@ -731,21 +731,27 @@ function zoomTargetHalo, sP=sP, gc=gc
 
   expectedHaloPos = sP.targetHaloPos + sP.zoomShiftPhys
   
+  posDiffs = periodicDists(expectedHaloPos,gc.subgroupPos,sP=sP)
+  
+  ; pick closest mass match within a positional search of 1rvir around expected location
+  w = where(posDiffs le 1.0*sP.targetHaloRvir,count)
+  if count eq 0 then message,'Error'
+  
   massDiffs = abs( sP.targetHaloMass - codeMassToLogMsun(gc.subgroupMass) )
-  hInd = ( where(massDiffs eq min(massDiffs),count) )[0]
+  hInd = ( where(massDiffs eq min(massDiffs[w]),count) )[0]
+
   if count ne 1 then message,'Error'
   
-  posDiff = expectedHaloPos - gc.subgroupPos[*,hInd]
   foundMass = codeMassToLogMsun( gc.subgroupMass[hInd] )
   foundRvir = gc.group_r_crit200[ gc.subgroupGrNr[hInd] ]
-  distNorm = sqrt( posDiff[0]^2 + posDiff[1]^2 + posDiff[2]^2 ) / foundRvir
+  distNorm = periodicDists(expectedHaloPos,gc.subgroupPos[*,hInd],sP=sP) / foundRvir
   
   print,' zoom hInd: '+str(hInd)
+  print,' targetPos: '+str(gc.subgroupPos[*,hInd])
   print,' targetMass ['+str(sP.targetHaloMass)+'] foundMass ['+str(foundMass)+']'
   print,' targetRvir ['+str(sP.targetHaloRvir)+'] foundRvir ['+str(foundRvir)+']'
-  print,' posDiff: ',posDiff
   print,' distNorm: ',distNorm
-  
+
   return, hInd
 end
 
@@ -754,9 +760,9 @@ end
 pro checkDMContamination
 
   ; config
-  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc_dm',res=11,hInd=1,redshift=2.0) )
-  ;sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_20Mpc',res=9,hInd=5,redshift=2.0) )
-  ;sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_20Mpc_convhull',res=9,hInd=1,redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res=9,hInd='8',redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_10Mpc_dm',res=10,hInd='3',redshift=0.0) )
+  ;sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_10Mpc_dm',res=10,hInd='1b',redshift=0.0) )
   ;sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_convhull',res=10,hInd=1,redshift=2.0) )
   ;sPs = mod_struct( sPs, 'sP4', simParams(run='zoom_10Mpc_dm_box',res=9,hInd=0,redshift=0.0) )
   
@@ -764,7 +770,7 @@ pro checkDMContamination
   nn     = 99
   
   start_PS,sPs.(0).plotPath + 'radialContamination_DM.eps'
-    cgPlot,[0],[0],/nodata,xrange=[1,3.5],yrange=[0.9,100],/xs,/ys,/ylog,yminor=0,$
+    cgPlot,[0],[0],/nodata,xrange=[0,5],yrange=[0.9,100],/xs,/ys,/ylog,yminor=0,$
       xtitle=textoidl("r / r_{vir}"),ytitle="Cumulative Number of Lowres DM Within Radius"
   
   strings = []
@@ -820,7 +826,7 @@ end
 pro checkGasContamination
 
   ; config
-  sP = simParams(run='zoom_20Mpc',res=9,hInd=5,redshift=2.0)
+  sP = simParams(run='zoom_20Mpc',res=10,hInd=7,redshift=2.0)
 
   ; load
   h = loadSnapshotHeader(sP=sP)
@@ -910,9 +916,8 @@ pro checkGasContamination
   
   ; out to what radius are we uncontaminated?
   dists = dists[sort(dists)]
-  rVirFac = (1.5 * sP.zoomLevel + 1)
   print,' Zero lowres TR out to radius of ['+string(min(dists),format='(f4.2)')+' rvir] ('+$
-    string(min(dists)/rVirFac,format='(f4.2)')+')'
+    string(min(dists)/sP.rVirFac,format='(f4.2)')+')'
   
   ; plot
   start_PS,sP.plotPath + 'radialContamination_Gas.eps'
