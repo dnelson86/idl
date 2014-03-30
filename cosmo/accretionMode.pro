@@ -1,6 +1,6 @@
 ; accretionMode.pro
 ; gas accretion project - past substructure history of gas elements
-; dnelson jul.2013
+; dnelson feb.2014
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionMode(): for eaching gas particle/tracer with a recorded accretion time, starting at some 
@@ -570,7 +570,7 @@ end
 
 ; accModeInds(): subselect for a particular accretion mode (indices are for galcat.ids or galcat.trMC_ids)
 
-function accModeInds, at=at, mt=mt, sP=sP, accMode=accMode
+function accModeInds, at=at, mt=mt, sP=sP, accMode=accMode, maskAndInds=maskAndInds
 
   if (n_elements(at) eq 0 and n_elements(mt) eq 0) or n_elements(accMode) eq 0 then message,'Error: Inputs'
   if ~sP.gfmWinds and accMode eq 'recycled' then message,'Error: Request recycled on non-winds run.'
@@ -599,7 +599,7 @@ function accModeInds, at=at, mt=mt, sP=sP, accMode=accMode
     if accMode eq 'stripped_rec' then at_w = at_w[where(am eq 4 or am eq 14,count)]
     if accMode eq 'recycled'     then at_w = at_w[where(am ge 10,count)] ; recycled+any other mode
 
-	if n_elements(count) eq 0 then message,'Error: Unrecognized accretion mode.'
+    if n_elements(count) eq 0 then message,'Error: Unrecognized accretion mode.'
 	
     am = !NULL
   endif
@@ -633,8 +633,10 @@ function accModeInds, at=at, mt=mt, sP=sP, accMode=accMode
   if totCount ne n_elements(at_w) then message,'Error in splitting.'
   
   ; include mask and unsplit indices at_w in return
-  ;rr = mod_struct( rr, 'mask', mask )
-  ;rr = mod_struct( rr, 'at_w', at_w )
+  if keyword_set(maskAndInds) then begin
+    rr = mod_struct( rr, 'mask', mask )
+    rr = mod_struct( rr, 'at_w', at_w )
+  endif
   
   return,rr
 end

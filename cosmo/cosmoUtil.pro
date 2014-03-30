@@ -1,6 +1,6 @@
 ; cosmoUtil.pro
 ; cosmological simulations - utility functions
-; dnelson aug.2013
+; dnelson mar.2014
 
 ; redshiftToSnapNum(): convert redshift to the nearest snapshot number
 
@@ -184,8 +184,9 @@ end
 ; 
 ; if pt is one point: distance from pt to all vecs
 ; if pt is several points: distance from each pt to each vec (must have same number of points)
+; Chebyshev=1 : use Chebyshev distance metric (greatest difference in positions along any one axis)
 
-function periodicDists, pt, vecs, sP=sP
+function periodicDists, pt, vecs, sP=sP, Chebyshev=Chebyshev
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
@@ -214,7 +215,15 @@ function periodicDists, pt, vecs, sP=sP
   correctPeriodicDistVecs, yDist, sP=sP
   correctPeriodicDistVecs, zDist, sP=sP
   
-  dists = reform( sqrt( xDist*xDist + yDist*yDist + zDist*zDist ) )
+  if keyword_set(Chebyshev) then begin
+    dists = xDist
+    w = where(yDist gt xDist,count)
+    if count gt 0 then dists[w] = yDist
+    w = where(zDist gt xDist,count)
+    if count gt 0 then dists[w] = zDist
+  endif else begin
+    dists = reform( sqrt( xDist*xDist + yDist*yDist + zDist*zDist ) )
+  endelse
   
   return, dists
 
@@ -678,6 +687,113 @@ pro exportGroupCatAscii
                 str(string(pri_flag,                               format='(I1)'))    + " " + $ ; pri_flag
                 str(string(image_x[w[i]],                          format='(f12.6)')) + " " + $ ; image_x
                 str(string(image_y[w[i]],                          format='(f12.6)'))           ; image_y
+                
+  endfor
+  
+  ; open ascii, write and close
+  openW,lun,fileName,/get_lun
+  
+    printf,lun,outBuf
+  
+  close,lun
+  free_lun,lun
+
+  stop
+
+end
+
+; exportBlackholesAscii(): export all the blackhole info as text (for MySQL import)
+;
+;   % mysql --local-infile -u <username> -p <DatabaseName>
+;
+;   USE subgroups;
+;   LOAD DATA LOCAL INFILE 'out.txt'
+;   INTO TABLE blackholes_135
+;   COLUMNS TERMINATED BY ' ' LINES TERMINATED BY '\n'
+;   (id,particle_id,pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,mass,
+;    hosthalomass,cumegyinjection_qm,cummassgrowth_qm,bh_density,bh_mass,
+;    bh_mass_bubbles,bh_mass_ini,bh_mdot,bh_pressure,bh_u,bh_progs,
+;    subhalo_parent_id,image_x,image_y)
+;   set point_xy = PointFromText(CONCAT('POINT(',image_x,' ',image_y,')'));
+;
+;   then add SPATIAL INDEX on point_xy:
+;       ALTER TABLE `blackholes_135` ADD SPATIAL INDEX (point_xy);
+;   then add FOREIGN KEY CONSTRAINT (NULL=True) on subhalo_parent_id -> (Subhalo135.id):
+;       ALTER TABLE `blackholes_135` ADD FOREIGN KEY (`subhalo_parent_id`) 
+;       REFERENCES `snap_135`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION;
+
+
+pro exportBlackholesAscii
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  forward_function simParams, loadGroupCat
+  
+  ; config
+  sP         = simParams(res=1820,run='illustris',redshift=0.0)
+  fileName   = 'out.txt'
+  fields     = ['pos', 'vel', 'ids', 'mass', 'hosthalomass', $
+                'cumegyinjection_qm', 'cummassgrowth_qm', 'bh_density', 'bh_mass', $
+                'bh_mass_bubbles', 'bh_mass_ini', 'bh_mdot', 'bh_pressure', 'bh_progs', 'bh_u']
+  
+  ; load
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  
+  data = {}
+  foreach field,fields do begin
+    print, field
+    load = loadSnapshotSubset(sP=sP,partType='bhs',field=field)
+    data = mod_struct( data, field, load )
+  endforeach
+      
+  ; make image (fof0 centered) coordinates
+  image_x = reform( data.pos[0,*] )
+  image_y = reform( data.pos[1,*] )
+  image_x = image_x - gc.subgroupPos[0,0] + sP.boxSize*0.5
+  image_y = image_y - gc.subgroupPos[1,0] + sP.boxSize*0.5
+
+  correctPeriodicPosVecs, image_x, sP=sP
+  correctPeriodicPosVecs, image_y, sP=sP
+
+  ; create parent subhalo IDs for each blackhole
+  count = n_elements(image_x)
+  bh_parents = lonarr( count ) - 1
+  
+  par_rep = replicate_var( gc.subgroupLenType[5,*] )
+  bh_parents[ 0:n_elements(par_rep)-1 ] = par_rep
+  
+  ; fill output buffer
+  print,'Exporting ['+str(count)+'] BLACKHOLES.'
+  
+  outBuf = strarr(count)
+  
+  for i=0,count-1 do begin
+    if i mod round(count*0.1) eq 0 then print,i,count
+    
+    if bh_parents[i] ge 0 then subgroupNumber = string(bh_parents[i], format='(I8)')
+    if bh_parents[i] lt 0 then subgroupNumber = "\N      " ; MySQL foreign key null flag
+    
+    outBuf[i] = str(string(i,                 format='(I7)'))    + " " + $ ; index
+                str(string(data.ids[i],       format='(I20)'))   + " " + $ ; ID
+                str(string(data.pos[0,i],     format='(f12.6)')) + " " + $ ; pos_x
+                str(string(data.pos[1,i],     format='(f12.6)')) + " " + $ ; pos_y
+                str(string(data.pos[2,i],     format='(f12.6)')) + " " + $ ; pos_z
+                str(string(data.vel[0,i],     format='(f12.6)')) + " " + $ ; vel_x
+                str(string(data.vel[1,i],     format='(f12.6)')) + " " + $ ; vel_y
+                str(string(data.vel[2,i],     format='(f12.6)')) + " " + $ ; vel_z
+                str(string(data.mass[i],               format='(f14.8)')) + " " + $ ; mass
+                str(string(data.hosthalomass[i],       format='(f14.6)')) + " " + $ ; hosthalomass
+                str(string(alog10(data.cumegyinjection_qm[i]), format='(f12.6)')) + " " + $ ; cumegyinjection_qm
+                str(string(alog10(data.cummassgrowth_qm[i]),   format='(f12.6)')) + " " + $ ; cummassgrowth_qm
+                str(string(data.bh_density[i],         format='(f14.8)')) + " " + $ ; bh_density
+                str(string(data.bh_mass[i],            format='(f14.8)')) + " " + $ ; bh_mass
+                str(string(data.bh_mass_bubbles[i],    format='(f14.8)')) + " " + $ ; bh_mass_bubbles
+                str(string(data.bh_mass_ini[i],        format='(f14.6)')) + " " + $ ; bh_mass_ini
+                str(string(data.bh_mdot[i],            format='(f14.8)')) + " " + $ ; bh_mdot
+                str(string(data.bh_pressure[i],        format='(f14.6)')) + " " + $ ; bh_pressure
+                str(string(data.bh_u[i],               format='(f14.6)')) + " " + $ ; bh_u
+                str(string(fix(data.bh_progs[i]),      format='(I4)'))    + " " + $ ; bh_progs
+		    str(subgroupNumber)                                       + " " + $ ; parent SG number
+                str(string(image_x[i],                 format='(f12.6)')) + " " + $ ; image_x
+                str(string(image_y[i],                 format='(f12.6)'))           ; image_y
                 
   endfor
   

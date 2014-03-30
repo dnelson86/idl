@@ -237,7 +237,7 @@ pro plotValMaxHistos ;, redshift=redshift, res=res
   ; config
   runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   redshift   = 2.0
-  res        = 512
+  res        = 128
   timeWindow = 500.0 ; Myr
   accMode    = 'smooth' ;'all','smooth','clumpy','stripped','recycled'
   tagNames   = ['Tmax','TmaxTviracc','EntMax','DensMax','MachMax'] ; plot each quantity

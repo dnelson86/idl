@@ -280,7 +280,7 @@ end
 
 ; getGroupCatFilename(): take input path and snapshot number and find fof/subfind group catalog filename
 
-function getGroupCatFilename, fileBase, snapNum=m
+function getGroupCatFilename, fileBase, snapNum=m, noLocal=noLocal
 
   flag = 0
   
@@ -296,6 +296,17 @@ function getGroupCatFilename, fileBase, snapNum=m
   lastChar = strmid(fileBase,strlen(fileBase)-1,1)
   if (lastChar ne '/') then fileBase += '/'
     
+  ; LOCAL SCRATCH TEST: call ourself with a fileBase corresponding to local scratch
+  if ~keyword_set(noLocal) then begin
+    fileBaseSplit = strsplit(fileBase,"/",/extract)
+    localBaseTest = "/scratch/" + fileBaseSplit[-3] + "/" + fileBaseSplit[-2] + "/"
+    localFileTest = getGroupCatFilename(localBaseTest,snapNum=m,/noLocal)
+    if n_elements(localFileTest) gt 0 then begin
+      print,'Note: Reading group catalog from local scratch!'
+      return, localFileTest
+    endif
+  endif
+  
   ; format snap number
   if (m le 999) then $
     ext = string(m,format='(I3.3)')
@@ -324,8 +335,8 @@ function getGroupCatFilename, fileBase, snapNum=m
   
   endforeach
     
-  print,'Error: Failed to find group catalog file(s).'
-
+  return,[]
+  
 end
 
 ; loadGroupCat(): load new HDF5 fof/subfind group catalog for a given snapshot
@@ -336,20 +347,21 @@ end
 ;             also generate (GrNr,Type) sorted id list
 ; skipIDs=1 : acknowledge we are working with a STOREIDS type .hdf5 group cat and don't warn
 ; getSortedIDs=1 : create a second ID list sorted by GrNr->Type for use with GroupOffsetType
+; noLocal=1 : see if group cat exists on local scratch first
 
-function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
+function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLocal, $
                        getSortedIDs=getSortedIDs, verbose=verbose, skipOffsets=skipOffsets
-
-  forward_function loadSubhaloGroups
+  
   if not keyword_set(verbose) then verbose = 0
   !except = 0 ;suppress floating point underflow/overflow errors
 
-  fileList = getGroupCatFileName(sP.simPath,snapNum=sP.snap)
-
+  ; by default, do local scratch search, unless noLocal is set
+  fileList = getGroupCatFileName(sP.simPath,snapNum=sP.snap,noLocal=noLocal)
+  start_time = systime(/seconds)
+  
   nFiles = n_elements(fileList)
 
-  ; if new group catalog not found, look for old format
-  if nFiles eq 0 then return,loadSubhaloGroups(sP=sP,skipIDs=skipIDs,verbose=verbose)
+  if nFiles eq 0 then message,'Error: No group catalog found.'
 
   ; load number of split files from header of first part
   hdf5s    = h5_parse(fileList[0]) ;structure only
@@ -370,7 +382,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
   
   if (verbose) then $
     print,'Loading group catalog from snapshot ('+str(sP.snap)+') in [' + str(NumFiles) + '] files.'  
-  
+
   ; IDs are 64bit?
   longIDsBits = hdf5s.Subhalo.SubhaloIDMostBound._precision
   if longIDsBits ne 32 and longIDsBits ne 64 then message,'Error: Unexpected IDs precision.'
@@ -411,6 +423,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
     nGroupsTot    += h.nGroups
     nIDsTot       += h.nIDs
     nSubgroupsTot += h.nSubgroups
+    
+    if verbose then print,' ['+str(i)+']  '+str(h.nGroups)+'  '+str(h.nSubgroups)
           
     ; allocate storage if this is the first iteration
     if (i eq 0) then begin
@@ -656,6 +670,25 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
   
   endif ; skipOffsets
   
+  ; if offsets requested, and IDs.ID do not exist in group catalog (e.g. Illustris/group ordered)
+  ; then make the offset tables by type into the snapshot, in case we want to use these
+  if ~keyword_set(skipOffsets) and idsInGroupCatFlag eq 0 then begin
+    snapOffsets = { group        : lonarr(h.nGroupsTot)    ,$
+                    groupType    : lonarr(6,h.nGroupsTot)  ,$
+                    subgroup     : lonarr(h.nSubgroupsTot) ,$
+                    subgroupType : lonarr(6,h.nSubgroupsTot) }
+                    
+    snapOffsets.group    = [0, ( total( sf.groupLen, /int, /cum, /double) )[0:-2]]
+    snapOffsets.subgroup = [0, ( total( sf.subgroupLen, /int, /cum, /double) )[0:-2]]
+    
+    for j=0,5 do begin
+      snapOffsets.groupType[j,*]    = [0, ( total( reform(sf.groupLenType[j,*]), /int, /cum, /double ) )[0:-2]]
+      snapOffsets.subgroupType[j,*] = [0, ( total( reform(sf.subgroupLenType[j,*]), /int, /cum, /double ) )[0:-2]]
+    endfor
+    
+    sf = mod_struct(sf,'snapOffsets',snapOffsets)
+  endif
+  
   ; IDs.ID do not exist in group catalog (snapshot -is- group ordered), reconstruct now
   if keyword_set(readIDs) and idsInGroupCatFlag eq 0 then begin
     idsSavePath = sP.derivPath + 'groupIDs/ids_' + str(sP.snap) + '.sav'
@@ -673,7 +706,6 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
       save,groupCatSavedIDs,filename=idsSavePath
       print,'Saved: '+strmid(idsSavePath,strlen(sp.derivPath))
     endelse
-    
   endif
   
   ; if ID read requested, create typeSortedIDList (and save), add to return structure
@@ -699,6 +731,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, $
   endif
   
   !except = 1
+  if verbose then print,"Load time: "+str(systime(/seconds)-start_time)+" sec"
   return,sf
 end
 
@@ -1243,7 +1276,7 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
     rType = 'float'
     fieldName = 'BH_CumMassGrowth_QM'
   endif
-  if (field eq 'bh_coolingluminosity' or field eq 'coolingluminosity') then begin
+  if (field eq 'bh_coolingluminosity' or field eq 'coolingluminosity') then begin ; NOT ILLUSTRIS
     rType = 'float'
     fieldName = 'BH_CoolingLuminosity'
   endif
@@ -1261,17 +1294,17 @@ function loadSnapshotSubset, sP=sP, fileName=fileName, partType=PT, field=field,
   endif
   if (field eq 'bh_mass_bubbles') then begin
     rType = 'float'
-    fieldName = 'BH_Mass_Bubbles'
+    fieldName = 'BH_Mass_bubbles'
   endif
   if (field eq 'bh_mass_ini') then begin
     rType = 'float'
-    fieldName = 'BH_Mass_Ini'
+    fieldName = 'BH_Mass_ini'
   endif
   if (field eq 'bh_mdot') then begin
     rType = 'float'
-    fieldName = 'BH_MDot'
+    fieldName = 'BH_Mdot'
   endif
-  if (field eq 'bh_mdotradio' or field eq 'bh_mdot_radio') then begin
+  if (field eq 'bh_mdotradio' or field eq 'bh_mdot_radio') then begin ; NOT ILLUSTRIS
     rType = 'float'
     fieldName = 'BH_MDotRadio'
   endif
