@@ -88,8 +88,8 @@ function calcTHVal, PosVal, SearchPos, thMode=thMode, ndims=ndims, nNGB=nNGB, bo
   if ndims ne 1 and ndims ne 2 and ndims ne 3 then message,'Error: Need ndims=1,2,3.'
   if thMode ne 1 and thMode ne 2 and thMode ne 3 then message,'Error: Need thMode=1,2,3.'
   if npos[0] ne 2 then message,'Error: Point position array shape.'
-  if nsrc[0] ne 2 or nsrc[1] ne 3 then message,'Error: Search position array shape.'
-  if npos[2] lt nNGB then message,'Error: Point count too low for nNGB.'
+  if nsrc[0] ne 2 or nsrc[1] ne 3 then message,'Error: Search position array shape.'  
+  if npos[2] le nNGB then message,'Error: Point count too low for nNGB.'
   
   if ~keyword_set(weighted) and npos[1] ne 4 then message,'Error: Posval should be 4xN.'
   if keyword_set(weighted) and npos[1] ne 5 then message,'Error: Posval(wt) should be 5xN.'
@@ -462,8 +462,11 @@ function calcMatchDupe, A, B, dupe_counts=dupe_counts, count=count
   if count eq -1L then message,'Error: Count unchanged.'
     
   ; take index subsets
-  dupe_counts = inds_A            ; child_counts for each parent (number of B duplicates per A)
-  inds_B      = inds_B[0:count-1] ; indices of B matched to A, ordered in their original orders
+  dupe_counts = inds_A ; child_counts for each parent (number of B duplicates per A)
+  
+  if count eq 0 then return,[] ; EMPTY
+  
+  inds_B = inds_B[0:count-1] ; indices of B matched to A, ordered in their original orders
 
   return,inds_B
     

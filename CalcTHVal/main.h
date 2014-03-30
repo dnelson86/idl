@@ -1,7 +1,7 @@
 #ifndef ALLVARS_H
 #define ALLVARS_H
 
-#define VERBOSE
+//#define VERBOSE
 
 #ifdef VERBOSE
 #define IF_VERBOSE(expr) (expr)

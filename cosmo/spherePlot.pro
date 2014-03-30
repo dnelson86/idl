@@ -11,7 +11,8 @@
 ; noerase : set for all plots after the first for a compound plot
 
 pro plotMollweideProj, data, rot_ang=rot_ang, minmax=minmax, ctName=ctName, $
-                       title=title, bartitle=bartitle, pos=pos, noerase=noerase, bigbar=bigbar
+                       title=title, bartitle=bartitle, pos=pos, noerase=noerase, bigbar=bigbar, $
+                       inds=inds
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
@@ -307,6 +308,20 @@ pro plotMollweideProj, data, rot_ang=rot_ang, minmax=minmax, ctName=ctName, $
       cbar_units = 1.5
     endif
     
+    ; 3x3 compact tiling, individual colorbars and titles
+    if pos eq '3x3' then begin
+      if ~keyword_set(inds) then message,'Error: Specify indices pair with 3x3.'
+
+      w_xll = ( [0.04,0.36,0.68] )[ inds[0] ]
+      w_xur = ( [0.34,0.66,0.98] )[ inds[0] ]
+      w_yll = ( [0.09,0.42,0.75] )[ inds[1] ]
+      w_yur = ( [0.40,0.73,1.03] )[ inds[1] ]
+      x_title = w_xur - 0.05
+      y_title = w_yur - 0.05
+      pxsize = 0.30
+      cbar_units = 1.3
+    endif
+    
   endelse
   
   w_dx = w_xur - w_xll
@@ -328,6 +343,12 @@ pro plotMollweideProj, data, rot_ang=rot_ang, minmax=minmax, ctName=ctName, $
     if pos eq 'ul_3' or pos eq 'cl_3' or pos eq 'll_3' then begin
       cbar_dx = 0.5
       cbar_dy = 1.0/70.0
+    endif
+    
+    ; for 3x3 reduce
+    if pos eq '3x3' then begin
+      cbar_dx /= 1.5
+      cbar_dy /= 1.0
     endif
   endif 
   
@@ -562,6 +583,90 @@ pro plot2Halo3ValComp
 
 end
 
+; plot2Halo3ValComp(): compare three matched halos with three values each (3x3)
+
+pro plot3Halo3ValComp
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; config
+  res      = 512
+  redshift = 2.0
+  
+  sPs = mod_struct( sPs, 'sP0', simParams(res=res,run='feedback',redshift=redshift) )
+  sPs = mod_struct( sPs, 'sP1', simParams(res=res,run='tracer',redshift=redshift) )
+  sPs = mod_struct( sPs, 'sP2', simParams(res=res,run='gadget',redshift=redshift) )
+  
+  radFacs   = [0.25,0.5,0.75,1.0,1.5]
+  radInd    = 3        ; indexes radFacs[]
+  rot_ang   = [0,45]   ; [lat,long] center in deg (left,up)
+  cutSubS   = 1        ; cut satellite substructures out from halo
+
+  haloID    = 314 ;z2.304 z2.301 z2.130 z2.64
+  partTypes = ['gas','gas','gas']
+  valNames  = ['density','radvel','radmassflux']
+  ctNames   = ['helix','brewer-redblue','brewer-browngreen']
+  bartitles = ["log ( \rho / <\rho> )",$
+               "V_{rad} [_{ }km/s_{ }]",$
+               "log ( dM_{rad }/dt ) [_{ }M_{sun} kpc^{-2} Myr^{-1 }]"]
+
+  ; quantity bounds
+  ranges      = list([-0.5,1.5],[-350,350],[-3.0,3.0])
+  ratioToMean = [1,0,0] ; plot value/mean(value) ratio
+  plotLog     = [1,0,1] ; plot log(value)
+
+  ; find matching subgroup IDs
+  subgroupIDs = lonarr( n_tags(sPs) )
+  for i=0,n_tags(sPs)-1 do subgroupIDs[i] = getMatchedIDs(simParams=sPs.(i),haloID=haloID)
+  
+  if cutSubS then csTag = '.cutSubS' else csTag = ''
+  
+  ; start plot
+  plotStr = 'shell_valcomp_'
+  for i=0,n_tags(sPs)-1 do plotStr += sPs.(i).savPrefix+str(sPs.(i).res)+'_'
+  plotStr += 'z'+string(redshift,format='(f3.1)')+'_h'+str(haloID)+'_r'+str(radInd)+csTag
+            
+  start_PS, sPs.(0).plotPath + plotStr + '.eps', xs=9*1.5, ys=9.5
+
+    for i=0,2 do begin
+      for j=0,2 do begin
+      ; shell cutout
+      hsv = haloShellValue(sP=sPs.(j),partType=partTypes[i],valName=valNames[i],$
+                           subgroupIDs=subgroupIDs[j],cutSubS=cutSubS,radFacs=radFacs)
+
+      ; convert values into ratios to the mean
+      if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
+      else healpix_data = reform(hsv.value[*,radInd])
+      
+      if plotLog[i] then begin
+        w = where(healpix_data gt 0.0,count,comp=wc,ncomp=ncomp)
+        if count gt 0 then healpix_data[w]  = alog10(healpix_data[w])
+        if ncomp gt 0 then healpix_data[wc] = -alog10(-healpix_data[wc])
+      endif
+
+      minMaxVal = ranges[i]
+      print,minmax(healpix_data),minMaxVal
+
+      w = where(healpix_data gt minMaxVal[1]*0.99,count)
+      if count gt 0 then healpix_data[w] = minMaxVal[1] * 0.99
+      w = where(healpix_data lt minMaxVal[0]*0.99,count)
+      if count gt 0 then healpix_data[w] = minMaxVal[0] * 0.99
+
+      plotMollweideProj,healpix_data,rot_ang=rot_ang,bartitle=bartitles[i],pos='3x3',$
+        /noerase,ctName=ctNames[i],minmax=ranges[i],title="",inds=[i,j]
+          
+      endfor ;j
+    endfor ;i
+    
+    for j=0,2 do begin
+      ypos = ( [0.20,0.53,0.86] )[j]
+      cgText,0.026,ypos,sPs.(j).simName,orientation=90,alignment=0.5,color=cgColor('orange'),/normal
+    endfor
+    
+  end_PS, pngResize=60, /deletePS
+
+end
+
 ; plotHaloShellValueComp(): compare four different particle fields for one halo at one redshift
 
 pro plotHaloShellValueComp
@@ -717,84 +822,4 @@ pro plotHaloShellValueComp
   endforeach ;radInds
 
   stop
-end
-
-; plotShellInfallFracComp(): compare arepo/gadget infall covering fraction vs halo mas
-
-pro plotShellInfallFracComp
-
-  sPg = simParams(res=512,run='gadget',redshift=2.0)
-  sPa = simParams(res=512,run='tracer',redshift=2.0)
-  
-  ffG = calcShellInfallFrac(sP=sPg)
-  ffA = calcShellInfallFrac(sP=sPa)
-  
-  ; red/blue as in Vogelsberger+
-  colorsA = [getColor24([255,200,200]),getColor24([255,100,100]),getColor24([255,0,0])] ; 128,256,512 AR
-  colorsG = [getColor24([200,200,255]),getColor24([100,100,255]),getColor24([0,0,255])] ; 128,256,512 GA
-  cInd = 2
-  
-  ; green/orange higher contrast
-  ;colorsA = [getColor24(['91'x,'e5'x,'9b'x]),getColor24(['12'x,'b2'x,'25'x]),getColor24(['03'x,'60'x,'0f'x])]
-  ;colorsG = [getColor24(['f6'x,'a1'x,'9c'x]),getColor24(['e6'x,'21'x,'17'x]),getColor24(['7b'x,'0a'x,'04'x])]
-  ;cInd = 1
-  
-  ; bin fractions into halo mass bins and make median lines
-  logMassBins=[9.5,10.0,10.1,10.2,10.3,10.4,10.5,10.6,10.7,10.8,10.9,11.0,$
-               11.1,11.25,11.5,11.75,11.9,13.1]
-  logMassNBins = n_elements(logMassBins)-1
-  logMassBinCen = 0.5 * (logMassBins + shift(logMassBins,-1))
-  logMassBinCen = logMassBinCen[0:-2]
-  
-  medians = { gadget : fltarr(ffG.nRadFacs,logMassNBins) + !values.f_nan ,$
-              arepo  : fltarr(ffA.nRadFacs,logMassNBins) + !values.f_nan  }
-              
-  ; calculate median accretion rate in bins of halo mass
-  for i=0,logMassNbins-1 do begin
-
-    w = where(ffG.priMasses gt logMassBins[i] and ffG.priMasses le logMassBins[i+1],count)
-    if count gt 0 then for j=0,ffG.nRadFacs-1 do medians.gadget[j,i] = median(ffG.fracInfall[j,w])
-      
-    w = where(ffA.priMasses gt logMassBins[i] and ffA.priMasses le logMassBins[i+1],count)
-    if count gt 0 then for j=0,ffA.nRadFacs-1 do medians.arepo[j,i] = median(ffA.fracInfall[j,w])
-    
-  endfor  
-
-  ; debug plot (all points)
-  start_PS, sPg.plotPath+'fracvsmass.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+str(sPg.res)+'.'+str(sPg.snap)+'.eps'
-    ; plot
-    xrange = minmax(ffG.priMasses)+[-0.2,0.2]
-    yrange = [0.0,1.0]
-    
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-      ytitle="Angular Covering Fraction of Infall",xtitle="log ( Halo Mass ) "+textoidl(" [M_{sun}]")
-      
-    cgPlot,xrange,[0.5,0.5],line=0,color=cgColor('light gray'),/overplot
-    
-    for j=0,ffG.nRadFacs-1 do $
-      cgPlot,ffG.priMasses,ffG.fracInfall[j,*],psym=4,color=getColor(j),/overplot 
-  end_PS
-
-  ; plot
-  start_PS, sPg.plotPath+'infallFrac.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+str(sPg.res)+'.'+str(sPg.snap)+'.eps'
-    ; plot
-    xrange = [10.0,12.5]
-    yrange = [0.0,1.0]
-    
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-      ytitle="Angular Covering Fraction of Infall",xtitle=textoidl("M_{halo} [_{ }log h^{-1} M_{sun }]")
-      
-    cgPlot,xrange,[0.5,0.5],line=0,color=cgColor('light gray'),/overplot
-    
-    for j=0,ffG.nRadFacs-1 do $
-      cgPlot,logMassBinCen,medians.gadget[j,*],line=j,color=colorsG[cInd],/overplot
-    for j=0,ffA.nRadFacs-1 do $
-      cgPlot,logMassBinCen,medians.arepo[j,*],line=j,color=colorsA[cInd],/overplot
-      
-    ; legends
-    strings = textoidl('r/r_{vir} = ')+['0.25','0.5','1.0']
-    legend,strings,linestyle=indgen(ffG.nRadFacs),linesize=0.25,box=0,/top,/left
-    legend,['gadget','arepo'],textcolor=[colorsG[cInd],colorsA[cInd]],box=0,/top,/right
-  end_PS
-
 end
