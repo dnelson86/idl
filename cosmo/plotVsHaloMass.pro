@@ -52,11 +52,11 @@ pro plotByMethod
   accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
   timeWindow = 500.0 ; consider accretion over this past time range (Myr)
                       ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
-  res        = 256
-  redshift   = 2.0
+  res        = 512
+  redshift   = 0.0
   
   lines   = [1,0,2] ; tvircur,tviracc,const5.5
-  sK      = 3 ; smoothing kernel size  
+  sK      = 3 ; smoothing kernel size
   cInd    = 1 ; color index
   zoomSym = ['open circle','open square','open diamond'] ;cutVals/virVals
 

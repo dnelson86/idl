@@ -273,6 +273,52 @@ function convertUtoTemp, u, nelec, gamma=gamma, hmassfrac=hmassfrac, log=log
   return, float(temp)
 end
 
+; convertTempToU(): convert temperature in log(K) to u in code units
+
+function convertTempToU, logTemp, gamma=gamma, hmassfrac=hmassfrac, log=log
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  if max(logTemp) gt 10.0 then message,'Error: input temp probably not in log.'
+  
+  ; adiabatic index and hydrogen mass fraction defaults (valid for ComparisonProject)
+  if not keyword_set(gamma)     then gamma = 5.0/3.0
+  if not keyword_set(hmassfrac) then hmassfrac = units.hydrogen_massfrac
+
+  meanmolwt = 0.6 * units.mass_proton ; ionized, T > 10^4 K
+  
+  ;temp = (gamma-1.0) * u / units.boltzmann * units.UnitEnergy_in_cgs / units.UnitMass_in_g * meanmolwt
+  u = 10.0^logTemp * units.boltzmann * units.UnitMass_in_g / (units.UnitEnergy_in_cgs * meanmolwt * (gamma-1.0))
+  
+  ; convert to log(u) if requested
+  if keyword_set(log) then begin
+    w = where(u eq 0.0,count)
+    if (count ne 0) then u[w] = 1.0
+    u = alog10( temporary(u) )
+  endif
+  
+  return, float(u)
+  
+end
+
+; codeMassToVirEnt(): given a halo mass, return a S200 (e.g. Pvir/rho_200crit^gamma)
+
+function codeMassToVirEnt, mass, redshift=redshift, sP=sP, log=log
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  if n_elements(mass) eq 0 then message,'Error'
+  
+  if n_elements(redshift) eq 0 then redshift = sP.redshift
+  
+  virTempLog = codeMassToVirTemp(mass,redshift=redshift,sP=sP,/log)
+  virU = convertTempToU(virTempLog)
+  r200crit = critRatioToCode(200.0,redshift=redshift)
+  
+  s200 = calcEntropyCGS(virU, r200crit, sP=sP, log=log)
+  
+  return, s200
+
+end
+
 ; convertCoolingRatetoCGS():
 
 function convertCoolingRatetoCGS, coolrate, h=h

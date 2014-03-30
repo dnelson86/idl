@@ -762,6 +762,35 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse,
 
 end
 
+; sampleColorTable(): grab a sequence of colors, evenly spaced, from a given colortable
+
+function sampleColorTable, ctname, num, bounds=bounds
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  colors = lonarr(num)
+  
+  if ~keyword_set(bounds) then bounds = [0.0,1.0]
+  ; get current CT
+  tvlct,r,g,b,/get
+  
+  ; load new colortable
+  loadColorTable, ctname
+  tvlct,rr,gg,bb,/get
+  
+  ; determine indices, for each convert color to 24-bit and save
+  inds = round( linspace(bounds[0],bounds[1],num) * n_elements(rr) )
+  inds = inds > 0 < (n_elements(rr)-1)
+  print,inds
+  
+  foreach ind,inds,i do $
+    colors[i] = getColor24( [ rr[ind],gg[ind],bb[ind] ] )
+
+  ; restore CT and return
+  tvlct,r,g,b
+  
+  return,colors
+
+end
+
 ; loadCSV(): load all the lines of a textfile with column template ptStruct
 ;            skip headerLines at the beginning and put their contents as a string into header
 
@@ -857,6 +886,32 @@ function loadBinarySequence, fileBase, ptStruct
   return, pts
 end
 
+; h5_write(): wraps the already simple h5_create
+
+pro h5_write, array, dataset_name, filename
+
+  dataset = { _Name: dataset_name, _TYPE: 'Dataset', _DATA: array }
+  h5_create, filename, dataset
+
+end
+
+; mvbakrestarts(): wipe out Arepo restart files with backups
+
+pro mvbakrestarts
+  message,'remove for safety'
+  files = file_search("bak-restart.*")
+
+  foreach file,files,k do begin
+    newfname = strmid(file,4,strlen(file)-4)
+    cmd = "mv "+file+" "+newfname
+    print,cmd
+    spawn,cmd
+    wait,0.1
+  endforeach
+
+end
+
+
 ; postscript output
 ; -----------------
 
@@ -879,8 +934,8 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig
   endif
 
   PS_Start, FILENAME=filename, /nomatch, /quiet, bits_per_pixel=8, color=1, $
-            encapsulated=eps, decomposed=0, xs=xs, ys=ys, /inches, font=0;, $
-            ;/dejavusans ;requires idl8.2 
+            encapsulated=eps, decomposed=0, xs=xs, ys=ys, /inches, font=0, $
+            /dejavusans ;requires idl8.2 
             ;font=1,tt_font='Helvetica'
  
   !p.charsize  = 1.1 ; 1.4 for gas accretion paper
@@ -972,6 +1027,27 @@ function plot_pos, rows=rows, cols=cols, total=total, gap=gap
   
   if keyword_set(gap) then begin
     ; gap: spacing between all plots such that all axes and axes labels can be drawn
+    if rows eq 1 and cols eq 2 then begin
+      ; 1x2
+      message,'todo'
+      x0 = 0.04 & x1 = 0.46 & xoff = 0.48
+      y0 = 0.12 & y1 = 0.96
+                
+      pos = list( [x0,y0,x1,y1] ,$ ; left
+                  [x0+xoff,y0,x1+xoff,y1] ) ; right
+    endif
+    
+    if rows eq 1 and cols eq 3 then begin ;xs=9, ys=6
+      ; 1x3
+      x0 = 0.08 & x1 = 0.34 & xoff = 0.32
+      y0 = 0.12 & y1 = 0.94
+      
+      pos = list( [x0+0*xoff, y0, x1+0*xoff, y1] ,$ ; left
+                  [x0+1*xoff, y0, x1+1*xoff, y1] ,$ ; middle
+                  [x0+2*xoff, y0, x1+2*xoff, y1] )  ; right
+      
+    endif
+    
     if rows eq 2 and cols eq 2 then begin
       ; 2x2
       x0 = 0.10 & x1 = 0.46 & xoff = 0.49
@@ -998,6 +1074,22 @@ function plot_pos, rows=rows, cols=cols, total=total, gap=gap
                   [x0+xoff,y0,x1+xoff,y1] ) ; bottom right
       
     endif
+    
+    if rows eq 2 and cols eq 3 then begin ;xs=9, ys=12
+      ; 2x3
+      x0 = 0.08 & x1 = 0.34 & xoff = 0.32
+      y0 = 0.12 & y1 = 0.47 & yoff = 0.48
+      
+      pos = list( [x0+0*xoff, y0+1*yoff, x1+0*xoff, y1+1*yoff] ,$ ; top left
+                  [x0+1*xoff, y0+1*yoff, x1+1*xoff, y1+1*yoff] ,$ ; top middle
+                  [x0+2*xoff, y0+1*yoff, x1+2*xoff, y1+1*yoff] ,$ ; top right
+                  [x0+0*xoff, y0+0*yoff, x1+0*xoff, y1+0*yoff] ,$ ; bottom left
+                  [x0+1*xoff, y0+0*yoff, x1+1*xoff, y1+0*yoff] ,$ ; bottom middle
+                  [x0+2*xoff, y0+0*yoff, x1+2*xoff, y1+0*yoff] ) ; bottom right
+      
+    endif
+    
+    
     
     if rows eq 1 and cols eq 3 then begin ;xs=9, ys=4 (2d maxtemp histo for 3 runs)
     
@@ -1079,8 +1171,8 @@ pro runBridge, res=res
     oB[i]->execute, "testBridgePro", /NOWAIT ; asynchronous
   endfor
   
-  ; wait for children to finish and cleanup
-  for i=0,n_elements(redshifts)-1 do $
+  ; wait for children to finish and cleanup (DESTROY IN REVERSE ORDER see CR64611)
+  for i=0,n_elements(redshifts)-1,-1 do $
     while (oB[i]->Status() ne 0) do wait,0.1
   obj_destroy,oB
   
@@ -1128,6 +1220,7 @@ end
 
 @sphere
 @spherePlot
+@spherePlotStat
 @spherePowerSpec
 ;@filamentSearch
 ;@filamentSearchPlot
@@ -1137,6 +1230,7 @@ end
 @plotAccTimes
 @binVsHaloMass
 @plotVsHaloMass
+@shyPlot
 ;@plotRadProfiles
 
 ; new feedback project analysis

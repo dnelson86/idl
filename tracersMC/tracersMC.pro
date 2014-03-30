@@ -9,12 +9,16 @@
 function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
                               gasInds=gasInds, gasIDs=gasIDs, starIDs=starIDs, $ ; input: gas cells/stars to search
                               tr_parids=tr_parids, $ ; optional input, if already loaded
-                              child_counts=child_counts ; optional output
+                              child_counts=child_counts,useOne=useOne,useTwo=useTwo ; optional output
                               
   compile_opt idl2, hidden, strictarr, strictarrsubs               
-  useExternalLowMem = 1 ; roughly 50% slower, but half the peak memory usage
+  useExternalLowMem = 0 ; roughly 50% slower, but half the peak memory usage
                         ; required for illustris due to IDs spanning full 64bit range (cannot histogram)
-                      
+              
+  if sP.run eq 'illustris' then useExternalLowMem = 1
+  if keyword_set(useTwo) then useExternalLowMem = 1
+  if keyword_set(useOne) then useExternalLowMem = 0
+              
   if (n_elements(gasInds) eq 0 and n_elements(gasIDs) eq 0 and n_elements(starIDs) eq 0) then message,'Input required.'
   if (not keyword_set(getInds) and not keyword_set(getIDs)) then message,'Output type required.'
   if (n_elements(gasIDs) gt 0 and n_elements(starIDs) gt 0) then message,'Either gas or stars.'
@@ -37,14 +41,14 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   ; get tracer parent IDs
   if ~keyword_set(tr_parids) then $
     tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
+  print,'tr_parids minmax: ',minmax(tr_parids)
+  ; shift ID arrays by a minimum to handle the huge offsets from zero
+  min_val = min( [min(gasIDs),min(tr_parids)] )
+
+  gasIDs    = temporary(gasIDs) - min_val
+  tr_parids = temporary(tr_parids) - min_val  
   
   if useExternalLowMem eq 0 then begin
-
-    ; shift ID arrays by a minimum to handle the huge offsets from zero
-    min_val = min( [min(gasIDs),min(tr_parids)] )
-
-    gasIDs    = temporary(gasIDs) - min_val
-    tr_parids = temporary(tr_parids) - min_val
 
     ; (option 1) use reverse histogram approach
     prevMax = max(tr_parids)
@@ -73,18 +77,41 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
       tr_inds[start:start+child_counts[w[i]]-1] = child_inds[child_inds[gasID]:child_inds[gasID+1]-1]
       start += child_counts[w[i]]
     endforeach
-    
-    ; undo ID shift in case we use them later
-    gasIDs    = temporary(gasIDs) + min_val
-    tr_parids = temporary(tr_parids) + min_val
   
   endif else begin
-  
     ; (option 2) use external routine
+    print,'start'
     tr_inds = calcMatchDupe(gasIDs,tr_parids,dupe_counts=child_counts,count=count)
+    print,'stop'
+    ; change to value_locate approach
+    ;par_ids = gasIDs
+    ;sort_inds = calcSort(par_ids)
+    ;par_ids_sorted = par_ids[sort_inds]
+        
+    ; locate
+    ;par_ind = value_locate(par_ids_sorted,tr_parids) ; indices to par_ids_sorted
+    ;par_ind = sort_inds[par_ind>0] ; indices to par_ids (>0 removes -1 entries, which are removed next line)
+    ;tr_inds = where(par_ids[par_ind] eq tr_parids,count) ; verify we actually matched the ID
+    ;par_ind = par_ind[tr_inds] ; indices of matched parents
+    ;message,'TODO. How to get child counts?'
     
+    ;print,'Fix/finish this approach (verify with other approach), then do 910 check.'
+    ;print,'Also, calcmatch dupe does not work? check with eg 128 vs other approach.'
+    
+    ;match2,tr_parids,gasIDs,ind0,ind1
+    ;tr_inds = where(ind0 ge 0,count)
+    ;if count eq 0 then message,'Error'
+    
+    ;h = histogram(ind0,min=0,max=n_elements(gasIDs)+1,/L64)
+    ;w = where(ind1 ge 0,count)
+    ;if count eq 0 then message,'Error'
+    ;child_counts = h[w]
   endelse
   
+  ; undo ID shift in case we use them later
+  gasIDs    = temporary(gasIDs) + min_val
+  tr_parids = temporary(tr_parids) + min_val
+   
   ; check for 32 bit long overflow
   if min(tr_inds) lt 0 or min(child_counts) lt 0 then message,'Error: Likely overflow.'
   

@@ -49,6 +49,7 @@ function fillZoomParams, r, res=res, hInd=hInd
     ;hInd=   98 mass= 11.90 rvir= 218.0 vol_bbox=  75.9 vol_chull=  38.2 rVirFac= 4.4 pos= [ 6994.99 16954.28 16613.29 ]
     ;hInd=   98 mass= 11.90 rvir= 218.0 vol_bbox=  79.2 vol_chull=  39.7 rVirFac= 4.6 pos= [ 6994.99 16954.28 16613.29 ]
     ;hInd=   98 mass= 11.90 rvir= 218.0 vol_bbox=  79.3 vol_chull=  41.4 rVirFac= 4.8 pos= [ 6994.99 16954.28 16613.29 ]
+    ;hInd=   98 mass= 11.90 rvir= 218.0 vol_bbox= 142.7 vol_chull=  62.0 rVirFac= 6.0 pos= [ 6994.99 16954.28 16613.29 ]
     r.targetHaloInd  = 98
     r.targetHaloPos  = [6994.99, 16954.28, 16613.29]
     r.targetHaloRvir = 218.0 ; ckpc
@@ -59,22 +60,27 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 10 then r.zoomShift = [21,-45,-40]
     if r.levelMax eq 11 then r.zoomShift = [21,-45,-40]
     r.rVirFac = 0.2 * r.zoomLevel + 4.0
+    
+    if str(hInd) eq '1b' then r.zoomShift = [22, -43, -39]
+    if str(hInd) eq '1b' then r.rVirFac = 6.0
   endif
   
   if hInd eq 2 then begin
     ;hInd=  104 mass= 11.82 rvir= 214.8 vol_bbox=  91.7 vol_chull=  47.5 rVirFac= 4.4 pos= [ 4260.38  5453.91  6773.12 ]
     ;hInd=  104 mass= 11.82 rvir= 214.8 vol_bbox=  94.9 vol_chull=  49.3 rVirFac= 4.6 pos= [ 4260.38  5453.91  6773.12 ]
     ;hInd=  104 mass= 11.82 rvir= 214.8 vol_bbox=  95.1 vol_chull=  50.6 rVirFac= 4.8 pos= [ 4260.38  5453.91  6773.12 ]
+    ;hInd=  104 mass= 11.82 rvir= 214.8 vol_bbox= 127.2 vol_chull=  63.5 rVirFac= 6.0 pos= [ 4260.38  5453.91  6773.12 ]
     r.targetHaloInd  = 104
     r.targetHaloPos  = [4260.38, 5453.91, 6773.12]
     r.targetHaloRvir = 214.8 ; ckpc
     r.targetHaloMass = 11.82 ; log msun
     r.targetRedshift = 2.0
     
-    if r.levelMax eq 9  then r.zoomShift = [37,29,18]
-    if r.levelMax eq 10 then r.zoomShift = [37,29,18]
-    if r.levelMax eq 11 then r.zoomShift = [37,29,18]
+    if r.levelMax eq 9  then r.zoomShift = [37, 29, 18]
+    if r.levelMax eq 10 then r.zoomShift = [37, 29, 18]
+    if r.levelMax eq 11 then r.zoomShift = [36, 29, 17]
     r.rVirFac = 0.2 * r.zoomLevel + 4.0
+    if r.levelMax eq 11 then r.rVirFac = 6.0
   endif
   
   if hInd eq 3 then begin
@@ -144,6 +150,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     ;hInd=  132 mass= 11.74 rvir= 191.5 vol_bbox=  35.1 vol_chull=  15.3 rVirFac= 4.2 pos= [ 3435.06 13498.76 12175.02 ]
     ;hInd=  132 mass= 11.74 rvir= 191.5 vol_bbox=  35.1 vol_chull=  15.6 rVirFac= 4.3 pos= [ 3435.06 13498.76 12175.02 ]
     ;hInd=  132 mass= 11.74 rvir= 191.5 vol_bbox=  35.2 vol_chull=  15.9 rVirFac= 4.4 pos= [ 3435.06 13498.76 12175.02 ]
+    ;hInd=  132 mass= 11.74 rvir= 191.5 vol_bbox=  47.9 vol_chull=  22.5 rVirFac= 6.0 pos= [ 3435.06 13498.76 12175.02 ]
+    ;hInd=  132 mass= 11.74 rvir= 191.5 vol_bbox=  79.5 vol_chull=  36.5 rVirFac= 8.0 pos= [ 3435.06 13498.76 12175.02 ]
     r.targetHaloInd  = 132
     r.targetHaloPos  = [3435.06, 13498.76, 12175.02]
     r.targetHaloRvir = 191.5 ; ckpc
@@ -154,6 +162,14 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 10 then r.zoomShift = [42,-19,-12]
     if r.levelMax eq 11 then r.zoomShift = [42,-19,-12]
     r.rVirFac = 0.1 * r.zoomLevel + 4.0
+    
+    ; L11 only:
+    if str(hInd) eq '7b' then r.zoomShift = [42, -19, -12]
+    if str(hInd) eq '7b' then r.rVirFac = 6.0
+    
+    ; L12:
+    if r.levelMax eq 12 then r.zoomShift = [43, -19, -12]
+    if r.levelMax eq 12 then r.rVirFac = 8.0
   endif
   
   if hInd eq 8 then begin
@@ -246,7 +262,6 @@ function fillZoomParamsDwarf, r, res=res, hInd=hInd
     ;hInd= 2504 mass= 10.52 rvir=  50.1 vol_bbox=   5.9 vol_chull=   1.9 rVirFac= 7.2 pos= [ 9711.95  8777.39  1952.12 ]
     ;hInd= 2504 mass= 10.52 rvir=  50.1 vol_bbox=   6.9 vol_chull=   2.4 rVirFac= 8.2 pos= [ 9711.95  8777.39  1952.12 ]
     ;hInd= 2504 mass= 10.52 rvir=  50.1 vol_bbox=   9.7 vol_chull=   3.1 rVirFac= 9.2 pos= [ 9711.95  8777.39  1952.12 ]
-    ;hInd= 2504 mass= 10.52 rvir=  50.1 vol_bbox=   6.0 vol_chull=   2.0 rVirFac= 7.4 pos= [ 9711.95  8777.39  1952.12 ]
 
     ; NOT MADE/RUN:
     ;hInd= 2504 mass= 10.52 rvir=  50.1 vol_bbox=  11.4 vol_chull=   3.8 rVirFac=10.5 pos= [ 9711.95  8777.39  1952.12 ]
@@ -258,17 +273,13 @@ function fillZoomParamsDwarf, r, res=res, hInd=hInd
     r.targetHaloMass = 10.52 ; log msun
     r.targetRedshift = 0.0
     
-    if r.levelMax eq 9  and str(hInd) eq '0'  then r.zoomShift = [-36, -45, 44]
-    if r.levelMax eq 9  and str(hInd) eq '0b' then r.zoomShift = [-37, -45, 44]
-    if r.levelMax eq 9  and str(hInd) eq '0c' then r.zoomShift = [-39, -45, 44]
+    if r.levelMax eq 9  then r.zoomShift = [-36, -45, 44]
     if r.levelMax eq 10 then r.zoomShift = [-37, -45, 44]
-    if r.levelMax eq 11 then r.zoomShift = []
+    if r.levelMax eq 11 then r.zoomShift = [-39, -45, 44]
     
-    if r.levelMax eq 9  and str(hInd) eq '0'  then r.rVirFac = 0.2 * r.zoomLevel + 6.8
-    if r.levelMax eq 9  and str(hInd) eq '0b' then r.rVirFac = 0.2 * r.zoomLevel + 7.8 ;L9 only
-    if r.levelMax eq 9  and str(hInd) eq '0c' then r.rVirFac = 0.2 * r.zoomLevel + 8.8 ;L9 only
+    if r.levelMax eq 9  then r.rVirFac = 8.2
     if r.levelMax eq 10 then r.rVirFac = 8.2
-    if r.levelMax eq 11 then message,'Error'
+    if r.levelMax eq 11 then r.rVirFac = 9.2
   endif
   
   if str(hInd) eq '1' or str(hInd) eq '1b' or str(hInd) eq '1c' then begin
@@ -330,11 +341,12 @@ function fillZoomParamsDwarf, r, res=res, hInd=hInd
     r.targetRedshift = 0.0
     
     if r.levelMax eq 9  then r.zoomShift = [5, -27, -30]
-    if r.levelMax eq 10 then r.zoomShift = [5, -27, -31]
-    if r.levelMax eq 11 then message,'TODO'
+    if r.levelMax eq 10 then r.zoomShift = [6, -27, -32]
+    if r.levelMax eq 11 then r.zoomShift = [6, -27, -32]
     
     if r.levelMax eq 9  then r.rVirFac = 8.5
-    if r.levelMax eq 10 then r.rVirFac = 9.5
+    if r.levelMax eq 10 then r.rVirFac = 10.5
+    if r.levelMax eq 11 then r.rVirFac = 10.5
   endif
   
   ; colors as a function of resolution
@@ -595,8 +607,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
   
   ; zoom project: DM+gas single halo zooms (now all in 20Mpc box, add boxsize to run label later)
   if run eq 'zoom_20mpc'                or run eq 'zoom_20mpc_derefgal' or $
-     run eq 'zoom_20mpc_derefgal_nomod' or run eq 'zoom_20mpc_convhull' or $
-     run eq 'zoom_20mpc_derefgal_nomod2' then begin
+     run eq 'zoom_20mpc_derefgal_nomod' then begin
     if n_elements(hInd) eq 0 then message,'Error: Must specify hInd (halo index) to load zoom.'
     
     r.minNumGasPart  = -1 ; no additional cut
@@ -623,12 +634,9 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     
     if run eq 'zoom_20mpc_derefgal'       then pathStr = pathStr + '_derefgal'
     if run eq 'zoom_20mpc_derefgal_nomod' then pathStr = pathStr + '_derefgal'
-    if run eq 'zoom_20mpc_derefgal_nomod2' then pathStr = pathStr + '_derefgal'
-    if run eq 'zoom_20mpc_convhull'       then pathStr = pathStr + '_convhull'
     
     dirStr = ''
     if run eq 'zoom_20mpc_derefgal_nomod' then dirStr = '_noMod'
-    if run eq 'zoom_20mpc_derefgal_nomod2' then dirStr = '_noMod2'
         
     r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'/output'+dirStr+'/'
     r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/'
@@ -883,7 +891,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.arepoPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/'
     r.savPrefix  = 'N'
     r.saveTag    = 'trMC'
-    r.simName    = 'AREPO'
+    r.simName    = 'NO FEEDBACK'
     r.plotPrefix = 'trMC'
     r.plotPath   = '/n/home07/dnelson/plots/'
     r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'
