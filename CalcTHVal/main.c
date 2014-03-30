@@ -106,12 +106,12 @@ int CalcTHVal(int argc, void* argv[])
     return 0;
   } else {
 #ifdef   ONEDIMS
-IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (ONEDIMS!).");
+IF_VERBOSE( IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (ONEDIMS!).") );
 #else
 #ifndef  TWODIMS
-IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (NDIMS=3!).");
+IF_VERBOSE( IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (NDIMS=3!).") );
 #else
-IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (TWODIMS!).");
+IF_VERBOSE( IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcTHVal Loaded (TWODIMS!).") );
 #endif
 #endif /* ONEDIMS */
 

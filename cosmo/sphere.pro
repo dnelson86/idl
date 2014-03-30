@@ -1,6 +1,6 @@
 ; sphere.pro
 ; gas accretion project - interpolation of quantities onto healpix spheres
-; dnelson mar.2013
+; dnelson mar.2014
 
 ; sphereXYZCoords(): return a HEALPix subdivision at Nside resolution parameter scaled out to radius
 
@@ -53,10 +53,10 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
                          Nside=Nside, radFacs=radFacs, cutSubS=cutSubS
                          
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  units = getUnits()
+  units = getUnits(redshift=sP.redshift)
   
   ; config
-  nNGB = 32  ; neighbor search in CalcTHVal
+  nNGB = 20  ; neighbor search in CalcTHVal
   
   ; healpix resolution parameter, 8=768, 16~3k, 32~12k, 64~50k, 128~200k, 256~750k, 512~3M
   if ~keyword_set(Nside) then Nside = 64
@@ -65,15 +65,16 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   if ~keyword_set(radFacs) then $
     radFacs = [0.01,0.05,0.1,0.25,0.5,0.75,0.9,1.0,1.1,1.25,1.5,1.75,2.0]
     
-  padFac = 2.0*max(radFacs) ; times r_vir maximum search radius  
+  padFac = 2.0*max(radFacs) ; times r_vir maximum search radius (cubic cutout0)
     
   if ~keyword_set(valName) then message,'Error: Must specify valName'
     
   ; if one subgroupID, check for existence of a save
   if keyword_set(cutSubS) then csTag = '.cutSubS' else csTag = ''
   
-  saveFilename = sP.derivPath+'hShells/hShells.'+partType+'.'+valName+'.'+sP.savPrefix+str(sP.res)+csTag+$
-                 '.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+str(subgroupIDs[0])+'.'+str(n_elements(radFacs)) + '.sav'
+  saveFilename = sP.derivPath+'hShells/snap_'+str(sP.snap)+'/hShells.'+partType+'.'+valName+'.'+$
+                 sP.savPrefix+str(sP.res)+csTag+'.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+$
+                 str(subgroupIDs[0])+'.'+str(n_elements(radFacs)) + '.sav'
  
   if n_elements(subgroupIDs) eq 1 then begin
     if file_test(saveFilename) then begin
@@ -81,6 +82,23 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       return,r
     endif
   endif
+  
+  ; if multiple subgroupIDs, check for existence of all saves
+  workFlag = 0
+  
+  saveFilenames = sP.derivPath+'hShells/snap_'+str(sP.snap)+'/hShells.'+partType+'.'+valName+'.'+$
+                  sP.savPrefix+str(sP.res)+csTag+'.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+$
+                  str(subgroupIDs)+'.'+str(n_elements(radFacs)) + '.sav'
+                  
+  foreach fname, saveFilenames do begin
+    if ~file_test(fname) then workFlag = 1
+  endforeach
+  if workFlag eq 0 then begin
+    print,valName+': All already done ('+str(n_elements(subgroupIDs))+' subgroups), returning.'
+    return,[]
+  endif
+  
+  file_mkdir, sP.derivPath + 'hShells/snap_' + str(sP.snap) ; if it does not already exist
   
   Npx      = nside2npix(Nside)
   nRadFacs = n_elements(radFacs)
@@ -94,10 +112,15 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
     hsv_radvel = haloShellValue(sP=sP,partType=partType,valName='radvel',subgroupIDs=subgroupIDs,$
                                 Nside=Nside,radFacs=radFacs,cutSubS=cutSubS)
                                 
-    if n_elements(subgroupIDs) gt 1 then message,'Computed and saved, to return radmassflux request only one halo.'                       
+    if n_elements(subgroupIDs) gt 1 then begin
+      print,'radmassflux: Computed and saved, to return request only one halo.'
+      return,[]
+    endif
+  
+    if ~tag_exist(hsv_dens,'valName') then return,hsv_dens ; flag=-1
+  
     hsv_dens.valName = 'radmassflux'
-    hsv_dens.value = alog10(hsv_dens.value * units.UnitMass_in_Msun) * (hsv_radvel.value * units.kmS_in_kpcYr)
-    print,'seems strange to have log, check'
+    hsv_dens.value = hsv_dens.value * units.UnitMass_in_Msun * (hsv_radvel.value * units.kmS_in_kpcYr)
     hsv_dens.value *= 1e6 ; Msun / kpc^2 / year  -->  Msun / kpc^2 / Myr
     return, hsv_dens 
   endif
@@ -186,8 +209,9 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   ; loop over each requested halo
   foreach subgroupID,subgroupIDs do begin
     ; skip if this halo exists
-    saveFilename = sP.derivPath+'hShells/hShells.'+partType+'.'+valName+'.'+sP.savPrefix+str(sP.res)+csTag+$
-                   '.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+str(subgroupID)+'.'+str(n_elements(radFacs)) + '.sav'
+    saveFilename = sP.derivPath+'hShells/snap_'+str(sP.snap)+'/hShells.'+partType+'.'+valName+'.'+$
+                   sP.savPrefix+str(sP.res)+csTag+'.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+$
+                   str(subgroupID)+'.'+str(n_elements(radFacs)) + '.sav'
 
     if file_test(saveFilename) then begin
       print,'Skipping: ',subgroupID
@@ -199,14 +223,21 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
     rVir   = gc.group_r_crit200[gc.subgroupGrNr[subgroupID]]
     
     ; verify that the requested subgroupID is a primary subgroup
-    ;w = where(priSGIDs eq subgroupID,countMatch)
-    ;if ~countMatch then message,'Error: Only know how to do this for primary subgroups for now.'
+    w = where(priSGIDs eq subgroupID,countMatch)
+    if ~countMatch then message,'Error: Only know how to do this for primary subgroups for now.'
     
     ; take conservative subset of points using periodic distances
     rad = periodicDists(cenPos,pos,sP=sP)
-    
     wRadCut = where(rad le padFac*rVir,sCount)
-    if ~sCount then message,'Error: No positions found near specified radius.'
+
+    if sCount eq 0 then begin
+      r = {flag:-1,valName:valName,value:0}
+      save,r,filename=saveFilename
+      print,'Warning: No positions found near specified radius:'
+      print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))+' (FLAG=-1)'
+      continue
+    endif
+    
     rad = !NULL
     
     loc_pos = pos[*,wRadCut]
@@ -229,12 +260,6 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
     if valName eq 'radvel' then begin
       loc_vel = vel[*,wRadCut]
       
-      ; make velocities relative to bulk halo motion
-      gVel = gc.subgroupVel[*,subgroupID]
-      loc_vel[0,*] = reform(loc_vel[0,*] - gVel[0])
-      loc_vel[1,*] = reform(loc_vel[1,*] - gVel[1])
-      loc_vel[2,*] = reform(loc_vel[2,*] - gVel[2])
-      
       ; make normalized position vector wrt halo center = vec(r) / ||r|| where r from particle to center
       ; means that radvel<0 is inflow and radvel>0 is outflow
       rnorm0 = reform(loc_pos[0,*] - cenPos[0])
@@ -248,6 +273,13 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       ; denominator
       rnorm = sqrt(rnorm0*rnorm0 + rnorm1*rnorm1 + rnorm2*rnorm2)
       
+      ; make velocities relative to bulk halo motion, and add hubble flow
+      gVel = gc.subgroupVel[*,subgroupID]
+      
+      loc_vel[0,*] = reform(loc_vel[0,*] - (gVel[0] + (rnorm * units.H_z) * rnorm0/rnorm))
+      loc_vel[1,*] = reform(loc_vel[1,*] - (gVel[1] + (rnorm * units.H_z) * rnorm1/rnorm))
+      loc_vel[2,*] = reform(loc_vel[2,*] - (gVel[2] + (rnorm * units.H_z) * rnorm2/rnorm))
+
       ; dot(vel,rnorm) gives the magnitude of the projection of vel onto vec(r)
       value = (loc_vel[0,*]*rnorm0 + loc_vel[1,*]*rnorm1 + loc_vel[2,*]*rnorm2) / rnorm; 1xN
       
@@ -304,12 +336,6 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
     if keyword_set(cutSubS) then begin
       loc_ids = ids[wRadCut]
       
-      ; make a list of satellites of this halo and their particle ids
-      ;nSubs    = gc.groupNSubs[gc.subgroupGrNr[subgroupID]]
-      ;firstSub = gc.groupFirstSub[gc.subgroupGrNr[subgroupID]]
-      ;satGCids = lindgen(nSubs-1) + firstSub + 1
-      ;satPIDs = gcPIDList(gc=gc,select='sec',valGCids=satGCids,partType=partType)
-      
       ; remove the intersection of (satPIDs,loc_ids) from posval
       calcMatch,satPIDs,loc_ids,sat_ind,ids_ind,count=count
       sat_ind = !NULL
@@ -318,7 +344,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       if count gt 0 then all[ids_ind] = 1B
       wSubSComp = where(all eq 0B, ncomp)
       
-      print,'Substructures cut ['+str(count)+'] of ['+str(n_elements(loc_ids))+'] have left: '+str(ncomp)
+      ;print,'Substructures cut ['+str(count)+'] of ['+str(n_elements(loc_ids))+'] have left: '+str(ncomp)
       
       ids_ind = !NULL
       loc_ids = !NULL
@@ -341,7 +367,17 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
           nRadFacs   : nRadFacs              ,$
           valName    : valName               ,$
           cutSubS    : cutSubS               ,$
+          flag       : 1                     ,$ ; 1=ok, -1=bad
           value      : fltarr(Npx,nRadFacs)   }
+  
+    ; check if we have very few points
+    npos = size(posval)
+    if npos[2] le nNGB then begin
+      r.flag = -1
+      save,r,filename=saveFilename
+      print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))+' (FLAG=-1)'
+      continue
+    endif
   
     sphereXYZ = fltarr(3,Npx*nRadFacs)
   
@@ -385,72 +421,175 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   if n_elements(subgroupIDs) eq 1 then return,r
 end
 
+; uniformHaloMassSelection(): select primary halo indices with uniform density in mass
+;   e.g. counteract the steep mass function
+
+function uniformHaloMassSelection, sP=sP, gc=gc, minMass=minMass, binSize=binSize, midMass=midMass, $
+                                   priMasses=priMasses, verbose=verbose, massBinCens=massBinCens
+                                  
+  if ~keyword_set(sP) or ~keyword_set(minMass) or ~keyword_set(binSize) or ~keyword_set(midMass) then $
+    message,'Error: Must specify inputs'
+  if ~keyword_set(gc) then gc = loadGroupCat(sP=sP,/skipIDs)
+  
+  priIDs    = gcIDList(gc=gc,select='pri')
+  parMasses = codeMassToLogMsun(gc.subgroupMass[priIDs])
+  
+  w = where(parMasses ge midMass,countAbove)
+  subgroupIDs = priIDs[w]
+  priMasses = parMasses[w]
+  
+  print,'Above ['+string(midMass,format='(f4.1)')+'] picked = '+str(countAbove)
+  
+  ; make selection by bin below midMass
+  seed    = 42424242L
+  nPerBin = 40 ; make constant across different 512 runs
+  
+  w = where(parMasses ge minMass and parMasses lt midMass,count)
+  nBins = floor((midMass - minMass) / binSize)
+  
+  for i=0,nBins-1 do begin
+    binMin = midMass - (i+1)*binSize
+    binMax = binMin + binSize
+    
+    wBin = where(parMasses ge binMin and parMasses lt binMax,count)
+    if count eq 0 then continue
+    
+    ; if specific massBin points specified, only include these
+    if n_elements(massBinCens) gt 0 then begin
+      if min( abs(binMin-massBinCens) ) gt 0.01 then continue
+    endif
+    
+    ; highest mass bin, store number and accept all
+    if i eq 0 then begin
+      wSelect = wBin
+      ;nPerBin = count
+    endif else begin
+      ; shuffle indices and pick the first nPerBin
+      wBin = shuffle(wBin, seed=seed)
+      wSelect = wBin[0:( (nPerBin-1) < (n_elements(wBin)-1) )]
+    endelse
+    
+    ; add selection to keeper arrays
+    subgroupIDs = [subgroupIDs, priIDs[wSelect]]
+    priMasses   = [priMasses, parMasses[wSelect]]
+    
+    if keyword_set(verbose) then $
+      print,' ['+string(i,format='(I2)')+'] binMinMax: '+string(binMin,format='(f4.1)')+' to '+$
+        string(binMax,format='(f4.1)')+' [pick '+str(n_elements(wSelect))+' of '+str(count)+']'
+  endfor
+  
+  if keyword_set(verbose) then $
+    print,'Below ['+string(midMass,format='(f4.1)')+'] picked = '+str(n_elements(priMasses)-countAbove)
+    
+  return, subgroupIDs
+end
+
 ; calcShellInfallFrac(): calculate angular covering fraction of infalling mass flux
 
-function calcShellInfallFrac, sP=sP
-
+function calcShellInfallFrac, sP=sP, massBinCens=massBinCens, blindSearch=blindSearch
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  radFacs     = [0.25,0.5,1.0] ; fractions of the virial radius to save results
-  cutSubS     = 1     ; cut satellite substructures out from halo
-  minLogMass  = 10.0  ; minimum halo mass
-  partType    = 'gas'
-  valName     = 'radmassflux'
-  threshVal   = 0.0 ; strict inflow
+  radFacs      = [0.25,0.5,0.75,1.0,1.5] ; fractions of the virial radius to save results
+  cutSubS      = 1     ; cut satellite substructures out from halo
+  threshValAbs = 20.0  ; e.g. greater than +/- 20 km/s vrad
+  threshValRel = 0.1   ; e.g. greater than +/- 10% of circular velocity of NFW halo fit at that rad
+  
+  ; config - halo selection
+  allAboveLogMsun = 11.0 ; every halo above this value
+  minLogMsun      = 9.0  ; minimum halo mass
+  belowBinSize    = 0.1  ; below allAboveLogMsun, randomly get equal number per mass bin
   
   ; check for existence of save
-  saveFilename = sP.derivPath + 'shellFrac.' + sP.savPrefix + str(sP.res) + '.' + $
-    str(sP.snap) + '.mm' + str(fix(minLogMass*10)) + '.cut' + str(cutSubS) + '.rad' + $
-    str(n_elements(radFacs)) + '.' + partType + '.' + valName + '.sav'
+  massStr = 'm' + string(allAboveLogMsun,format='(f4.1)') + '-' + string(minLogMsun,format='(f3.1)') + $
+            '-' + string(belowBinSize,format='(f3.1)')
+  if n_elements(massBinCens) gt 0 then massStr += '.mBC' + str(n_elements(massBinCens))
+  
+  saveFilename = sP.derivPath + 'hShells/shellFrac.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.cut' + str(cutSubS) + '.rad' + $
+    str(n_elements(radFacs)) + '.' + massStr + '.infallFrac.sav'
     
   if file_test(saveFilename) then begin
     restore,saveFilename
     return,r
-  endif
+  endif else begin
+    ; if we are searching for snapshots which have been analyzed, return a false here
+    if keyword_set(blindSearch) then return,[]
+  endelse
   
-  ; load subgroup IDs
-  gc        = loadGroupCat(sP=sP,/skipIDs)
-  priIDs    = gcIDList(gc=gc,select='pri')
-  priMasses = codeMassToLogMsun(gc.subgroupMass[priIDs])
-  
-  w = where(priMasses ge minLogMass,count)
-  subgroupIDs = priIDs[w]
-  priMasses = priMasses[w]
-  
-  ; arrays
-  r = { fracInfall  : fltarr(n_elements(radFacs),n_elements(subgroupIDs))  ,$
-        subgroupIDs : subgroupIDs         ,$
-        priMasses   : priMasses           ,$
-        count       : count               ,$
-        radFacs     : radFacs             ,$
-        nRadFacs    : n_elements(radFacs) ,$
-        cutSubS     : cutSubS             ,$
-        minLogMass  : minLogMass          ,$
-        threshVal   : threshVal            }
-
+  ; make halo selection load subgroup IDs
+  subgroupIDs = uniformHaloMassSelection(sP=sP, minMass=minLogMsun, binSize=belowBinSize, $
+                                         midMass=allAboveLogMsun, priMasses=priMasses, $
+                                         massBinCens=massBinCens, /verbose)
+                                         
   ; interpolate all halos (and save)
-  ;hsv = haloShellValue(sP=sP,partType=partType,valName=valName,subgroupIDs=subgroupIDs,$
-  ;                     cutSubS=cutSubS,radFacs=radFacs)
+  hsv = haloShellValue(sP=sP,partType='gas',valName='radmassflux',subgroupIDs=subgroupIDs,$
+                       cutSubS=cutSubS,radFacs=radFacs)  
+  
+  ; save array
+  r = { fracInfall_noTh   : fltarr(n_elements(radFacs),n_elements(subgroupIDs)) + !values.f_nan ,$
+        fracInfall_relTh  : fltarr(n_elements(radFacs),n_elements(subgroupIDs)) + !values.f_nan ,$
+        fracInfall_absTh  : fltarr(n_elements(radFacs),n_elements(subgroupIDs)) + !values.f_nan ,$
+        fracOutflow_noTh  : fltarr(n_elements(radFacs),n_elements(subgroupIDs)) + !values.f_nan ,$ ; 1-infall by def
+        fracOutflow_relTh : fltarr(n_elements(radFacs),n_elements(subgroupIDs)) + !values.f_nan ,$
+        fracOutflow_absTh : fltarr(n_elements(radFacs),n_elements(subgroupIDs)) + !values.f_nan ,$
+        massFluxIn        : fltarr(n_elements(radFacs),n_elements(subgroupIDs)) + !values.f_nan ,$
+        massFluxOut       : fltarr(n_elements(radFacs),n_elements(subgroupIDs)) + !values.f_nan ,$
+        subgroupIDs       : subgroupIDs         ,$
+        priMasses         : priMasses           ,$
+        radFacs           : radFacs             ,$
+        nRadFacs          : n_elements(radFacs) ,$
+        cutSubS           : cutSubS             ,$
+        threshValRel      : threshValRel        ,$
+        threshValAbs      : threshValAbs         }
 
   print,'calculating...'
   foreach subgroupID,subgroupIDs,k do begin
-    if k mod 100 eq 0 then print,k
+    if k mod 10 eq 0 then print,k
     
     ; interpolate onto the shell (load)
-    hsv = haloShellValue(sP=sP,partType=partType,valName=valName,subgroupIDs=[subgroupID],$
+    hsv_vrad = haloShellValue(sP=sP,partType='gas',valName='radvel',subgroupIDs=[subgroupID],$
+                              cutSubS=cutSubS,radFacs=radFacs)
+    hsv = haloShellValue(sP=sP,partType='gas',valName='radmassflux',subgroupIDs=[subgroupID],$
                          cutSubS=cutSubS,radFacs=radFacs)
+                         
+    ; check for skipped halo
+    if tag_exist(hsv,'flag') then begin
+      if hsv.flag lt 0 then continue
+    endif
     
-    ; data
+    ; area per healpixel in code units (cKpc^2)
+    pixel_areas = (4 * !pi * (radFacs*hsv.rVir)^2.0) / hsv.nPx
+                         
+    ; get nfw model for this halo mass
+    nfw = nfw_profile(radFacs,mass=logMsunToCodeMass(priMasses[k]),redshift=sP.redshift)
+
+    ; loop over radii
     for radInd=0,n_elements(radFacs)-1 do begin
       healpix_data = reform(hsv.value[*,radInd])
+      healpix_data_vrad = reform(hsv_vrad.value[*,radInd])
       
-      ; calculate sky covering fraction with log(rho/mean rho) > threshold
-      w = where(healpix_data ge threshVal, countAbove, ncomp=countBelow)
-      r.fracInfall[radInd,k] = float(countAbove) / hsv.nPx
+      ; fracInfall/Outflow
+      w = where(healpix_data lt 0.0, count, ncomp=ncomp)
       
-      ;print,string(subgroupID,format='(i5)')+"  r="+string(radFacs[radInd],format='(f4.2)')+"  "+$
-      ;      string(r.fracInfall[radInd,k]*100,format='(f5.2)')+'%'
+      r.fracInfall_noTh[radInd,k]  = float(count) / hsv.nPx
+      r.fracOutflow_noTh[radInd,k] = float(ncomp) / hsv.nPx
+      
+      w = where(healpix_data_vrad lt -threshValAbs, count, ncomp=ncomp)
+      
+      r.fracInfall_absTh[radInd,k]  = float(count) / hsv.nPx
+      r.fracOutflow_absTh[radInd,k] = float(ncomp) / hsv.nPx
+      
+      w = where(healpix_data_vrad lt -threshValRel*nfw.vCirc_DM[radInd], count, ncomp=ncomp)
+      
+      r.fracInfall_relTh[radInd,k]  = float(count) / hsv.nPx
+      r.fracOutflow_relTh[radInd,k] = float(ncomp) / hsv.nPx
+      
+      ; massFluxIn/Out (multiply by pixel area, Msun/h / kpc^2 / Myr -> Msun/h/Myr)
+      w = where(healpix_data lt 0.0,count,comp=wc,ncomp=ncomp)
+      
+      if count gt 0 then r.massFluxIn[radInd,k]  = total( healpix_data[w] * pixel_areas[radInd] )
+      if ncomp gt 0 then r.massFluxOut[radInd,k] = total( healpix_data[wc] * pixel_areas[radInd] )
     endfor
        
   endforeach
@@ -460,4 +599,54 @@ function calcShellInfallFrac, sP=sP
   print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
   
   return, r
+end
+
+; calcShellValuesAcrossRedshifts()
+
+function calcShellValuesAcrossRedshifts, run=run, doSnap=doSnap, getParams=getParams
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  if n_elements(run) eq 0 then message,'Error'
+  
+  ; config
+  res         = 512
+  runs        = ['feedback','tracer','gadget']
+  snapFac     = 2 ; 2=every other snap, 3=every third snap, etc
+  maxRedshift = 6.0 ; don't go back further than this
+  minRedshift = 0.0 ; don't go forward further than this
+  massBinCens = [9.0,9.5,10.0,10.5,11.0,11.5,12.0]
+  
+  ; make authoritative list of target snapshots
+  sP = simParams(res=512,run='feedback',redshift=0.0) ; master
+  ss = snapNumToRedshift(sP=sP,/all)
+  
+  targetSnaps = where(ss ge minRedshift and ss lt maxRedshift)
+  targetSnaps = targetSnaps[0:-1:snapFac]
+  
+  snapRedshifts = ss[targetSnaps]
+  
+  ; for this one particular run, match the authoritative list to a list for this run
+  sP = simParams(res=res,run=run,snap=snap)
+  targetSnaps = redshiftToSnapNum(snapRedshifts,sP=sP)
+   
+  ; returning parameters? exit now
+  if keyword_set(getParams) then return, {targetSnaps:targetSnaps, massBinCens:massBinCens}
+  
+  if n_elements(doSnap) gt 0 then begin
+    ; process just one snapshot?
+    print,'Running snapshot ['+str(doSnap)+'] only!'
+       
+    sP = simParams(res=res,run=run,snap=doSnap)
+    x = calcShellInfallFrac(sP=sP,massBinCens=massBinCens)
+
+  endif else begin
+    ; process all selected snapshots (will skip already processed snaps with calcShellInfallFrac save)
+    print,'Running ['+str(n_elements(targetSnaps))+'] snapshots:',targetSnaps
+
+    foreach snap,targetSnaps do begin
+      print,' -- [' + str(snap) + '] --'
+      sP = simParams(res=res,run=run,snap=snap)
+      x = calcShellInfallFrac(sP=sP,massBinCens=massBinCens)
+    endforeach
+  endelse
+  
 end
