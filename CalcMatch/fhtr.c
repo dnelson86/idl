@@ -12,7 +12,7 @@
 void _qsort (size_t element_size, void *arr, int left, int right, comparer cmp);
 void _qsort_SD (void *arr, int left, int right, comparer cmp);
 void _qsort_8 (void *arr, int left, int right, comparer cmp);
-void _qsort_4 (void *arr, int left, int right, comparer cmp);
+void _qsort_4 (void *arr, long long left, long long right, comparer cmp);
 void _qsort_2 (void *arr, int left, int right, comparer cmp);
 void _qsort_1 (void *arr, int left, int right, comparer cmp);
 
@@ -232,9 +232,9 @@ void _qsort_8 (void *arr, int left, int right, comparer cmp)
 }
 
 
-void _qsort_4 (void *arr, int left, int right, comparer cmp)
+void _qsort_4 (void *arr, long long left, long long right, comparer cmp)
 {
-  int i, last;
+  long long i, last;
   pthread_t lt;
   struct qsort_args qa;
 
@@ -321,7 +321,7 @@ void _qsort_1 (void *arr, int left, int right, comparer cmp)
 
 void* my_qsort (void *arr, size_t length, size_t element_size, comparer cmp)
 {
-//   printf("qsort %d [%d] size %d\n", arr, length, element_size);
+  printf(" fhtr qsort: length [%d] size [%d]\n", length, element_size);
   if (element_size == 1)
     _qsort_1 (arr, 0, length-1, cmp);
   else if (element_size == 2)
@@ -403,11 +403,24 @@ void benchmark_int64 ()
   my_qsort(arr, 10000000, sizeof(int64_t), intcmp);
 }
 
+void check_seg()
+{
+  int *arr,i;
+  arr = (int *)malloc( 600000000 * sizeof(int) );
+  for ( i=0; i < 600000000; i++ )
+    arr[i] = i;
+
+  my_qsort(arr, 600000000, sizeof(int), intcmp);
+}
+
 int main (int argc, char* argv[])
 {
-  test_string ();
-  test_int32 ();
-  test_int64 ();
-  benchmark_int64 ();
+  printf("Start:\n"); fflush(stdout);
+
+  //test_string ();
+  //test_int32 ();
+  //test_int64 ();
+  //benchmark_int64 ();
+  check_seg();
   return 0;
 }

@@ -41,12 +41,15 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   ; get tracer parent IDs
   if ~keyword_set(tr_parids) then $
     tr_parids = loadSnapshotSubset(sP=sP,partType='tracerMC',field='parentids')
-  print,'tr_parids minmax: ',minmax(tr_parids)
+  ;print,'tr_parids minmax: ',minmax(tr_parids)
   ; shift ID arrays by a minimum to handle the huge offsets from zero
   min_val = min( [min(gasIDs),min(tr_parids)] )
 
   gasIDs    = temporary(gasIDs) - min_val
   tr_parids = temporary(tr_parids) - min_val  
+  
+  print,'gasIDs    minmax: ',minmax(gasIDs)
+  print,'tr_parids minmax: ',minmax(tr_parids)
   
   if useExternalLowMem eq 0 then begin
 

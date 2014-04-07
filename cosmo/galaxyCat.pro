@@ -323,6 +323,7 @@ function galaxyCat, sP=sP, skipSave=skipSave
     if total(r.len[gcIDs_sec]) gt 0 then message,'Error'
     
     ; calculate number of tracer children of each parent (trMC)
+    print,' (tracers)'
     if sP.trMCPerCell gt 0 then begin
       galcat_trids = cosmoTracerChildren(sP=sP, /getIDs, gasIDs=r.ids, child_counts=galcat_cc)
       r = mod_struct( r, 'trMC_cc', galcat_cc )

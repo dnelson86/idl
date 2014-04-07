@@ -722,8 +722,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     
     if res eq 128 or res eq 256 or res eq 512 then begin 
       r.boxSize       = 20000.0
-      r.snapRange     = [0,133]
-      r.groupCatRange = [5,133] ; z6=5, z5=14, z4=21, z3=36, z2=60, z1=81, z0=130
+      r.snapRange     = [0,130]
+      r.groupCatRange = [5,130] ; z6=5, z5=14, z4=21, z3=36, z2=60, z1=81, z0=130
     endif else begin
       message,'res error'
     endelse

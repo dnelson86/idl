@@ -1,6 +1,6 @@
 /*
  * CalcMatch Routine for IDL
- * dnelson mar.2013
+ * dnelson feb.2014
  * replicate behavior of IDL sort() and match() but hopefully faster
  * specialized to 32 and 64 bit integer types (IDs)
  * NOTE: currently uses int for indexing, so restricted to arrays of size <~ 2 bil
@@ -71,10 +71,16 @@ int indexB_comp_stable_func(const void *a, const void *b)
   MyInt id1 = B[ *(MyIndType *)a ];
   MyInt id2 = B[ *(MyIndType *)b ];
   
-  if ( id1 != id2 )
-    return ( id1 - id2 ); // data value difference
-    
-  return &( B[ *(MyIndType *)a ] ) - &( B[ *(MyIndType *)b ] ); // address difference
+  if ( id1 != id2 ) {
+    if( id1 > id2 ) return 1;
+    return -1;
+    //return ( id1 - id2 ); // data value difference
+  }
+  
+  //return &( B[ *(MyIndType *)a ] ) - &( B[ *(MyIndType *)b ] ); // address difference
+  
+  if( &(B[ *(MyIndType *)a ]) > &(B[ *(MyIndType *)b ]) ) return 1;
+  return -1;
 }
 
 /* 64bit ID with 32bit indices sort example, return permutation indices:
@@ -344,24 +350,25 @@ int CalcMatchDupe(int argc, void* argv[])
     IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,buf);
     return 0;
   }
-  
+
   memcpy( inds_A, inds_A_out, numA * sizeof(MyIndType) );
   memcpy( inds_B, inds_B_out, numB * sizeof(MyIndType) );
-  
+  printf("1\n");fflush(stdout);
   // fhtr sort (threaded), skip for A if method >= 10
   my_qsort( inds_A, numA, sizeof(MyIndType), indexA_comp_func );
+  printf("2\n");fflush(stdout);
   my_qsort( inds_B, numB, sizeof(MyIndType), indexB_comp_stable_func );
-  
+  printf("3\n");fflush(stdout);
   // allocate space for the offset table
   MyIndType *offsetTable = (MyIndType *) malloc( (numA+1) * sizeof(MyIndType) );
   offsetTable[0] = 0;
-  
+
   // zero the input/output inds_A_out array so child counts start at zero
   memset( inds_A_out, 0, numA * sizeof(MyIndType) );
-  
+
   MyIndType indOffset = 0; // sequential walk through inds_B_out
   MyIndType count = 0; // number of children for this parent
-  
+
   // single walk match, B can contain duplicates
   while (i < numA && j < numB)
   {
@@ -379,6 +386,7 @@ int CalcMatchDupe(int argc, void* argv[])
       i += 1;
       offsetTable[i] = offsetTable[i-1] + count;
       count = 0;
+      //if ( i % 100 == 0 ) { printf("i=%d j=%d\n",i,j); }
     } else {
       // element mismatch, forward in B
       j += 1;
