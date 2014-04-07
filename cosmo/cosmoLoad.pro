@@ -167,14 +167,14 @@ function getGroupCatIDListFromGroupSortedSnap, sP=sP, sf=sf, gcHeader=gcHeader
   skipIDs = 0LL
   
   ; construct the -by type- offset tables to reference into the snapshot
-  snapGroupOffset        = lonarr(gcHeader.nGroupsTot)
+  snapGroupOffset        = lon64arr(gcHeader.nGroupsTot)
   snapGroupOffsetType    = lonarr(6,gcHeader.nGroupsTot)
-  snapSubgroupOffset     = lonarr(gcHeader.nSubgroupsTot)
+  snapSubgroupOffset     = lon64arr(gcHeader.nSubgroupsTot)
   snapSubgroupOffsetType = lonarr(6,gcHeader.nSubgroupsTot)
   
   snapFuzzOffsetType     = lonarr(6,gcHeader.nGroupsTot)
   snapFuzzLenType        = lonarr(6,gcHeader.nGroupsTot)
-  sfFuzzOffsetType       = lonarr(6,gcHeader.nGroupsTot)
+  sfFuzzOffsetType       = lon64arr(6,gcHeader.nGroupsTot)
       
   ; group      
   for i=1L,gcHeader.nGroupsTot-1 do begin
@@ -273,6 +273,7 @@ function getGroupCatIDListFromGroupSortedSnap, sP=sP, sf=sf, gcHeader=gcHeader
   
   if min(groupCatMask) ne 1 or max(groupCatMask) ne 1 then message,'Error'
 
+  print,'return'
   return, groupCatSavedIDs
 
 end
@@ -411,7 +412,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
           nGroups             : s.nGroups_ThisFile._DATA          ,$
           nGroupsTot          : s.nGroups_Total._DATA             ,$
           nIDs                : s.nIDs_ThisFile._DATA             ,$
-          nIDsTot             : s.nIDs_Total._DATA                ,$
+          nIDsTot             : long64(s.nIDs_Total._DATA)        ,$
           nSubgroups          : s.nSubgroups_ThisFile._DATA       ,$
           nSubgroupsTot       : s.nSubgroups_Total._DATA          ,$
           numFiles            : s.NumFiles._DATA                  ,$
@@ -518,16 +519,16 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
       endif
       
       ; ID load requested?
-      if keyword_set(readIDs) then begin
-        if (h.nIDsTot eq 0) then begin
-          print,'Warning: readIDs requested but no IDs in group catalog!' & stop
-        endif
+      if keyword_set(readIDs) and idsInGroupCatFlag eq 1 then begin
+        if (h.nIDsTot eq 0) then $
+          message,'Warning: readIDs requested but no IDs in group catalog!'
         
         ; IDs are 64bit?
         if longIDsBits eq 32 then sfids = { IDs:ulonarr(h.nIDsTot) }
         if longIDsBits eq 64 then sfids = { IDs:ulon64arr(h.nIDsTot) }
         
         sf = create_struct(sf,sfids) ;concat
+        sfids = !NUL
       endif
       
     endif ;i=0
@@ -680,7 +681,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
                     
     snapOffsets.group    = [0, ( total( sf.groupLen, /int, /cum, /double) )[0:-2]]
     snapOffsets.subgroup = [0, ( total( sf.subgroupLen, /int, /cum, /double) )[0:-2]]
-    
+    print,'WARNING: subgroup offsets are wrong (need fix)'
     for j=0,5 do begin
       snapOffsets.groupType[j,*]    = [0, ( total( reform(sf.groupLenType[j,*]), /int, /cum, /double ) )[0:-2]]
       snapOffsets.subgroupType[j,*] = [0, ( total( reform(sf.subgroupLenType[j,*]), /int, /cum, /double ) )[0:-2]]
@@ -689,22 +690,36 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
     sf = mod_struct(sf,'snapOffsets',snapOffsets)
   endif
   
+  ; verify accumulated totals with last header totals (illustris has incorrect, low-word value only)
+  if sP.run eq 'illustris' then $
+    if h.nIDsTot lt nIDsTot then $
+      h.nIDsTot = nIDsTot
+      
+  if ((nGroupsTot ne h.nGroupsTot) or (nSubgroupsTot ne h.nSubgroupsTot) or $ 
+      (nIDsTot ne h.nIDsTot and keyword_set(readIDs))) then begin
+    message,'ERROR: Totals do not add up.'
+  endif  
+  
   ; IDs.ID do not exist in group catalog (snapshot -is- group ordered), reconstruct now
   if keyword_set(readIDs) and idsInGroupCatFlag eq 0 then begin
     idsSavePath = sP.derivPath + 'groupIDs/ids_' + str(sP.snap) + '.sav'
     
     if file_test(idsSavePath) then begin
-      restore,idsSavePath
-      sf.IDs = groupCatSavedIDs
+      restore,idsSavePath,/verbose
+
+      sf = create_struct(sf, { IDs:groupCatSavedIDs }) ;concat
+      groupCatSavedIDs = !NULL
     endif else begin
       ; do not have the Group.IDs already made, make it now, by particle type
       print,'Making new groupCatSavedIDs.'
       groupCatSavedIDs = getGroupCatIDListFromGroupSortedSnap(sP=sP,sf=sf,gcHeader=h)
-      sf.IDs = groupCatSavedIDs
       
       ; save
       save,groupCatSavedIDs,filename=idsSavePath
       print,'Saved: '+strmid(idsSavePath,strlen(sp.derivPath))
+      
+      sf = create_struct(sf, { IDs:groupCatSavedIDs }) ;concat
+      groupCatSavedIDs = !NULL
     endelse
   endif
   
@@ -712,13 +727,6 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
   if keyword_set(readIDs) and keyword_set(getSortedIDs) then begin
     sfsorted = { IDsSorted:getTypeSortedIDList(sP=sP,gc=sf) }
     sf = create_struct(sf,sfsorted) ;concat
-  endif
-  
-  ; verify accumulated totals with last header totals
-  if ((nGroupsTot ne h.nGroupsTot) or (nSubgroupsTot ne h.nSubgroupsTot) or $ 
-      (nIDsTot ne h.nIDsTot and keyword_set(readIDs))) then begin
-    print,'ERROR: Totals do not add up.'
-    stop
   endif
   
   ; check for 32 bit long overflow (cannot happen since we switched to ulong)

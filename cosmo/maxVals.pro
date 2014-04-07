@@ -402,7 +402,7 @@ function maxVals, sP=sP, restart=restart
       ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs, need this if we want ids[ids_ind], 
       ; temp[ids_ind], etc to be in the same order as the group catalog id list    
       calcMatch,galcat_trids,tr_ids,galcat_ind,trids_ind,count=countMatch
-      trids_ind = trids_gal_ind[sort(galcat_ind)]
+      trids_ind = trids_ind[sort(galcat_ind)]
       
       tr_ids     = !NULL
       galcat_ind = !NULL

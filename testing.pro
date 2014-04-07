@@ -32,6 +32,7 @@ pro sarahCheck
     
       gasIDsCheck = loadSnapshotSubset(sP=sP,partType='gas',field='ids',inds=gcIndsType)
       print,'ID check passed: ',array_equal(gasIDs,gasIDsCheck)
+      message,'Above should fail (check gc.snapOffsets)'
     endif else begin
       all_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
       calcMatch,all_ids,gasIDs,ind1,ind2,count=countMatch
@@ -68,4 +69,35 @@ pro sarahCheck
   
   stop
 
+end
+
+
+; mcIllustrisCheck():
+
+pro mcIllustrisCheck
+
+  ; config
+  ;sP = simParams(res=128,run='feedback',redshift=2.0)
+  sP = simParams(res=1820,run='illustris',redshift=2.0)
+  
+  ; DEBUG
+  ;ids_gas = loadSnapshotSubset(sP=sP,partType='gas',field='ids',/verbose)
+  ;print,minmax(ids_gas)
+  ;gcPIDs = ids_gas[0:100]
+  ;calcMatch,gcPIDs,ids_gas,gc_ind,ids_ind,count=countMatch
+  ; END DEBUG
+  
+  gc = galaxyCat(sP=sP)
+  print,'ids minmax: ',minmax(gc.ids)
+  
+  ; run
+  print,'runOne:'
+  x1 = cosmoTracerChildren( sP=sP, /getInds, gasIDs=gc.ids, child_counts=galcat_cc1, /useOne)
+  
+  print,'runTwo:'
+  x2 = cosmoTracerChildren( sP=sP, /getInds, gasIDs=gc.ids, child_counts=galcat_cc2, /useTwo)
+  
+  print,'inds equal: ',array_equal(x1,x2)
+  print,'cc   equal: ',array_equal(galcat_cc1,galcat_cc2)
+  stop
 end
