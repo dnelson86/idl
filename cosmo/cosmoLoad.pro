@@ -528,7 +528,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
         if longIDsBits eq 64 then sfids = { IDs:ulon64arr(h.nIDsTot) }
         
         sf = create_struct(sf,sfids) ;concat
-        sfids = !NUL
+        sfids = !NULL
       endif
       
     endif ;i=0
