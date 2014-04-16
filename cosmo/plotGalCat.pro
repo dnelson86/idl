@@ -162,7 +162,7 @@ pro plotGalCatRadii, sP=sP
   units = getUnits()
   
   ; get normalized r/r_vir
-  gcRad = gcSubsetProp(sP=sP,s/rVirNorm)
+  gcRad = gcSubsetProp(sP=sP,/rVirNorm)
   
   ; plot
   xrange = [-0.1,2.0]

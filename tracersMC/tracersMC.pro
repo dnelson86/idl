@@ -1,6 +1,6 @@
 ; tracersMC.pro
 ; dev for MC tracer particles (spherically symmetric setups)
-; dnelson jan.2014
+; dnelson apr.2014
 
 ; cosmoTracerChildren(): return indices (or optionally IDs) of child tracer particles of 
 ;                        specified gas cells/stars (by indices gasInds or ids gasIDs or ids starIDs)
@@ -46,10 +46,7 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   min_val = min( [min(gasIDs),min(tr_parids)] )
 
   gasIDs    = temporary(gasIDs) - min_val
-  tr_parids = temporary(tr_parids) - min_val  
-  
-  print,'gasIDs    minmax: ',minmax(gasIDs)
-  print,'tr_parids minmax: ',minmax(tr_parids)
+  tr_parids = temporary(tr_parids) - min_val
   
   if useExternalLowMem eq 0 then begin
 
@@ -83,9 +80,8 @@ function cosmoTracerChildren, sP=sP, getInds=getInds, getIDs=getIDs, $
   
   endif else begin
     ; (option 2) use external routine
-    print,'start'
     tr_inds = calcMatchDupe(gasIDs,tr_parids,dupe_counts=child_counts,count=count)
-    print,'stop'
+
     ; change to value_locate approach
     ;par_ids = gasIDs
     ;sort_inds = calcSort(par_ids)

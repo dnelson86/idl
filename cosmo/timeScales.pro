@@ -206,7 +206,7 @@ function loadFitTimescales, sP=sP, gcIDList=gcIDList, accTimesRepTR=accTimesRepT
   ct = !NULL
   
   ; for normalizing radii and vel
-  gasRvir = galHaloCatParentProperties(sP=sP,/rVir)
+  gasRvir = galHaloCatParentProperties(sP=sP,/virRad)
   gasRvir = gasRvir[inds]
   
   gasVcirc = galHaloCatParentProperties(sP=sP,/vCirc)
