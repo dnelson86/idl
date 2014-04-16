@@ -1,6 +1,6 @@
 ; galaxyCat.pro
 ; gas accretion project - gas selections of interest (galaxy/halo catalogs)
-; dnelson feb.2014
+; dnelson apr2014
 
 ; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
 ;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)
@@ -323,7 +323,6 @@ function galaxyCat, sP=sP, skipSave=skipSave
     if total(r.len[gcIDs_sec]) gt 0 then message,'Error'
     
     ; calculate number of tracer children of each parent (trMC)
-    print,' (tracers)'
     if sP.trMCPerCell gt 0 then begin
       galcat_trids = cosmoTracerChildren(sP=sP, /getIDs, gasIDs=r.ids, child_counts=galcat_cc)
       r = mod_struct( r, 'trMC_cc', galcat_cc )
@@ -398,7 +397,7 @@ function galaxyCat, sP=sP, skipSave=skipSave
       r.vrad[galcat_ind] = ((vel[0,*] - gc.subgroupVel[0,gcParIDs_type]) * pos[0,*] + $
                             (vel[1,*] - gc.subgroupVel[1,gcParIDs_type]) * pos[1,*] + $
                             (vel[2,*] - gc.subgroupVel[2,gcParIDs_type]) * pos[2,*]) $
-                            / r.rad
+                            / r.rad[galcat_ind]
     
     endforeach
     
@@ -469,13 +468,13 @@ end
 ;
 ; virTemp=1  : virial temperature
 ; mass=1     : total mass (from catalog, dm+baryon)
-; rVir=1     : virial radius (r_200 critical)
+; virRad=1   : virial radius (r_200 critical)
 ; rVirNorm=1 : virial radius / r200
 ; vCirc=1    : circular velocity (v_200)
 ; dynTime=1  : dynamical time of the halo (virRad/circVel)
 
 function galCatParentProperties, sP=sP, galcat=galcat, trRep=trRep, $
-                                 virTemp=virTemp, mass=mass, rVir=rVir, $
+                                 virTemp=virTemp, mass=mass, virRad=virRad, $
                                  rVirNorm=rVirNorm, vCirc=vCirc, dynTime=dynTime
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
@@ -504,7 +503,7 @@ function galCatParentProperties, sP=sP, galcat=galcat, trRep=trRep, $
     r = alog10(codeMassToVirTemp(r,sP=sP))
   endif
   
-  if keyword_set(rVir) then begin
+  if keyword_set(virRad) then begin
     r = gc.subgroupGrnr[gcInd]
     r = gc.group_r_crit200[r]
   endif
