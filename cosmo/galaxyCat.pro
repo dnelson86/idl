@@ -1,6 +1,6 @@
 ; galaxyCat.pro
 ; gas accretion project - gas selections of interest (galaxy/halo catalogs)
-; dnelson apr2014
+; dnelson may.2014
 
 ; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
 ;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)
@@ -15,7 +15,7 @@ function galaxyCat, sP=sP, skipSave=skipSave
 
   ; if snap specified, run only one snapshot (and/or just return previous results)
   if (sP.snap ne -1) then begin
-    saveFilename = sP.derivPath + 'galaxyCat.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) +'.sav'
+    saveFilename = sP.derivPath + 'galCat/galaxyCat.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) +'.sav'
     
     ; results exist, return
     if file_test(saveFilename) then begin
@@ -33,7 +33,7 @@ function galaxyCat, sP=sP, skipSave=skipSave
     sP.snap = m
     
     ; skip if previous results exist
-    saveFilename = sP.derivPath + 'galaxyCat.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
+    saveFilename = sP.derivPath + 'galCat/galaxyCat.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
         
     ; load ids of particles in all primary subfind groups
     gc = loadGroupCat(sP=sP,/readIDs)
