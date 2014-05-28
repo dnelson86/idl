@@ -527,16 +527,16 @@ end
 ; colNorm=1: normalize each column independently (i.e. for xaxis=halo mass to offset mass function)
     
 pro oplot2DHistoSq, ct2d, hsp=hsp, nc=nc, xRange=xRange, yRange=yRange, $
-  nonZero=nonZero, logY=logY, logX=logX, colNorm=colNorm, gray=gray, blue=blue, green=green
+  nonZero=nonZero, logY=logY, logX=logX, colNorm=colNorm, gray=gray, green=green, ctName=ctName
 
   if ~keyword_set(hsp) or ~keyword_set(nc) then message,'error'
 
   ; store current table and load for 2d histo
   tvlct, rr, gg, bb, /get
   
-  if keyword_set(gray)  then loadColorTable,'bw linear', /reverse
-  if keyword_set(green) then loadColorTable,'green-white linear', /reverse
-  if keyword_set(blue)  then loadColorTable,'brewerc-blues'
+  if keyword_set(gray)   then loadColorTable,'bw linear', /reverse
+  if keyword_set(green)  then loadColorTable,'green-white linear', /reverse
+  if keyword_set(ctName) then loadColorTable, ctName
     
   ; process data (stretching data values)
   w = where(ct2d.h2 eq 0.0,count,comp=wc)
@@ -915,7 +915,7 @@ end
 ; postscript output
 ; -----------------
 
-pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig
+pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig, huge=huge
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -931,6 +931,10 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig
   if n_elements(extrabig) eq 1 then begin
     xs *= 1.4 ;10.5
     ys *= 1.4 ;7
+  endif
+  if n_elements(huge) eq 1 then begin
+    xs *= 2.0 ; 15
+    ys *= 2.0 ; 10
   endif
 
   PS_Start, FILENAME=filename, /nomatch, /quiet, bits_per_pixel=8, color=1, $
@@ -1035,6 +1039,15 @@ function plot_pos, rows=rows, cols=cols, total=total, gap=gap
                 
       pos = list( [x0,y0,x1,y1] ,$ ; left
                   [x0+xoff,y0,x1+xoff,y1] ) ; right
+    endif
+    
+    if rows eq 2 and cols eq 1 then begin
+      ; 2x1
+      x0 = 0.12 & x1 = 0.96
+      y0 = 0.08 & y1 = 0.56 & ysize = 0.40
+                
+      pos = list( [x0,y1,x1,y1+ysize] ,$ ; top
+                  [x0,y0,x1,y0+ysize] ) ; bottom
     endif
     
     if rows eq 1 and cols eq 3 then begin ;xs=9, ys=6
@@ -1231,7 +1244,7 @@ end
 @binVsHaloMass
 @plotVsHaloMass
 @shyPlot
-;@plotRadProfiles
+@plotRadProfiles
 
 ; new feedback project analysis
 @plotVsRedshift

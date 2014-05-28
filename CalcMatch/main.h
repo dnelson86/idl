@@ -12,11 +12,11 @@
 // single or double precision
 #ifdef INT64_PRECISION
 typedef long long MyInt;
-typedef int MyIndType; // can change if we need to sort more than max(int) num elements
+typedef long long MyIndType;
 #else
 #ifdef UINT64_PRECISION
 typedef unsigned long long MyInt;
-typedef int MyIndType;
+typedef long long MyIndType;
 #else
 #ifdef UINT32_PRECISION
 typedef unsigned int MyInt;
@@ -44,7 +44,7 @@ struct sort_data
 
 // definitions
 typedef int (*comparer)(const void *, const void *);
-void* my_qsort (void *arr, size_t length, size_t element_size, comparer cmp);
-void _qsort_SD (void *arr, int left, int right, comparer cmp);
+void* my_qsort (void *arr, MyIndType length, size_t element_size, comparer cmp);
+void _qsort_SD (void *arr, MyIndType left, MyIndType right, comparer cmp);
 
 #endif

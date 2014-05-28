@@ -9,22 +9,22 @@
 
 #define THREAD_THRESHOLD 8192
 
-void _qsort (size_t element_size, void *arr, int left, int right, comparer cmp);
-void _qsort_SD (void *arr, int left, int right, comparer cmp);
-void _qsort_8 (void *arr, int left, int right, comparer cmp);
-void _qsort_4 (void *arr, long long left, long long right, comparer cmp);
-void _qsort_2 (void *arr, int left, int right, comparer cmp);
-void _qsort_1 (void *arr, int left, int right, comparer cmp);
+void _qsort (size_t element_size, void *arr, MyIndType left, MyIndType right, comparer cmp);
+void _qsort_SD (void *arr, MyIndType left, MyIndType right, comparer cmp);
+void _qsort_8 (void *arr, MyIndType left, MyIndType right, comparer cmp);
+void _qsort_4 (void *arr, MyIndType left, MyIndType right, comparer cmp);
+void _qsort_2 (void *arr, MyIndType left, MyIndType right, comparer cmp);
+void _qsort_1 (void *arr, MyIndType left, MyIndType right, comparer cmp);
 
 struct qsort_args {
   size_t element_size;
   void *arr;
-  int left;
-  int right;
+  MyIndType left;
+  MyIndType right;
   comparer cmp;
 };
 
-struct qsort_args _qsort_args (size_t element_size, void *arr, int left, int right, comparer cmp)
+struct qsort_args _qsort_args (size_t element_size, void *arr, MyIndType left, MyIndType right, comparer cmp)
 {
   struct qsort_args qa;
   qa.element_size = element_size;
@@ -144,9 +144,9 @@ inline void swap_1 (void *arr, size_t i, size_t j)
   ((char*)arr)[j] = tmp;
 }
 
-void _qsort (size_t element_size, void *arr, int left, int right, comparer cmp)
+void _qsort (size_t element_size, void *arr, MyIndType left, MyIndType right, comparer cmp)
 {
-  int i, last;
+  MyIndType i, last;
   pthread_t lt;
   struct qsort_args qa;
 
@@ -173,9 +173,9 @@ void _qsort (size_t element_size, void *arr, int left, int right, comparer cmp)
   _qsort (element_size, arr, last+1, right, cmp);
 }
 
-void _qsort_SD (void *arr, int left, int right, comparer cmp)
+void _qsort_SD (void *arr, MyIndType left, MyIndType right, comparer cmp)
 {
-  int i, last;
+  MyIndType i, last;
   pthread_t lt;
   struct qsort_args qa;
 
@@ -202,9 +202,9 @@ void _qsort_SD (void *arr, int left, int right, comparer cmp)
   _qsort_SD (arr, last+1, right, cmp);
 }
 
-void _qsort_8 (void *arr, int left, int right, comparer cmp)
+void _qsort_8 (void *arr, MyIndType left, MyIndType right, comparer cmp)
 {
-  int i, last;
+  MyIndType i, last;
   pthread_t lt;
   struct qsort_args qa;
 
@@ -232,9 +232,9 @@ void _qsort_8 (void *arr, int left, int right, comparer cmp)
 }
 
 
-void _qsort_4 (void *arr, long long left, long long right, comparer cmp)
+void _qsort_4 (void *arr, MyIndType left, MyIndType right, comparer cmp)
 {
-  long long i, last;
+  MyIndType i, last;
   pthread_t lt;
   struct qsort_args qa;
 
@@ -261,9 +261,9 @@ void _qsort_4 (void *arr, long long left, long long right, comparer cmp)
   _qsort_4 (arr, last+1, right, cmp);
 }
 
-void _qsort_2 (void *arr, int left, int right, comparer cmp)
+void _qsort_2 (void *arr, MyIndType left, MyIndType right, comparer cmp)
 {
-  int i, last;
+  MyIndType i, last;
   pthread_t lt;
   struct qsort_args qa;
 
@@ -290,9 +290,9 @@ void _qsort_2 (void *arr, int left, int right, comparer cmp)
   _qsort_2 (arr, last+1, right, cmp);
 }
 
-void _qsort_1 (void *arr, int left, int right, comparer cmp)
+void _qsort_1 (void *arr, MyIndType left, MyIndType right, comparer cmp)
 {
-  int i, last;
+  MyIndType i, last;
   pthread_t lt;
   struct qsort_args qa;
 
@@ -319,9 +319,14 @@ void _qsort_1 (void *arr, int left, int right, comparer cmp)
   _qsort_1 (arr, last+1, right, cmp);
 }
 
-void* my_qsort (void *arr, size_t length, size_t element_size, comparer cmp)
+void* my_qsort (void *arr, MyIndType length, size_t element_size, comparer cmp)
 {
-  printf(" fhtr qsort: length [%d] size [%d]\n", length, element_size);
+//#if defined(INT64_PRECISION) || defined(UINT64_PRECISION)
+//  printf(" fhtr qsort: length [%lld] size [%lu]\n", length, element_size);
+//#else
+//  printf(" fhtr qsort: length [%d] size [%lu]\n", length, element_size);
+//#endif
+  
   if (element_size == 1)
     _qsort_1 (arr, 0, length-1, cmp);
   else if (element_size == 2)

@@ -389,14 +389,16 @@ end
 ;   and the return is 1. uses the FHTR multi-threaded qsort like implementation
 
 function calcSort, array, inPlace=inPlace
-
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; sanity checks
-  if n_elements(array) gt 2e9 then message,'Error: Need to use 64 bit indices.'
   if size(array,/tname) ne 'LONG'   and size(array,/tname) ne 'ULONG' and $
      size(array,/tname) ne 'LONG64' and size(array,/tname) ne 'ULONG64' then $
-    message,'Error: Unsupported variable type in A,B.'
+    message,'Error: Unsupported variable type.'
+    
+  ; size
+  if size(array,/tname) eq 'LONG'   or size(array,/tname) eq 'ULONG'   then numBits = 32
+  if size(array,/tname) eq 'LONG64' or size(array,/tname) eq 'ULONG64' then numBits = 64
   
   ; prepare input
   NumData = long64(n_elements(array))
@@ -409,7 +411,8 @@ function calcSort, array, inPlace=inPlace
   ; inPlace? default method=2 is the FHTR (method=1 is glibc qsort)
   if ~keyword_set(inPlace) then begin
     method = 2L
-    inds = lindgen(NumData) ; 32bit
+    if numBits eq 32 then inds = lindgen(NumData)
+    if numBits eq 64 then inds = l64indgen(NumData)
   endif
   
   if keyword_set(inPlace) then begin
@@ -433,33 +436,45 @@ end
 ; calcMatchDupe(): same as calcMatch but allow duplicates in B
 
 function calcMatchDupe, A, B, dupe_counts=dupe_counts, count=count
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   ; sanity checks
-  numA = long(n_elements(A))
-  numB = long(n_elements(B))
-  
-  if numA gt 2e9 or numB gt 2e9 then message,'Error: Move to 64bit.'
   if size(A,/type) ne size(B,/type) then message,'Error: A and B have different var types.'
   if size(A,/tname) ne 'LONG'   and size(A,/tname) ne 'ULONG' and $
      size(A,/tname) ne 'LONG64' and size(A,/tname) ne 'ULONG64' then $
     message,'Error: Unsupported variable type in A,B.'
     
-  ; prepare input
+  ; size
+  if size(A,/tname) eq 'LONG'   or size(A,/tname) eq 'ULONG'   then numBits = 32
+  if size(A,/tname) eq 'LONG64' or size(A,/tname) eq 'ULONG64' then numBits = 64
+    
+  if numBits eq 32 then begin
+    numA = long(n_elements(A))
+    numB = long(n_elements(B))
+    if n_elements(A) ge 2e9 or n_elements(B) ge 2e9 then $
+      message,'Error: We are using 32bit indices, will overflow with too many elements.'
+    inds_A = lindgen(numA)
+    inds_B = lindgen(numB)
+    count = -1L
+  endif
+  
+  if numBits eq 64 then begin
+    numA = long64(n_elements(A))
+    numB = long64(n_elements(B))
+    inds_A = l64indgen(numA)
+    inds_B = l64indgen(numB)
+    count = -1LL
+  endif
+    
   if size(A,/tname) eq 'LONG'    then soName = 'int32'
   if size(A,/tname) eq 'ULONG'   then soName = 'uint32'
   if size(A,/tname) eq 'LONG64'  then soName = 'int64'
   if size(A,/tname) eq 'ULONG64' then soName = 'uint64'
   
-  ; output
-  inds_A = lindgen(numA)
-  inds_B = lindgen(numB)
-  
-  count = -1L
-  
+  ; execute
   ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_'+soName+'.so','CalcMatchDupe',$
                       numA,numB,A,B,inds_A,inds_B,count,/CDECL)
     
-  if count eq -1L then message,'Error: Count unchanged.'
+  if count eq -1 then message,'Error: Count unchanged.'
     
   ; take index subsets
   dupe_counts = inds_A ; child_counts for each parent (number of B duplicates per A)
@@ -479,33 +494,50 @@ end
 ;             that these ind1 will be overwritten by the subset match with B
 
 pro calcMatch, A, B, ind1, ind2, count=count, noSortA=noSortA
-
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; sanity checks
-  numA = long(n_elements(A))
-  numB = long(n_elements(B))
-  
-  if numA gt 2e9 or numB gt 2e9 then message,'Error: Move to 64bit.'
   if size(A,/type) ne size(B,/type) then message,'Error: A and B have different var types.'
   if size(A,/tname) ne 'LONG'   and size(A,/tname) ne 'ULONG' and $
      size(A,/tname) ne 'LONG64' and size(A,/tname) ne 'ULONG64' then $
     message,'Error: Unsupported variable type in A,B.'
+    
+  ; size
+  if size(A,/tname) eq 'LONG'   or size(A,/tname) eq 'ULONG'   then numBits = 32
+  if size(A,/tname) eq 'LONG64' or size(A,/tname) eq 'ULONG64' then numBits = 64
+  
+  if numBits eq 32 then begin
+    numA = long(n_elements(A))
+    numB = long(n_elements(B))
+    if n_elements(A) ge 2e9 or n_elements(B) ge 2e9 then $
+      message,'Error: We are using 32bit indices, will overflow with too many elements.'
+  endif
+  
+  if numBits eq 64 then begin
+    numA = long64(n_elements(A))
+    numB = long64(n_elements(B))
+  endif
     
   ; prepare inputs
   method = 1L
 
   ; prepare outputs
   if ~keyword_set(noSortA) then begin
-    ind1 = lindgen(numA)
+    if numBits eq 32 then ind1 = lindgen(numA)
+    if numBits eq 64 then ind1 = l64indgen(numA)
   endif else begin
     method = 11L ; skip A sort in external
     if n_elements(ind1) ne numA then message,'Error: Input ind1 size mismatch with A.'
   endelse
   
-  ind2 = lindgen(numB)
-  
-  count = -1L
+  if numBits eq 32 then begin
+    ind2  = lindgen(numB)
+    count = -1L
+  endif
+  if numBits eq 64 then begin
+    ind2  = l64indgen(numB)
+    count = -1LL
+  endif
   
   ; pick library based on 32bit or 64bit IDs
   if size(A,/tname) eq 'LONG'    then soName = 'int32'
@@ -517,7 +549,7 @@ pro calcMatch, A, B, ind1, ind2, count=count, noSortA=noSortA
                       method,numA,numB,A,B,ind1,ind2,count,/CDECL)
 
   ; take index subsets
-  if count eq -1L then message,'Error: Count unchanged.'
+  if count eq -1 then message,'Error: Count unchanged.'
   
   if count gt 0 then begin
     if count lt numA then ind1 = ind1[0:count-1]
@@ -544,12 +576,12 @@ end
 ; nBlocks : default to 10
 
 pro calcMatchBlock, A, ind1, ind2, sP=sP, partType=partType, field=field, count=count, nBlocks=nBlocks
-
   compile_opt idl2, hidden, strictarr, strictarrsubs
     
   if ~keyword_set(sP) or n_elements(partType) eq 0 or ~keyword_set(field) then message,'Error.'
   
   numA = n_elements(A)
+  if numA gt 2e9 then message,'Error: Using 32 bit indexing, needs update.'
   
   ; determine blocking size
   if ~keyword_set(nBlocks) then nBlocks = 10
@@ -558,6 +590,7 @@ pro calcMatchBlock, A, ind1, ind2, sP=sP, partType=partType, field=field, count=
 
   h = loadSnapshotHeader(sP=sP)
   numB = h.nPartTot[partTypeNum(partType)]
+  if numB gt 2e9 then message,'Error: Using 32 bit indexing, needs update.'
   
   blockSize = ceil(numB / nBlocks)
   

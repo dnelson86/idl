@@ -582,27 +582,25 @@ function accModeInds, at=at, mt=mt, sP=sP, accMode=accMode, maskAndInds=maskAndI
     if sP.trMCPerCell lt 0 then nElem = n_elements(mt.gcIndOrigTrVel)
   endif
   
-  at_w = lindgen(nElem)
-  
-  ; select on accretion mode by modifying gal_w, gmem_w, and stars_w
-  if accMode ne 'all' then begin
-    if sP.trMCPerCell lt 0 then message,'Error: accMode for tracerVel not yet.'
-    am = accretionMode(sP=sP)
+  ; select on accretion mode
+  if sP.trMCPerCell lt 0 then message,'Error: accMode for tracerVel not yet.'
+  am = accretionMode(sP=sP)
     
-    if accMode eq 'smooth'       then at_w = at_w[where(am eq 1,count)]
-    if accMode eq 'smooth_rec'   then at_w = at_w[where(am eq 1 or am eq 11,count)]
-    if accMode eq 'bclumpy'      then at_w = at_w[where(am eq 3,count)]
-    if accMode eq 'sclumpy'      then at_w = at_w[where(am eq 2,count)]
-    if accMode eq 'clumpy'       then at_w = at_w[where(am eq 2 or am eq 3,count)]
-    if accMode eq 'clumpy_rec'   then at_w = at_w[where(am eq 2 or am eq 3 or am eq 12 or am eq 13,count)]
-    if accMode eq 'stripped'     then at_w = at_w[where(am eq 4,count)]
-    if accMode eq 'stripped_rec' then at_w = at_w[where(am eq 4 or am eq 14,count)]
-    if accMode eq 'recycled'     then at_w = at_w[where(am ge 10,count)] ; recycled+any other mode
-
-    if n_elements(count) eq 0 then message,'Error: Unrecognized accretion mode.'
-	
-    am = !NULL
-  endif
+  if accMode eq 'smooth'       then at_w = where(am eq 1,count)
+  if accMode eq 'smooth_rec'   then at_w = where(am eq 1 or am eq 11,count)
+  if accMode eq 'bclumpy'      then at_w = where(am eq 3,count)
+  if accMode eq 'sclumpy'      then at_w = where(am eq 2,count)
+  if accMode eq 'clumpy'       then at_w = where(am eq 2 or am eq 3,count)
+  if accMode eq 'clumpy_rec'   then at_w = where(am eq 2 or am eq 3 or am eq 12 or am eq 13,count)
+  if accMode eq 'stripped'     then at_w = where(am eq 4,count)
+  if accMode eq 'stripped_rec' then at_w = where(am eq 4 or am eq 14,count)
+  if accMode eq 'recycled'     then at_w = where(am ge 10,count) ; recycled+any other mode
+  if accMode eq 'all'          then at_w = where(am gt 0,count) ; full atS
+  
+  if n_elements(count) eq 0 then message,'Error: Unrecognized accretion mode.'
+  if count eq 0 then message,'Error: Bad accModeInds selection.'
+  
+  am = !NULL
 
   ; make mask
   mask = bytarr(nElem)
