@@ -26,12 +26,14 @@ int inplace_comparison_func(const void *a, const void *b)
   return 0;
 }
 
+/*
 int inplace_indcomp_func(const void *a, const void *b) // unused
 {
   MyIndType ind1 = *(MyIndType *)a;
   MyIndType ind2 = *(MyIndType *)b;
   return ( ind1 - ind2 );
 }
+*/
 
 // sort the index array, and in the comparator use it to index the actual IDs
 
@@ -86,7 +88,7 @@ int indexB_comp_stable_func(const void *a, const void *b)
 /* 64bit ID with 32bit indices sort example, return permutation indices:
 
     ; prepare inputs
-    NumData  = long(npts)
+    NumData  = long64(npts)
     data     = lon64arr(npts) ; particle/tracer IDs
     inds_out = lindgen(npts) ; array indices, input as sequential
     method   = 3L ; 3=fhtr sort_data specialized
@@ -97,7 +99,7 @@ int indexB_comp_stable_func(const void *a, const void *b)
   64bit ID with 32bit indices sort example, modify inplace
 
     ; prepare inputs
-    NumData  = long(npts)
+    NumData  = long64(npts)
     data     = lon64arr(npts)
     inds_out = [0]
     method   = 12L ; 10=inplace + 2=fhtr (12)
@@ -121,14 +123,6 @@ int CalcSort(int argc, void* argv[])
     return 0;
   }
   
-#ifdef VERBOSE
-#ifdef INT64_PRECISION
-  //IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSort Loaded (INT64).");
-#else
-  //IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSort Loaded (INT32).");
-#endif
-#endif
-
   // inputs and return by reference
   NumData  = *(long long *)argv[0];
 
@@ -155,7 +149,6 @@ int CalcSort(int argc, void* argv[])
     // glibc sort
     if(method == 1)
       qsort( inds_out, NumData, sizeof(MyIndType), indexing_comp_func );
-      //qsort( data, NumData, sizeof(struct sort_data), indexing_comp_func );
 
     // fhtr sort (threaded, generic)
     if(method == 2)
@@ -179,13 +172,13 @@ int CalcSort(int argc, void* argv[])
 
     ; prepare inputs
     method = 0L ; unused
-    numA  = long(n_elements(A))
-    numB  = long(n_elements(B))
+    numA  = long64(n_elements(A))
+    numB  = long64(n_elements(B))
     A     = long64(A) ; particle/tracer IDs
     B     = long64(B) ; particle/tracer IDs
     
-    inds_A_out = lonarr(n_elements(A))
-    inds_B_out = lonarr(n_elements(B))
+    inds_A_out = lon64arr(n_elements(A))
+    inds_B_out = lon64arr(n_elements(B))
     
     ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_int64.so', 'CalcMatch', $
                         method,numA,numB,A,B,inds_A_out,inds_B_out,/CDECL)
@@ -215,14 +208,6 @@ int CalcMatch(int argc, void* argv[])
     return 0;
   }
   
-#ifdef VERBOSE
-#ifdef INT64_PRECISION
-  //IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSort Loaded (INT64).");
-#else
-  //IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSort Loaded (INT32).");
-#endif
-#endif
-
   // inputs and return by reference
   method = *(int *)argv[0]; 
   numA   = *(MyIndType *)argv[1];
@@ -289,11 +274,11 @@ int CalcMatch(int argc, void* argv[])
 /* match two 64bit ID arrays, where B can have duplicates (i.e. B is tracer_parentIDs, A is gasIDs)
 
     ; prepare inputs/outputs
-    numA  = long(n_elements(A))
-    numB  = long(n_elements(B))
+    numA  = long64(n_elements(A))
+    numB  = long64(n_elements(B))
     
-    inds_A_out = lindgen(numA)
-    inds_B_out = lindgen(numB)
+    inds_A_out = l64indgen(numA)
+    inds_B_out = l64indgen(numB)
     count      = -1L
     
     ret = Call_External('/n/home07/dnelson/idl/CalcMatch/CalcMatch_int64.so', 'CalcMatchDupe', $
@@ -322,14 +307,6 @@ int CalcMatchDupe(int argc, void* argv[])
     return 0;
   }
   
-#ifdef VERBOSE
-#ifdef INT64_PRECISION
-  //IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSort Loaded (INT64).");
-#else
-  //IDL_Message(IDL_M_GENERIC,IDL_MSG_RET,"CalcSort Loaded (INT32).");
-#endif
-#endif
-
   // inputs and return by reference
   numA   = *(MyIndType *)argv[0];
   numB   = *(MyIndType *)argv[1];
@@ -353,12 +330,12 @@ int CalcMatchDupe(int argc, void* argv[])
 
   memcpy( inds_A, inds_A_out, numA * sizeof(MyIndType) );
   memcpy( inds_B, inds_B_out, numB * sizeof(MyIndType) );
-  printf("1\n");fflush(stdout);
+
   // fhtr sort (threaded), skip for A if method >= 10
   my_qsort( inds_A, numA, sizeof(MyIndType), indexA_comp_func );
-  printf("2\n");fflush(stdout);
+
   my_qsort( inds_B, numB, sizeof(MyIndType), indexB_comp_stable_func );
-  printf("3\n");fflush(stdout);
+
   // allocate space for the offset table
   MyIndType *offsetTable = (MyIndType *) malloc( (numA+1) * sizeof(MyIndType) );
   offsetTable[0] = 0;
