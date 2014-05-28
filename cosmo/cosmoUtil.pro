@@ -1,6 +1,6 @@
 ; cosmoUtil.pro
 ; cosmological simulations - utility functions
-; dnelson mar.2014
+; dnelson may.2014
 
 ; redshiftToSnapNum(): convert redshift to the nearest snapshot number
 
@@ -511,22 +511,22 @@ pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   logFac = 1.0
-  if keyword_set(ylog) then logFac = 10.0
+  if keyword_set(ylog) then logFac = 8.0
   
   yTickLen = (yRange[1]-yRange[0]) / 40.0 * logFac
-  yTextOff = (yRange[1]-yRange[0]) / 50.0 * logFac
+  yTextOff = (yRange[1]-yRange[0]) / 60.0 * logFac
 
   if (not keyword_set(zTicknames)) then begin
-    zTicknames = ['0.1','1','1.5','2','3','4','5','6','8','13.8'] ;10=0.33
-    zRedshifts = [30,5.7,4.21,3.25,2.23,1.65,1.265,0.98,0.595,0.0]
+    zTicknames = ['0.1','1','1.2','1.5','2','3','4','5','6','8','13.8'] ;10=0.33
+    zRedshifts = [30,5.7,5.05,4.21,3.25,2.23,1.65,1.265,0.98,0.595,0.0]
   endif
   nZ = n_elements(zTicknames)
   
   zXPos = fltarr(nZ)
   
   ; plot "maximum" redshift label
-  if (xRange[0] le 0.0) then $
-    cgText,0.0,yRange[1]+yTextOff,zTicknames[0],alignment=0.5
+  ;if (xRange[0] le 0.0) then $
+  ;  cgText,0.0,yRange[1]+yTextOff,zTicknames[0],alignment=0.5
   
   ; skip t=0 (highest) at z=inf (?)
   for i=1,nZ-1 do begin
@@ -534,7 +534,7 @@ pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted
     zXPos[i] = zRedshifts[i]
     
     ; plot tick mark and label if inside plotrange
-    if (zXPos[i] le xRange[0] and zXPos[i] ge xRange[1]) then begin
+    if (zXPos[i] gt min(xRange) and zXPos[i] lt max(xRange)) then begin
       cgPlot,[zXPos[i],zXPos[i]],[yRange[1],yRange[1]-yTickLen],/overplot
       cgText,zXPos[i],yRange[1]+yTextOff,zTicknames[i],alignment=0.5
     endif
@@ -544,8 +544,8 @@ pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted
       cgPlot,[zXPos[i],zXPos[i]],yRange,line=dotted,/overplot,thick=!p.thick-0.5
   endfor
   
-  cgPlot,xRange,[yRange[1],yRange[1]],/overplot
-  cgText,(xRange[0]-xRange[1])/2.0,yRange[1]+yTextOff*5.0,"Time [Gyr]",alignment=0.5
+  cgPlot,xRange,[yRange[1],yRange[1]]-0.001*yRange[1],/overplot
+  cgText,(xRange[1]-xRange[0])/2.0,yRange[1]+yTextOff*6.0,"Time [Gyr]",alignment=0.5
 
 end
 
@@ -598,6 +598,18 @@ end
 ;   set point_xy = PointFromText(CONCAT('POINT(',image_x,' ',image_y,')'));
 ;
 ;   then add SPATIAL INDEX on point_xy
+;
+;   -----
+;   to add a new column to the existing DB, where a text file 'in.txt' contains one value 
+;   for each subhalo (linenumber=subhaloID+1), do:
+;   
+;   USE subgroups;
+;   CREATE TEMPORARY TABLE foo (id_in INT AUTO_INCREMENT,value SMALLINT,PRIMARY KEY (id_in));
+;   LOAD DATA LOCAL INFILE 'in.txt' INTO TABLE foo 
+;     COLUMNS TERMINATED BY ' ' LINES TERMINATED BY '\n' (value);
+;   UPDATE foo SET id_in=id_in-1 WHERE 1;
+;   UPDATE snap_135 INNER JOIN foo ON snap_135.id=foo.id_in SET snap_135.value=foo.value;
+;   DROP TEMPORARY TABLE foo;
 
 pro exportGroupCatAscii
   compile_opt idl2, hidden, strictarr, strictarrsubs
@@ -752,13 +764,9 @@ pro exportBlackholesAscii
 
   correctPeriodicPosVecs, image_x, sP=sP
   correctPeriodicPosVecs, image_y, sP=sP
-
-  ; create parent subhalo IDs for each blackhole
-  count = n_elements(image_x)
-  bh_parents = lonarr( count ) - 1
   
-  par_rep = replicate_var( gc.subgroupLenType[5,*] )
-  bh_parents[ 0:n_elements(par_rep)-1 ] = par_rep
+  ; create parent subhalo IDs for each blackhole
+  bh_parents = gcRepParentIDs(sP=sP, gc=gc, partType='bh', /subhaloIDs)
   
   ; fill output buffer
   print,'Exporting ['+str(count)+'] BLACKHOLES.'

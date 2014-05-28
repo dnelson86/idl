@@ -1,6 +1,6 @@
 ; cosmoLoad.pro
 ; cosmological simulations - loading procedures (snapshots, fof/subhalo group cataloges)
-; dnelson jan.2014
+; dnelson may.2014
 
 ; getTypeSortedIDList(): within the group catalog ID list rearrange the IDs for each FOF group to be 
 ;                        ordered first by type (not by SubNr since Subfind was run) such that the
@@ -674,20 +674,47 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
   ; if offsets requested, and IDs.ID do not exist in group catalog (e.g. Illustris/group ordered)
   ; then make the offset tables by type into the snapshot, in case we want to use these
   if ~keyword_set(skipOffsets) and idsInGroupCatFlag eq 0 then begin
-    snapOffsets = { group        : lonarr(h.nGroupsTot)    ,$
-                    groupType    : lonarr(6,h.nGroupsTot)  ,$
-                    subgroup     : lonarr(h.nSubgroupsTot) ,$
-                    subgroupType : lonarr(6,h.nSubgroupsTot) }
-                    
-    snapOffsets.group    = [0, ( total( sf.groupLen, /int, /cum, /double) )[0:-2]]
-    snapOffsets.subgroup = [0, ( total( sf.subgroupLen, /int, /cum, /double) )[0:-2]]
-    print,'WARNING: subgroup offsets are wrong (need fix)'
-    for j=0,5 do begin
-      snapOffsets.groupType[j,*]    = [0, ( total( reform(sf.groupLenType[j,*]), /int, /cum, /double ) )[0:-2]]
-      snapOffsets.subgroupType[j,*] = [0, ( total( reform(sf.subgroupLenType[j,*]), /int, /cum, /double ) )[0:-2]]
-    endfor
+    soSavePath = sP.derivPath + 'groupIDs/snapOffsets_' + str(sP.snap) + '.sav'
     
-    sf = mod_struct(sf,'snapOffsets',snapOffsets)
+    if file_test(soSavePath) then begin
+      restore,soSavePath,/verbose
+    endif else begin
+      snapOffsets = { groupType    : lon64arr(6,h.nGroupsTot)  ,$
+                      subgroupType : lon64arr(6,h.nSubgroupsTot) }
+                    
+      for ptNum=0,5 do begin
+        offset = 0LL
+      
+        ; loop over all groups
+        for i=0L, sf.nGroupsTot-1 do begin
+          ; if no subgroups in this fof, then assign no parents
+          if sf.groupNsubs[i] gt 0 then begin
+            first_sub = sf.groupFirstSub[i]
+            last_sub = sf.groupFirstSub[i] + sf.groupNsubs[i] - 1
+        
+            offset_group = offset ; init to current global offset (toss after each group)
+            snapOffsets.groupType[ptNum,i] = offset
+          
+            ; loop over all child subgroups
+            for j=first_sub,last_sub do begin
+              snapOffsets.subgroupType[ptNum,j] = offset_group
+              offset_group += sf.subgroupLenType[ptNum,j]
+            endfor
+          endif
+  
+          ; skip over any possible fuzz, to next group
+          offset += sf.groupLenType[ptNum,i]
+        endfor ;i
+      endfor ;ptNum
+      
+      ; save
+      save,snapOffsets,filename=soSavePath
+      print,'Saved: '+strmid(soSavePath,strlen(sp.derivPath))
+      
+    endelse
+    
+    sf = mod_struct(sf,'snapOffsets',snapOffsets) ;concat
+    snapOffsets = !NULL
   endif
   
   ; verify accumulated totals with last header totals (illustris has incorrect, low-word value only)
@@ -706,9 +733,6 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
     
     if file_test(idsSavePath) then begin
       restore,idsSavePath,/verbose
-
-      sf = create_struct(sf, { IDs:groupCatSavedIDs }) ;concat
-      groupCatSavedIDs = !NULL
     endif else begin
       ; do not have the Group.IDs already made, make it now, by particle type
       print,'Making new groupCatSavedIDs.'
@@ -717,10 +741,10 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
       ; save
       save,groupCatSavedIDs,filename=idsSavePath
       print,'Saved: '+strmid(idsSavePath,strlen(sp.derivPath))
-      
-      sf = create_struct(sf, { IDs:groupCatSavedIDs }) ;concat
-      groupCatSavedIDs = !NULL
     endelse
+    
+    sf = create_struct(sf, { IDs:groupCatSavedIDs }) ;concat
+    groupCatSavedIDs = !NULL
   endif
   
   ; if ID read requested, create typeSortedIDList (and save), add to return structure
@@ -863,6 +887,16 @@ function readStrategyIO, inds=inds, indRange=indRange, $
     return, rs
   endif
   
+  ; check bounds
+  if keyword_set(inds) then begin
+    if min(inds) lt 0 then message,'Error: negative indices.'
+    if max(inds) ge nPartTot[partType] then message,'Error: indices beyond particle count.'
+  endif
+  if keyword_set(indRange) then begin
+    if min(indRange) lt 0 then message,'Error: negative index range.'
+    if max(indRange) ge nPartTot[partType] then message,'Error: index range beyond particle count.'
+  endif
+  
   ; indRange: whole block from min to max
   if keyword_set(indRange) then begin
     if indRange[0] ge indRange[1] or indRange[0] lt 0 or $
@@ -917,9 +951,12 @@ function readStrategyIO, inds=inds, indRange=indRange, $
   ;             I/O and not too much random I/O
   binSize = round( max(inds)^(0.6)/10000.0 ) * 10000 > 10000 < 10000000 ; adjust to range
   binSize = long64(binSize) ; 0.6 power is heuristic for 512^3-1820^3 sims (~2k-8k blocks to merge)
-  
+
   hist = histogram(inds,binsize=binsize,min=0,loc=loc)
   occBlocks = where(hist ne 0,count)
+  
+  if verbose then $
+    print,'I/O Strategy: [MultiBlock] binSize = '+str(binSize)+' occBlocks = '+str(count)
       
   nBlocks = 0LL
   blockStart = lon64arr(n_elements(occBlocks)) ; max possible size

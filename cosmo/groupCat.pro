@@ -1,6 +1,6 @@
 ; groupCat.pro
 ; cosmological simulations - group (fof/subfind) catalog utilities
-; dnelson sep.2013
+; dnelson may.2014
 
 ; getMatchedIDs(): return matched subgroup IDs given a "haloID" from the HaloComparisonProject
 ;                  account for resolution, redshift, and run. try to prevent IDs from floating
@@ -410,7 +410,7 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
   if n_elements(valGCids) eq 0 then valGCids = gcIDList(gc=gc,select=select)
   
   ; make list of particle ids in these groups
-  start = 0L
+  start = 0LL
   
   partType = strlowcase(string(PT)) ; so we don't change the input
   
@@ -463,6 +463,75 @@ function gcPIDList, gc=gc, select=select, valGCids=valGCids, partType=PT
   
   print,'Warning! Empty gcPIDList return.'
   return,[]
+
+end
+
+; gcRepParentIDs(): for every particle of a given type, replicate either its parent fof or 
+;   subhalo id (note: group ordered snapshots only) (return is -1 if no parent exists)
+
+function gcRepParentIDs, sP=sP, gc=gc, partType=partType, subhaloIDs=subhaloIDs, haloIDs=haloIDs
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  if sP.run ne 'illustris' then message,'Error: group ordered snapshots only.'
+  if ~keyword_set(subhaloIDs) and ~keyword_set(haloIDs) then message,'Error: choose one ID type.'
+  if n_elements(partType) eq 0 then message,'Error: specify particle type.'
+
+  if n_elements(gc) eq 0 then gc = loadGroupCat(sP=sP,/skipIDs)
+  
+  ; get total particle count for this type, allocate return
+  h = loadSnapshotHeader(sP=sP)
+  ptNum = partTypeNum(partType)
+  nPartTot = h.nPartTot[ ptNum ]
+  
+  parIDs = lonarr(nPartTot) - 1
+  offset = 0L
+  
+  ; parent fof/halo IDs?
+  if keyword_set(haloIDs) then begin
+  
+    ; loop over all groups
+    for i=0L, gc.nGroupsTot-1 do begin
+      num_children = gc.groupLenType[ptNum,i]
+      ind_end = offset + num_children - 1
+
+      if num_children gt 0 then $
+        parIDs[offset:ind_end] = cmreplicate(i,num_children)
+          
+      ; skip over any possible fuzz, to next group
+      offset += num_children
+    endfor
+    
+  endif
+    
+  ; parent subfind/subhalo IDs?
+  if keyword_set(subhaloIDs) then begin
+    
+    ; loop over all groups
+    for i=0L, gc.nGroupsTot-1 do begin
+      ; if no subgroups in this fof, then assign no parents
+      if gc.groupNsubs[i] gt 0 then begin
+        first_sub = gc.groupFirstSub[i]
+        last_sub = gc.groupFirstSub[i] + gc.groupNsubs[i] - 1
+        
+        offset_group = offset ; init to current global offset (toss after each group)
+        
+        ; loop over all subgroups
+        for j=first_sub,last_sub do begin
+          num_children = gc.subgroupLenType[ptNum,j]
+          ind_end = offset_group + num_children - 1
+          
+          if num_children gt 0 then $
+            parIDs[offset_group:ind_end] = cmreplicate(j,num_children)
+            
+          offset_group += num_children
+        endfor
+      endif
+  
+      ; skip over any possible fuzz, to next group
+      offset += gc.groupLenType[ptNum,i]
+    endfor
+  endif
+
+  return, parIDs
 
 end
 

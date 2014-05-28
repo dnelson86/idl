@@ -284,3 +284,58 @@ pro checkAccModeSum
 
 end
 
+; checkGroupOrderedOffsets():
+
+pro checkGroupOrderedOffsets
+
+  ; config
+  sP = simParams(res=455,run='illustris',redshift=2.0)
+  pt = 'gas'
+  groupID = 7000 ;7000, 8000
+  
+  ; load
+  ptNum = partTypeNum(pt)
+  gc = loadGroupCat(sP=sP,/skipIDs)
+  subID = gc.groupFirstSub[groupID]
+  
+  print,'Picked subid ['+str(subID)+'] of ('+str(gc.groupNsubs[groupID])+') in this group.'
+  
+  ; pick one halo, make its index list into the snapshot
+  ind_min = gc.snapOffsets.subgroupType[ptNum,subID]
+  ind_max = ind_min + gc.subgroupLenType[ptNum,subID] - 1
+  
+  gr_min = gc.snapOffsets.groupType[ptNum,groupID]
+  gr_max = gr_min + gc.groupLenType[ptNum,groupID] - 1
+  
+  print,'Reading indices: ',ind_min,ind_max
+  print,'Group indices: ',gr_min,gr_max
+  
+  pos = loadSnapshotSubset(sP=sP,partType=pt,field='pos',indRange=[ind_min,ind_max])
+  print,'In subhalo:'
+  print,minmax(pos[0,*])
+  print,minmax(pos[1,*])
+  print,minmax(pos[2,*])
+  
+  pos = loadSnapshotSubset(sP=sP,partType=pt,field='pos',indRange=[gr_min,gr_max])
+  print,'In group:'
+  print,minmax(pos[0,*])
+  print,minmax(pos[1,*])
+  print,minmax(pos[2,*])
+  
+  pos = loadSnapshotSubset(sP=sP,partType=pt,field='pos',indRange=[gr_max+1,gr_max+10])
+  print,'Boundary (1):'
+  print,minmax(pos[0,*])
+  print,minmax(pos[1,*])
+  print,minmax(pos[2,*])
+  
+  pos = loadSnapshotSubset(sP=sP,partType=pt,field='pos',indRange=[gr_min-10,gr_min-1])
+  print,'Boundary (2):'
+  print,minmax(pos[0,*])
+  print,minmax(pos[1,*])
+  print,minmax(pos[2,*])
+  stop
+
+
+end
+
+
