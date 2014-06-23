@@ -520,7 +520,7 @@ pro orderLagrangianVolumes
   ; ------
   haloMassRange  = [11.7,12.3] ; log msun
   targetRedshift = 2.0  ; resimulate until this redshift only
-  outputPtFile   = 79   ; write ascii file for ellipsoid/convex hull test
+  outputPtFile   = 132  ; write ascii file for ellipsoid/convex hull test
   readICsAsSnapZero = 0 ; 0=assume snap0 are the ICs, 1=read ICs directly (snap0 not at starting redshift)
   
   ; Onorbe+ (2013) suggested R_tb / rVirFac (requires >~4000 particles in halo in fullbox
@@ -529,7 +529,7 @@ pro orderLagrangianVolumes
     ;rVirFac = (-0.1 * zoomLevel + 4) ; shy's formula (used for all 20Mpc, MUSIC v1.3b ICs)
     ;rVirFac = (0.1 * zoomLevel + 4) ; jan.2014 for most 128 zooms h>=2
   
-  rVirFac = 5.0
+  rVirFac = 8.0
   
   sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=targetRedshift)
   
@@ -731,16 +731,23 @@ function zoomTargetHalo, sP=sP, gc=gc
 
   expectedHaloPos = sP.targetHaloPos + sP.zoomShiftPhys
   
-  posDiffs = periodicDists(expectedHaloPos,gc.subgroupPos,sP=sP)
-  
-  ; pick closest mass match within a positional search of 1rvir around expected location
-  w = where(posDiffs le 1.0*sP.targetHaloRvir,count)
-  if count eq 0 then message,'Error'
-  
-  massDiffs = abs( sP.targetHaloMass - codeMassToLogMsun(gc.subgroupMass) )
-  hInd = ( where(massDiffs eq min(massDiffs[w]),count) )[0]
-
-  if count ne 1 then message,'Error'
+  ; searching at earlier redshift that target? pick largest by mass
+  if sP.redshift gt sP.targetRedshift then begin
+    print,'zoomTargetHalo: sP.redshift > targetRedshift, choosing most massive in box!'
+    hInd = 0
+  endif else begin
+    ; generally, we search at the ending redshift, do positional
+    posDiffs = periodicDists(expectedHaloPos,gc.subgroupPos,sP=sP)
+    
+    ; pick closest mass match within a positional search of 1rvir around expected location
+    w = where(posDiffs le 1.0*sP.targetHaloRvir,count)
+    if count eq 0 then message,'Error'
+    
+    massDiffs = abs( sP.targetHaloMass - codeMassToLogMsun(gc.subgroupMass) )
+    hInd = ( where(massDiffs eq min(massDiffs[w]),count) )[0]
+    
+    if count ne 1 then message,'Error'
+  endelse
   
   foundMass = codeMassToLogMsun( gc.subgroupMass[hInd] )
   foundRvir = gc.group_r_crit200[ gc.subgroupGrNr[hInd] ]
@@ -760,8 +767,8 @@ end
 pro checkDMContamination
 
   ; config
-  ;sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res=9,hInd='8',redshift=2.0) )
-  sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_10Mpc_dm',res=10,hInd='3',redshift=0.0) )
+  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res='11',hInd='8',redshift=2.0) )
+  ;sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_10Mpc_dm',res=11,hInd='3',redshift=0.0) )
   ;sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_10Mpc_dm',res=10,hInd='1b',redshift=0.0) )
   ;sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_convhull',res=10,hInd=1,redshift=2.0) )
   ;sPs = mod_struct( sPs, 'sP4', simParams(run='zoom_10Mpc_dm_box',res=9,hInd=0,redshift=0.0) )
@@ -809,7 +816,7 @@ pro checkDMContamination
   
     ; add cumulative histogram to plot
     strings = [strings, str(sP.simName)+' h'+str(sP.hInd)+' ('+str(2^sP.res)+')']
-    cgPlot,dists[0:nn],lindgen(nn),psym=-4,/overplot,color=cgColor(colors[i])
+    cgPlot,dists[0:nn],lindgen(nn)+1,psym=-4,/overplot,color=cgColor(colors[i])
     
   endfor
   
@@ -826,7 +833,7 @@ end
 pro checkGasContamination
 
   ; config
-  sP = simParams(run='zoom_20Mpc',res=10,hInd=7,redshift=2.0)
+  sP = simParams(run='zoom_20Mpc',res='11',hInd='8',redshift=2.0)
 
   ; load
   h = loadSnapshotHeader(sP=sP)
@@ -925,7 +932,7 @@ pro checkGasContamination
       xtitle=textoidl("r / r_{vir}"),ytitle="Cumulative Number of Lowres TR Within Radius"
       
     nn = 99
-    cgPlot,dists[0:nn],lindgen(nn),psym=-4,/overplot,color=cgColor('red')
+    cgPlot,dists[0:nn],lindgen(nn)+1,psym=-4,/overplot,color=cgColor('red')
     
     legend,[str(sP.simName)+' h'+str(sP.hInd)+' ('+str(2^sP.res)+')'],textcolor=['red'],/top,/left
   end_PS

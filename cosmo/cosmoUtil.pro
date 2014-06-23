@@ -545,7 +545,7 @@ pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted
   endfor
   
   cgPlot,xRange,[yRange[1],yRange[1]]-0.001*yRange[1],/overplot
-  cgText,(xRange[1]-xRange[0])/2.0,yRange[1]+yTextOff*6.0,"Time [Gyr]",alignment=0.5
+  cgText,mean(xRange),yRange[1]+yTextOff*5.0,"Time [Gyr]",alignment=0.5
 
 end
 

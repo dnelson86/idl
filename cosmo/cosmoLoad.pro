@@ -509,7 +509,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
         SubgroupGasMetallicity        : fltarr(h.nSubgroupsTot)                   ,$
         SubgroupGasMetallicitySFR     : fltarr(h.nSubgroupsTot)                   ,$
         SubgroupStarMetalFractions    : fltarr(gfmNumElements,h.nSubgroupsTot)    ,$
-        SubgroupStarMetallicity       : fltarr(h.nSubgroupsTot)                      }
+        SubgroupStarMetallicity       : fltarr(h.nSubgroupsTot)                   ,$
+        GroupFuzzOffsetType           : lon64arr(6,h.nGroupsTot)                   } ; FOF_FUZZ_SORT_BY_NEAREST_GROUP
         
         if gfmNumPhotometrics gt 0 then $
           sfsub = mod_struct( sfsub, 'SubgroupStellarPhotometrics', $
@@ -517,7 +518,7 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
         
         sf = create_struct(sf,sfsub)
       endif
-      
+            
       ; ID load requested?
       if keyword_set(readIDs) and idsInGroupCatFlag eq 1 then begin
         if (h.nIDsTot eq 0) then $
@@ -562,7 +563,8 @@ function loadGroupCat, sP=sP, readIDs=readIDs, skipIDs=skipIDsFlag, noLocal=noLo
       sf.GroupGasMetalFractions  [*,skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupGasMetalFractions"))
       sf.GroupGasMetallicity     [skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupGasMetallicity"))
       sf.GroupStarMetalFractions [*,skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupStarMetalFractions"))
-      sf.GroupStarMetallicity    [skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupStarMetallicity"))    
+      sf.GroupStarMetallicity    [skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupStarMetallicity"))
+      sf.GroupFuzzOffsetType     [*,skip:(skip+h.nGroups-1)] = h5d_read(h5d_open(fileID,"Group/GroupFuzzOffsetType"))
     endif
     
     endif ; h.nGroups>0
