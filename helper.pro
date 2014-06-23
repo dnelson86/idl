@@ -768,6 +768,7 @@ function sampleColorTable, ctname, num, bounds=bounds
   compile_opt idl2, hidden, strictarr, strictarrsubs
   colors = lonarr(num)
   
+  set_plot,'ps'
   if ~keyword_set(bounds) then bounds = [0.0,1.0]
   ; get current CT
   tvlct,r,g,b,/get
@@ -915,7 +916,7 @@ end
 ; postscript output
 ; -----------------
 
-pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig, huge=huge
+pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig, huge=huge, small=small
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -924,6 +925,10 @@ pro start_PS, filename, xs=xs, ys=ys, eps=eps, big=big, extrabig=extrabig, huge=
   if n_elements(eps) eq 0 then eps=1
   
   ; make the page bigger
+  if n_elements(small) eq 1 then begin
+    xs *= 0.9
+    ys *= 0.9
+  endif
   if n_elements(big) eq 1 then begin
     xs *= 1.2 ;9.0
     ys *= 1.2 ;6.0
@@ -1009,7 +1014,7 @@ function plot_pos, rows=rows, cols=cols, total=total, gap=gap
   ; only total number of plots set? make a reasonable row/col arrangement
   if keyword_set(total) then begin
     ; one row
-    if total eq 2 or total eq 3 or total eq 5 then begin
+    if total eq 1 or total eq 2 or total eq 3 or total eq 5 then begin
       rows = 1 & cols = total
     endif
     

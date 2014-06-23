@@ -1,6 +1,6 @@
 ; accretionMode.pro
 ; gas accretion project - past substructure history of gas elements
-; dnelson feb.2014
+; dnelson jun.2014
 
 ; -----------------------------------------------------------------------------------------------------
 ; accretionMode(): for eaching gas particle/tracer with a recorded accretion time, starting at some 
@@ -585,6 +585,7 @@ function accModeInds, at=at, mt=mt, sP=sP, accMode=accMode, maskAndInds=maskAndI
   ; select on accretion mode
   if sP.trMCPerCell lt 0 then message,'Error: accMode for tracerVel not yet.'
   am = accretionMode(sP=sP)
+  if n_elements(am) ne nElem then message,'Error: Inconsistency.'
     
   if accMode eq 'smooth'       then at_w = where(am eq 1,count)
   if accMode eq 'smooth_rec'   then at_w = where(am eq 1 or am eq 11,count)
@@ -612,7 +613,8 @@ function accModeInds, at=at, mt=mt, sP=sP, accMode=accMode, maskAndInds=maskAndI
   if sP.trMCPerCell gt 0 then type = ( galcat.type[ replicate_var(galcat.trMC_cc) ] )
   if sP.trMCPerCell eq 0 then type = ( galcat.type )
   if sP.trMCPerCell lt 0 then type = ( galcat.type[ replicate_var(galcat.trVel_cc) ] )
-
+  if n_elements(type) ne n_elements(mask) then message,'Error: Inconsistency.'
+  
   ; split at_w into types
   rr = {}  
   totCount = 0L

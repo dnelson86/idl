@@ -201,6 +201,7 @@ function loadSnapshotOld, fileBase, m
     endif
     
   close,lun
+  free_lun,lun
   
   ; split by particle type
   offset = 0L

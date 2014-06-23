@@ -72,6 +72,44 @@ pro sarahCheck
 end
 
 
+; checkStarIDs(): make sure SPH star ids turn once into gas IDs moving backwards in time
+; note: in Arepo runs spawned (not converted) stars will have new IDs with no progenitor gas cell info
+
+pro checkStarIDs
+
+  sP = simParams(res=128,run='gadget',redshift=2.0)
+  
+  ; load all star particle IDs
+  ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+  ids_sort = sort(ids)
+  mask = intarr(n_elements(ids))
+   
+  for m=sP.snap,0,-1 do begin
+    sP.snap = m
+    
+    ; load gas ids and match
+    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+    match,gas_ids,ids,gas_ind,star_ind,count=count1
+    star_ind = star_ind[ids_sort]
+    
+    if count1 gt 0 then mask[star_ind] += 1
+    
+    ; load star ids and match
+    star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+    match,star_ids,ids,star_ind_cur,star_ind_orig,count=count2
+    
+    if count1+count2 ne n_elements(ids) then message,'Did not find all original star IDs.'
+    
+    ; for those stars that are still stars, make sure we have never seen them as gas
+    star_ind_orig = star_ind_orig[ids_sort]
+    if max(mask[star_ind_orig]) gt 0 then message,'Error: Flip gas back to star.'
+    
+    print,m,float(count2)/(count1+count2),float(count1)/(count1+count2)
+  endfor
+
+end
+
+
 ; mcIllustrisCheck():
 
 pro mcIllustrisCheck
@@ -220,122 +258,82 @@ pro check1820b
 
 end
 
-; checkAccModeSum
 
-pro checkAccModeSum
+; checkMusicICsVel
+
+pro checkMusicICsVel
 
   ; config
-  sP = simParams(res=128,run='tracer',redshift=2.0)
-  accModes = ['smooth','clumpy','stripped']
+  file1 = '/n/home07/dnelson/sims.zooms/128_20Mpc_dmonly/ics.hdf5'
+  file2 = '/n/hernquistfs1/mvogelsberger/ComparisonProject/512_20Mpc/ICs_DM/output/ICs.' ;0-63
   
   ; load
-  galcat = galaxyCat(sP=sP)
-  mt = mergerTreeSubset(sP=sP)
-  am = accretionMode(sP=sP)
-  at = accretionTimes(sP=sP)
-
-  w1 = where(am gt 0)
-  w2 = where(at.accTime[sP.atIndMode,*] ge 0)
-  print,array_equal(w1,w2)
+  x = h5_parse(file1,/read)
   
-  ; index check
-  tot_inds = 0L
-  inds_all = accModeInds(sP=sP,mt=mt,accMode='all')
-  for i=0,n_tags(inds_all)-1 do begin
-    tot_inds += n_elements(inds_all.(i))
-    print,'all',(tag_names(inds_all))[i],minmax(am[inds_all.(i)])
+  y = loadSnapshotOld(file2+'0','none')
+  
+  ; pos
+  print,minmax(x.parttype1.coordinates._data)
+  print,minmax(y.parttype1.pos)
+  
+  ; ids
+  print,minmax(x.parttype1.particleids._data)
+  print,minmax(y.parttype1.ids)
+  
+  ; vel
+  print,'vel:'
+  print,minmax(x.parttype1.velocities._data)
+  print,minmax(y.parttype1.vel)
+  
+  ; load all old ICs
+  print,'loop:'
+  vel = fltarr(3,y.header.nPartAll[1])
+  count = 0
+  
+  for i=0,63 do begin
+    y = loadSnapshotOld(file2+str(i),'none')
+    for j=0,2 do vel[j,count:count+y.header.nPartTot[1]-1] = y.parttype1.vel[j,*]
+    count += y.header.nPartTot[1]
+    print,i,minmax(y.parttype1.vel)
   endfor
-  print,tot_inds,n_elements(am)
   
-  tot_inds_all_modes = 0L
-  foreach accMode,accModes do begin
-    tot_inds_mode = 0L
-    inds_mode = accModeInds(sP=sP,mt=mt,accMode=accMode)
-    for i=0,n_tags(inds_mode)-1 do begin
-      tot_inds_mode += n_elements(inds_mode.(i))
-      print,accMode,(tag_names(inds_mode))[i],minmax(am[inds_mode.(i)])
-    endfor
-    tot_inds_all_modes += tot_inds_mode
-  endforeach
-  
-  w=where(am eq 0,count)
-  print,tot_inds_all_modes+count,tot_inds
-  
-  ; check against an atS quantity
-  accTvir = gcSubsetProp(sP=sP,/accTvir,/accretionTimeSubset,accMode='all')
-  
-  tot_quant = 0L
-  for i=0,n_tags(accTvir)-1 do tot_quant += n_elements(accTvir.(i))
-  
-  ; load IDs based on each mode, then match back against galaxy catalog, 
-  ; then subset am and make sure they agree
-  foreach accMode,[accModes,'all'] do begin
-    elemIDs = gcSubsetProp(sP=sP,/elemIDs,/accretionTimeSubset,accMode=accMode)
-  
-    for i=0,n_tags(elemIDs)-1 do begin
-      calcMatch,elemIDs.(i),galcat.trMC_ids,ind1,ind2,count=countMatch
-      if countMatch ne n_elements(elemIDs.(i)) then message,'Error'
-      am_local = am[ind2]
-      print,accMode,(tag_names(elemIDs))[i],minmax(am_local)
-    endfor
-  endforeach ;accModes
+  print,minmax(vel)
   
   stop
 
+
+
 end
 
-; checkGroupOrderedOffsets():
+; process16bitimg
 
-pro checkGroupOrderedOffsets
+pro process16bitimg
 
   ; config
-  sP = simParams(res=455,run='illustris',redshift=2.0)
-  pt = 'gas'
-  groupID = 7000 ;7000, 8000
+  fname_in  = "frame_8k180_2000_16bit.png"
+  fname_out = "test.png"
+  min_val   = 0.02
+  max_val   = 0.46
+  gamma     = 1.30
+  sat_val   = 1.2
   
   ; load
-  ptNum = partTypeNum(pt)
-  gc = loadGroupCat(sP=sP,/skipIDs)
-  subID = gc.groupFirstSub[groupID]
+  image = read_png(fname_in)
   
-  print,'Picked subid ['+str(subID)+'] of ('+str(gc.groupNsubs[groupID])+') in this group.'
+  ; convert into float, clip at [min_val,max_val] and scale into [0.0,1.0]
+  image_new = float(image) / 65535.0 ;[0,1]
+  image_new = (image_new - min_val) / (max_val-min_val)
+  image_new = image_new > 0.0 < 1.0
   
-  ; pick one halo, make its index list into the snapshot
-  ind_min = gc.snapOffsets.subgroupType[ptNum,subID]
-  ind_max = ind_min + gc.subgroupLenType[ptNum,subID] - 1
+  ; apply gamma scaling
+  ; todo
+  ; apply saturation
+  ; todo
   
-  gr_min = gc.snapOffsets.groupType[ptNum,groupID]
-  gr_max = gr_min + gc.groupLenType[ptNum,groupID] - 1
+  ; convert into [0,255] and write
+  image_out = byte(round(image_new * 255.0)) > 0 < 255
   
-  print,'Reading indices: ',ind_min,ind_max
-  print,'Group indices: ',gr_min,gr_max
-  
-  pos = loadSnapshotSubset(sP=sP,partType=pt,field='pos',indRange=[ind_min,ind_max])
-  print,'In subhalo:'
-  print,minmax(pos[0,*])
-  print,minmax(pos[1,*])
-  print,minmax(pos[2,*])
-  
-  pos = loadSnapshotSubset(sP=sP,partType=pt,field='pos',indRange=[gr_min,gr_max])
-  print,'In group:'
-  print,minmax(pos[0,*])
-  print,minmax(pos[1,*])
-  print,minmax(pos[2,*])
-  
-  pos = loadSnapshotSubset(sP=sP,partType=pt,field='pos',indRange=[gr_max+1,gr_max+10])
-  print,'Boundary (1):'
-  print,minmax(pos[0,*])
-  print,minmax(pos[1,*])
-  print,minmax(pos[2,*])
-  
-  pos = loadSnapshotSubset(sP=sP,partType=pt,field='pos',indRange=[gr_min-10,gr_min-1])
-  print,'Boundary (2):'
-  print,minmax(pos[0,*])
-  print,minmax(pos[1,*])
-  print,minmax(pos[2,*])
+  write_png, fname_out, image_out
   stop
 
-
 end
-
-

@@ -1,69 +1,55 @@
 ; arepoVTK.pro
 ; helper functions to test ArepoRT and ArepoVTK
-; dnelson aug.2013
+; dnelson jun.2014
 
-@helper
+; combineStereoFrames(): combine two frames into side-by-side (and do 16->8 bit mapping)
 
-; runMissingFrames(): identify missing frames in a sequence and re-run them, start in ArepoRT directory
+pro combineStereoFrames, inStr=inStr
 
-pro runMissingFrames
+  if n_elements(inStr) eq 0 then message,'Error'
+  if inStr ne 'A1' and inStr ne 'A2' and inStr ne 'B1' and inStr ne 'B2' and $
+     inStr ne 'C1' and inStr ne 'C2' and inStr ne 'A0' then message,'Error'
 
-  ; config
-  path = 'frames_final/'
-  confName = 'config_movie.txt'
-  mmFrames = [0,1000]
+  ; file config
+  mmNum = [2000,2299]
+  inPath1 = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_360/'
+  inPath2 = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_360_'+inStr+'/'
+  outPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/sbs_'+inStr+'/'
   
-  ; search for files and fill mask=1 for frames that already exist
-  totNumFrames = mmFrames[1]-mmFrames[0]+1
-  mask = intarr(totNumFrames)
+  fileBase = "frame_1k360_"
+  fileEnd  = "_16bit.png"
   
-  files = file_search(path+'*.tga') ; assume format: somename_XXX.tga
+  ; image config
+  imMinMax = [0.0,0.65]
+  imGamma  = 1.0 ; inverse of photoshop
   
-  foreach file,files do begin
-    fileNum = strsplit(file,'/',/extract) ; remove full path
-	fileNum = fileNum[-1]
-	fileNum = strsplit(fileNum,'.',/extract) ; remove extension
-	fileNum = fileNum[-2]
-	fileNum = strsplit(fileNum,'_',/extract)
-	fileNum = fix( fileNum[1] )
-	mask[fileNum] += 1
-  endforeach
-
-  w = where(mask eq 0,nMissing)
-  
-  print,'Of ['+str(totNumFrames)+'] found ['+str(n_elements(files))+'] existing, and ['+str(nMissing)+'] missing.'
-
-  if nMissing gt 0 then foreach fileNum,w do begin
-  
-    openW, lun, path + 'missing.bsub', /GET_LUN
+  for i=mmNum[0],mmNum[1] do begin
+    ; load
+    image1 = read_png(inPath1 + fileBase + string(i,format='(I4)') + fileEnd)
     
-    ; write header
-    printf,lun,'#!/bin/sh'
-    printf,lun,'#BSUB -q nancy'
-	printf,lun,'#BSUB -J spRT_'+str(fileNum)
-	printf,lun,'#BSUB -n 8'
-	printf,lun,'#BSUB -R "span[ptile=8]"'
-	printf,lun,'#BSUB -g /dnelson/orbit'
-	printf,lun,'#BSUB -x'
-	printf,lun,'#BSUB -o '+path+'run_'+str(fileNum)+'.out'
-	printf,lun,'#BSUB -e '+path+'run_'+str(fileNum)+'.err'
-	printf,lun,''
-	printf,lun,'module load hpc/openmpi-1.6_gcc-4.7.0thread'
-	printf,lun,'./ArepoRT '+confName+' '+str(fileNum)+' >> '+path+'run_'+str(fileNum)+'.txt'
-
-    ; close, queue and delete
-    close,lun
-    free_lun,lun
-      
-    spawn, 'bsub < ' + path + 'missing.bsub', result
-    print,str(fileNum)+'  '+result
-    wait,0.2
-    spawn, 'rm ' + path + 'missing.bsub'
-
-  endforeach
+    if inStr ne 'A0' then begin
+      image2 = read_png(inPath2 + fileBase + string(i,format='(I4)') + fileEnd)
+      image_out = [[image1],[image2]] ; horizontal stack
+    endif else begin
+      image_out = image1 ; non-SbS
+    endelse
+    
+    ; scaling
+    image_out /= 65535.0 ; normalize to [0,1]
+    image_out = (image_out - imMinMax[0]) / (imMinMax[1]-imMinMax[0]) ; scale histogram
+    image_out = image_out > 0.0 < 1.0 ; clamp
+    image_out = image_out^imGamma ; gamma scaling
+    image_out = round(image_out * 255.0) ; 8 bit
+    image_out = byte(image_out) > 0B < 255B ; clamp
+    
+    ; write
+    outFile = fileBase + string(i,format='(I4)') + ".png"
+    write_png,outPath + outFile,image_out
+    print,'Wrote: ['+outFile+']'
+  endfor
   
   stop
-  
+
 end
 
 ; plotSpoon3D(): quick point plot of a snapshot with a surface boundary
@@ -244,89 +230,6 @@ pro plotScalings
   stop
 end
 
-; genOrbitConfigs(): generate series of configuration files derived from a template that move the
-;                    camera position in a circular orbit about a center (x,y,z) position over a 
-;                    specified number of frames, tangent to some axis
-
-pro genOrbitConfigs
-
-  ; orbit config
-  xyzCen    = [1123.2,7568.8,16144.2] ;kpc/h in box
-  radius    = 500.0 ;kpc
-
-  numFrames = 360 ;360
-  tanAxis   = 'y'
-  
-  ; path config
-  path         = '/n/home07/dnelson/vis/ArepoVTK/orbit_test/'
-  templateName = path+'config_template.txt'
-  filenameBase = 'orbit_test_'
-  
-  ; generate (x,y,z) camera positions
-  cameraPos = fltarr(numFrames,3)
-  
-  for i=0,numFrames-1 do begin
-    if (tanAxis eq 'x') then begin
-      cameraPos[i,0] = xyzCen[0]
-      cameraPos[i,1] = xyzCen[1] + radius * cos(float(i)/numFrames * 2*!pi)
-      cameraPos[i,2] = xyzCen[2] + radius * sin(float(i)/numFrames * 2*!pi)
-    endif
-    if (tanAxis eq 'y') then begin
-      cameraPos[i,0] = xyzCen[0] + radius * cos(float(i)/numFrames * 2*!pi)
-      cameraPos[i,1] = xyzCen[1]
-      cameraPos[i,2] = xyzCen[2] + radius * sin(float(i)/numFrames * 2*!pi)
-    endif
-    if (tanAxis eq 'z') then begin
-      cameraPos[i,0] = xyzCen[0] + radius * cos(float(i)/numFrames * 2*!pi)
-      cameraPos[i,1] = xyzCen[1] + radius * sin(float(i)/numFrames * 2*!pi)
-      cameraPos[i,2] = xyzCen[2]
-    endif
-  endfor
-  
-  ; load template
-  nRows = file_lines(templateName)
-  fileText = strarr(nRows)
-  
-  openR, lun, templateName, /GET_LUN
-  
-  for i=0,nRows-1 do begin
-    tt = ''
-    readF,lun,tt
-    fileText[i] = tt
-  endfor
-  
-  close, lun
-  free_lun, lun
-  
-  ; write new config files
-  for i=0,numFrames-1 do begin
-    ; copy template text
-    outText = fileText
-    
-    ; make camera position string
-    cameraPosStr = str(string(cameraPos[i,0],format='(f9.3)')) + " " + $
-                   str(string(cameraPos[i,1],format='(f9.3)')) + " " + $
-                   str(string(cameraPos[i,2],format='(f9.3)'))
-    
-    ; replace FRAMENAME and CAMERAPOSTUPLE
-    strreplace,outText,'FRAMENAME','frame_'+str(i)+'.tga'
-    strreplace,outText,'CAMERAPOSTUPLE',cameraPosStr
-    
-    ; write
-    writeName = path + 'config_'+str(i)+'.txt'
-    
-    openW,lun,writeName,/GET_LUN
-    
-    for j=0,nRows-1 do begin
-      printf,lun,outText[j]
-    endfor
-    
-    close,lun
-    free_lun, lun
-    
-    print,writeName + " -- " + cameraPosStr
-  endfor
-end
 
 pro makeArepoICs
 

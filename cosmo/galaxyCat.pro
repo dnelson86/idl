@@ -693,7 +693,7 @@ end
 ;
 ; accretionTimeSubset : return values only for the subset of particles/tracers with recorded accretion times
 ;  timeWindow : either in Myr, or 'all', the time over which to include accretion events
-;  accTime,accTvir : time of accretion (in redshift) or virial temp of parent halo at time of accretion
+;  accTimes,accTvir : time of accretion (in redshift) or virial temp of parent halo at time of accretion
 ;  accMode : return values only for one accretionMode (all,smooth,bclumpy,sclumpy,smooth)
 ;  accTimeDelta=[a,b] : time difference (in Gyr) between two indices of the accretionTime
 
@@ -704,7 +704,7 @@ function gcSubsetProp, sP=sP, gcIDList=gcIDList, $
            elemIDs=elemIDs, tracksFluid=tracksFluid, $
            curGasVal=curGasVal, curTracerVal=curTracerVal, curField=curField, $
            accretionTimeSubset=accretionTimeSubset, timeWindow=TW, $
-           accTime=accTime,accTvir=accTvir,accMode=accMode,accTimeDelta=accTimeDelta ; for accretionTimeSubset only
+           accTimes=accTimes,accTvir=accTvir,accMode=accMode,accTimeDelta=accTimeDelta ; for accretionTimeSubset only
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
@@ -789,7 +789,7 @@ function gcSubsetProp, sP=sP, gcIDList=gcIDList, $
     
       ; make a count of those falling in the time window
       w_type = where(curtime - loc_atime le timeWindow,nloc)
-	galcatInds = mod_struct( galcatInds, 'inter', galcatInds.inter[w_type] )
+      galcatInds = mod_struct( galcatInds, 'inter', galcatInds.inter[w_type] )
     
       ; STARS (4)
       loc_atime = reform(at.accTimeRT[galcatInds.stars])
@@ -819,7 +819,7 @@ function gcSubsetProp, sP=sP, gcIDList=gcIDList, $
     
         ; make a count of those falling in the time window
         w_type = where(curtime - loc_atime le timeWindow,nloc)
-	  galcatInds = mod_struct( galcatInds, 'bhs', galcatInds.bhs[w_type] )
+        galcatInds = mod_struct( galcatInds, 'bhs', galcatInds.bhs[w_type] )
       endif
 	
     endif ; TW
@@ -911,12 +911,12 @@ function gcSubsetProp, sP=sP, gcIDList=gcIDList, $
       ; load gas u, nelec and calculate temperature
       u     = loadSnapshotSubset(sP=sP,partType='gas',field='u',inds=ids_ind)
       nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec',inds=ids_ind)
-	val[galcat_ind] = convertUtoTemp(u,nelec,/log)
-	  
-	u = !NULL
-	nelec = !NULL
+      val[galcat_ind] = convertUtoTemp(u,nelec,/log)
+        
+      u = !NULL
+      nelec = !NULL
     endif else begin
-	val[galcat_ind] = loadSnapshotSubset(sP=sP,partType='gas',field=curField,inds=ids_ind)
+      val[galcat_ind] = loadSnapshotSubset(sP=sP,partType='gas',field=curField,inds=ids_ind)
     endelse
 	
     ; replicate if curGasVal (one per cell) and using tracers (either type)
