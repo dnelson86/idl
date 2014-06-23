@@ -671,21 +671,18 @@ end
 function evolIGMTemp, sP=sP
   
   ; config
-  redshiftEnd = 2.0
+  redshiftEnd = 0.0
   
-  snapRange = [sP.groupCatRange[0],redshiftToSnapNum(redshiftEnd,sP=sP)] ;z=6-2
+  snapRange = [sP.groupCatRange[0],redshiftToSnapNum(redshiftEnd,sP=sP)]
   nSnaps = snapRange[1]-snapRange[0]+1
   
-  ; compare full distributions at these snapshots
-  distRedshifts = [6.0,5.0,4.0,3.0,2.0]
-  distSnaps     = redshiftToSnapNum(distRedshifts,sP=sP)
-  
+  ; binning for histograms
   tempBinSize = 0.05 / (sP.res/128)
-  tempMinMax = [1.0,7.0]
+  tempMinMax = [0.0,10.0]
   nTempBins = fix((tempMinMax[1]-tempMinMax[0]) / tempBinSize + 1)
   
   ; check if save exists
-  saveFilename = sP.derivPath + 'igmtemp.' + sP.savPrefix + str(sP.res) + '.' + $
+  saveFilename = sP.derivPath + 'igmTemp.' + sP.savPrefix + str(sP.res) + '.' + $
     str(sP.snapRange[0]) + '-' + str(sP.snapRange[1]) + '.sav'
   
   ; results exist, return
@@ -695,23 +692,25 @@ function evolIGMTemp, sP=sP
   endif
     
   ; arrays
-  r = { meanTemp      : fltarr(nSnaps)                           ,$
-        medianTemp    : fltarr(nSnaps)                           ,$
-        minTemp       : fltarr(nSnaps)                           ,$
-        redshifts     : fltarr(nSnaps)                           ,$
-        tempDist      : fltarr(n_elements(distSnaps),nTempBins)  ,$
-        tempBinCen    : fltarr(nTempBins)                        ,$
-        distRedshifts : distRedshifts                            ,$
-        nTempBins     : nTempBins                                ,$
-        tempMinMax    : tempMinMax                               ,$
-        tempBinSize   : tempBinSize                               }
-  
-  distCount = 0
+  r = { meanTemp      : fltarr(nSnaps)            ,$
+        medianTemp    : fltarr(nSnaps)            ,$
+        minTemp       : fltarr(nSnaps)            ,$
+        maxTemp       : fltarr(nSnaps)            ,$
+        redshifts     : fltarr(nSnaps)            ,$
+        snaps         : intarr(nSnaps)            ,$
+        tempDist      : fltarr(nSnaps,nTempBins)  ,$
+        tempBinCen    : fltarr(nTempBins)         ,$
+        nTempBins     : nTempBins                 ,$
+        tempMinMax    : tempMinMax                ,$
+        tempBinSize   : tempBinSize                }
   
   for m=snapRange[0],snapRange[1] do begin
 
     ; load group catalog and gas ids
-    sP.snap = m & print,m
+    saveInd = m - snapRange[0]
+    sP.snap = m
+    print,m
+    
     h = loadSnapshotHeader(sP=sP)
     gc = loadGroupCat(sP=sP,/readIDs)
     
@@ -731,18 +730,17 @@ function evolIGMTemp, sP=sP
     temp  = temp[gas_igm_inds]
     
     ; store
-    r.meanTemp[m-snapRange[0]]   = mean(temp)
-    r.medianTemp[m-snapRange[0]] = median(temp)
-    r.minTemp[m-snapRange[0]]    = min(temp)
-    r.redshifts[m-snapRange[0]]  = 1/h.time-1
+    r.meanTemp[saveInd]   = mean(temp)
+    r.medianTemp[saveInd] = median(temp)
+    r.minTemp[saveInd]    = min(temp)
+    r.maxTemp[saveInd]    = max(temp)
+    r.redshifts[saveInd]  = 1/h.time-1
+    r.snaps[saveInd]      = m
     
-    ; histogram distribution if requested
-    if total(distSnaps eq m) gt 0 then begin
-      hist = histogram(temp,min=tempMinMax[0],max=tempMinMax[1],binsize=tempBinSize,loc=loc)
-      r.tempDist[distCount,*] = hist
-      r.tempBinCen = loc + tempBinSize*0.5
-      distCount += 1
-    endif
+    ; save histogram distribution
+    hist = histogram(temp,min=tempMinMax[0],max=tempMinMax[1],binsize=tempBinSize,loc=loc)
+    r.tempDist[saveInd,*] = hist
+    r.tempBinCen = loc + tempBinSize*0.5
     
   endfor
   
@@ -751,133 +749,4 @@ function evolIGMTemp, sP=sP
   print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
    
   return,r
-end
-
-pro plotEvolIGMTemp
-
-  sP_UV   = simParams(res=256,run='tracernew')
-  sP_noUV = simParams(res=256,run='tracer_nouv')
-  
-  igmEvol_UV   = evolIGMTemp(sP=sP_UV)
-  igmEvol_noUV = evolIGMTemp(sP=sP_noUV)
-  
-  ; plot (1) - mean/median evolution of IGM gas temperature with redshift
-  start_PS, sP_UV.plotPath + 'igmTemp.comp.'+sP_UV.savPrefix+str(sP_UV.res)+'.eps'
-    
-    xrange = [6.0,2.0]
-    yrange = [1.0,4.5]
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
-      ytitle="IGM Gas Temperature [ log K ]",xtitle="Redshift"
-    
-    ; with UV background
-    cgPlot,igmEvol_UV.redshifts,igmEvol_UV.meanTemp,color=getColor(3),line=1,/overplot
-    cgPlot,igmEvol_UV.redshifts,igmEvol_UV.medianTemp,color=getColor(3),line=2,/overplot
-    cgPlot,igmEvol_UV.redshifts,igmEvol_UV.minTemp,color=getColor(3),line=0,/overplot
-
-    ; without UV background
-    cgPlot,igmEvol_noUV.redshifts,igmEvol_noUV.meanTemp,color=getColor(1),line=1,/overplot
-    cgPlot,igmEvol_noUV.redshifts,igmEvol_noUV.medianTemp,color=getColor(1),line=2,/overplot
-    cgPlot,igmEvol_noUV.redshifts,igmEvol_noUV.minTemp,color=getColor(1),line=0,/overplot
-    
-    ; legend
-    strings = ["w/ UV (mean)","w/ UV (median)","w/ UV (min)",$
-               "no UV (mean)","no UV (median)","no UV (min)"]
-    legend,strings,linestyle=[1,2,0,1,2,0],textcolors=getColor([3,3,3,1,1,1],/name),$
-      box=0,linesize=0.5,charsize=!p.charsize-0.4,position=[5.9,3.3]
-    
-  end_PS
-  
-  ; plot (2) - distributions
-  start_PS, sP_UV.plotPath + 'igmTemp.compdist.'+sP_UV.savPrefix+str(sP_UV.res)+'.eps'
-  
-  x0 = 0.15 & x1 = 0.55 & x2 = 0.95
-  y0 = 0.15 & y1 = 0.55 & y2 = 0.95
-  
-  pos = list( [x0,y1,x1,y2] ,$ ; ul
-              [x1,y1,x2,y2] ,$ ; ur
-              [x0,y0,x1,y1] ,$ ; ll
-              [x1,y0,x2,y1]  ) ; lr    
-
-  inds = [0,2,3,4] ;z=6,4,3,2
-  
-  xrange = [1.1,6.6]
-  yrange = [50,max(igmEvol_UV.tempDist)*2.0]    
-  
-  ; ul
-  cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xs=1,ys=1,/ylog,yminor=0,$
-    ytitle="",xtitle="",xtickname=replicate(' ',10),pos=pos[0];ytickv=[0.2,0.4,0.6,0.8,1.0],yticks=4,
-  
-  cgPlot,igmEvol_UV.tempBinCen,igmEvol_UV.tempDist[inds[0],*],line=0,color=getColor(3),/overplot
-  cgPlot,igmEvol_noUV.tempBinCen,igmEvol_noUV.tempDist[inds[0],*],line=0,color=getColor(1),/overplot  
-  cgText,xrange[1]*0.86,yrange[1]*0.2,"z="+string(igmEvol_UV.distRedshifts[inds[0]],format='(f3.1)'),alignment=0.5
-  
-  legend,["w/ UV","no UV"],textcolors=getColor([3,1],/name),box=0,linesize=0.25,position=[4.7,2e3]
-  
-  ; ur
-  cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,xs=1,ys=1,/ylog,yminor=0,$
-    ytitle="",xtitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),pos=pos[1],/noerase
-  
-  cgPlot,igmEvol_UV.tempBinCen,igmEvol_UV.tempDist[inds[1],*],line=0,color=getColor(3),/overplot
-  cgPlot,igmEvol_noUV.tempBinCen,igmEvol_noUV.tempDist[inds[1],*],line=0,color=getColor(1),/overplot 
-  cgText,xrange[1]*0.86,yrange[1]*0.2,"z="+string(igmEvol_UV.distRedshifts[inds[1]],format='(f3.1)'),alignment=0.5
-  
-  ; ll
-  cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
-    ytitle="",xtitle="",pos=pos[2],/noerase
-  
-  cgPlot,igmEvol_UV.tempBinCen,igmEvol_UV.tempDist[inds[2],*],line=0,color=getColor(3),/overplot
-  cgPlot,igmEvol_noUV.tempBinCen,igmEvol_noUV.tempDist[inds[2],*],line=0,color=getColor(1),/overplot 
-  cgText,xrange[1]*0.86,yrange[1]*0.2,"z="+string(igmEvol_UV.distRedshifts[inds[2]],format='(f3.1)'),alignment=0.5
-  
-  ; lr
-  cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,/ylog,yminor=0,$
-    ytitle="",xtitle="",ytickname=replicate(' ',10),pos=pos[3],/noerase;xticks=4,xtickv=[10.5,11.0,11.5,12.0,12.5]
-  
-  cgPlot,igmEvol_UV.tempBinCen,igmEvol_UV.tempDist[inds[3],*],line=0,color=getColor(3),/overplot
-  cgPlot,igmEvol_noUV.tempBinCen,igmEvol_noUV.tempDist[inds[3],*],line=0,color=getColor(1),/overplot 
-  cgText,xrange[1]*0.86,yrange[1]*0.2,"z="+string(igmEvol_UV.distRedshifts[inds[3]],format='(f3.1)'),alignment=0.5
-   
-  ; labels
-  cgText,0.05,y1,"N",alignment=0.5,orientation=90.0,/normal
-  cgText,x1,0.01,textoidl("IGM Gas Temperature [ log K ]"),alignment=0.5,/normal    
-  
-  end_PS
-
-end
-
-; checkStarIDs(): make sure SPH star ids turn once into gas IDs moving backwards in time
-; note: in Arepo runs spawned (not converted) stars will have new IDs with no progenitor gas cell info
-
-pro checkStarIDs
-
-  sP = simParams(res=128,run='gadget',redshift=2.0)
-  
-  ; load all star particle IDs
-  ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
-  ids_sort = sort(ids)
-  mask = intarr(n_elements(ids))
-   
-  for m=sP.snap,0,-1 do begin
-    sP.snap = m
-    
-    ; load gas ids and match
-    gas_ids = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    match,gas_ids,ids,gas_ind,star_ind,count=count1
-    star_ind = star_ind[ids_sort]
-    
-    if count1 gt 0 then mask[star_ind] += 1
-    
-    ; load star ids and match
-    star_ids = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
-    match,star_ids,ids,star_ind_cur,star_ind_orig,count=count2
-    
-    if count1+count2 ne n_elements(ids) then message,'Did not find all original star IDs.'
-    
-    ; for those stars that are still stars, make sure we have never seen them as gas
-    star_ind_orig = star_ind_orig[ids_sort]
-    if max(mask[star_ind_orig]) gt 0 then message,'Error: Flip gas back to star.'
-    
-    print,m,float(count2)/(count1+count2),float(count1)/(count1+count2)
-  endfor
-
 end

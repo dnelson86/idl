@@ -1,16 +1,18 @@
 ; plotMaxTemps.pro
 ; gas accretion project - plots related to maximum past temperature of the gas
-; dnelson jul.2013
+; dnelson jun.2014
 
 ; binValMaxHistos()
 
-function binValMaxHistos, sP=sP, accMode=accMode, timeWindow=timeWindow
+function binValMaxHistos, sP=sP, accMode=accModeIN, timeWindow=timeWindow
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
+  accMode = accModeIN
+  
   if sP.gfmWinds eq 1 and (accMode eq 'smooth' or accMode eq 'stripped' or accMode eq 'clumpy') then begin
-    print,'Switching [' + accMode + '] to [' + accMode + '_rec] for GFM run.'
+    ;print,'Switching [' + accMode + '] to [' + accMode + '_rec] for GFM run.'
     accMode = accMode + '_rec'
   endif
   
@@ -237,7 +239,7 @@ pro plotValMaxHistos ;, redshift=redshift, res=res
   ; config
   runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   redshift   = 2.0
-  res        = 128
+  res        = 512
   timeWindow = 500.0 ; Myr
   accMode    = 'smooth' ;'all','smooth','clumpy','stripped','recycled'
   tagNames   = ['Tmax','TmaxTviracc','EntMax','DensMax','MachMax'] ; plot each quantity
