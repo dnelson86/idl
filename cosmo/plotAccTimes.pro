@@ -63,7 +63,7 @@ function selectAccTimeDelta, sP=sP, at=at, am=am, galcat=galcat, $
   
   if keyword_set(norm) then val /= age_earlier
   
-  return, {w:w,val:val}
+  return, {w:w,val:val,norm_fac:age_earlier}
 end
 
 function colorMapAccTime, h2, logHist=logHist, byRow=byRow, byCol=byCol
@@ -764,8 +764,8 @@ end
 pro plotAccTimeDeltasVsHaloMass
 
   ; config
-  sP = simParams(res=512,run='feedback',redshift=3.0)
-  sP2 = simParams(res=512,run='tracer',redshift=3.0)
+  sP = simParams(res=512,run='feedback',redshift=2.0)
+  ;sP2 = simParams(res=128,run='tracer',redshift=3.0)
   
   ; index selection for difference ([1.0,0.75,0.5,0.25,0.15,0.05,0.01,first0.15,first1.0])
   rVirFacs = ['1.0 rvir','0.75 rvir','0.5 rvir','0.25 rvir','0.15 rvir','0.05 rvir',$
@@ -780,6 +780,8 @@ pro plotAccTimeDeltasVsHaloMass
   binSize_yy = 0.1
   logX       = 1
   norm       = 0
+  massBins   = list( [9.45,9.55], [9.9,10.1], [10.4,10.6], [10.8,11.2], [11.3,11.7], [11.7,12.3] )
+  sK         = 3
   
   ; load
   at     = accretionTimes(sP=sP)
@@ -855,9 +857,71 @@ pro plotAccTimeDeltasVsHaloMass
         
   end_PS
   
+  ; plot (2) - 1d profiles
+  set_plot,'ps'
+  mbColors = reverse( sampleColorTable('blue-red2', n_elements(massBins), bounds=[0.1,0.9]) )
+  
+  plotStr = sP.savPrefix + str(sP.res) + '_' + str(earlierInd) + '_' + str(laterInd) + '_gc-' + gcType + $
+            "_mode-" + accMode + "_log=" + str(logX) + "_norm=" + str(norm)
+  
+  start_PS,sP.plotPath + 'accTimeDeltasMassBins_' + plotStr + '.eps', xs=7.5, ys=10.5
+    pos = plot_pos(row=2,col=1,/gap)
+    
+    ; plot A (no normalization)
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=[0.001,2.0],pos=pos[0],$
+      xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),ytitle="Fraction",$
+      /xs,/ys,/ylog,yminor=0,xlog=logX,xminor=(logX ne 1),$
+      title=textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
+      ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+') (mode='+accMode+')'
+    
+    ; loop over mass bins
+    legendStrs   = []
+    legendColors = []
+    
+    if norm eq 1 then delta.val *= delta.norm_fac ; remove normalization
+    xrange = [5e-3,0.8 * redshiftToAgeFlat(sP.redshift)]
+    
+    foreach massBin,massBins,i do begin
+      wMB = where(yy ge massBin[0] and yy lt massBin[1], count)
+      print,'['+str(i)+'] '+str(count)
+      if count eq 0 then continue
+      
+      h = histogram( alog10(delta.val[wMB]), binsize=binSize_xx, $
+                     min=xrangeLog[0], max=xrangeLog[1], loc=loc )
+      
+      cgPlot,10.0^(loc+binSize_xx*0.5),smooth(h/float(max(h)),sK),color=mbColors[i],/overplot
+      
+      legendStrs   = [legendStrs, textoidl('M_{halo} = ' + string(mean(massBin),format='(f4.1)'))]
+      legendColors = [legendColors, mbColors[i]]
+    endforeach
+    
+    legend,legendStrs,textcolors=legendColors,/top,/left
+    
+    ; plot B (normalized)    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=[0.001,2.0],pos=pos[1],/noerase,$
+      xtitle=textoidl("( t_{1} - t_{2} ) / t_{2}"),ytitle="Fraction",$
+      /xs,/ys,/ylog,yminor=0,xlog=logX,xminor=(logX ne 1),$
+      title="(z="+string(sP.redshift,format='(f3.1)')+")"
+      
+    foreach massBin,massBins,i do begin
+      wMB = where(yy ge massBin[0] and yy lt massBin[1], count)
+      print,'['+str(i)+'] '+str(count)
+      if count eq 0 then continue
+      
+      h = histogram( alog10(delta.val[wMB]/delta.norm_fac), binsize=binSize_xx, $
+                     min=xrangeLog[0], max=xrangeLog[1], loc=loc )
+      
+      cgPlot,10.0^(loc+binSize_xx*0.5),smooth(h/float(max(h)),sK),color=mbColors[i],/overplot
+    endforeach
+    
+    legend,legendStrs,textcolors=legendColors,/top,/left
+    
+  end_PS
+    
+  ; make 2d histogram difference
+  ; ----------------------------  
   if n_elements(sP2) eq 0 then stop
   
-  ; make 2d histogram difference
   at2     = accretionTimes(sP=sP2)
   am2     = accretionMode(sP=sP2)
   galcat2 = galaxyCat(sP=sP2)
@@ -868,7 +932,7 @@ pro plotAccTimeDeltasVsHaloMass
   
   parentMass2 = galCatParentProperties(sP=sP2,galcat=galcat2,trRep=(sP2.trMCPerCell ne 0),/mass)
   
-  ; plot (2) - 2d difference
+  ; plot (3) - 2d difference
   start_PS,sP.plotPath + 'accTimeDeltasVsMassDiff_' + plotStr + '.eps'
     cgText,0.5,0.96,textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
       ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+')',alignment=0.5,/normal

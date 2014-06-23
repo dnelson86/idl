@@ -1,6 +1,6 @@
 ; simParams.pro
 ; return structure of simulation and analysis parameters with consistent information
-; dnelson jan.2014
+; dnelson jun.2014
 
 function fillZoomParams, r, res=res, hInd=hInd
 
@@ -164,8 +164,7 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.rVirFac = 0.1 * r.zoomLevel + 4.0
     
     ; L11 only:
-    if str(hInd) eq '7b' then r.zoomShift = [42, -19, -12]
-    if str(hInd) eq '7b' then r.rVirFac = 6.0
+    if r.levelMax eq 11 then r.rVirFac = 6.0
     
     ; L12:
     if r.levelMax eq 12 then r.zoomShift = [43, -19, -12]
@@ -387,7 +386,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
        arepoPath:    '',$    ; root path to Arepo and param.txt for e.g. projections/fof
        savPrefix:    '',$    ; save prefix for simulation (make unique, e.g. 'G')
        saveTag:      '',$    ; save string: trVel, trMC, or SPH
-	 simName:      '',$    ; label to add to plot legends (e.g. "GADGET", "AREPO", "FEEDBACK")
+       simName:      '',$    ; label to add to plot legends (e.g. "GADGET", "AREPO", "FEEDBACK")
        plotPrefix:   '',$    ; plot prefix for simulation (make unique, e.g. 'GR')
        snapRange:    [0,0],$ ; snapshot range of simulation
        groupCatRange:[0,0],$ ; snapshot range of fof/subfind catalogs (subset of above)
@@ -607,7 +606,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
   
   ; zoom project: DM+gas single halo zooms (now all in 20Mpc box, add boxsize to run label later)
   if run eq 'zoom_20mpc'                or run eq 'zoom_20mpc_derefgal' or $
-     run eq 'zoom_20mpc_derefgal_nomod' then begin
+     run eq 'zoom_20mpc_derefgal_nomod' or run eq 'zoom_20mpc_b' then begin
     if n_elements(hInd) eq 0 then message,'Error: Must specify hInd (halo index) to load zoom.'
     
     r.minNumGasPart  = -1 ; no additional cut
@@ -632,6 +631,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     
     r.trMassConst = r.targetGasMass / r.trMCPerCell
     
+    if run eq 'zoom_20mpc_b'              then pathStr = pathStr + 'b'
     if run eq 'zoom_20mpc_derefgal'       then pathStr = pathStr + '_derefgal'
     if run eq 'zoom_20mpc_derefgal_nomod' then pathStr = pathStr + '_derefgal'
     
@@ -715,7 +715,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.gfmNumElements = 9
     r.gfmWinds       = 1
     r.gfmBHs         = 1
-    r.accRateModel   = 2 ;3
+    r.accRateModel   = 0 ;2,3
     
     if res eq 512 then r.subboxCen  = [5500,7000,7500]
     if res eq 512 then r.subboxSize = [4000,4000,4000]
@@ -816,7 +816,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 0  ; none (SPH)
     r.trMCFields    = intarr(13)-1 ; none (SPH)
-    r.accRateModel  = 2 ;3
+    r.accRateModel  = 0 ;2,3
     
     if keyword_set(f) then stop ; shouldn't be specified
     if res ne 128 and res ne 256 and res ne 512 then stop ; only resolutions that exist now
@@ -859,7 +859,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 10
     r.trVelPerCell  = 1
-    r.accRateModel  = 2 ;3
+    r.accRateModel  = 0 ;2,3
     
     if res eq 128 or res eq 256 then $
       r.trMCFields    = [0,1,5,2,-1,3,4,-1,-1,-1,-1,-1,-1] ; even older code version than tracer.512, indices specified manually in Config.sh

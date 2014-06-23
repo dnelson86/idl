@@ -1,6 +1,6 @@
 ; spherePlotStat.pro
 ; feedback project - plotting of (statistical/quantitative) quantities derived from healpix spheres
-; dnelson mar.2014
+; dnelson apr.2014
 
 ; processShellInfallFrac(): take statistics over all individual halos and bin by halo mass
 
@@ -412,12 +412,14 @@ pro plotShellInOutFracRateVsRedshift
   ; plot config
   xrange     = [0.0,6.0]  ; redshift
   yrange     = [0.0,1.0]  ; fraction
+  yrangeM    = [-2.5,2.5] ; log mdot
   radInd     = 0          ; when only plotting one radius, use this one
   radInds    = [0,1,3,4]  ; when plotting 2x2 panels split by rad
   massInd    = 4          ; when only plotting one massbin, use this one
-  sK         = 1          ; smoothing kernel
+  sK         = 3          ; smoothing kernel
   cInd       = 1          ; color index
-  lines = [0,2,1]
+  lines      = [0,2,1]
+  massStrSkip = 2         ; label every other mass bin
   
   plotStr   = ""
   simNames  = []
@@ -479,10 +481,13 @@ pro plotShellInOutFracRateVsRedshift
     print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
   endelse
   
+  ; plot init
+  set_plot,'ps'
+  massColors = reverse( sampleColorTable('red-temp', n_elements(pParams.(0).massBinCens), bounds=[0.15,0.8]) )
   nMassBins = n_elements( pParams.(0).massBinCens )
     
-  ; plot (1) - vs mass (one rad, all thresholds, all runs, median lines)
-  start_PS, sP.plotPath + 'fracInflowVsRedshift.massInd'+str(massInd)+'.radInd' + str(radInd) + '.' + plotStr + '.eps'
+  ; plot (1) - vs redshift (one rad, one massBin, all thresholds, all runs, median lines)
+  start_PS, sP.plotPath + 'fracInflow.VsRedshift.vsTh.radInd'+str(radInd)+'.massInd'+str(massInd)+ '.' + plotStr + '.eps'
     ; plot    
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
       ytitle="Angular Covering Fraction of Inflow",$
@@ -493,18 +498,230 @@ pro plotShellInOutFracRateVsRedshift
     cgPlot,xrange,[0.5,0.5],line=0,color=cgColor('light gray'),/overplot
     
     for i=0,n_tags(shellFracs)-1 do begin
-      yy = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      yy_noTh  = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      yy_relTh = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      yy_absTh = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      
       for j=0,n_elements(runRedshifts.(i))-1 do begin
-        yy[j,*] = shellFracs.(i).(j).fracInfall_NoTh_median[radInd,*]
+        yy_noTh[j,*]  = shellFracs.(i).(j).fracInfall_NoTh_median[radInd,*]
+        yy_relTh[j,*] = shellFracs.(i).(j).fracInfall_RelTh_median[radInd,*]
+        yy_absTh[j,*] = shellFracs.(i).(j).fracInfall_AbsTh_median[radInd,*]
       endfor
       
-      cgPlot,runRedshifts.(i),smooth(yy[*,massInd],sK),line=lines[0],color=simColors[i],/overplot
+      cgPlot,runRedshifts.(i),smooth(yy_noTh[*,massInd],sK,/nan),line=lines[0],color=simColors[i],/overplot
+      cgPlot,runRedshifts.(i),smooth(yy_relTh[*,massInd],sK,/nan),line=lines[1],color=simColors[i],/overplot
+      cgPlot,runRedshifts.(i),smooth(yy_absTh[*,massInd],sK,/nan),line=lines[2],color=simColors[i],/overplot
     endfor
     
     ; legends
     legend,simNames,textcolors=simColors,/bottom,/right
     legend,['NoTh','RelTh','AbsTh'],linestyle=lines,/bottom,/left
   end_PS
+  
+  ; plot (2) - vs redshift (2x2 rad, one massBin,all thresholds, all runs, median lines)
+  start_PS, sP.plotPath + 'fracInflow.VsRedshift.vsTh.rad2x2.massInd'+str(massInd)+'.'+plotStr + '.eps', /extrabig
+    pos = plot_pos(col=2, row=2, /gap)
+    
+    for k=0,3 do begin
+      ; plot    
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,pos=pos[k],noerase=(k gt 0),$
+        ytitle=textoidl("f_\alpha ( Inflow )"),xtitle=textoidl("redshift"),$
+        title=textoidl("r/r_{vir} = " + string(shellFracs.(0).(0).radFacs[radInds[k]],format='(f4.2)')) + $
+                     "  M = " + string(pParams.(0).massBinCens[massInd],format='(f4.1)') + ""
+      
+      cgPlot,xrange,[0.5,0.5],line=0,color=cgColor('light gray'),/overplot
+    
+      for i=0,n_tags(shellFracs)-1 do begin
+        yy_noTh  = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+        yy_relTh = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+        yy_absTh = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      
+        for j=0,n_elements(runRedshifts.(i))-1 do begin
+          yy_noTh[j,*]  = shellFracs.(i).(j).fracInfall_NoTh_median[radInds[k],*]
+          yy_relTh[j,*] = shellFracs.(i).(j).fracInfall_RelTh_median[radInds[k],*]
+          yy_absTh[j,*] = shellFracs.(i).(j).fracInfall_AbsTh_median[radInds[k],*]
+        endfor
+        
+        cgPlot,runRedshifts.(i),smooth(yy_noTh[*,massInd],sK,/nan),line=lines[0],color=simColors[i],/overplot
+        cgPlot,runRedshifts.(i),smooth(yy_relTh[*,massInd],sK,/nan),line=lines[1],color=simColors[i],/overplot
+        cgPlot,runRedshifts.(i),smooth(yy_absTh[*,massInd],sK,/nan),line=lines[2],color=simColors[i],/overplot
+      endfor
+    
+      ; legends
+      legend,simNames,textcolors=simColors,/bottom,/right
+      legend,['NoTh','RelTh','AbsTh'],linestyle=lines,/bottom,/left
+    endfor ;k
+  end_PS
+  
+  ; plot (3) - vs redshift (2x2 rad, one massBin, RelTh, all runs, median lines, inflow+outflow+static)
+  start_PS, sP.plotPath + 'fracInOutStatic.VsRedshift.RelTh.rad2x2.massInd'+str(massInd)+'.'+plotStr + '.eps', /extrabig
+    pos = plot_pos(col=2, row=2, /gap)
+    
+    for k=0,3 do begin
+      ; plot    
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,pos=pos[k],noerase=(k gt 0),$
+        ytitle=textoidl("f_\alpha"),xtitle=textoidl("redshift"),$
+        title=textoidl("r/r_{vir} = " + string(shellFracs.(0).(0).radFacs[radInds[k]],format='(f4.2)') + $
+                       " (RelTh)") + $
+                     "  M = " + string(pParams.(0).massBinCens[massInd],format='(f4.1)') + ""
+      
+      cgPlot,xrange,[0.5,0.5],line=0,color=cgColor('light gray'),/overplot
+    
+      for i=0,n_tags(shellFracs)-1 do begin
+        yy_in   = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+        yy_out  = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+        yy_stat = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      
+        for j=0,n_elements(runRedshifts.(i))-1 do begin
+          yy_in[j,*]   = shellFracs.(i).(j).fracInfall_RelTh_median[radInds[k],*]
+          yy_out[j,*]  = shellFracs.(i).(j).fracOutflow_RelTh_median[radInds[k],*]
+          yy_stat[j,*] = shellFracs.(i).(j).fracStatic_RelTh_median[radInds[k],*]
+        endfor
+        
+        cgPlot,runRedshifts.(i),smooth(yy_in[*,massInd],sK,/nan),line=lines[0],color=simColors[i],/overplot
+        cgPlot,runRedshifts.(i),smooth(yy_out[*,massInd],sK,/nan),line=lines[1],color=simColors[i],/overplot
+        ;cgPlot,runRedshifts.(i),smooth(yy_stat[*,massInd],sK,/nan),line=lines[2],color=simColors[i],/overplot
+      endfor
+    
+      ; legends
+      legend,simNames,textcolors=simColors,/bottom,/right
+      legend,['Inflow','Outflow'],linestyle=lines[0:1],/bottom,/left
+      ;legend,['Inflow','Outflow','Static'],linestyle=lines,/bottom,/left
+    endfor ;k
+  end_PS
+  
+  ; plot (4) - vs redshift (one rad, many mass bins, RelTh, all runs, median lines)
+  foreach indSet, list( [0,1], [2,3] ) do begin
+  start_PS, sP.plotPath + 'fracInflow.VsRedshift.RelTh.radInds-'+str(indSet[0])+str(indSet[1])+$
+    '.allMB.' + plotStr + '.eps', xs=4.5*3, y=2*5.0
+    
+    pos = plot_pos(col=n_tags(shellFracs), row=2, /gap)
+    
+    foreach radInd,radInds[indSet],m do begin
+    
+    for i=0,n_tags(shellFracs)-1 do begin
+      ; bin in redshift
+      yy_in   = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      yy_out  = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      yy_stat = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      
+      for j=0,n_elements(runRedshifts.(i))-1 do begin
+        yy_in[j,*]   = shellFracs.(i).(j).fracInfall_RelTh_median[radInd,*]
+        yy_out[j,*]  = shellFracs.(i).(j).fracOutflow_RelTh_median[radInd,*]
+        yy_stat[j,*] = shellFracs.(i).(j).fracStatic_RelTh_median[radInd,*]
+      endfor
+        
+      ; plot    
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
+        pos=pos[n_tags(shellFracs)*m+i],noerase=(n_tags(shellFracs)*m+i gt 0),$
+        ytitle=textoidl("f_\alpha")+" (Inflow)",xtitle=textoidl("redshift"),$
+        title=textoidl("r/r_{vir} = " + string(shellFracs.(0).(0).radFacs[radInd],format='(f4.2)') + "")
+      
+      cgPlot,xrange,[0.5,0.5],line=0,color=cgColor('light gray'),/overplot
+    
+      massStrs = []
+      for j=0,nMassBins-1 do begin
+        cgPlot,runRedshifts.(i),smooth(yy_in[*,j],sK,/nan),line=lines[0],color=massColors[j],/overplot
+               
+        massStrs = [massStrs, textoidl("M_{halo} = " + string(pParams.(i).massBinCens[j],format='(f4.1)'))]
+        if pParams.(i).massBinCens[j] lt 10.0 then massStrs[-1] = massStrs[-1] + " "
+      endfor
+    
+      ; legends
+      legend,simNames[i],textcolors=simColors[i],/bottom,/left
+      legend,massStrs,textcolors=massColors,/bottom,/right
+    endfor ;shellFracs
+    
+    endforeach ;radInds
+  end_PS
+  
+  endforeach ;indSet
+  
+  ; plot (5) - RATE vs redshift (2x2 radius, one massBin, in+out, all runs, median lines)
+  Myr_to_yr = 1e6
+  
+  for massInd=0,nMassBins-1 do begin
+  start_PS, sP.plotPath + 'rateInOut.VsRedshift.rad2x2.massInd'+str(massInd)+'.'+plotStr+'.eps', /extrabig
+    pos = plot_pos(col=2, row=2, /gap)
+    
+    for k=0,3 do begin
+    ; plot    
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeM,/xs,/ys,pos=pos[k],noerase=(k gt 0),$
+      ytitle=textoidl("log ( dM_{rad }/dt ) [_{ }h^{-1} M_{sun} yr^{-1 }]"),$
+      xtitle=textoidl("redshift"),$
+      title=textoidl("r/r_{vir} = " + string(shellFracs.(0).(0).radFacs[radInds[k]],format='(f4.2)') + $
+                     "  M = " + string(pParams.(0).massBinCens[massInd],format='(f4.1)'))
+    
+    cgPlot,xrange,[0.0,0.0],line=0,color=cgColor('light gray'),/overplot
+    
+    for i=0,n_tags(shellFracs)-1 do begin
+      ; bin in redshift
+      yy_in   = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      yy_out  = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      
+      for j=0,n_elements(runRedshifts.(i))-1 do begin
+        yy_in[j,*]   = shellFracs.(i).(j).massFluxIn_median[radInds[k],*] / Myr_to_yr
+        yy_out[j,*]  = shellFracs.(i).(j).massFluxOut_median[radInds[k],*] / Myr_to_yr
+      endfor
+      
+      cgPlot,runRedshifts.(i),alog10(-smooth(yy_in[*,massInd],sK,/nan)),$
+             line=lines[0],color=simColors[i],/overplot
+      cgPlot,runRedshifts.(i),alog10(smooth(yy_out[*,massInd],sK,/nan)),$
+             line=lines[2],color=simColors[i],/overplot
+    endfor
+    
+    ; legends
+    legend,simNames,textcolors=simColors,/bottom,/right
+    legend,['Inflow','Outflow'],linestyle=lines[[0,2]],/top,/left
+    endfor ;k
+  end_PS
+  endfor ;massInd
+  
+  ; plot (7) - RATE vs redshift (one rad, many mass bins, in+out, all runs, median lines)
+  foreach indSet, list( [0,1], [2,3] ) do begin
+  start_PS, sP.plotPath + 'rateInOut.VsRedshift.radInds-'+str(indSet[0])+str(indSet[1])+'.allMB.'+plotStr + '.eps', xs=5.0*n_tags(shellFracs), y=2*5.0
+    pos = plot_pos(col=n_tags(shellFracs), row=2, /gap)
+    
+    foreach radInd,radInds[indSet],m do begin
+    
+    for i=0,n_tags(shellFracs)-1 do begin
+      ; bin in redshift
+      yy_in   = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      yy_out  = fltarr( n_elements(runRedshifts.(i)), nMassBins )
+      
+      for j=0,n_elements(runRedshifts.(i))-1 do begin
+        yy_in[j,*]   = shellFracs.(i).(j).massFluxIn_median[radInd,*] / Myr_to_yr
+        yy_out[j,*]  = shellFracs.(i).(j).massFluxOut_median[radInd,*] / Myr_to_yr
+      endfor
+      
+      ; plot    
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeM+[-1.5,1.0],/xs,/ys,$
+        pos=pos[n_tags(shellFracs)*m+i],noerase=(n_tags(shellFracs)*m+i gt 0),$
+        ytitle=textoidl("log ( dM_{rad,IN/OUT }/dt ) [_{ }h^{-1} M_{sun} Myr^{-1 }]"),$
+        xtitle=textoidl("redshift"),$
+        title=textoidl("r/r_{vir} = " + string(shellFracs.(0).(0).radFacs[radInd],format='(f4.2)'))
+      
+      cgPlot,xrange,[0.0,0.0],line=0,color=cgColor('light gray'),/overplot
+    
+      massStrs = []
+      for j=0,nMassBins-1 do begin
+        cgPlot,runRedshifts.(i),alog10(-smooth(yy_in[*,j],sK,/nan)),line=lines[0],color=massColors[j],/overplot
+        cgPlot,runRedshifts.(i),alog10(smooth(yy_out[*,j],sK,/nan)),line=lines[2],color=massColors[j],/overplot
+                  
+        massStrs = [massStrs, textoidl("M_{halo} = " + string(pParams.(i).massBinCens[j],format='(f4.1)'))]
+        if pParams.(i).massBinCens[j] lt 10.0 then massStrs[-1] = massStrs[-1] + " "
+      endfor
+    
+      ; legends
+      legend,simNames[i],textcolors=simColors[i],/top,/left
+      legend,massStrs[0:-1:massStrSkip],textcolors=massColors[0:-1:massStrSkip],/bottom,/right
+      legend,['Inflow','Outflow'],linestyle=lines[[0,2]],/top,/right
+    endfor ;i
+    
+    endforeach ;radInds
+    
+  end_PS
+  endforeach ;indSet
   
   stop
 

@@ -512,14 +512,16 @@ function redshiftToAgeFlat, z
   units = getUnits()
   
   w = where(z ge 0.0,count)
-  if count eq 0 then message,'Error'
   
-  age = fltarr(n_elements(z)) - 10.0 ; negative indicates not set
+  age = fltarr(n_elements(z)) - 100.0 ; negative indicates not set
   
-  age[w] = 2*asinh(sqrt( (1-units.omega_m)/units.omega_m ) * (1+z[w])^(-3.0/2.0)) / $
-             (units.H0_kmsMpc * 3 * sqrt(1-units.omega_m))
-  age[w] *= 3.085678e+19 / 3.15567e+7 / 1e9 ;Gyr
-  
+  if count gt 0 then begin
+    age[w] = 2*asinh(sqrt( (1-units.omega_m)/units.omega_m ) * (1+z[w])^(-3.0/2.0)) / $
+               (units.H0_kmsMpc * 3 * sqrt(1-units.omega_m))
+    age[w] *= 3.085678e+19 / 3.15567e+7 / 1e9 ;Gyr
+  endif
+
+  if n_elements(age) eq 1 then return, age[0]
   return, age
 
 end

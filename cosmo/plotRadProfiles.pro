@@ -1,6 +1,6 @@
 ; plotRadProfiles.pro
-; gas accretion project - plots of gas quantities vs radius (stacked in mass bins)
-; dnelson nov.2013
+; gas accretion/feedback project - plots of gas quantities vs radius (stacked in mass bins)
+; dnelson apr.2014
 
 ; plotVerticalSlices(): helper called by the subsequent 4 plot routines
   
@@ -136,11 +136,11 @@ pro plot2DHisto
   units = getUnits()
 
   ; config
-  sP = simParams(res=11,run='zoom_20mpc',hind=0,redshift=3.0)
+  sP = simParams(res=10,run='zoom_20mpc',hind=0,redshift=2.0)
   ;massBins = [0.0,1000.0] ; no massbins
   ;massBins = [9.0,9.5,10.0,10.5,11.0,11.5,12.0,12.5] ; log(M)
   massBins = [11.8,12.0] ; zoom z2
-  massBins = [11.5,11.6] ; zoom z3
+  ;massBins = [11.5,11.6] ; zoom z3
   
   ; select one of:
   maxPastTemp  = 0 ; maximum previous temperature
@@ -179,7 +179,7 @@ pro plot2DHisto
 
   ; get current or maxPast temperature, or accretion time / tvir at accretion
   gcVal = gcSubsetProp(sP=sP,maxPastTemp=maxPastTemp,$
-                       maxTempTime=maxTempTime,accTime=accTime,accTvir=accTvir,$
+                       maxTempTime=maxTempTime,accTimes=accTime,accTvir=accTvir,$
                        accretionTimeSubset=accretionTimeSubset,$
                        curGasVal=curGasVal,curField=curField)
 
@@ -378,137 +378,119 @@ function binRadProfiles, sP=sP
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
-  ; config
-  ;massBins = [0.0,1000.0] ; no massbins
-  massBins = [9.0,9.5,10.0,10.5,11.0,11.5,12.0] ; log(M)
+  ; config (mass)
+  massBins = list([8.9,9.1],  [9.4,9.6],  [9.9,10.1], [10.4,10.6],$
+                  [10.8,11.2],[11.3,11.7],[11.7,12.3]) ; log(M)
 
-  atS = 0 ; consider only the subset with recorded accretion times for certain types of plots
-  
-  xrange = [0.01,1.0]
-  binSizeRad  = 0.03 ;0.014 / (sP.res/128) ;0.04
-  nRadBins = (xrange[1]-xrange[0]) / binSizeRad
-  radBinCen = findgen(nRadBins) / (nRadBins) * (xrange[1]-xrange[0]) + xrange[0] + binSizeRad*0.5
-  
+  ; config (rad)
+  xrange     = [0.01,1.5]
+  binSizeRad = 0.03 ;0.014 / (sP.res/128) ;0.04
+  nRadBins   = (xrange[1]-xrange[0]) / binSizeRad
+  radBinCen  = findgen(nRadBins) / (nRadBins) * (xrange[1]-xrange[0]) + xrange[0] + binSizeRad*0.5
+
   ; check if save exists
-  saveFilename = sP.derivPath + 'binnedVals/binRad.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.mb' + str(n_elements(massBins)) + '.ats-' + str(atS) + '.sav'
+  saveFilename = sP.derivPath + 'binnedVals/binRad.' + sP.saveTag + '.' + sP.savPrefix + str(sP.res) + $
+                 '.' + str(sP.snap) + '.mb' + str(n_elements(massBins)) + '.sav'
   
   ; results exist, return
   if file_test(saveFilename) then begin
     restore,saveFilename
     return,r
-  endif 
+  endif
   
-  ; load group catalog just for counts of objects in each mass bin
-  gc = loadGroupCat(sP=sP,/skipIDs)
-  subgroupMasses = codeMassToLogMsun(gc.subgroupMass)
-  gc = !NULL
+  ; load galaxy catalog
+  galcat = galaxyCat(sP=sP)
   
-  ; get normalized r/r_vir
-  gcRad = gcSubsetProp(sP=sP,/rVirNorm,accretionTimeSubset=atS)
-
-  ; get gas properties
-  gcCoolRate = gcSubsetProp(sP=sP,/curGasVal,curField='coolingrate',accretionTimeSubset=atS)
-  gcTemp     = gcSubsetProp(sP=sP,/curGasVal,curField='temp',accretionTimeSubset=atS)               
-  gcVirTemp  = gcSubsetProp(sP=sP,/virTemp,accretionTimeSubset=atS)
+  ; load all gas ids and crossmatch
+  gas_ids = loadSnapshotSubset( sP=sP, partType='gas', field='ids' )
+  
+  calcMatch,gas_ids,galcat.ids,gas_inds,galcat_inds,count=countMatch
+  
+  ; rearrange gas_inds,galcat_inds to be in the order of gal.ids
+  gas_inds    = gas_inds[sort(galcat_inds)]
+  galcat_inds = galcat_inds[sort(galcat_inds)]
+  
+  gas_ids = gas_ids[gas_inds]
+  gas_rad = galcat.rad[galcat_inds]
+  gas_vrad = galcat.vrad[galcat_inds]
+  
+  ; replicate parent ids, parent rvir
+  par_rvir = galCatParentProperties(sP=sP,galcat=galcat,/virRad)
+  par_tvir = galCatParentProperties(sP=sP,galcat=galcat,/virTemp)
+  par_mass = galCatParentProperties(sP=sP,galcat=galcat,/mass)
+  
+  par_rvir = par_rvir[galcat_inds]
+  par_tvir = par_tvir[galcat_inds]
+  par_mass = par_mass[galcat_inds]
+  
+  ; normalize radii
+  if n_elements(gas_rad) ne n_elements(par_rvir) then message,'Error'
+  gas_rad /= par_rvir
+  
+  ; load all primary fields
+  gas_u     = loadSnapshotSubset( sP=sP, partType='gas', field='u', inds=gas_inds )
+  gas_nelec = loadSnapshotSubset( sP=sP, partType='gas', field='nelec', inds=gas_inds )
+  gas_dens  = loadSnapshotSubset( sP=sP, partType='gas', field='density', inds=gas_inds )
+  
+  ; compute derived fields
+  gas_temp = convertUtoTemp(gas_u,gas_nelec)
+  gas_entr = calcEntropyCGS(gas_u,gas_dens,sP=sP)
+  gas_pres = calcPressureCGS(gas_u,gas_dens,sP=sP)
+  
+  ; convert all to non-log, densities to physical
+  par_tvir = 10.0^( temporary(par_tvir) )
+  gas_dens = codeDensToPhys( gas_dens, sP=sP )
+  
+  gas_u     = !NULL
+  gas_nelec = !NULL
+  
+  if n_elements(gas_temp) ne n_elements(par_tvir) then message,'Error'
+  
+  ; allocate save structure
+  r = { massBins   : massBins  ,$
+        radBinCen  : radBinCen ,$
+        r_dens     : fltarr( n_elements(massBins), nRadBins ) ,$
+        r_temp     : fltarr( n_elements(massBins), nRadBins ) ,$
+        r_temptvir : fltarr( n_elements(massBins), nRadBins ) ,$
+        r_ent      : fltarr( n_elements(massBins), nRadBins ) ,$
+        r_pres     : fltarr( n_elements(massBins), nRadBins ) ,$
+        r_vrad     : fltarr( n_elements(massBins), nRadBins )  }
+  
+  ; loop over massbins
+  for i=0,n_elements(massBins)-1 do begin
+    ; select all members in halos in this mass bin
+    wMB = where(par_mass ge (massBins[i])[0] and par_mass lt (massBins[i])[1],count)
     
-  ; log (cooling rate)
-  w = where(gcCoolRate.gal ne 0)
-  gcCoolRate.gal[w] = alog10( gcCoolRate.gal[w] )
-  w = where(gcCoolRate.gmem ne 0)
-  gcCoolRate.gmem[w] = alog10( gcCoolRate.gmem[w] )
-
-  ; temp/tvir
-  gcTemp.gal  = 10.0^gcTemp.gal / 10.0^gcVirTemp.gal
-  gcTemp.gmem = 10.0^gcTemp.gmem / 10.0^gcVirTemp.gmem
-  
-  ; save structure
-  r = { gal  : { radCoolRateMB  : fltarr(n_elements(massBins)-1,nRadBins) + !values.f_nan  ,$
-                 radCoolRateAll : fltarr(nRadBins) + !values.f_nan                         ,$
-                 radTempMB      : fltarr(n_elements(massBins)-1,nRadBins) + !values.f_nan  ,$
-                 radTempAll     : fltarr(nRadBins) + !values.f_nan                          } ,$
-        gmem : { radCoolRateMB  : fltarr(n_elements(massBins)-1,nRadBins) + !values.f_nan  ,$
-                 radCoolRateAll : fltarr(nRadBins) + !values.f_nan                         ,$
-                 radTempMB      : fltarr(n_elements(massBins)-1,nRadBins) + !values.f_nan  ,$
-                 radTempAll     : fltarr(nRadBins) + !values.f_nan                          } ,$     
-        massBins : massBins, xrange : xrange, binSizeRad : binSizeRad, nRadBins : nRadBins ,$
-        sP : sP, radBinCen : radBinCen }
-  
-  ; calculate masses of parents (for mass binning halos only)
-  parentMass = gcSubsetProp(sP=sP,/parMass,accretionTimeSubset=atS)
-
-  for j=0,n_elements(massBins)-2 do begin
-
-    ; select members of this parent mass bins and r>0<inf
-    wGal  = where(parentMass.gal gt massBins[j] and parentMass.gal le massBins[j+1] and $
-                  gcRad.gal gt 0.0 and finite(gcRad.gal),count1)
-    wGmem = where(parentMass.gmem gt massBins[j] and parentMass.gmem le massBins[j+1] and $
-                  gcRad.gmem gt 0.0 and finite(gcRad.gmem),count2)
+    print,'['+str(i)+'] '+str(count)
+    if count eq 0 then begin
+      print,' skipping...'
+      continue
+    endif
     
-    ; select all particles/tracers in this mass bin
-    coolrate_gal  = gcCoolRate.gal[wGal]
-    coolrate_gmem = gcCoolRate.gmem[wGmem]
-    temp_gal   = gcTemp.gal[wGal]
-    temp_gmem  = gcTemp.gmem[wGmem]
-    rad_gal    = alog10( gcRad.gal[wGal] )
-    rad_gmem   = alog10( gcRad.gmem[wGmem] )
-
-    if count1 eq 0 or count2 eq 0 then continue ; no halos in this mass bin
-    
-    ; do median profiles
-    for i=0,nRadBins-1 do begin
+    ; loop over radbins
+    for j=0,nRadBins-1 do begin
       ; bin bounds and selection
-      binMin = alog10(xrange[0] + i*binSizeRad)
-      binMax = alog10(xrange[0] + (i+1)*binSizeRad)
+      binMin = xrange[0] + j*binSizeRad
+      binMax = xrange[0] + (j+1)*binSizeRad
       
-    ; gal
-    w = where(rad_gal ge binMin and rad_gal lt binMax,count)
-    if count gt 0 then begin
-      r.gal.radCoolRateMB[j,i] = median(coolrate_gal[w])
-      r.gal.radTempMB[j,i]     = median(temp_gal[w])
-    endif
-    
-    ; gmem
-    w = where(rad_gmem ge binMin and rad_gmem lt binMax,count)
-    if count gt 0 then begin
-      r.gmem.radCoolRateMB[j,i] = median(coolrate_gmem[w])
-      r.gmem.radTempMB[j,i]     = median(temp_gmem[w])
-    endif
-        
-      ;print,10^binMin,10^binMax,count1,count2
-    endfor
-
-  endfor
+      wRad = where(gas_rad[wMB] ge binMin and gas_rad[wMB] lt binMax,countRad)
+      
+      if countRad eq 0 then continue
+      
+      ; bin quantities
+      loc_inds = wMB[wRad]
+      
+      r.r_dens[i,j]     = alog10( mean( gas_dens[loc_inds] ) )
+      r.r_temp[i,j]     = alog10( mean( gas_temp[loc_inds] ) )
+      r.r_temptvir[i,j] = mean( gas_temp[loc_inds] / par_tvir[loc_inds] )
+      r.r_ent[i,j]      = alog10( mean( gas_entr[loc_inds] ) )
+      r.r_pres[i,j]     = alog10( mean( gas_pres[loc_inds] ) )
+      r.r_vrad[i,j]     = mean( gas_vrad[loc_inds] )
+      
+    endfor ;j
   
-  ; do non-mass bin
-  wGal  = where(gcRad.gal gt 0.0 and finite(gcRad.gal),count1)
-  wGmem = where(gcRad.gmem gt 0.0 and finite(gcRad.gmem),count2)
-  coolrate_gal  = gcCoolRate.gal[wGal]
-  coolrate_gmem = gcCoolRate.gmem[wGmem]
-  temp_gal   = gcTemp.gal[wGal]
-  temp_gmem  = gcTemp.gmem[wGmem]
-  rad_gal    = alog10( gcRad.gal[wGal] )
-  rad_gmem   = alog10( gcRad.gmem[wGmem] )
-    
-  for i=0,nRadBins-1 do begin
-    ; bin bounds and selection
-    binMin = alog10(xrange[0] + i*binSizeRad)
-    binMax = alog10(xrange[0] + (i+1)*binSizeRad)
-    
-    ; gal
-    w = where(rad_gal ge binMin and rad_gal lt binMax,count)
-    if count gt 0 then begin
-      r.gal.radCoolRateAll[i] = median(coolrate_gal[w])
-      r.gal.radTempAll[i]     = median(temp_gal[w])
-    endif
-    
-    ; gmem
-    w = where(rad_gmem ge binMin and rad_gmem lt binMax,count)
-    if count gt 0 then begin
-      r.gmem.radCoolRateAll[i] = median(coolrate_gmem[w])
-      r.gmem.radTempAll[i]     = median(temp_gmem[w])
-    endif
-  endfor
-    
+  endfor ;i
+  
   ; save
   save,r,filename=saveFilename
   print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
@@ -517,105 +499,95 @@ function binRadProfiles, sP=sP
   
 end
 
-; plotRadProfile():
+; plotRadProfiles():
 
-pro plotRadProfile
+pro plotRadProfiles;, redshift=redshift
   
   ; config
-  redshift = 2.0
+  res       = 256 ;512
+  redshifts = [0.0,1.0,2.0,3.0]
+  runs      = ['feedback','feedback_noz','tracer'] ;['tracer','feedback']
 
-  lines  = [1,0,2] ; 128,512,256
-  cInd   = 1 ; color index
+  ; plot config
+  yrange = { dens : [-8.0,-1.5] ,$
+             temp : [3.5,6.5] ,$
+             temptvir : [0.0,2.0] ,$
+             entr : [4.5,9.5] ,$
+             pres : [-2.0,6.0] ,$
+             vrad : [-300,50] }
+  ynames = ["Log (Dens)", "Log (Temp)", "T / Tvir", "Log (Entr)", "Log (Pres)", "Vrad [km/s]"]
+  xrange = [0.0,1.5]  ; r/rvir
+  xtickv = [0.0,0.25,0.5,1.0,1.5]
+  lines  = [1,0,2]    ; one for each run
+  cInd   = 1          ; color index
+  sK     = 3          ; smoothing kernel
 
-  sPg = simParams(res=128,run='gadget',redshift=redshift)
-  sPa = simParams(res=128,run='arepo',redshift=redshift)
-
-  ga_128 = binRadProfiles(sP=sPg)
-  ar_128 = binRadProfiles(sP=sPa)
-  
-  ga_256 = binRadProfiles(sP=simParams(res=256,run='gadget',redshift=redshift))
-  ar_256 = binRadProfiles(sP=simParams(res=256,run='arepo',redshift=redshift))
-  
-  ga_512 = binRadProfiles(sP=simParams(res=512,run='gadget',redshift=redshift))
-  ar_512 = binRadProfiles(sP=simParams(res=512,run='arepo',redshift=redshift))
-
-  for j=0,n_elements(ga_128.massBins)-2 do begin
-
-    yrange = [3.0,6.0]
-
-    ; plot (0)
-    start_PS, sPg.plotPath + 'coolrate.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
-              str(sPg.snap)+'_mbin-'+str(j)+'.eps'
-  
-      ; extra config for mass bins
-      massBinStr   = !NULL
-      virTempRange = !NULL
-        
-      massBinStr = string(ga_128.massBins[j],format='(f4.1)') + '-' + $
-                   string(ga_128.massBins[j+1],format='(f4.1)')
-      
-      massRangeCode = 10.0^[ga_128.massBins[j],ga_128.massBins[j+1]] / 1e10
-      virTempRange = alog10( codeMassToVirTemp(massRangeCode,sP=sPg) )
-  
-      ; plot 1d profile
-      cgPlot,[0],[0],/nodata,xrange=[0.1,1.0],yrange=yrange,title=massBinStr,$
-        xtitle=textoidl('r / r_{vir}'),ytitle="Log ( Cooling Rate )",/xlog,/xs,/ys,xminor=0
-        
-      cgPlot,[0.15,0.15],yrange,line=1,color=cgColor('light gray'),/overplot
-      
-      cgPlot,ga_128.radBinCen,ga_128.gmem.radCoolRateMB[j,*],color=sPg.colorsG[cInd],line=lines[0],/overplot
-      cgPlot,ga_256.radBinCen,ga_256.gmem.radCoolRateMB[j,*],color=sPg.colorsG[cInd],line=lines[2],/overplot
-      cgPlot,ga_512.radBinCen,ga_512.gmem.radCoolRateMB[j,*],color=sPg.colorsG[cInd],line=lines[1],/overplot
-        
-      cgPlot,ar_128.radBinCen,ar_128.gmem.radCoolRateMB[j,*],color=sPa.colorsA[cInd],line=lines[0],/overplot
-      cgPlot,ar_256.radBinCen,ar_256.gmem.radCoolRateMB[j,*],color=sPa.colorsA[cInd],line=lines[2],/overplot
-      cgPlot,ar_512.radBinCen,ar_512.gmem.radCoolRateMB[j,*],color=sPa.colorsA[cInd],line=lines[1],/overplot
-        
-      ; labels
-      legend,textoidl(['128^3','256^3','512^3']),linestyle=[lines[0],lines[2],lines[1]],$
-        box=0,/top,/right,linesize=0.25
-      legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,/bottom,/left
-  
-    end_PS
+  ; load
+  runStr = ""
+  foreach run,runs,i do begin
+    bRP_z = {}
+    foreach redshift,redshifts,j do begin
+      sP = simParams(res=res,run=run,redshift=redshift)
+      bLocal = binRadProfiles(sP=sP)
     
-    yrange = [0.1,2.0]
+      bRP_z = mod_struct( bRP_z, 'redshift_'+str(j), bLocal )
+    endforeach
     
-    ; plot (1)
-    start_PS, sPg.plotPath + 'radtemp.'+sPg.plotPrefix+'.'+sPa.plotPrefix+'.'+$
-              str(sPg.snap)+'_mbin-'+str(j)+'.eps'
+    bRP = mod_struct( bRP, 'run_'+str(i), bRP_z )
+    runStr += sP.saveTag + str(sP.res) + "_"
+  endforeach
   
-      ; extra config for mass bins
-      massBinStr   = !NULL
-      virTempRange = !NULL
-        
-      massBinStr = string(ga_128.massBins[j],format='(f4.1)') + '-' + $
-                   string(ga_128.massBins[j+1],format='(f4.1)')
+  ; plot init
+  set_plot,'ps'
+  zColors = reverse( sampleColorTable('blue-red2', n_elements(bRP.(0).(0).massBins), bounds=[0.1,0.9]) )  
+  
+  ; plot (1) - 3x2 all six quantities vs radius, for all mass bins
+  foreach redshift,redshifts,m do begin
+  
+  start_PS,sP.plotPath + 'radProfiles_'+runStr+'z'+string(redshift,format='(f3.1)')+'_3x2.eps', /huge
+    
+    pos = plot_pos(row=2,col=3,/gap)
+    
+    for i=0,5 do begin
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange.(i),pos=pos[i],noerase=(i gt 0),$
+        xtitle=textoidl("r / r_{vir}"),ytitle=textoidl(ynames[i]),/xs,/ys,$
+        title="z="+string(redshift,format='(f3.1)'),$
+        xtickv=xtickv,xticks=n_elements(xtickv)-1,xminor=1
+    
+      ; RUN 1
+      legendStrs = []
+      simNames   = []
+      simColors  = []
       
-      massRangeCode = 10.0^[ga_128.massBins[j],ga_128.massBins[j+1]] / 1e10
-      virTempRange = alog10( codeMassToVirTemp(massRangeCode,sP=sPg) )
-  
-      ; plot 1d profile
-      cgPlot,[0],[0],/nodata,xrange=[0.1,1.0],yrange=yrange,title=massBinStr,$
-        xtitle=textoidl('r / r_{vir}'),ytitle=textoidl("T / T_{vir}"),/xlog,/xs,/ys,xminor=0
-        
-      cgPlot,[0.15,0.15],yrange,line=1,color=cgColor('light gray'),/overplot
+      for k=0,n_elements(runs)-1 do begin
+        sP = simParams(res=res,run=runs[k])
       
-      cgPlot,ga_128.radBinCen,ga_128.gmem.radTempMB[j,*],color=sPg.colorsG[cInd],line=lines[0],/overplot
-      cgPlot,ga_256.radBinCen,ga_256.gmem.radTempMB[j,*],color=sPg.colorsG[cInd],line=lines[2],/overplot
-      cgPlot,ga_512.radBinCen,ga_512.gmem.radTempMB[j,*],color=sPg.colorsG[cInd],line=lines[1],/overplot
+        for j=0,n_elements(bRP.(k).(m).massBins)-1 do begin
+          massBin = (bRP.(k).(m).massBins)[j]
         
-      cgPlot,ar_128.radBinCen,ar_128.gmem.radTempMB[j,*],color=sPa.colorsA[cInd],line=lines[0],/overplot
-      cgPlot,ar_256.radBinCen,ar_256.gmem.radTempMB[j,*],color=sPa.colorsA[cInd],line=lines[2],/overplot
-      cgPlot,ar_512.radBinCen,ar_512.gmem.radTempMB[j,*],color=sPa.colorsA[cInd],line=lines[1],/overplot
+          if k eq 0 then $
+            legendStrs = [legendStrs, textoidl('M_{halo} = ' + string(mean(massBin),format='(f4.1)'))]
+            ;legendStrs = [legendStrs, textoidl(string(massBin[0],format='(f4.1)') + ' < M_{halo} < ' + $
+            ;                        string(massBin[1],format='(f4.1)'))]
+          yy = bRP.(k).(m).(i+2)[j,*]
         
-      ; labels
-      legend,textoidl(['128^3','256^3','512^3']),linestyle=[lines[0],lines[2],lines[1]],$
-        box=0,/top,/right,linesize=0.25
-      legend,['gadget','arepo'],textcolors=[sPg.colorsG[cInd],sPa.colorsA[cInd]],box=0,/bottom,/left
+          cgPlot,bRP.(k).(m).radBinCen,smooth(yy,sK),line=lines[k],color=zColors[j],/overplot
+        endfor
+        
+        simNames  = [simNames, sP.simName]
+        simColors = [simColors, sP.colors[cInd]]
+      endfor ;k
+	
+      ; legend
+      if i eq 0 then begin
+        legend,simNames,linestyle=lines,/bottom,/left
+        legend,legendStrs,textcolors=zColors,/top,/right
+      endif
+    endfor ;i
   
-    end_PS
+  end_PS
   
-  endfor
+  endforeach ;redshift
   
   stop
 
