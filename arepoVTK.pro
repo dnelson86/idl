@@ -4,14 +4,14 @@
 
 ; combineStereoFrames(): combine two frames into side-by-side (and do 16->8 bit mapping)
 
-pro combineStereoFrames, inStr=inStr
+pro combineStereoFrames, mmNum=mmNum
 
-  if n_elements(inStr) eq 0 then message,'Error'
-  if inStr ne 'A1' and inStr ne 'A2' and inStr ne 'B1' and inStr ne 'B2' and $
-     inStr ne 'C1' and inStr ne 'C2' and inStr ne 'A0' then message,'Error'
-
+  if n_elements(mmNum) eq 0 then message,'Error: Specify mmNum'
+  
   ; file config
-  mmNum = [2000,2299]
+  ; A[780,1399], B[1400,1999], C[2000,2599], D[2600,3199], E[3200,3975]
+  ;mmNum = [0,3975] ;all
+  inStr   = 'C1'
   inPath1 = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_360/'
   inPath2 = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_360_'+inStr+'/'
   outPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/sbs_'+inStr+'/'
@@ -25,10 +25,10 @@ pro combineStereoFrames, inStr=inStr
   
   for i=mmNum[0],mmNum[1] do begin
     ; load
-    image1 = read_png(inPath1 + fileBase + string(i,format='(I4)') + fileEnd)
+    image1 = read_png(inPath1 + fileBase + string(i,format='(I04)') + fileEnd)
     
     if inStr ne 'A0' then begin
-      image2 = read_png(inPath2 + fileBase + string(i,format='(I4)') + fileEnd)
+      image2 = read_png(inPath2 + fileBase + string(i,format='(I04)') + fileEnd)
       image_out = [[image1],[image2]] ; horizontal stack
     endif else begin
       image_out = image1 ; non-SbS
@@ -43,12 +43,59 @@ pro combineStereoFrames, inStr=inStr
     image_out = byte(image_out) > 0B < 255B ; clamp
     
     ; write
-    outFile = fileBase + string(i,format='(I4)') + ".png"
+    outFile = fileBase + string(i,format='(I04)') + ".png"
     write_png,outPath + outFile,image_out
     print,'Wrote: ['+outFile+']'
   endfor
   
   stop
+
+end
+
+; interpMissingFrames(): for corrupt subbox snapshots, create interpolated frames from the two neighbors
+
+pro interpMissingFrames
+
+  ; file config
+  ;nums   = [636,1281,1961,2353,2806,2989,3026,3533] ;C1
+  nums   = [2353,2806,2989,3026,3533]
+  inPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_360/'
+  
+  fileBase = "frame_1k360_"
+  fileEnd  = "_16bit.png"
+
+  foreach num,nums do begin
+    ; load
+    image1 = read_png(inPath + fileBase + string(num-1,format='(I04)') + fileEnd)
+    image2 = read_png(inPath + fileBase + string(num+1,format='(I04)') + fileEnd)
+        
+    ; mean combine
+    image_out = 0.5 * ( float(image1) + float(image2) )
+    image_out = uint(round(image_out)) ; 16 bit
+    
+    ; write
+    outFile = fileBase + string(num,format='(I04)') + fileEnd
+    write_png,inPath + outFile,image_out
+    print,'Wrote: ['+outFile+']'
+  endforeach
+  
+end
+
+; checkMissingFrames(): check for missing numbered images in sequence
+
+pro checkMissingFrames
+
+  ; config
+  mmNum = [0,3975]
+  inPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_360/'
+  
+  fileBase = "frame_1k360_"
+  fileEnd  = "_16bit.png"
+  
+  for i=mmNum[0],mmNum[1] do begin
+    fileName = inPath + fileBase + string(i,format='(I04)') + fileEnd
+    if ~file_test(fileName) then print,fileName
+  endfor
 
 end
 

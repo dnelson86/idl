@@ -1,6 +1,106 @@
 ; recycledMaterial.pro
 ; feedback project - analysis of recycled material
-; dnelson jul.2013
+; dnelson jul.2014
+
+; plotVarWindScaling(): read and plot "variable_wind_scaling.txt" CSV file
+
+function newtfunc2, x, halo_v200=halo_v200, G=G, H_z=H_z
+  ; x[0] is halo mass in code units
+  ;r200 = (mass_codeunits * units.G / 100 / units.H_z^2.0)^(1.0/3.0)
+  ;Vcirc_rVir^2.0 * r200 / units.G = mass_codeunits
+  halo_r200 = (x[0] * G / 100 / H_z^2.0)^(1.0/3.0)
+  return, halo_v200^2.0 * halo_r200 / G - x[0]
+end
+
+function newtfunc3, x, halo_mass=halo_mass, G=G, H_z=H_z
+  ; x[0] is halo v200 in code units
+  ;r200 = (mass_codeunits * units.G / 100 / units.H_z^2.0)^(1.0/3.0)
+  ;Vcirc_rVir^2.0 * r200 / units.G = mass_codeunits
+  halo_r200 = (halo_mass * G / 100 / H_z^2.0)^(1.0/3.0)
+  return, x[0]^2.0 * halo_r200 / G - halo_mass
+end
+
+; wind_model(): get details about the Illustris stellar winds model
+
+function wind_model, simPath=simPath, redshifts=redshifts, sMass=sMass
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
+  fName = "variable_wind_scaling.txt"
+  max_v200 = 2000.0
+   
+  ; read wind ascii file
+  readcol,simPath+fName,halo_sigma,halo_v200,wind_vel,wind_eta,format=' '
+  
+  w = where(halo_v200 le max_v200,count)
+  if count eq 0 then message,'Error'
+  halo_sigma = halo_sigma[w]
+  halo_v200  = halo_v200[w]
+  wind_vel   = wind_vel[w]
+  wind_eta   = wind_eta[w]
+
+  ; halo mass-v200 relation (at one redshift)
+  ;v_esc = v200 * sqrt(2 * c_halo / (log(1 + c_halo) - c_halo / (1 + c_halo)))
+  vs_M = {}
+  foreach redshift,redshifts,k do begin
+    units = getUnits(redshift=redshift)
+    
+    halo_mass = fltarr(n_elements(halo_v200))
+    for i=0,n_elements(halo_mass)-1 do begin
+      halo_mass[i] = zbrent(1e-6,1e6,func='newtfunc2',$
+                             halo_v200=halo_v200[i],G=units.G,H_z=units.H_z,max_iter=1e4,tol=1e-4)
+      halo_mass[i] = codeMassToLogMsun( halo_mass[i] / units.hubbleParam )
+    endfor
+    
+    ; save
+    vs_M_loc = { halo_mass:halo_mass, wind_vel:wind_vel, wind_eta:wind_eta, redshift:redshift }
+    vs_M = mod_struct( vs_M, 'z'+str(k)+'_'+str(round(redshift*100)), vs_M_loc )
+  endforeach
+  
+  ; halo mass-v200 relation (vs. z)
+  ;sMass = eta.(0).(0).logMassBinCen[massInd] ; log msun with little h
+  
+  res_z = 200
+  z_vals = linspace(0.0,5.0,res_z)
+  halo_v200_z = fltarr(res_z)
+  
+  for i=0,res_z-1 do begin
+    units = getUnits(redshift=z_vals[i])
+    halo_v200_z[i] = zbrent(1e-6,1e6,func='newtfunc3',$
+                            halo_mass=logMsunToCodeMass(sMass),$
+                            G=units.G,H_z=units.H_z,max_iter=1e4,tol=1e-4)         
+  endfor
+  
+  wind_eta_z = interpol(wind_eta,halo_v200,halo_v200_z,/spline)
+  
+  ; return structure
+  vws = { halo_sigma:halo_sigma, halo_v200:halo_v200, wind_vel:wind_vel, wind_eta:wind_eta }
+  vs_z = { z_vals:z_vals, wind_eta:wind_eta_z, halo_v200:halo_v200_z } ; for one halo mass bin
+  
+  r = { vs_z : vs_z, vs_M : vs_M, vws : vws }
+  return, r
+end
+
+; deltaWindCountTW(): what is the average increase of wind counter over the time window?
+
+pro deltaWindCountTW
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+
+  ; config
+  run = 'feedback'
+  res = 512
+  redshifts = [5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 0.75, 0.5, 0.25, 0.0]
+
+  saveFilename = '/n/home07/dnelson/plots/temp_deltaWindCount_'+str(n_elements(redshifts))+$
+                 '_arm'+str(sP_test.accRateModel)+'.sav'
+                 
+  if ~file_test(saveFilename) then begin
+  message,'TODO: hard to do just for the tracers that acc/contribute to net'
+  message,'TODO: could do for all in galcat.gal/stars/...'
+  endif
+  
+end
 
 ; windCountHisto(): 1d/2d histograms of the trMC windcounter
 

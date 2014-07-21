@@ -88,6 +88,21 @@ function closest, arr, x
   return,w
 end
 
+function percentiles, arr, percentiles=percentiles
+
+  if n_elements(percentiles) eq 0 then percentiles = [0.25, 0.50, 0.75]
+   
+  if min(percentiles) lt 0.0 or max(percentiles) gt 1.0 then message,'Error'
+
+  index = sort(arr)
+  ind = findgen(n_elements(arr)+1)/float(n_elements(arr))
+  arr_ind = value_locate(ind, percentiles)
+  result = arr[index[arr_ind]]
+
+  return, result
+   
+end
+
 pro reportMemory, msg=msg
   if ~keyword_set(msg) then msg = ''
   mem = memory()
@@ -1037,10 +1052,9 @@ function plot_pos, rows=rows, cols=cols, total=total, gap=gap
   if keyword_set(gap) then begin
     ; gap: spacing between all plots such that all axes and axes labels can be drawn
     if rows eq 1 and cols eq 2 then begin
-      ; 1x2
-      message,'todo'
-      x0 = 0.04 & x1 = 0.46 & xoff = 0.48
-      y0 = 0.12 & y1 = 0.96
+      ; 1x2 (xs=10, ys=4)
+      x0 = 0.10 & x1 = 0.46 & xoff = 0.48
+      y0 = 0.14 & y1 = 0.96
                 
       pos = list( [x0,y0,x1,y1] ,$ ; left
                   [x0+xoff,y0,x1+xoff,y1] ) ; right
