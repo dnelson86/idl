@@ -958,6 +958,7 @@ pro checkMusicHDF5ICs
   fpath = '/n/home07/dnelson/sims.zooms/ICs/128_20Mpc_h0/output_L9_dmonly/' ; pass OMP=1
   ;fpath = '/n/home07/dnelson/sims.zooms/ICs/128_20Mpc_h0/output_L8/' ; pass OMP=1
   ;fpath = '/n/home07/dnelson/sims.zooms/ICs/128_20Mpc_h0/output_L9/' ; pass OMP=1
+  fpath = '/n/home07/dnelson/sims.zooms/ICs/128_20Mpc_h0/output_test/'
   
   old = loadSnapshotOld(fpath + 'ics_gadget.dat', 'none')
   new = h5_parse(fpath + 'ics_arepo.hdf5', /read)
