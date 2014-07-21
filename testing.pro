@@ -109,6 +109,19 @@ pro checkStarIDs
 
 end
 
+; groupCatZeroSFRCheck():
+
+pro groupCatZeroSFRCheck
+
+  sP = simParams(res=512,run='tracer',snap=i)
+
+  for i=sP.groupCatRange[0],sP.groupCatRange[1] do begin
+    sP.snap = i
+    gc = loadGroupCat(sP=sP,/skipIDs)
+    print,i,max(gc.subgroupSFR)
+  endfor
+
+end
 
 ; mcIllustrisCheck():
 

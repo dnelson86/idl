@@ -293,6 +293,8 @@ function getGroupCatFilename, fileBase, snapNum=m, noLocal=noLocal
     if file_test(f) then return,f
   endif
   
+  if m eq -1 then message,'Error: Snap unspecified.'
+  
   ; check for '/' on end of fileBase
   lastChar = strmid(fileBase,strlen(fileBase)-1,1)
   if (lastChar ne '/') then fileBase += '/'

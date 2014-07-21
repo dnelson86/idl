@@ -475,7 +475,8 @@ end
 
 function galCatParentProperties, sP=sP, galcat=galcat, trRep=trRep, $
                                  virTemp=virTemp, mass=mass, virRad=virRad, $
-                                 rVirNorm=rVirNorm, vCirc=vCirc, dynTime=dynTime
+                                 rVirNorm=rVirNorm, vCirc=vCirc, dynTime=dynTime, $
+                                 sfr=sfr
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function galaxyCat, snapNumToRedshift, codeMassToLogMsun
@@ -527,11 +528,15 @@ function galCatParentProperties, sP=sP, galcat=galcat, trRep=trRep, $
     r = gc.group_r_crit200[r] / vCirc
   endif
   
+  if keyword_set(sfr) then begin
+    r = gc.subgroupSFR[gcInd]
+  endif
+  
   ; replicate for tracers?
   if keyword_set(trRep) then begin
     if sP.trMCPerCell gt 0 then r = r[ replicate_var(galcat.trMC_cc) ]
-	if sP.trMCPerCell lt 0 then r = r[ replicate_var(galcat.trVel_cc) ]
-	if sP.trMCPerCell eq 0 then message,'Error: No trRep on SPH run.'
+    if sP.trMCPerCell lt 0 then r = r[ replicate_var(galcat.trVel_cc) ]
+    if sP.trMCPerCell eq 0 then message,'Error: No trRep on SPH run.'
   endif
 
   return,r
