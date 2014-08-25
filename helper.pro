@@ -603,6 +603,29 @@ pro oplot2DHistoSq, ct2d, hsp=hsp, nc=nc, xRange=xRange, yRange=yRange, $
   
 end
 
+; oplotBand(): fill band between two lines with color
+
+pro oplotBand, x, y1, y2, color=color, yrange=yrange
+
+  if n_elements(x) ne n_elements(y2) or n_elements(x) ne n_elements(y2) then $
+    message,'Error'
+    
+  xp  = x
+  y1p = y1 ;smooth(y1,3)
+  y2p = y2 ;smooth(y2,3)
+  
+  xx=[xp,reverse(xp)]
+  yy=[y1p,reverse(y2p)]
+
+  ymin = min(yrange)
+  ymax = max(yrange)
+  yy=(ymin > yy) < ymax
+  ;xx=(xmin > xx) < xmax
+  
+  cgColorFill,xx,yy,color=color ;polyfill,xxx,yyy,_extra=_extra
+
+end
+
 ; basic IO
 ; --------
 
@@ -1052,9 +1075,9 @@ function plot_pos, rows=rows, cols=cols, total=total, gap=gap
   if keyword_set(gap) then begin
     ; gap: spacing between all plots such that all axes and axes labels can be drawn
     if rows eq 1 and cols eq 2 then begin
-      ; 1x2 (xs=10, ys=4)
-      x0 = 0.10 & x1 = 0.46 & xoff = 0.48
-      y0 = 0.14 & y1 = 0.96
+      ; 1x2 (xs=10.5, ys=3.5)
+      x0 = 0.10 & x1 = 0.45 & xoff = 0.47
+      y0 = 0.16 & y1 = 0.93
                 
       pos = list( [x0,y0,x1,y1] ,$ ; left
                   [x0+xoff,y0,x1+xoff,y1] ) ; right

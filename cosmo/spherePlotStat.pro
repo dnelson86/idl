@@ -66,7 +66,7 @@ pro plotShellInOutFracRateComp
   ; config
   res      = 512
   redshift = 2.0
-  runs     = ['gadget','tracer','feedback']
+  runs     = ['tracer','feedback']
   
   ; plot config
   lines      = [0,2,1]    ; line style for NoTh/RelTh/AbsTh or In/Out/QS
@@ -407,7 +407,7 @@ pro plotShellInOutFracRateVsRedshift
   
   ; config
   res  = 512
-  runs = ['gadget','tracer','feedback']
+  runs = ['tracer','feedback']
   
   ; plot config
   xrange     = [0.0,6.0]  ; redshift

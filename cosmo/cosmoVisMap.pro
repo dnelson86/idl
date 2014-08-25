@@ -1,6 +1,6 @@
 ; cosmoVisMap.pro
 ; cosmological boxes - 2d visualization based on sph kernel maps
-; dnelson nov.2013
+; dnelson aug.2014
 
 ; sphMapBox: run sph kernel density projection on whole box
 
@@ -96,18 +96,18 @@ pro sphMapBox
   
 end
 
-; plotScatterAndSphmap(): plot side by side projection results from CalcSphMap
+; plotScatterAndMap(): plot side by side projection results from CalcSphMap
 
-pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, col=col
+pro plotScatterAndMap, map=sphmap, scatter=scatter, config=config, column=column
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   if ~keyword_set(sphmap) or ~keyword_set(scatter) or $
-     ~keyword_set(config) or ~keyword_set(col) then $
+     ~keyword_set(config) or ~keyword_set(column) then $
     message,'Error: Specify all inputs.'
     
   ; decide column configuration
-  curCol  = float(col[0])
-  totCols = col[1]
+  curCol  = float(column[0])
+  totCols = column[1]
   
   pWidth = 1.0 / totCols
   leftOffset = pWidth * curCol
@@ -269,6 +269,134 @@ pro plotScatterAndSphmap, map=sphmap, scatter=scatter, config=config, col=col
           
 end
 
+; plotMultiSphmap(): plot side by side projection results from CalcSphMap
+
+pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  if ~keyword_set(sphmap) or ~keyword_set(config) or $
+    ~keyword_set(row) or ~keyword_set(col) then $
+    message,'Error: Specify all inputs.'
+    
+  ; decide position configuration
+  curRow  = float(row[0])
+  totRows = row[1]
+  
+  curCol  = float(col[0])
+  totCols = col[1]
+  
+  rowHeight = (1.0-config.barAreaHeight) / totRows
+  colWidth  = 1.0 / totCols
+  
+  topOffset  = 1.0 - rowHeight * (curRow+1)
+  leftOffset = colWidth * (curCol)
+  
+  ; box
+  xMinMax = [config.boxCen[0]-config.boxSizeImg[0]/2.0,config.boxCen[0]+config.boxSizeImg[0]/2.0]
+  yMinMax = [config.boxCen[1]-config.boxSizeImg[1]/2.0,config.boxCen[1]+config.boxSizeImg[1]/2.0]
+  
+  ; plot position (normalized)
+  pos = [leftOffset,topOffset,leftOffset+colWidth,topOffset+rowHeight]
+
+  ; output image
+  loadColorTable,config.ctNameMap
+  
+  cgPlot, /nodata, xMinMax, yMinMax, pos=pos, xs=5, ys=5, /noerase
+  tv, sphmap.quant_out,pos[0],pos[1],/normal,xsize=colWidth ; mass-weighted quantity
+
+  ; circle at virial radius
+  foreach rVirCirc,config.rVirCircs do $
+    tvcircle,rVirCirc * config.haloVirRad,0,0,cgColor('white'),thick=0.8,/data    
+  
+  ; scale bar
+  if curCol eq 0 and curRow eq 0 then begin
+    xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+config.scaleBarLen]
+    ypos = replicate(yMinMax[1]*0.93,2)
+    
+    cgText,mean(xpos),ypos*0.86,string(config.scaleBarLen,format='(i3)')+' ckpc',$
+      alignment=0.5,color=cgColor('white')
+    loadct,0,/silent
+    oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
+    loadColorTable,'bw linear'
+  endif
+  
+  ; redshift and halo mass
+  if (curRow eq 0 and curCol eq totCols-1) or (curRow eq 0 and totCols gt 3) then $
+    cgText,pos[2]-0.01,pos[1]+0.015,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
+           color=cgColor('white'),/normal
+             
+  if (curRow eq 1 and curCol eq totCols-1) or (curRow eq 1 and totCols gt 3) then $
+    cgText,pos[2]-0.01,pos[3]-0.03,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
+           color=cgColor('white'),/normal
+  
+  ; simulation name
+  if curCol eq 0 then $
+    cgText,0.03-0.01*(totCols gt 3),mean(pos[[1,3]]),config.sP.simName,charsize=!p.charsize+0.2,$
+      alignment=0.5,/normal,orientation=90,color=cgColor('white')
+          
+  ; quantity name
+  ;if curRow eq 0 then $
+  ;  cgText,mean(pos[[0,2]]),0.97,config.colorField,$
+  ;    charsize=!p.charsize,alignment=0.5,/normal,color=cgColor('white')
+    
+  ; dividing lines
+  cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('black'),/overplot
+  cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('black'),/overplot
+          
+  ; colorbar
+  if curRow eq 0 then begin
+    xthick = !x.thick
+    ythick = !y.thick
+    !x.thick = 1.0
+    !y.thick = 1.0
+    
+    if config.colorField eq 'temp'     then labelText = "log T_{gas} [_{ }K_{ }]"
+    if config.colorField eq 'temptvir' then labelText = "log ( T_{gas} / T_{vir} )"
+    if config.colorField eq 'entropy'  then labelText = "log S [_{ }K cm^{2 }]"
+    if config.colorField eq 'overdens' then labelText = "log ( \rho_{gas} / \rho_{crit,b} )"
+    if config.colorField eq 'vrad'     then labelText = "v_{rad} [_{ }km/s_{ }]"
+    
+    factor = 0.48 ; bar length, 0.5=whole
+    height = 0.04
+    x_left  = mean(pos[[0,2]]) - (pos[2]-pos[0])*factor
+    x_right = mean(pos[[0,2]]) + (pos[2]-pos[0])*factor
+    y_bottom = config.barAreaHeight - height*0.4 - height
+    y_top    = config.barAreaHeight - height*0.4
+    
+    ; just one color bar for vs. redshift plot
+    if totCols gt 3 then begin
+      x_left = 0.25
+      x_right = 0.75
+    endif
+    
+    pos = [y_bottom,x_left,y_top,x_right]
+    
+    loadColorTable,config.ctNameMap
+    cgColorbar,position=pos,divisions=0,charsize=0.000001,bottom=0,ticklen=0.00001
+    
+    ; colorbar labels
+    if config.colorField eq 'temp' or config.colorField eq 'entropy' then $
+      cbLabels = str(string([fix(10*config.mapMinMax[0])/10,$
+                             fix(10*config.mapMinMax[1])/10],format='(f3.1)'))
+    if config.colorField eq 'vrad' then $
+      cbLabels = str(config.mapMinMax)
+    if config.colorField eq 'overdens' or config.colorField eq 'temptvir' then $
+      cbLabels = str(string(config.mapMinMax,format='(f4.1)'))
+    
+    y_middle = mean([y_bottom,y_top]) - 0.008
+    cgText,mean([x_left,x_right]),y_bottom-height*0.75,$
+      textoidl(labelText),alignment=0.5,color=cgColor('black'),charsize=!p.charsize-0.2,/normal
+    cgText,x_left  + 0.01,y_middle,cbLabels[0],alignment=0.0,color=cgColor('black'),/normal
+    cgText,x_right - 0.01,y_middle,cbLabels[1],alignment=1.0,color=cgColor('black'),/normal
+    
+    !x.thick = xthick
+    !y.thick = ythick
+  endif
+          
+end
+
+; -----------------------------------------------------------------------------
+
 ; sphScatterAndMapHaloComp(): compare scatterplots and density/temperature of arepo/gadget in 3x2 panels
 
 pro sphScatterAndMapHaloComp
@@ -277,21 +405,21 @@ pro sphScatterAndMapHaloComp
 
   ; config
   redshift = 2.0
-  res      = [10,10,10,10]
-  runs     = ['zoom_20mpc','zoom_20mpc','zoom_20mpc','zoom_20mpc']
+  res      = [9,10,11]
+  runs     = ['zoom_20mpc','zoom_20mpc','zoom_20mpc']
     ;['zoom_20mpc','zoom_20mpc_derefgal','zoom_20mpc_derefgal_nomod']
     ;['feedback','feedback_noZ','feedback_noFB']
     ;['gadget','tracer','feedback']  ; two or three supported
                                                 
-  hInds    = [0,1,2,3] ; for zooms only
+  hInds    = [0,0,0] ; for zooms only
   haloID   = 0 ;zoom.0 z2.304 z2.301 z2.130 z2.64
   
   sizeFacMap  = 3.5       ; times rvir (image width, e.g. 2.0 shows out to the virial radius)
   sizeFacScat = 3.5       ; times rvir
-  rVirCircs   = [0.1,0.5,1.0] ; times rvir to draw a circle
-  hsmlFac  = 2.5          ; times each cell hsml for sph projections
+  rVirCircs   = [0.15,0.5,1.0] ; times rvir to draw a circle
+  hsmlFac  = 1.5          ; times each cell hsml for sph projections
   nPixels  = [800,800]    ; px
-  xySize   = 3            ; final image is xySize*nPixels[0] high
+  xySize   = 5            ; final image is xySize*nPixels[0] high
   axisPair = [0,1]        ; xy
   nbottom  = 50           ; lift minimum scatterplot color from zero (to distinguish from black)
   secondGt = 0            ; 1=show greater than cut, 0=show less than cut
@@ -359,15 +487,186 @@ pro sphScatterAndMapHaloComp
     sub = cosmoVisCutoutSub(cutout=cutout,mapCutout=mapCutout,config=config)
     
     ; plot
-    plotScatterAndSphmap, map=sub, scatter=sub, config=config, col=[i,numRuns]
-      ;left=(i eq 0 and numRuns eq 2), right=(i eq 1 and numRuns eq 2), $
-      ;one=(i eq 0 and numRuns eq 3), two=(i eq 1 and numRuns eq 3), three=(i eq 2 and numRuns eq 3)
+    plotScatterAndMap, map=sub, scatter=sub, config=config, column=[i,numRuns]
   
   endfor
   
   end_PS, density=ceil(nPixels[0]/xySize), pngResize=100, /deletePS
   
   stop
+
+end
+
+; multiMapHaloComp(): compare density/temperature/... of two runs in Nx2 panels
+
+pro multiMapHaloComp
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  ; config
+  redshift = 2.0
+  res      = [512,512]
+  runs     = ['tracer','feedback']
+
+  hInds    = [0,1,2,3] ; for zooms only
+  haloID   = 304 ;0 ;zoom.0 z2.304 z2.301 z2.130 z2.64
+
+  sizeFacMap  = 3.5           ; times rvir (image width, e.g. 2.0 shows out to the virial radius)
+  rVirCircs   = [0.15,0.5,1.0] ; times rvir to draw a circle
+  hsmlFac     = 1.5          ; times each cell hsml for sph projections
+  nPixels     = [800,800]    ; px
+  xySize      = 3            ; final image is xySize*nPixels[0] high
+  axisPair    = [0,2]        ; xy, xz
+  barAreaHeight = 0.1        ; fractional
+  
+  ; use which field and minmax for color mappings?
+  fields = { $
+    field4 : { colorField : 'overdens',    mapMinMax : [-1.0,4.0] } ,$
+    field0 : { colorField : 'temp',        mapMinMax : [4.4,6.2] } ,$
+    ;field1 : { colorField : 'entropy',     mapMinMax : [6.5,8.9] } ,$
+    ;field3 : { colorField : 'radmassflux', mapMinMax : [-150,30] } ,$
+    field2 : { colorField : 'vrad',        mapMinMax : [-180,180] } };,$
+    
+  numFields = n_tags(fields)
+  
+  ; load runs
+  runsStr = ''
+  gcIDs = []
+  foreach run,runs,i do begin
+    sP = mod_struct(sP, 'sP'+str(i), simParams(res=res[i],run=run,redshift=redshift,hInd=hInds[i]))
+    gcIDs = [ gcIDs, getMatchedIDs(simParams=sP.(i),haloID=haloID) ]
+    runsStr += sP.(i).saveTag + '.' + str(sP.(i).snap) + '.h' + str(gcIDs[i]) + '-'
+  endforeach
+  
+  numRuns = n_tags(sP)
+  
+  saveFilename = 'sc.map.'+str(sP.(0).res)+'.'+runsStr+'axes'+str(axisPair[0])+str(axisPair[1])+'_'+$
+                  'sf' + str(fix(sizeFacMap*10)) + '_px' + str(nPixels[0]) + '_nF' +str(numFields)+'.eps'
+                 
+  xs = xySize*numFields
+  ys = xySize*numRuns*(1/(1.0-barAreaHeight))
+  
+  start_PS, sP.(0).plotPath + saveFilename, xs=xs, ys=ys
+  
+  ; loop over runs
+  for i=0,numRuns-1 do begin
+  
+    print,sP.(i).saveTag + ' ['+str(gcIDs[i])+'] Mapping axes ['+str(axisPair[0])+','+str(axisPair[1])+']'
+  
+    ; spatial cutouts
+    mapCutout = cosmoVisCutout(sP=sP.(i),gcInd=gcIDs[i],sizeFac=sizeFacMap)
+    
+    ; enhance hsml and make boxsize smaller for map cutout
+    mapCutout.loc_hsml *= hsmlFac
+    mapCutout.boxSizeImg *= 0.95
+    
+    for j=0,numFields-1 do begin
+  
+      config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:[0,0],$
+                gcID:gcIDs[i],haloMass:mapCutout.haloMass,haloVirRad:mapCutout.haloVirRad,$
+                boxCen:[0,0,0],boxSizeImg:mapCutout.boxSizeImg,rVirCircs:rVirCircs,$
+                ctNameScat:'',ctNameMap:'',sP:sP.(i),bartype:'',scaleBarLen:200.0,$
+                secondCutVal:-1,secondText:'',nbottom:0,secondGt:1,singleColorScale:1,$
+                barAreaHeight:barAreaHeight,$
+                colorField:fields.(j).colorField,mapMinMax:fields.(j).mapMinMax}
+            
+      print,' '+fields.(j).colorField
+            
+      sub = cosmoVisCutoutSub(cutout=mapCutout,mapCutout=mapCutout,config=config)
+      
+      ; plot
+      plotMultiSphmap, map=sub, config=config, row=[i,numRuns], col=[j,numFields]
+  
+    endfor ; numFields,j
+  endfor ; numRuns,i
+  
+  end_PS, density=ceil(nPixels[0]/xySize), pngResize=100 ;, /deletePS
+  
+end
+
+; multiRedshiftHaloComp(): compare one field between two runs at multiple redshifts in Nx2 panels
+
+pro multiRedshiftHaloComp
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  ; config
+  res       = 512
+  runs      = ['tracer','feedback']
+  redshifts = [3.0,2.0,1.0,0.0]
+
+  hInds    = [0,1,2,3] ; for zooms only
+  haloID   = 301 ;0 ;zoom.0 z2.304 z2.301 z2.130 z2.64
+
+  sizeFacMap  = 3.5           ; times rvir (image width, e.g. 2.0 shows out to the virial radius)
+  rVirCircs   = [0.15,0.5,1.0] ; times rvir to draw a circle
+  hsmlFac     = 1.5          ; times each cell hsml for sph projections
+  nPixels     = [800,800]    ; px
+  xySize      = 3            ; final image is xySize*nPixels[0] high
+  axisPair    = [1,2]        ; xy, xz
+  barAreaHeight = 0.1        ; fractional
+  
+  ; use which field and minmax for color mappings?
+  ;field = { colorField : 'temp',      mapMinMax : [4.4,6.8]}
+  field = { colorField : 'temptvir',  mapMinMax : [-1.0,2.0]}
+  ;field = { colorField : 'overdens',  mapMinMax : [-1.0,4.0] }
+  ;field = { colorField : 'entropy',   mapMinMax : [6.5,8.9] }
+  ;field = { colorField : 'vrad',      mapMinMax : [-180,180] }
+    
+  ; load runs
+  runsStr = ''
+  foreach run,runs,i do begin
+    sP = simParams(res=res,run=run,redshift=redshifts[0])
+    runsStr += sP.saveTag + '-'
+  endforeach
+  
+  numRuns = n_elements(runs)
+  numZ = n_elements(redshifts)
+  
+  saveFilename = 'sc.map.'+str(sP.res)+'.'+runsStr+field.colorField+$
+                 '_axes'+str(axisPair[0])+str(axisPair[1])+'_'+$
+                 'sf' + str(fix(sizeFacMap*10)) + '_px' + str(nPixels[0]) + '_nZ' +str(numZ)+'.eps'
+                 
+  xs = xySize*numZ
+  ys = xySize*numRuns*(1/(1.0-barAreaHeight))
+  
+  start_PS, sP.plotPath + saveFilename, xs=xs, ys=ys
+  
+  ; loop over runs
+  for i=0,numRuns-1 do begin
+    for j=0,numZ-1 do begin
+  
+      sP = simParams(res=res,run=runs[i],redshift=redshifts[j])
+      
+      gcID = getMatchedIDs(simParams=sP,haloID=haloID)
+      
+      ; spatial cutouts
+      mapCutout = cosmoVisCutout(sP=sP,gcInd=gcID,sizeFac=sizeFacMap)
+      
+      ; enhance hsml and make boxsize smaller for map cutout
+      mapCutout.loc_hsml *= hsmlFac
+      mapCutout.boxSizeImg *= 0.95
+      
+      print,sP.saveTag + ' (z='+string(redshifts[j],format='(f3.1)')+') ['+str(gcID)+$
+            '] Mapping axes ['+str(axisPair[0])+','+str(axisPair[1])+']'
+  
+      config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:[0,0],$
+                gcID:gcID,haloMass:mapCutout.haloMass,haloVirRad:mapCutout.haloVirRad,$
+                boxCen:[0,0,0],boxSizeImg:mapCutout.boxSizeImg,rVirCircs:rVirCircs,$
+                ctNameScat:'',ctNameMap:'',sP:sP,bartype:'',scaleBarLen:200.0,$
+                secondCutVal:-1,secondText:'',nbottom:0,secondGt:1,singleColorScale:1,$
+                barAreaHeight:barAreaHeight,$
+                colorField:field.colorField,mapMinMax:field.mapMinMax}
+            
+      sub = cosmoVisCutoutSub(cutout=mapCutout,mapCutout=mapCutout,config=config)
+      
+      ; plot
+      plotMultiSphmap, map=sub, config=config, row=[i,numRuns], col=[j,numZ]
+  
+    endfor ; numZ,j
+  endfor ; numRuns,i
+  
+  end_PS, density=ceil(nPixels[0]/xySize), pngResize=100 ;, /deletePS
 
 end
 

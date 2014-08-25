@@ -390,9 +390,13 @@ function galaxyCat, sP=sP, skipSave=skipSave
         pos[i,*] = pos_rel
       endfor
     
-      ; load velocities
+      ; load velocities and correct for scalefactor
       vel = loadSnapshotSubset(sP=sP,partType=parType,field='vel')
       vel = vel[*,ids_type_ind]
+      
+      scalefac = 1.0 / (1.0 + sP.redshift)
+      if scalefac le 0.0 or scalefac gt 1.0 then message,'Error'
+      vel *= sqrt(scalefac)
 
       r.vrad[galcat_ind] = ((vel[0,*] - gc.subgroupVel[0,gcParIDs_type]) * pos[0,*] + $
                             (vel[1,*] - gc.subgroupVel[1,gcParIDs_type]) * pos[1,*] + $

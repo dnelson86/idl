@@ -715,7 +715,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.gfmNumElements = 9
     r.gfmWinds       = 1
     r.gfmBHs         = 1
-    r.accRateModel   = 2 ;0,2,3
+    r.accRateModel   = 0 ;0,2,3
     
     if res eq 512 then r.subboxCen  = [5500,7000,7500]
     if res eq 512 then r.subboxSize = [4000,4000,4000]
@@ -816,7 +816,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 0  ; none (SPH)
     r.trMCFields    = intarr(13)-1 ; none (SPH)
-    r.accRateModel  = 2 ;0,2,3
+    r.accRateModel  = 0 ;0,2,3
     
     if keyword_set(f) then stop ; shouldn't be specified
     if res ne 128 and res ne 256 and res ne 512 then stop ; only resolutions that exist now
@@ -859,7 +859,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 10
     r.trVelPerCell  = 1
-    r.accRateModel  = 2 ;0,2,3
+    r.accRateModel  = 0 ;0,2,3
     
     if res eq 128 or res eq 256 then $
       r.trMCFields    = [0,1,5,2,-1,3,4,-1,-1,-1,-1,-1,-1] ; even older code version than tracer.512, indices specified manually in Config.sh

@@ -1,6 +1,6 @@
 ; plotAccTimes.pro
 ; gas accretion project - past radial history of gas elements (plotting)
-; dnelson mar.2014
+; dnelson aug.2014
 
 ; helper functions:
 
@@ -762,10 +762,13 @@ end
 ; plotAccTimeDeltasVsHaloMass(): 2d histograms, individual runs and difference histograms between 2 runs
 
 pro plotAccTimeDeltasVsHaloMass
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
   ; config
-  sP = simParams(res=512,run='feedback',redshift=2.0)
-  ;sP2 = simParams(res=128,run='tracer',redshift=3.0)
+  res      = 512
+  runs     = ['feedback','tracer']
+  redshift = 2.0
   
   ; index selection for difference ([1.0,0.75,0.5,0.25,0.15,0.05,0.01,first0.15,first1.0])
   rVirFacs = ['1.0 rvir','0.75 rvir','0.5 rvir','0.25 rvir','0.15 rvir','0.05 rvir',$
@@ -773,166 +776,226 @@ pro plotAccTimeDeltasVsHaloMass
   earlierInd = -1 ; -1 (0) ; 0 ; 2
   laterInd   = -2 ; -2 (4) ; 2 ; 5
   gcType     = 'all' ; all, gal (includes stars), gmem, inter
-  accMode    = 'smooth' ; smooth_rec, clumpy_rec, stripped_rec, all
+  accMode    = 'smooth' ; smooth_rec, clumpy_rec, stripped_rec, all  
   
   ; plot config
-  yrange     = [9.5,12.5]
+  yrange     = [9.0,12.0]
   binSize_yy = 0.1
   logX       = 1
-  norm       = 0
-  massBins   = list( [9.45,9.55], [9.9,10.1], [10.4,10.6], [10.8,11.2], [11.3,11.7], [11.7,12.3] )
-  sK         = 3
-  
+  cInd       = 1
+  massBins   = list( [9.0,9.05], [9.45,9.55], [9.9,10.1], $
+                     [10.4,10.6], [10.8,11.2], [11.3,11.7], [11.7,12.3] )
+  sK         = 3  
+  log2DHist  = 0
+      
   ; load
-  at     = accretionTimes(sP=sP)
-  am     = accretionMode(sP=sP)
-  galcat = galaxyCat(sP=sP)
-    
-  if sP.trMCPerCell gt 0 then types = ( galcat.type[ replicate_var(galcat.trMC_cc) ] )
-  if sP.trMCPerCell eq 0 then types = ( galcat.type )
-  if sP.trMCPerCell lt 0 then types = ( galcat.type[ replicate_var(galcat.trVel_cc) ] )
-  
-  parentMass = galCatParentProperties(sP=sP,galcat=galcat,trRep=(sP.trMCPerCell ne 0),/mass)
-  yrange[1] = max(parentMass) - binSize_yy*0.48
-    
-  ; plot (1) - 2d histogram
-  plotStr = sP.savPrefix + str(sP.res) + '_' + str(earlierInd) + '_' + str(laterInd) + '_gc-' + gcType + $
-            "_mode-" + accMode + "_log=" + str(logX) + "_norm=" + str(norm)
-  
-  start_PS,sP.plotPath + 'accTimeDeltasVsMass_' + plotStr + '.eps'
-  
-    cgText,0.5,0.96,textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
-      ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+') (mode='+accMode+')',alignment=0.5,/normal
-                   
-    ; add to plot
-    delta = selectAccTimeDelta(sP=sP, at=at, am=am, galcat=galcat, earlierInd=earlierInd, $
-                               laterInd=laterInd, gcType=gcType, accMode=accMode, norm=norm)
+  foreach run,runs do begin
+    sP = simParams(res=res,run=run,redshift=redshift)
+    saveFilename = sP.derivPath + 'binnedVals/accTimeDeltas.' + sP.savPrefix + str(sP.res) + $
+      '.s' + str(sP.snap) + str(earlierInd) + str(laterInd) + '_' + gcType + '_' + accMode + '.sav'
+      
+    if ~file_test(saveFilename) then begin
+      at     = accretionTimes(sP=sP)
+      am     = accretionMode(sP=sP)
+      galcat = galaxyCat(sP=sP)
+        
+      types = ( galcat.type[ replicate_var(galcat.trMC_cc) ] )
+      
+      parentMass = galCatParentProperties(sP=sP,galcat=galcat,/trRep,/mass)
+      
+      delta = selectAccTimeDelta(sP=sP, at=at, am=am, galcat=galcat, earlierInd=earlierInd, $
+                                 laterInd=laterInd, gcType=gcType, accMode=accMode)
 
-    yy = parentMass[delta.w]
-    
-    weights = fltarr(n_elements(delta.val)) + 1.0
-    
-    if logX eq 1 then begin
-      xx = alog10( delta.val )
-      xrange = [5e-3,3.0]
-      xrangeLog = alog10( xrange )
-      binSize_xx = 0.05
-      xtickv = [0.01,0.05,0.1,0.2,0.5,1.0,2.0,3.0]
-      xtickname = ['0.01','0.05','0.1','0.2','0.5','1','2','3']
+      save,parentMass,delta,filename=saveFilename    
     endif else begin
-      xx = delta.val
-      xrange = [0.0,0.5]
-      xrangeLog = xrange
-      binSize_xx = 0.01
-      xtickv = [0.0,0.1,0.2,0.3,0.4,0.5]
-      xtickname = ['0','0.1','0.2','0.3','0.4','0.5']
+      restore,saveFilename,/verbose
     endelse
     
-    ; if not normalizing, extend (t1-t2) axis as a function of the current redshift
-    if norm eq 0 then xrange[1] = 0.7 * redshiftToAgeFlat(sP.redshift)
+    ; add to keeper
+    atd = mod_struct( atd, run, delta )
+    pm  = mod_struct( pm, run, parentMass )
+    sPs = mod_struct( sPs, run, sP )
     
-    h2 = hist_nd_weight( transpose( [[xx],[yy]] ), weight=weights, [binSize_xx,binSize_yy], $
-        min=[xrangeLog[0]-binSize_xx*0.5,yrange[0]-binSize_yy*0.5],$
-        max=[xrangeLog[1]+binSize_xx*0.49,yrange[1]+binSize_yy*0.49])
+  endforeach ;run
+  
+  ; plot
+  simNames  = []
+  simColors = []
+  
+  for i=0,n_elements(runs)-1 do begin
+    simNames  = [simNames, sPs.(i).simName]
+    simColors = [simColors, sPs.(i).colors[cInd]]
+  endfor
+  
+  foreach run,runs,j do begin
+    ; plot (1) - 2d histogram
+    plotStr = sPs.(j).savPrefix + str(sPs.(j).res) + '_' + str(earlierInd) + '_' + str(laterInd) + '_gc-' + gcType + $
+              "_mode-" + accMode + "_log=" + str(logX)
     
-    ; colormap (each halo mass row individually scaled)
-    logHist = 0
-    h2_cmap = colorMapAccTime(h2,logHist=logHist,/byRow)
+    start_PS,sPs.(j).plotPath + 'accTimeDeltasVsMass_' + plotStr + '.eps'
     
-    ; plot
-    pos = [0.14,0.14,0.92,0.9]
-    
-    loadColorTable, 'helix', /reverse ; data
-    tvim,h2_cmap,scale=0,pos=pos,/c_map,/noframe,/noerase
+      cgText,0.5,0.96,textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
+        ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+') (mode='+accMode+')',alignment=0.5,/normal
+                     
+      ; add to plot
+      yy = alog10( 10.0^(pm.(j))[atd.(j).w] * units.hubbleParam )
+      
+      weights = fltarr(n_elements(atd.(j).val)) + 1.0
+      
+      if logX eq 1 then begin
+        xx = alog10( atd.(j).val )
+        xrange = [0.01,4.0]
+        xrangeLog = alog10( xrange )
+        binSize_xx = 0.05
+        yrange_pdf = [0.001,0.2]
+        xtickv = [0.01,0.05,0.1,0.2,0.5,1.0,2.0,3.0]
+        xtickname = ['0.01','0.05','0.1','0.2','0.5','1','2','3']
+      endif else begin
+        xx = atd.(j).val
+        xrange = [0.0,0.5]
+        xrangeLog = xrange
+        binSize_xx = 0.01
+        xtickv = [0.0,0.1,0.2,0.3,0.4,0.5]
+        xtickname = ['0','0.1','0.2','0.3','0.4','0.5']
+      endelse
+      
+      ; if not normalizing, extend (t1-t2) axis as a function of the current redshift
+      ;xrange[1] = 0.7 * redshiftToAgeFlat(redshift)
+      ;xrange = [5e-3,0.8 * redshiftToAgeFlat(sPs.(j).redshift)]
+      
+      h2 = hist_nd_weight( transpose( [[xx],[yy]] ), weight=weights, [binSize_xx,binSize_yy], $
+          min=[xrangeLog[0]-binSize_xx*0.5,yrange[0]-binSize_yy*0.5],$
+          max=[xrangeLog[1]+binSize_xx*0.49,yrange[1]+binSize_yy*0.49])
+      
+      ; colormap (each halo mass row individually scaled)
+      h2_cmap = colorMapAccTime(h2,logHist=log2DHist,/byRow)
+      
+      h2s = mod_struct( h2s, run, h2 )
+      
+      ; plot
+      pos = [0.14,0.14,0.92,0.9]
+      
+      loadColorTable, 'helix', /reverse ; data
+      tvim,h2_cmap,scale=0,pos=pos,/c_map,/noframe,/noerase
+            
+      xtitle = textoidl("( t_{1} - t_{2} ) [Gyr]")
+      ytitle = textoidl("M_{halo}")
+            
+      loadColorTable,'bw linear' ; axes/frame
+      tvim,h2_cmap,/notv,pcharsize=!p.charsize,scale=0,clip=-1,$
+        xtitle=xtitle,ytitle=ytitle,barwidth=0.75,lcharsize=!p.charsize-0.2,$
+        xrange=xrange,yrange=yrange,xmargin=2.0,pos=pos,/noerase,$
+        xlog=logX,xticks=n_elements(xtickv)-1,xtickv=xtickv,xtickname=xtickname
           
-    if norm eq 1 then xtitle = textoidl("( t_{1} - t_{2} ) / t_{2}")
-    if norm eq 0 then xtitle = textoidl("( t_{1} - t_{2} ) [Gyr]")
-    ytitle = textoidl("M_{halo}")
-          
-    loadColorTable,'bw linear' ; axes/frame
-    tvim,h2_cmap,/notv,pcharsize=!p.charsize,scale=0,clip=-1,$
-      xtitle=xtitle,ytitle=ytitle,barwidth=0.75,lcharsize=!p.charsize-0.2,$
-      xrange=xrange,yrange=yrange,xmargin=2.0,pos=pos,/noerase,$
-      xlog=logX,xticks=n_elements(xtickv)-1,xtickv=xtickv,xtickname=xtickname
+    end_PS
+  
+    ; plot (2) - 1d profiles
+    set_plot,'ps'
+    mbColors = reverse( sampleColorTable('blue-red2', n_elements(massBins), bounds=[0.1,0.9]) )
+    
+    plotStr = sPs.(j).savPrefix + str(sPs.(j).res) + '_' + str(earlierInd) + '_' + str(laterInd) + '_gc-' + gcType + $
+              "_mode-" + accMode + "_log=" + str(logX)
+    
+    start_PS,sPs.(j).plotPath + 'accTimeDeltasMassBins_' + plotStr + '.eps', /extrabig
+
+      ; (no normalization)
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_pdf,pos=pos,$
+        xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),ytitle="PDF",$
+        /xs,/ys,/ylog,yminor=0,xlog=logX,xminor=(logX ne 1),$
+        title=textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
+        ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+') (mode='+accMode+')'
+      
+      yy = alog10( 10.0^(pm.(j))[atd.(j).w] * units.hubbleParam )
+      
+      ; loop over mass bins
+      legendStrs   = []
+      legendColors = []
+      
+      foreach massBin,massBins,i do begin
+        wMB = where(yy ge massBin[0] and yy lt massBin[1], count)
+        print,'['+str(i)+'] '+str(count)
+        if count eq 0 then continue
         
-  end_PS
-  
-  ; plot (2) - 1d profiles
-  set_plot,'ps'
-  mbColors = reverse( sampleColorTable('blue-red2', n_elements(massBins), bounds=[0.1,0.9]) )
-  
-  plotStr = sP.savPrefix + str(sP.res) + '_' + str(earlierInd) + '_' + str(laterInd) + '_gc-' + gcType + $
-            "_mode-" + accMode + "_log=" + str(logX) + "_norm=" + str(norm)
-  
-  start_PS,sP.plotPath + 'accTimeDeltasMassBins_' + plotStr + '.eps', xs=7.5, ys=10.5
-    pos = plot_pos(row=2,col=1,/gap)
-    
-    ; plot A (no normalization)
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=[0.001,2.0],pos=pos[0],$
-      xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),ytitle="Fraction",$
-      /xs,/ys,/ylog,yminor=0,xlog=logX,xminor=(logX ne 1),$
-      title=textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
-      ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+') (mode='+accMode+')'
-    
-    ; loop over mass bins
-    legendStrs   = []
-    legendColors = []
-    
-    if norm eq 1 then delta.val *= delta.norm_fac ; remove normalization
-    xrange = [5e-3,0.8 * redshiftToAgeFlat(sP.redshift)]
-    
-    foreach massBin,massBins,i do begin
-      wMB = where(yy ge massBin[0] and yy lt massBin[1], count)
-      print,'['+str(i)+'] '+str(count)
-      if count eq 0 then continue
+        h = histogram( alog10(atd.(j).val[wMB]), binsize=binSize_xx, $
+                       min=xrangeLog[0], max=xrangeLog[1], loc=loc )
+        
+        cgPlot,10.0^(loc+binSize_xx*0.5),smooth(h/float(total(h)),sK),$
+          color=mbColors[i],/overplot
+        
+        legendStrs   = [legendStrs, textoidl('M_{halo} = ' + string(mean(massBin),format='(f4.1)'))]
+        legendColors = [legendColors, mbColors[i]]
+      endforeach
       
-      h = histogram( alog10(delta.val[wMB]), binsize=binSize_xx, $
-                     min=xrangeLog[0], max=xrangeLog[1], loc=loc )
+      legend,legendStrs,textcolors=legendColors,/top,/left
       
-      cgPlot,10.0^(loc+binSize_xx*0.5),smooth(h/float(max(h)),sK),color=mbColors[i],/overplot
+    end_PS
+    
+  endforeach ; j,runs
+  
+  ; plot (3) - combined 1d profiles in mass bins
+  start_PS,sPs.(0).plotPath + 'accTimeDeltasMassBinsComp.eps', /extrabig
+  
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_pdf,pos=pos,$
+      xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),ytitle="PDF",$
+      /xs,/ys,/ylog,yminor=0,xlog=logX,xminor=(logX ne 1)
+  
+    foreach run,runs,j do begin
+      ; loop over mass bins
+      legendStrs   = []
+      legendColors = []
       
-      legendStrs   = [legendStrs, textoidl('M_{halo} = ' + string(mean(massBin),format='(f4.1)'))]
-      legendColors = [legendColors, mbColors[i]]
-    endforeach
+      yy = alog10( 10.0^(pm.(j))[atd.(j).w] * units.hubbleParam )
+            
+      foreach massBin,massBins,i do begin
+        wMB = where(yy ge massBin[0] and yy lt massBin[1], count)
+        print,'['+str(i)+'] '+str(count)
+        if count eq 0 then continue
+        
+        h = histogram( alog10(atd.(j).val[wMB]), binsize=binSize_xx, $
+                       min=xrangeLog[0], max=xrangeLog[1], loc=loc )
+        
+        cgPlot,10.0^(loc+binSize_xx*0.5),smooth(h/float(total(h)),sK),$
+          color=mbColors[i],/overplot,line=j
+        
+        legendStrs   = [legendStrs, textoidl('M_{halo} = ' + string(mean(massBin),format='(f4.1)'))]
+        legendColors = [legendColors, mbColors[i]]
+      endforeach
+      
+    endforeach ; j,runs
     
     legend,legendStrs,textcolors=legendColors,/top,/left
-    
-    ; plot B (normalized)    
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=[0.001,2.0],pos=pos[1],/noerase,$
-      xtitle=textoidl("( t_{1} - t_{2} ) / t_{2}"),ytitle="Fraction",$
-      /xs,/ys,/ylog,yminor=0,xlog=logX,xminor=(logX ne 1),$
-      title="(z="+string(sP.redshift,format='(f3.1)')+")"
-      
-    foreach massBin,massBins,i do begin
-      wMB = where(yy ge massBin[0] and yy lt massBin[1], count)
-      print,'['+str(i)+'] '+str(count)
-      if count eq 0 then continue
-      
-      h = histogram( alog10(delta.val[wMB]/delta.norm_fac), binsize=binSize_xx, $
-                     min=xrangeLog[0], max=xrangeLog[1], loc=loc )
-      
-      cgPlot,10.0^(loc+binSize_xx*0.5),smooth(h/float(max(h)),sK),color=mbColors[i],/overplot
-    endforeach
-    
-    legend,legendStrs,textcolors=legendColors,/top,/left
-    
+    legend,simNames,textcolor=simColors,linestyle=[0,1],/bottom,/left
   end_PS
+  
+  ; plot (4) - combined 1d global profiles
+  start_PS,sPs.(0).plotPath + 'accTimeDeltasComp.eps', /extrabig
+  
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_pdf,pos=pos,$
+      xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),ytitle="PDF",$
+      /xs,/ys,/ylog,yminor=0,xlog=logX,xminor=(logX ne 1)
+  
+    foreach run,runs,j do begin
     
+      xrange = [5e-3,0.8 * redshiftToAgeFlat(sPs.(j).redshift)]
+      
+      h = histogram( alog10(atd.(j).val), binsize=binSize_xx, $
+                     min=xrangeLog[0], max=xrangeLog[1], loc=loc )
+        
+      cgPlot,10.0^(loc+binSize_xx*0.5),smooth(h/float(total(h)),sK),$
+        color=simColors[j],/overplot
+      
+    endforeach ; j,runs
+    
+    legend,simNames,textcolor=simColors,/bottom,/left
+  end_PS
+  
   ; make 2d histogram difference
   ; ----------------------------  
-  if n_elements(sP2) eq 0 then stop
+  stop
   
-  at2     = accretionTimes(sP=sP2)
-  am2     = accretionMode(sP=sP2)
-  galcat2 = galaxyCat(sP=sP2)
-    
-  if sP2.trMCPerCell gt 0 then types2 = ( galcat2.type[ replicate_var(galcat2.trMC_cc) ] )
-  if sP2.trMCPerCell eq 0 then types2 = ( galcat2.type )
-  if sP2.trMCPerCell lt 0 then types2 = ( galcat2.type[ replicate_var(galcat2.trVel_cc) ] )
   
-  parentMass2 = galCatParentProperties(sP=sP2,galcat=galcat2,trRep=(sP2.trMCPerCell ne 0),/mass)
   
-  ; plot (3) - 2d difference
+  ; plot (4) - 2d difference
   start_PS,sP.plotPath + 'accTimeDeltasVsMassDiff_' + plotStr + '.eps'
     cgText,0.5,0.96,textoidl("rVirFacs: t_1 = " + str(rVirFacs[laterInd]) + $
       ", t_2 = " + str(rVirFacs[earlierInd])) + ' (type='+gcType+')',alignment=0.5,/normal

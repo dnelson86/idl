@@ -367,8 +367,6 @@ function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
       
       sP.snap = m + 1 * (step eq 1) ; want to load one snapshot ahead if moving forward
       
-      if sP.snap gt endSnap then continue ; end early if moving forward, we are done
-      
       ; haven't failed yet, keep recording positions
       if failSnap eq -1 then begin
         sgcen = subgroupPosByMostBoundID(sP=sP)
@@ -380,6 +378,7 @@ function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
         ; if going backwards, directly move index
         if step eq -1 then begin
           gcIDcur = Parent[gcIDcur]
+          
           if gcIDcur eq -1 then failSnap = sP.snap
         endif
         
