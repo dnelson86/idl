@@ -121,7 +121,14 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z3_h304_res128_gadget']   = 162
   sgIDs['z3_h304_res128_feedback'] = 100
   
+  ; z1 h304 (tracked forward from z=2)
+  sgIDs['z1_h304_res512_tracer']   = 4223
+  sgIDs['z1_h304_res512_feedback'] = 4233 ;coincidence
+  
   ; z0 h304 (tracked forward from z=2)
+  sgIDs['z0_h304_res512_tracer']   = 6768
+  sgIDs['z0_h304_res512_feedback'] = 7350
+  
   sgIDs['z0_h304_res256_tracer']   = 1310
   sgIDs['z0_h304_res256_gadget']   = 1822
   sgIDs['z0_h304_res256_feedback'] = 1379
@@ -130,11 +137,18 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z0_h304_res128_gadget']   = 431
   sgIDs['z0_h304_res128_feedback'] = 321
   
-  ; z2.301
+  ; z2.301 (z3,z1,z0 tracked from z2)
   sgIDs['z2_h301_res512_tracer']   = 1948
   sgIDs['z2_h301_res512_gadget']   = 2289
   sgIDs['z2_h301_res512_arepo']    = 2034
   sgIDs['z2_h301_res512_feedback'] = 2076
+  
+  sgIDs['z3_h301_res512_tracer']   = 1278
+  sgIDs['z3_h301_res512_feedback'] = 1311
+  sgIDs['z1_h301_res512_tracer']   = 4396
+  sgIDs['z1_h301_res512_feedback'] = 4801
+  sgIDs['z0_h301_res512_tracer']   = 6825
+  sgIDs['z0_h301_res512_feedback'] = 7640
   
   ; z2.130 (low mass example for paper)
   sgIDs['z2_h130_res512_tracer']   = 5611

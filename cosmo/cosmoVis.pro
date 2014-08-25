@@ -1,6 +1,6 @@
 ; cosmoVis.pro
 ; cosmological boxes - 2d visualization
-; dnelson sep.2013
+; dnelson aug.2014
 
 ; cosmoVisCutout(): make a spatial cutout around a halo
 ;                   call with multiple gcInd's for one load and save cutouts
@@ -80,6 +80,11 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
   vel  = loadSnapshotSubset(sP=sP,partType='gas',field='vel')
   mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
   sfr  = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
+  
+  ; convert particle velocities to proper
+  scalefac = 1.0 / (1.0 + sP.redshift)
+  if scalefac le 0.0 or scalefac gt 1.0 then message,'Error'
+  vel *= sqrt(scalefac)
   
   ; randomly shuffle the points (break the peano ordering to avoid "square" visualization artifacts)
   print,'shuffling...'
@@ -486,10 +491,14 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
+  haloVirTemp = codeMassToVirTemp(cutout.haloMass, sP=config.sP)
+  
   ; create color index mapping
   if config.colorField eq 'temp'      then fieldVal = alog10( cutout.loc_temp )
+  if config.colorField eq 'temptvir'  then fieldVal = alog10( cutout.loc_temp / haloVirTemp )
   if config.colorField eq 'entropy'   then fieldVal = alog10( cutout.loc_ent )
   if config.colorField eq 'density'   then fieldVal = cutout.loc_dens
+  if config.colorField eq 'overdens'  then fieldVal = rhoRatioToCrit(cutout.loc_dens,sP=config.sP,/log)
   if config.colorField eq 'metal'     then fieldVal = alog10( cutout.loc_metal )
   if config.colorField eq 'vrad'      then fieldVal = reform(cutout.loc_vrad)
   if config.colorField eq 'vradnorm'  then fieldVal = reform(cutout.loc_vrad)/cutout.haloV200
@@ -547,8 +556,10 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
   ; cutoutMap? if so, use this second mapCutout to do a sph kernel projection and include it
   if n_elements(mapCutout) gt 0 then begin
     if config.colorField eq 'temp'      then fieldValMap = mapCutout.loc_temp
+    if config.colorField eq 'temptvir'  then fieldValMap = cutout.loc_temp / haloVirTemp
     if config.colorField eq 'entropy'   then fieldValMap = mapCutout.loc_ent
     if config.colorField eq 'density'   then fieldValMap = mapCutout.loc_dens
+    if config.colorField eq 'overdens'  then fieldValMap = rhoRatioToCrit(mapCutout.loc_dens,sP=config.sP)
     if config.colorField eq 'metal'     then fieldValMap = mapCutout.loc_metal
     if config.colorField eq 'vrad'      then fieldValMap = reform(mapCutout.loc_vrad)
     if config.colorField eq 'vradnorm'  then fieldValMap = reform(mapCutout.loc_vrad)/mapCutout.haloV200
@@ -570,9 +581,10 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
     endif
   
     ; set mass=0 for star forming gas if projecting temperature (eEOS)
-    if config.colorField eq 'temp' then begin
+    if config.colorField eq 'temp' or config.colorField eq 'temptvir' then begin
       w = where(mapCutout.loc_sf eq 1B,count)
-      if count gt 0 then mapCutout.loc_mass[w] = 0.0
+      ;if count gt 0 then mapCutout.loc_mass[w] = 0.0 ;set weight to zero
+      if count gt 0 then mapCutout.loc_temp[w] = 1000.0 ; set to ~ISM temperature
     endif
   
     sphmap = calcSphMap(mapCutout.loc_pos,mapCutout.loc_hsml,mapCutout.loc_mass,fieldValMap,$
@@ -580,9 +592,11 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
                         nPixels=config.nPixels,axes=config.axes,ndims=3)
                         
     ; take log?
-    if config.colorField eq 'temp'    then sphMap.quant_out = alog10( sphMap.quant_out )
-    if config.colorField eq 'entropy' then sphMap.quant_out = alog10( sphMap.quant_out )
-    if config.colorField eq 'metal'   then sphMap.quant_out = alog10( sphMap.quant_out )
+    if config.colorField eq 'temp'     then sphMap.quant_out = alog10( sphMap.quant_out )
+    if config.colorField eq 'temptvir' then sphMap.quant_out = alog10( sphMap.quant_out )
+    if config.colorField eq 'entropy'  then sphMap.quant_out = alog10( sphMap.quant_out )
+    if config.colorField eq 'metal'    then sphMap.quant_out = alog10( sphMap.quant_out )
+    if config.colorField eq 'overdens' then sphMap.quant_out = alog10( sphMap.quant_out )
     
     ; set minimum for sphmap (mass-weighted quantity, do nothing with projected density)
     w = where(sphmap.quant_out eq 0.0,count,comp=wc)
@@ -597,12 +611,14 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
   
     ; some additional configuration manipulations for plotScatterAndMap
     if config.colorField eq 'temp'        then config.ctNameMap  = 'blue-red2'
+    if config.colorField eq 'temptvir'    then config.ctNameMap  = 'blue-red2'
     if config.colorField eq 'entropy'     then config.ctNameMap  = 'brewerR-yellowblue'
     if config.colorField eq 'vrad'        then config.ctNameScat = 'brewer-redgreen'
     if config.colorField eq 'vrad'        then config.ctNameMap  = 'brewer-brownpurple'
-    if config.colorField eq 'radmassflux' then config.ctNameMap  = 'blue-red2'
-    if config.colorField eq 'radmassflux' then config.ctNameScat = 'blue-red2'
+    if config.colorField eq 'overdens'    then config.ctNameMap   = 'helix'
     
+    if config.colorField eq 'radmassflux'   then config.ctNameMap  = 'blue-red2'
+    if config.colorField eq 'radmassflux'   then config.ctNameScat = 'blue-red2'
     if config.colorField eq 'radmassfluxSA' then config.ctNameMap  = 'blue-red2'
     if config.colorField eq 'radmassfluxSA' then config.ctNameScat = 'blue-red2'
     
@@ -610,7 +626,7 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
     if config.colorField eq 'entropy'     then config.secondText = 'low entropy only'
     if config.colorField eq 'vrad'        then config.secondText = 'rapid infall'
     if config.colorField eq 'radmassflux' then config.secondText = 'high radial mass flux'
-    if config.colorField eq 'radmassfluxSA' then config.secondText = 'high inward flux per solid angle'
+    if config.colorField eq 'radmassfluxSA' then config.secondText = 'high inward flux per solid angle'   
     
     return, {cinds_left:cinds_left,pos_left:pos_left,pos_left2:pos_left2,$
              cinds_right:cinds_right,pos_right:pos_right,pos_right2:pos_right2,$

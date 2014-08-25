@@ -428,7 +428,7 @@ end
 
 ; rhoRatioToCrit(): normalize density by the critical -baryon- density at some redshift
 
-function rhoRatioToCrit, rho, sP=sP, redshift=redshift
+function rhoRatioToCrit, rho, sP=sP, redshift=redshift, log=log
 
   if n_elements(redshift) eq 0 and n_elements(sP) eq 0 then message,'error'
   if n_elements(redshift) eq 1 and n_elements(sP) eq 1 then message,'error'
@@ -440,6 +440,7 @@ function rhoRatioToCrit, rho, sP=sP, redshift=redshift
   
   rho_b = units.omega_b * units.rhoCrit_z
   
+  if keyword_set(log) then return, alog10(rho/rho_b)
   return, rho/rho_b
 
 end

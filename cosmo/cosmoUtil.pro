@@ -509,24 +509,43 @@ end
 pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted, pos=pos, spaceFac=spaceFac
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  if n_elements(spaceFac) eq 0 then spaceFac = 1.0
-  
-  logFac = 1.0
-  if keyword_set(ylog) then logFac = 6.0
-  if yRange[1] gt 5.0 then logFac *= 1.5
-  
-  yTickLen = (yRange[1]-yRange[0]) / 40.0 * logFac
-  yTextOff = (yRange[1]-yRange[0]) / 60.0 * logFac * spaceFac
-  
-  yTextOffFac = 4.0 * spaceFac
-  if yrange[1] gt 5.0 then yTextOffFac = 7.0 * spaceFac
 
   if (not keyword_set(zTicknames)) then begin
     zTicknames = ['0.1','1','1.2','1.5','2','3','4','5','6','8','13.8'] ;10=0.33
     zRedshifts = [30,5.7,5.05,4.21,3.25,2.23,1.65,1.265,0.98,0.595,0.0]
   endif
-  nZ = n_elements(zTicknames)
+    
+  axis,xaxis=1,xticks=n_elements(zTicknames)-1,xtickv=zRedshifts,xtickn=zTicknames,$
+    xtitle="Time [Gyr]",xminor=0
   
+  if 0 then begin
+  
+  if n_elements(spaceFac) eq 0 then spaceFac = 1.0
+  
+  ; OLD
+  ;logFac = 1.0
+  ;if keyword_set(ylog) then logFac = 6.0
+  ;if yRange[1] gt 5.0 then logFac *= 1.5
+  ;yTickLen = (yRange[1]-yRange[0]) / 40.0 * logFac
+  ;yTextOff = (yRange[1]-yRange[0]) / 60.0 * logFac * spaceFac
+  
+  ; NEW
+  if ~keyword_set(ylog) then begin
+    yTickLen = (yRange[1]-yRange[0]) / 40.0 
+    yTextOff = (yRange[1]-yRange[0]) / 60.0 * spaceFac
+  endif else begin
+    yTickLen = (alog10(yRange[1])-alog10(yRange[0])) / 7.0 
+    yTextOff = (alog10(yRange[1])-alog10(yRange[0])) / 7.0 * spaceFac
+    
+    yTickLen = 10.0^yTickLen
+    yTextOff = 10.0^yTextOff
+    print,alog10(yRange[1])-alog10(yRange[0]),yTickLen,yTextOff
+  endelse
+  
+  yTextOffFac = 4.0 * spaceFac
+  if yrange[1] gt 5.0 then yTextOffFac = 7.0 * spaceFac  
+  
+  nZ = n_elements(zTicknames)
   zXPos = fltarr(nZ)
   
   ; plot "maximum" redshift label
@@ -551,5 +570,6 @@ pro universeage_axis, xRange, yRange, ylog=ylog, dotted=dotted, pos=pos, spaceFa
   
   cgPlot,xRange,[yRange[1],yRange[1]]-0.001*yRange[1],/overplot
   cgText,mean(xRange),yRange[1]+yTextOff*yTextOffFac,"Time [Gyr]",alignment=0.5
-
+  endif ;0
+  
 end
