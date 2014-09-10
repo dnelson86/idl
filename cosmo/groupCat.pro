@@ -63,7 +63,7 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   endif
   
   ; z2.314 (disappearing fan along bottom, all-sky views for paper)
-  sgIDs['z2_h314_res512_tracer']   = 816
+  sgIDs['z2_h314_res512_tracer']   = 815 ;old=816
   sgIDs['z2_h314_res512_gadget']   = 981
   sgIDs['z2_h314_res512_arepo']    = 879 ;had as 927 in comparison project?
   sgIDs['z2_h314_res512_feedback'] = 639
@@ -79,7 +79,7 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z2_h314_res128_feedback'] = 56
   
   ; z3 h314 (tracked back)
-  sgIDs['z3_h314_res512_tracer']   = 183
+  sgIDs['z3_h314_res512_tracer']   = 182 ;old=183
   sgIDs['z3_h314_res512_gadget']   = 211
   sgIDs['z3_h314_res512_feedback'] = 184
   
@@ -92,7 +92,7 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z3_h314_res128_feedback'] = 10
     
   ; z2.304 (four filaments aligned in a plus pattern, high mass example for paper)
-  sgIDs['z2_h304_res512_tracer']   = 2004
+  sgIDs['z2_h304_res512_tracer']   = 1999 ;old=2004
   sgIDs['z2_h304_res512_gadget']   = 2342
   sgIDs['z2_h304_res512_arepo']    = 2132
   sgIDs['z2_h304_res512_feedback'] = 2020
@@ -108,7 +108,7 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z2_h304_res128_feedback'] = 151
   
   ; z3 h304 (tracked back from z=2)
-  sgIDs['z3_h304_res512_tracer']   = 1669
+  sgIDs['z3_h304_res512_tracer']   = 1668 ;old=669
   sgIDs['z3_h304_res512_gadget']   = 1902
   sgIDs['z3_h304_res512_arepo']    = 1657
   sgIDs['z3_h304_res512_feedback'] = 1621
@@ -122,8 +122,8 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z3_h304_res128_feedback'] = 100
   
   ; z1 h304 (tracked forward from z=2)
-  sgIDs['z1_h304_res512_tracer']   = 4223
-  sgIDs['z1_h304_res512_feedback'] = 4233 ;coincidence
+  sgIDs['z1_h304_res512_tracer']   = 4222 ;old=4223
+  sgIDs['z1_h304_res512_feedback'] = 4233
   
   ; z0 h304 (tracked forward from z=2)
   sgIDs['z0_h304_res512_tracer']   = 6768
@@ -138,20 +138,20 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z0_h304_res128_feedback'] = 321
   
   ; z2.301 (z3,z1,z0 tracked from z2)
-  sgIDs['z2_h301_res512_tracer']   = 1948
+  sgIDs['z2_h301_res512_tracer']   = 1943 ;old=1948
   sgIDs['z2_h301_res512_gadget']   = 2289
   sgIDs['z2_h301_res512_arepo']    = 2034
   sgIDs['z2_h301_res512_feedback'] = 2076
   
-  sgIDs['z3_h301_res512_tracer']   = 1278
+  sgIDs['z3_h301_res512_tracer']   = 1276 ;old=1278
   sgIDs['z3_h301_res512_feedback'] = 1311
-  sgIDs['z1_h301_res512_tracer']   = 4396
+  sgIDs['z1_h301_res512_tracer']   = 4467 ;old=4396
   sgIDs['z1_h301_res512_feedback'] = 4801
-  sgIDs['z0_h301_res512_tracer']   = 6825
+  sgIDs['z0_h301_res512_tracer']   = 6939 ;old=6825
   sgIDs['z0_h301_res512_feedback'] = 7640
   
   ; z2.130 (low mass example for paper)
-  sgIDs['z2_h130_res512_tracer']   = 5611
+  sgIDs['z2_h130_res512_tracer']   = 5610 ;old=5611
   sgIDs['z2_h130_res512_gadget']   = 6369
   sgIDs['z2_h130_res512_arepo']    = 5966
   sgIDs['z2_h130_res512_feedback'] = 5755
@@ -254,13 +254,13 @@ pro rematch
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function loadGroupCat
 
-  sP1 = simParams(res=256,run='gadget',redshift=0.0)
-  sP2 = simParams(res=128,run='gadget',redshift=0.0)
+  sP1 = simParams(res=512,run='feedback',redshift=2.0)
+  sP2 = simParams(res=512,run='tracer',redshift=2.0)
 
   gc1 = loadGroupCat(sP=sP1,/skipIDs,/skipOffsets)
   gc2 = loadGroupCat(sP=sP2,/skipIDs,/skipOffsets)
 
-  known1gcIDs = [1822]
+  known1gcIDs = [5755]
   
   foreach gcID,known1gcIDs do begin
     ; find closest spatial match
