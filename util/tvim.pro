@@ -423,7 +423,7 @@ pro tvim,a,scale=scale,range=range,xrange=xrange,yrange=yrange,$
         rgb_nodata=rgb_nodata,barwidth=barwidth,position=position,rct=rct,$
         xmargin=xmargin,ymargin=ymargin,xtickname=xtickname,ytickname=ytickname,$
         xticks=xticks,yticks=yticks,xtickv=xtickv,ytickv=ytickv,$
-        xlog=xlog,ylog=ylog,noerase=noerase,notv=notv ;DNELSON pass to final plot
+        xlog=xlog,xminor=xminor,ylog=ylog,noerase=noerase,notv=notv ;DNELSON pass to final plot
 
 if n_params() eq 0 then begin
   xhelp,'tvim'
@@ -627,7 +627,7 @@ case 1 of
                          xtitle=xtitle,ytitle=ytitle,xrange=xrng,yrange=yrng,$
                          position=pos,/noerase,/device,charsize=pcharsize,xtickname=xtickname,ytickname=ytickname,$
                          xticks=xticks,yticks=yticks,xtickv=xtickv,ytickv=ytickv,$
-                         xlog=xlog,ylog=ylog ;DNELSON
+                         xlog=xlog,xminor=xminor,ylog=ylog ;DNELSON
 endcase
 ;
 end

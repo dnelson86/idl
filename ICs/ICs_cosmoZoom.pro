@@ -767,7 +767,7 @@ end
 pro checkDMContamination
 
   ; config
-  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res='11',hInd='8',redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res='11',hInd='1',redshift=2.0) )
   ;sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_10Mpc_dm',res=11,hInd='3',redshift=0.0) )
   ;sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_10Mpc_dm',res=10,hInd='1b',redshift=0.0) )
   ;sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_convhull',res=10,hInd=1,redshift=2.0) )
@@ -811,8 +811,8 @@ pro checkDMContamination
   
     ; out to what radius are we uncontaminated?
     dists = dists[sort(dists)]
-    print,' Zero lowres DM out to radius of ['+string(min(dists),format='(f4.2)')+' rvir] ('+$
-      string(min(dists)/sP.rVirFac,format='(f4.2)')+')'
+    print,' Zero lowres DM out to radius of ['+string(min(dists),format='(f5.2)')+' rvir] ('+$
+      string(min(dists)/sP.rVirFac,format='(f5.2)')+')'
   
     ; add cumulative histogram to plot
     strings = [strings, str(sP.simName)+' h'+str(sP.hInd)+' ('+str(2^sP.res)+')']
@@ -833,7 +833,7 @@ end
 pro checkGasContamination
 
   ; config
-  sP = simParams(run='zoom_20Mpc',res='11',hInd='8',redshift=2.0)
+  sP = simParams(run='zoom_20Mpc',res='11',hInd='1',redshift=2.0)
 
   ; load
   h = loadSnapshotHeader(sP=sP)

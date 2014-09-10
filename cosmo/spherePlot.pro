@@ -490,12 +490,12 @@ pro plot2Halo3ValComp
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  redshift = 3
+  redshift = 2
   
   sPg = simParams(res=512,run='feedback',redshift=float(redshift))
   sPa = simParams(res=512,run='tracer',redshift=float(redshift))
   
-  radInd   = 4        ; pre-saved radFacs (3=0.25, 4=0.5, 7=rvir)
+  radInd   = 7        ; pre-saved radFacs (3=0.25, 4=0.5, 7=rvir)
   rot_ang  = [0,45]   ; [lat,long] center in deg (left,up)
   cutSubS  = 1        ; cut satellite substructures out from halo
 
@@ -510,10 +510,10 @@ pro plot2Halo3ValComp
                "Radial Mass Flux [_{ }M_{sun} kpc^{-2} Myr^{-1 }]"]
 
   ; quantity bounds
-  ranges = list([4.3,6.7],[-0.5,1.5],[-1.5,1.5])
+  ranges = list([4.3,6.5],[-1.0,1.5],[-2.0,2.0])
 
   ratioToMean = [0,1,0] ; plot value/mean(value) ratio
-  plotLog     = [0,1,0] ; plot log(value)
+  plotLog     = [0,1,1] ; plot log(value)
   symMinMax   = [0,0,1] ; symmetric range about zero
   mmRound     = [0.1,0.1,0.1] ; round range to a more equal number (slightly clip)
   
@@ -526,7 +526,7 @@ pro plot2Halo3ValComp
     str(redshift)+'_h'+str(haloID)+'_r'+str(radInd)+csTag+'.eps', xs=6*1.5, ys=9.5
 
     for i=0,2 do begin
-      ; GADGET
+      ; RUN 1
       ; interpolate onto the shell
       hsv = haloShellValue(sP=sPg,partType=partTypes[i],valName=valNames[i],$
                            subgroupID=gcID.G,cutSubS=cutSubS)
@@ -534,8 +534,17 @@ pro plot2Halo3ValComp
       ; convert values into ratios to the mean
       if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
       else healpix_data = reform(hsv.value[*,radInd])
-      if plotLog[i] then healpix_data = alog10(healpix_data)
-
+      
+      if plotLog[i] then begin
+        if valNames[i] ne 'radmassflux' then begin
+          healpix_data = alog10(healpix_data)
+        endif else begin
+          w = where(healpix_data lt 0.0,count,comp=wc)
+          healpix_data[wc] = alog10(healpix_data[wc])
+          if count gt 0 then healpix_data[w] = -alog10(-healpix_data[w])
+        endelse
+      endif
+      
       minMaxVal = ranges[i]
 
       w = where(healpix_data gt minMaxVal[1]*0.99,count)
@@ -552,7 +561,7 @@ pro plot2Halo3ValComp
         plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle=bartitles[i],pos=pos[i],$
           /noerase,ctName=ctNames[i],minmax=ranges[i]
           
-      ; AREPO
+      ; RUN 2
       ; interpolate onto the shell
       hsv = haloShellValue(sP=sPa,partType=partTypes[i],valName=valNames[i],$
                            subgroupID=gcID.A,cutSubS=cutSubS)

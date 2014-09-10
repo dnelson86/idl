@@ -113,30 +113,35 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
                    haloRates      : galaxyRates           ,$ ; in/out of halo
                    modeRatiosNet  : modeRatiosNet         ,$ ; ratios to all
                    coldFractionsNet : coldFractionsNet    ,$ ; ratios of cold/(hot+cold)
-                   coldFractionsAcc : coldFractionsAcc    ,$
+                   coldFractionsAcc : coldFractionsAcc    ,$ ; same, using acc instead of net
+                   modeRatiosABCD       : modeRatiosABCD       ,$ ; abcd method, ratios to all
+                   coldFractionsNetABCD : coldFractionsNetABCD ,$ ; abcd method, cold frac using net
+                   coldFractionsAccABCD : coldFractionsAccABCD ,$ ; abcd method, cold frac using acc
                    galaxyPerc     : galaxyPerc            ,$ ; old
                    haloPerc       : galaxyPerc             } ; old
                    
-        ; eta_w comparison (mode='all' only)
-        if k eq 0 then begin
-          mbv_loc = mod_struct( mbv_loc, 'eta_w_binned',   fltarr(numMassBins,3) )
-          mbv_loc = mod_struct( mbv_loc, 'eta_w_xvals',    fltarr(count_gcW) + !values.f_nan )
-          mbv_loc = mod_struct( mbv_loc, 'eta_w_unbinned', fltarr(count_gcW) + !values.f_nan )
-          
-          if redshift le 1.0 then begin
-            mbv_loc = mod_struct( mbv_loc, 'eta_sfr2_net', fltarr(count_gcW) + !values.f_nan )
-            mbv_loc = mod_struct( mbv_loc, 'eta_fit',      fltarr(2) )
-          endif
-          
-          ; ABCD approach
-          mbv_loc = mod_struct( mbv_loc, 'eta_abcd_binned',    fltarr(numMassBins,3) )
-          mbv_loc = mod_struct( mbv_loc, 'eta_abcd2_binned',   fltarr(numMassBins,3) )
-          mbv_loc = mod_struct( mbv_loc, 'eta_abcd_unbinned',  fltarr(count_gcW) + !values.f_nan )
-          mbv_loc = mod_struct( mbv_loc, 'eta_abcd2_unbinned', fltarr(count_gcW) + !values.f_nan )
-          
-          mbv_loc = mod_struct( mbv_loc, 'eta_sfr2_net_abcd', fltarr(count_gcW) + !values.f_nan )
-          mbv_loc = mod_struct( mbv_loc, 'eta_sfr2_net_abcd2', fltarr(count_gcW) + !values.f_nan )
-        endif
+        ; eta_w comparison
+        mbv_loc = mod_struct( mbv_loc, 'eta_w_binned',   fltarr(numMassBins,3) )
+        mbv_loc = mod_struct( mbv_loc, 'eta_w_xvals',    fltarr(count_gcW) + !values.f_nan )
+        mbv_loc = mod_struct( mbv_loc, 'eta_w_unbinned', fltarr(count_gcW) + !values.f_nan )
+        
+        mbv_loc = mod_struct( mbv_loc, 'eta_sfr2_net', fltarr(count_gcW) + !values.f_nan )
+        mbv_loc = mod_struct( mbv_loc, 'eta_fit',      fltarr(2) )
+        
+        ; ABCD approach (uncorrected)
+        mbv_loc = mod_struct( mbv_loc, 'eta_abcd_binned',    fltarr(numMassBins,3) )
+        mbv_loc = mod_struct( mbv_loc, 'eta_abcd2_binned',   fltarr(numMassBins,3) )
+        mbv_loc = mod_struct( mbv_loc, 'eta_abcd_unbinned',  fltarr(count_gcW) + !values.f_nan )
+        mbv_loc = mod_struct( mbv_loc, 'eta_abcd2_unbinned', fltarr(count_gcW) + !values.f_nan )
+        
+        mbv_loc = mod_struct( mbv_loc, 'eta_sfr2_net_abcd', fltarr(count_gcW) + !values.f_nan )
+        mbv_loc = mod_struct( mbv_loc, 'eta_sfr2_net_abcd2', fltarr(count_gcW) + !values.f_nan )
+        
+        ; ABCD approach (corrected)
+        mbv_loc = mod_struct( mbv_loc, 'eta_abcd_binned_cor',    fltarr(numMassBins,3) )
+        mbv_loc = mod_struct( mbv_loc, 'eta_abcd2_binned_cor',   fltarr(numMassBins,3) )
+        mbv_loc = mod_struct( mbv_loc, 'eta_abcd_unbinned_cor',  fltarr(count_gcW) + !values.f_nan )
+        mbv_loc = mod_struct( mbv_loc, 'eta_abcd2_unbinned_cor', fltarr(count_gcW) + !values.f_nan )
         
         print,run,' ',redshift,' ',accMode
         sP_mode  = mod_struct(sP_mode, 'mode'+str(k)+'_'+accMode, sP_loc)
@@ -290,6 +295,23 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
           galaxy_haloout_cold += mbv_modeAll.(k).halo.outRate.bhs.cold.tVirAcc[0,*]
         endif
         
+        ; ABCD definitions
+        loc_abcd_gal_out_hot = galaxy_galout_hot + halo_galout_hot ; A+B+C = 3+2
+        loc_abcd_gal_acc_hot = galaxy_galacc_hot + halo_galacc_hot ; A+C+D = 1+4
+        loc_abcd_gal_net_hot = loc_abcd_gal_acc_hot - loc_abcd_gal_out_hot ; B-D = 1+4-2-3
+                               
+        loc_abcd_gal_out_cold = galaxy_galout_cold + halo_galout_cold
+        loc_abcd_gal_acc_cold = galaxy_galacc_cold + halo_galacc_cold
+        loc_abcd_gal_net_cold = loc_abcd_gal_acc_cold - loc_abcd_gal_out_cold
+
+        loc_abcd_halo_out_hot = halo_haloout_hot + galaxy_haloout_hot ; E+I=5+7
+        loc_abcd_halo_acc_hot = halo_haloacc_hot + galaxy_haloacc_hot ; E+F+I+J=6+8
+        loc_abcd_halo_net_hot = loc_abcd_halo_acc_hot - loc_abcd_halo_out_hot ; F+J=(6-5)+(8-7)
+        
+        loc_abcd_halo_out_cold = halo_haloout_cold + galaxy_haloout_cold
+        loc_abcd_halo_acc_cold = halo_haloacc_cold + galaxy_haloacc_cold
+        loc_abcd_halo_net_cold = loc_abcd_halo_acc_cold - loc_abcd_halo_out_cold
+        
         ; updated mode ratios (for net rates)
         ; galaxy net = galaxy_galacc_hot+galaxy_galacc_cold
         ; halo net = halo_haloacc_hot+halo_haloacc_cold + galaxy_haloacc_hot+galaxy_haloacc_cold
@@ -312,7 +334,11 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
                           halo_haloacc_hot  : halo_haloacc_hot  ,$
                           halo_haloacc_cold : halo_haloacc_cold ,$
                           halo_haloout_hot  : halo_haloout_hot  ,$
-                          halo_haloout_cold : halo_haloout_cold  }
+                          halo_haloout_cold : halo_haloout_cold ,$
+                          loc_abcd_gal_net_hot   : loc_abcd_gal_net_hot  ,$
+                          loc_abcd_gal_net_cold  : loc_abcd_gal_net_cold ,$
+                          loc_abcd_halo_net_hot  : loc_abcd_halo_net_hot ,$
+                          loc_abcd_halo_net_cold : loc_abcd_halo_net_cold }
         endif else begin
           netratio_gal_hot   = galaxy_galacc_hot / mode0_saved.galaxy_galacc_hot
           netratio_gal_cold  = galaxy_galacc_cold / mode0_saved.galaxy_galacc_cold
@@ -328,68 +354,81 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
                                 (mode0_saved.halo_haloacc_hot + mode0_saved.galaxy_haloacc_hot + $
                                  mode0_saved.halo_haloacc_cold + mode0_saved.galaxy_haloacc_cold)
 
-          ; ABCD method (TODO)
-          abcd_ratio_gal_hot = 0
+          ; ABCD method
+          abcd_ratio_gal_hot   = loc_abcd_gal_net_hot  / mode0_saved.loc_abcd_gal_net_hot
+          abcd_ratio_gal_cold  = loc_abcd_gal_net_cold / mode0_saved.loc_abcd_gal_net_cold
+          abcd_ratio_gal_total = (loc_abcd_gal_net_hot + loc_abcd_gal_net_cold) / $
+                                 (mode0_saved.loc_abcd_gal_net_hot + mode0_saved.loc_abcd_gal_net_cold)
+                                 
+          abcd_ratio_halo_hot   = loc_abcd_halo_net_hot  / mode0_saved.loc_abcd_halo_net_hot
+          abcd_ratio_halo_cold  = loc_abcd_halo_net_cold / mode0_saved.loc_abcd_halo_net_cold
+          abcd_ratio_halo_total = (loc_abcd_halo_net_hot + loc_abcd_halo_net_cold) / $
+                                  (mode0_saved.loc_abcd_halo_net_hot + mode0_saved.loc_abcd_halo_net_cold)
         endelse
                 
-        ; wind_eta comparison (for mode='all' only)
+        ; wind_eta comparison
         ; --------
-        if k eq 0 then begin
+        ; OLD: definitions
+        eta_out = galaxy_galout_hot + galaxy_galout_cold + halo_galout_hot + halo_galout_cold ;#2+#3
+        eta_net = galaxy_galacc_hot + galaxy_galacc_cold ;#1
         
-          ; OLD: definitions
-          eta_out = galaxy_galout_hot + galaxy_galout_cold + halo_galout_hot + halo_galout_cold ;#2+#3
-          eta_net = galaxy_galacc_hot + galaxy_galacc_cold ;#1
+        ; calculate correction factor
+        if run eq 'tracer' and redshift gt 1.0 then begin
+          ; for tracer z>1, group catalog has missing SFRs, just use z=1 values
+          fit  = [0.19466,-0.043346]
+          fit3 = [128.454,-34.7384,3.12015,-0.09328]
+        endif else begin
+          ; normal
+          sfr1 = gc.subgroupSfr[0:maxHist-1]
+          sfr2 = gc.subgroupSfrInRad[0:maxHist-1]
           
-          ; calculate correction factor
-          if run eq 'tracer' and redshift gt 1.0 then begin
-            ; for tracer z>1, group catalog has missing SFRs, just use z=1 values
-            fit = [0.19466,-0.043346]
-          endif else begin
-            ; normal
-            sfr1 = gc.subgroupSfr[0:maxHist-1]
-            sfr2 = gc.subgroupSfrInRad[0:maxHist-1]
-            
-            yy = alog10(sfr2/eta_net)
-            w=where(gcMasses ge 10.0 and gcMasses le 13.0 and yy ge -4.0 and yy lt 2.0)
-            fit = linfit(gcMasses[w],yy[w])
-          endelse
+          yy = alog10(sfr2/eta_net)
+          w=where(gcMasses ge 10.0 and gcMasses le 13.0 and yy ge -4.0 and yy lt 2.0)
+          fit = linfit(gcMasses[w],yy[w])
           
-          ; un-binned
-          eta_w_unbinned = eta_out / eta_net
-          
-          ; apply correction (using linear fit)
-          sfr_acc_correction_factor = 10.0^(gcMasses * fit[1] + fit[0])
-          eta_w_unbinned /= sfr_acc_correction_factor
-          
-          ; save unbinned values (only those in halo mass >8.9 visible in plots)
-          xvals = codeMassToLogMsun( logMsunToCodeMass( gcMasses ) / units.hubbleParam )
-                      
-          mbv_mode.(k).eta_w_xvals    = xvals[gcW]
-          mbv_mode.(k).eta_w_unbinned = eta_w_unbinned[gcW]
-          
-          if redshift le 1.0 then begin
-            mbv_mode.(k).eta_sfr2_net = yy[gcW]
-            mbv_mode.(k).eta_fit      = fit
-          endif
-          
-          ; NEW: ABCD approach
-          eta_out = galaxy_galout_hot + galaxy_galout_cold + halo_galout_hot + halo_galout_cold ;#2+#3
-          eta_acc = galaxy_galacc_hot + galaxy_galacc_cold + halo_galacc_hot + halo_galacc_cold ;#1+#4
-          eta_net = galaxy_galacc_hot + galaxy_galacc_cold + halo_galacc_hot + halo_galacc_cold $
-                  - (halo_galout_hot + halo_galout_cold + galaxy_galout_hot + galaxy_galout_cold) 
-                  ;#1+#4-#2-#3
-          
-          eta_abcd_unbinned = eta_out / eta_net
-          eta_abcd2_unbinned = eta_out / eta_acc
-          
-          mbv_mode.(k).eta_abcd_unbinned  = eta_abcd_unbinned[gcW]
-          mbv_mode.(k).eta_abcd2_unbinned = eta_abcd2_unbinned[gcW]
-          
-          if redshift le 1.0 then begin
-            mbv_mode.(k).eta_sfr2_net_abcd = (alog10(sfr2/eta_net))[gcW]
-            mbv_mode.(k).eta_sfr2_net_abcd2 = (alog10(sfr2/eta_acc))[gcW]
-          endif
-        endif ;wind_eta
+          ; abcd cubic fit
+          fit3 = poly_fit(gcMasses[w],yy[w],3,measure_errors=1.0/2.0^gcMasses[w])
+        endelse
+        
+        ; un-binned
+        eta_w_unbinned = eta_out / eta_net
+        
+        ; apply correction (using linear fit)
+        sfr_acc_correction_factor = 10.0^(gcMasses * fit[1] + fit[0])
+        eta_w_unbinned /= sfr_acc_correction_factor
+        
+        ; save unbinned values (only those in halo mass >8.9 visible in plots)
+        xvals = codeMassToLogMsun( logMsunToCodeMass( gcMasses ) / units.hubbleParam )
+                    
+        mbv_mode.(k).eta_w_xvals    = xvals[gcW]
+        mbv_mode.(k).eta_w_unbinned = eta_w_unbinned[gcW]
+        
+        mbv_mode.(k).eta_sfr2_net = yy[gcW]
+        mbv_mode.(k).eta_fit      = fit
+        
+        ; ABCD approach (uncorrected)
+        eta_out = loc_abcd_gal_out_hot + loc_abcd_gal_out_cold
+        eta_acc = loc_abcd_gal_acc_hot + loc_abcd_gal_acc_cold
+        eta_net = loc_abcd_gal_net_hot + loc_abcd_gal_net_cold
+        
+        eta_abcd_unbinned = eta_out / eta_net
+        eta_abcd2_unbinned = eta_out / eta_acc
+        
+        mbv_mode.(k).eta_abcd_unbinned  = eta_abcd_unbinned[gcW]
+        mbv_mode.(k).eta_abcd2_unbinned = eta_abcd2_unbinned[gcW]
+        
+        ; ABCD approach (corrected)
+        sfr_acc_correction_factor = $
+          10.0^(fit3[0] + fit3[1]*gcMasses + fit3[2]*gcMasses^2 + fit3[3]*gcMasses^3)
+
+        eta_abcd_unbinned  /= sfr_acc_correction_factor
+        eta_abcd2_unbinned /= sfr_acc_correction_factor
+        
+        mbv_mode.(k).eta_abcd_unbinned_cor  = eta_abcd_unbinned[gcW]
+        mbv_mode.(k).eta_abcd2_unbinned_cor = eta_abcd2_unbinned[gcW]
+        
+        mbv_mode.(k).eta_sfr2_net_abcd = (alog10(sfr2/eta_net))[gcW]
+        mbv_mode.(k).eta_sfr2_net_abcd2 = (alog10(sfr2/eta_acc))[gcW]
             
         ; rebin in halo mass
         for m=0,n_elements(mbv_loc.logMassBinCen)-1 do begin
@@ -516,34 +555,45 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
                          (halo_haloacc_cold[w] + galaxy_haloacc_cold[w] + $
                           halo_haloacc_hot[w]  + galaxy_haloacc_hot[w]) )  
           
-          ; (4) ABCD rates
-          mbv_mode.(k).galaxyRates.abcd_gal_out.hot[m,*] = $ ; A+B+C = 3+2
-            percentiles( galaxy_galout_hot[w] + halo_galout_hot[w] )
-          mbv_mode.(k).galaxyRates.abcd_gal_acc.hot[m,*] = $ ; A+C+D = 1+4
-            percentiles( galaxy_galacc_hot[w] + halo_galacc_hot[w] )
-          mbv_mode.(k).galaxyRates.abcd_gal_net.hot[m,*] = $ ; B-D = 1+4-2-3
-            percentiles( galaxy_galacc_hot[w] + halo_galacc_hot[w] - $
-                         galaxy_galout_hot[w] - halo_galout_hot[w])
-
-          mbv_mode.(k).galaxyRates.abcd_gal_out.cold[m,*] = $ 
-            percentiles( galaxy_galout_cold[w] + halo_galout_cold[w] )
-          mbv_mode.(k).galaxyRates.abcd_gal_acc.cold[m,*] = $
-            percentiles( galaxy_galacc_cold[w] + halo_galacc_cold[w] )
-          mbv_mode.(k).galaxyRates.abcd_gal_net.cold[m,*] = $
-            percentiles( galaxy_galacc_cold[w] + halo_galacc_cold[w] - $
-                         galaxy_galout_cold[w] - halo_galout_cold[w])
+          ; (4a) ABCD cold fractions
+          mbv_mode.(k).coldFractionsNetABCD.galaxy[m,*] = $ ; of net inflow
+            percentiles( loc_abcd_gal_net_cold[w] / (loc_abcd_gal_net_cold[w]+loc_abcd_gal_net_hot[w]) )
             
-          mbv_mode.(k).galaxyRates.abcd_gal_out.total[m,*] = $ 
-            percentiles( galaxy_galout_hot[w]  + halo_galout_hot[w] + $
-                         galaxy_galout_cold[w] + halo_galout_cold[w] )
+          mbv_mode.(k).coldFractionsNetABCD.halo[m,*] = $
+            percentiles( loc_abcd_halo_net_cold[w] / (loc_abcd_halo_net_cold[w]+loc_abcd_halo_net_hot[w]) )
+                          
+          mbv_mode.(k).coldFractionsAccABCD.galaxy[m,*] = $ ; of raw inflow
+            percentiles( loc_abcd_gal_acc_cold[w] / (loc_abcd_gal_acc_cold[w]+loc_abcd_gal_acc_hot[w]) )
+            
+          mbv_mode.(k).coldFractionsAccABCD.halo[m,*] = $
+            percentiles( loc_abcd_halo_acc_cold[w] / (loc_abcd_halo_acc_cold[w]+loc_abcd_halo_acc_hot[w]) )
+          
+          ; (4b) ABCD mode ratios
+          if k gt 0 then begin
+            mbv_mode.(k).modeRatiosABCD.galaxy.hot[m,*]   = percentiles( abcd_ratio_gal_hot[w] )
+            mbv_mode.(k).modeRatiosABCD.galaxy.cold[m,*]  = percentiles( abcd_ratio_gal_cold[w] )
+            mbv_mode.(k).modeRatiosABCD.galaxy.total[m,*] = percentiles( abcd_ratio_gal_total[w] )
+            
+            mbv_mode.(k).modeRatiosABCD.halo.hot[m,*]   = percentiles( abcd_ratio_halo_hot[w] )
+            mbv_mode.(k).modeRatiosABCD.halo.cold[m,*]  = percentiles( abcd_ratio_halo_cold[w] )
+            mbv_mode.(k).modeRatiosABCD.halo.total[m,*] = percentiles( abcd_ratio_halo_total[w] )
+          endif
+          
+          ; (4c) ABCD rates
+          mbv_mode.(k).galaxyRates.abcd_gal_out.hot[m,*] = percentiles( loc_abcd_gal_out_hot[w] )
+          mbv_mode.(k).galaxyRates.abcd_gal_acc.hot[m,*] = percentiles( loc_abcd_gal_acc_hot[w] )
+          mbv_mode.(k).galaxyRates.abcd_gal_net.hot[m,*] = percentiles( loc_abcd_gal_net_hot[w] )
+
+          mbv_mode.(k).galaxyRates.abcd_gal_out.cold[m,*] = percentiles( loc_abcd_gal_out_cold[w] )
+          mbv_mode.(k).galaxyRates.abcd_gal_acc.cold[m,*] = percentiles( loc_abcd_gal_acc_cold[w] )
+          mbv_mode.(k).galaxyRates.abcd_gal_net.cold[m,*] = percentiles( loc_abcd_gal_net_cold[w] )
+            
+          mbv_mode.(k).galaxyRates.abcd_gal_out.total[m,*] = $
+            percentiles( loc_abcd_gal_out_hot[w] + loc_abcd_gal_out_cold[w] )
           mbv_mode.(k).galaxyRates.abcd_gal_acc.total[m,*] = $
-            percentiles( galaxy_galacc_hot[w]  + halo_galacc_hot[w] + $
-                         galaxy_galacc_cold[w] + halo_galacc_cold[w] )
+            percentiles( loc_abcd_gal_acc_hot[w] + loc_abcd_gal_acc_cold[w] )
           mbv_mode.(k).galaxyRates.abcd_gal_net.total[m,*] = $
-            percentiles( (galaxy_galacc_hot[w]  + halo_galacc_hot[w] + $
-                          galaxy_galacc_cold[w] + halo_galacc_cold[w]) - $
-                         (galaxy_galout_hot[w]  + halo_galout_hot[w] + $
-                          galaxy_galout_cold[w] + halo_galout_cold[w]) )
+            percentiles( loc_abcd_gal_net_hot[w] + loc_abcd_gal_net_cold[w] )
           
           ; (5) OLD: rates (acc/out/net) with percentiles
           mbv_mode.(k).galaxyPerc.acc.hot[m,*] = $
@@ -572,29 +622,36 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
           mbv_mode.(k).haloPerc.net.cold[m,*] = $
             percentiles( mbv_modeAll.(k).halo.netRate.total.cold.tVirAcc[tVirInd,w] ) 
             
-          ; wind_eta comparison (mode='all' only)
-          if k eq 0 then begin
-            ; definitions
-            eta_out = galaxy_galout_hot + galaxy_galout_cold + halo_galout_hot + halo_galout_cold ;#2+#3
-            eta_net = galaxy_galacc_hot + galaxy_galacc_cold ;#1
-            
-            mbv_mode.(k).eta_w_binned[m,*] = percentiles( eta_out[w] / eta_net[w] )
+          ; wind_eta comparison: definitions
+          eta_out = galaxy_galout_hot + galaxy_galout_cold + halo_galout_hot + halo_galout_cold ;#2+#3
+          eta_net = galaxy_galacc_hot + galaxy_galacc_cold ;#1
+          
+          mbv_mode.(k).eta_w_binned[m,*] = percentiles( eta_out[w] / eta_net[w] )
 
-            ; apply correction (using linear fit)
-            sfr_acc_correction_factor = 10.0^(mbv_loc.logMassBinCen[m] * fit[1] + fit[0])
-            mbv_mode.(k).eta_w_binned[m,*] /= sfr_acc_correction_factor
-            
-            ; ABCD approach
-            eta_out = galaxy_galout_hot + galaxy_galout_cold + halo_galout_hot + halo_galout_cold ;#2+#3
-            eta_acc = galaxy_galacc_hot + galaxy_galacc_cold + halo_galacc_hot + halo_galacc_cold ;#1+#4
-            eta_net = galaxy_galacc_hot + galaxy_galacc_cold + halo_galacc_hot + halo_galacc_cold $
-                    - (halo_galout_hot + halo_galout_cold + galaxy_galout_hot + galaxy_galout_cold) 
-                    ;#1+#4-#2-#3
-                   
-            mbv_mode.(k).eta_abcd_binned[m,*]  = percentiles( eta_out[w] / eta_net[w] )
-            mbv_mode.(k).eta_abcd2_binned[m,*] = percentiles( eta_out[w] / eta_acc[w] )
-            
-          endif
+          ; apply correction (using linear fit)
+          sfr_acc_correction_factor = 10.0^(mbv_loc.logMassBinCen[m] * fit[1] + fit[0])
+          mbv_mode.(k).eta_w_binned[m,*] /= sfr_acc_correction_factor
+          
+          ; ABCD approach (uncorrected)
+          eta_out = loc_abcd_gal_out_hot + loc_abcd_gal_out_cold
+          eta_acc = loc_abcd_gal_acc_hot + loc_abcd_gal_acc_cold
+          eta_net = loc_abcd_gal_net_hot + loc_abcd_gal_net_cold
+                 
+          mbv_mode.(k).eta_abcd_binned[m,*]  = percentiles( eta_out[w] / eta_net[w] )
+          mbv_mode.(k).eta_abcd2_binned[m,*] = percentiles( eta_out[w] / eta_acc[w] )
+          
+          ; ABCD approach (corrected)
+          sfr_acc_correction_factor = $
+            10.0^(fit3[0] + fit3[1]*mbv_loc.logMassBinCen[m] + $
+                  fit3[2]*mbv_loc.logMassBinCen[m]^2 + fit3[3]*mbv_loc.logMassBinCen[m]^3)
+          
+          loc_eta = eta_out[w] / eta_net[w] / sfr_acc_correction_factor
+          w_eta = where(loc_eta gt 0.0)
+          mbv_mode.(k).eta_abcd_binned_cor[m,*]  = percentiles( loc_eta[w_eta] )
+          
+          loc_eta = eta_out[w] / eta_acc[w] / sfr_acc_correction_factor
+          w_eta = where(loc_eta gt 0.0)
+          mbv_mode.(k).eta_abcd2_binned_cor[m,*] = percentiles( loc_eta[w_eta] )
           
         endfor ; m (mass bins)
         
@@ -625,7 +682,7 @@ pro plotsVsRedshift
   runs       = ['feedback','tracer']
   redshifts  = [5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 0.75, 0.5, 0.25, 0.0]
   res        = 512
-  timeWindow = 500.0    ; consider accretion over this past time range (Myr)
+  timeWindow = 250.0    ; consider accretion over this past time range (Myr)
                         ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0        ; use Tmax/Tviracc=1 to separate hot vs. cold
   accModes   = ['all','smooth','clumpy','stripped','recycled']
@@ -671,7 +728,7 @@ pro plotsVsRedshift
                  
   if ~file_test(tempFilename) then $
     plotsVsRedshiftBin, tempFilename, runs, redshifts, res, timeWindow, tVirInd, accModes, accRateModel
-    
+
   restore,tempFilename,/verbose
 
   wind_model = wind_model(simPath=sP.(0).(0).(0).simPath, $
@@ -784,7 +841,6 @@ pro plotsVsRedshift
     legend,tvirStrs+" ("+simNames2+")",textcolor=simColors2,/bottom,/right,spacing=1.5
   
   end_PS
-  endif ;plotUnused
   
   ; plot (1b) - fractional rates, gal hot/cold (all modes at once, updated)
   start_PS, sP.(0).(0).(0).plotPath + 'rateFracsVsRedshift.galaxy.' + plotStrMB + '-allModes.eps'
@@ -872,6 +928,7 @@ pro plotsVsRedshift
     legend,tvirStrs+" ("+simNames2+")",textcolor=simColors2,/bottom,/right,spacing=1.5
   
   end_PS
+  endif ;plotUnused
     
   ; plot (2) - fractional rates, gal hot/cold (2x2 panels, one per mode)
   if plotUnused then begin
@@ -955,6 +1012,7 @@ pro plotsVsRedshift
   endif ;plotUnused
   
   ; plot (2b) - fractional rates, gal hot/cold (2x2 panels, one per mode, updated)
+  if plotUnused then begin
   start_PS, sP.(0).(0).(0).plotPath + 'rateFracsVsRedshiftPanels.galaxy.' + plotStrMB + '-allModes.eps', /extrabig
   
     pos = plot_pos(rows=2,cols=2,/gap)
@@ -1045,7 +1103,101 @@ pro plotsVsRedshift
     
     endfor ; accModes
   
-  end_PS  
+  end_PS
+  endif ;plotUnused
+  
+  ; plot (2c) - fractional rates, gal hot/cold (2x2 panels, one per mode, abcd method)
+  start_PS, sP.(0).(0).(0).plotPath + 'rateFracsVsRedshiftPanels_abcd.galaxy.' + plotStrMB + '-allModes.eps', /extrabig
+  
+    pos = plot_pos(rows=2,cols=2,/gap)
+    
+    ; loop over each accMode
+    for j=1,n_tags(sP.(0).(0))-1 do begin
+    
+      cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange_frac,xs=5,ys=5,/ylog,/noerase,$
+        pos=pos[j-1]-[0,0.02,0,0.04]
+        
+      cgPolygon,[xrange_z[0],xrange_z[1],xrange_z[1],xrange_z[0],xrange_z[0]],$
+        [py_min,py_min,py_max,py_max,py_min],color=cgColor(py_cl),/fill
+      cgPolygon,[xrange_z[0],xrange_z[1],xrange_z[1],xrange_z[0],xrange_z[0]],$
+        [py_min2,py_min2,py_max2,py_max2,py_min2],color=cgColor(py_cl2),/fill
+        
+      barStr = str(round(py_max2*100))+'% - '+str(round(py_max*100))+'%'
+      if j eq 3 then $
+        cgText, xrange_z[1]-1.0, py_min+0.39, barStr, alignment=0.5, color=cgColor('gray')
+        
+      barStr = str(round(py_min*100))+'% - '+str(round(py_max2*100))+'% '
+      if j eq 3 then $
+        cgText, xrange_z[1]-1.0, py_min+0.06, barStr, alignment=0.5, color=cgColor('gray')
+        
+      cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange_frac,xs=9,/ys,/ylog,yminor=0,$
+        ytitle=textoidl("(dM/dt)^{"+dMdt_top+"}_{"+accModes[j]+"} / (dM/dt)^{"+dMdt_top+"}_{total}"),$
+        xtitle="Redshift",/noerase,$
+        pos=pos[j-1]-[0,0.02,0,0.04]
+      universeage_axis, xrange_z, yrange_frac, /ylog, spaceFac=1.5
+    
+      ; loop over runs
+      for i=0,n_tags(sP)-1 do begin
+        ; accMode does not exist for this run? then skip
+        if j ge n_tags(sP.(i).(0)) then continue
+        
+        ; loop over mass bins (just one now)
+        massStrs = []
+        foreach massInd,massInds,k do begin
+        
+          massStrs = [massStrs, mbv.(i).(0).(0).logMassBinCen[massInd]]
+          
+          xvals            = fltarr(n_elements(redshifts))
+          yvals_gal_hot    = fltarr(n_elements(redshifts),3)
+          yvals_gal_cold   = fltarr(n_elements(redshifts),3)
+          yvals_gal_total  = fltarr(n_elements(redshifts),3)
+          yvals_halo_hot   = fltarr(n_elements(redshifts),3)
+          yvals_halo_cold  = fltarr(n_elements(redshifts),3)
+          yvals_halo_total = fltarr(n_elements(redshifts),3)
+          
+          ; loop over redshifts
+          for m=0,n_tags(sP.(i))-1 do begin
+            xvals[m] = sP.(i).(m).(j).redshift
+            
+            yvals_gal_hot[m,*]    = mbv.(i).(m).(j).modeRatiosABCD.galaxy.hot[massInd,*]
+            yvals_gal_cold[m,*]   = mbv.(i).(m).(j).modeRatiosABCD.galaxy.cold[massInd,*]
+            yvals_gal_total[m,*]  = mbv.(i).(m).(j).modeRatiosABCD.galaxy.total[massInd,*]
+           
+            yvals_halo_hot[m,*]   = mbv.(i).(m).(j).modeRatiosABCD.halo.hot[massInd,*]
+            yvals_halo_cold[m,*]  = mbv.(i).(m).(j).modeRatiosABCD.halo.cold[massInd,*]
+            yvals_halo_total[m,*] = mbv.(i).(m).(j).modeRatiosABCD.halo.total[massInd,*]
+          endfor ;m
+        
+          ; smooth and set zeros to a plottable value
+          for m=0,2 do begin
+            yvals_gal_hot[*,m]   = smooth(yvals_gal_hot[*,m],sK)
+            yvals_gal_cold[*,m]  = smooth(yvals_gal_cold[*,m],sK)
+            yvals_gal_total[*,m] = smooth(yvals_gal_total[*,m],sK)
+            
+            yvals_halo_hot[*,m]   = smooth(yvals_halo_hot[*,m],sK)
+            yvals_halo_cold[*,m]  = smooth(yvals_halo_cold[*,m],sK)
+            yvals_halo_total[*,m] = smooth(yvals_halo_total[*,m],sK)
+          endfor
+      
+          ; plot this combination of: run,massbin (vs redshift)
+          cgPlot,xvals,yvals_gal_hot[*,1],color=simColors[i],psym=psyms[i],symsize=symsize,line=linesHC[0],/overplot
+          cgPlot,xvals,yvals_gal_cold[*,1],color=simColors[i],psym=psyms[i],symsize=symsize,line=linesHC[1],/overplot
+          
+          ;cgPlot,xvals,yvals_gal_total[*,1],$
+          ;  color=simColors[i],psym=psyms[i],symsize=symsize,line=linesHC[2],/overplot
+          
+        endforeach ; massBins
+      endfor ; runs
+    
+      if j eq 4 then $
+      legend,textoidl(["T_{max} > T_{vir,acc}","T_{max} < T_{vir,acc}"]),$
+        linestyle=linesHC[0:1],color=cgColor('black'),textcolor=cgColor('black'),/bottom,/right
+      if j eq 2 then $
+      legend,simNames,textcolor=simColors,/bottom,/left
+    
+    endfor ; accModes
+  
+  end_PS
   
   ; plot (3) - coldfrac_net vs redshift, galaxy only, all accModes on plot
   if plotUnused then begin
@@ -1108,6 +1260,7 @@ pro plotsVsRedshift
   endif ;plotUnused
   
   ; plot (3b) - coldfrac_net vs redshift, galaxy only, all accModes on plot (updated)
+  if plotUnused then begin
   start_PS, sP.(0).(0).(0).plotPath + 'coldFracNetVsRedshift.galaxy.' + plotStrMB + '-allModes.eps', /small
   
     yrange2 = yrange_frac * [1.0,0.7]
@@ -1167,8 +1320,70 @@ pro plotsVsRedshift
     legend,simNames,textcolor=simColors,/top,/left
   
   end_PS
+  endif ;plotUnused
   
-  ; plot (3c) - coldfrac_acc vs redshift, galaxy only, all accModes on plot (updated)
+  ; plot (3c) - coldfrac_net vs redshift, galaxy only, all accModes on plot (abcd method)
+  start_PS, sP.(0).(0).(0).plotPath + 'coldFracNetVsRedshift_abcd.galaxy.' + plotStrMB + '-allModes.eps', /small
+  
+    yrange2 = yrange_frac * [1.0,0.7]
+
+    cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange2,xs=5,ys=5,/ylog,/noerase,pos=pos_single
+      
+    cgPolygon,[xrange_z[0],xrange_z[1],xrange_z[1],xrange_z[0],xrange_z[0]],$
+      [py_min,py_min,py_max,py_max,py_min],color=cgColor(py_cl),/fill
+    cgPolygon,[xrange_z[0],xrange_z[1],xrange_z[1],xrange_z[0],xrange_z[0]],$
+      [py_min2,py_min2,py_max2,py_max2,py_min2],color=cgColor(py_cl2),/fill
+        
+    cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange2,xs=9,/ys,/ylog,yminor=0,$
+      ytitle=textoidl("(dM/dt)^{"+dMdt_top+"}_{T_{max}<T_{vir,acc}} / (dM/dt)^{"+dMdt_top+$
+             "}_{total,mode }"),$
+      xtitle="Redshift",/noerase,pos=pos_single
+    universeage_axis, xrange_z, yrange2, /ylog
+        
+    ; loop over runs
+    for i=0,n_tags(sP)-1 do begin
+      ; loop over mass bins (just one now)
+      massStrs = []
+      foreach massInd,massInds,k do begin
+        
+        massStrs = [massStrs, mbv.(i).(0).(0).logMassBinCen[massInd]]
+          
+        ; loop over each accMode (skip all)
+        for j=1,n_tags(sP.(i).(0))-1 do begin
+        
+          xvals      = fltarr(n_elements(redshifts))
+          yvals_gal  = fltarr(n_elements(redshifts),3)
+          yvals_halo = fltarr(n_elements(redshifts),3)
+        
+          ; loop over redshifts
+          for m=0,n_tags(sP.(i))-1 do begin
+            xvals[m] = sP.(i).(m).(j).redshift
+            
+            yvals_gal[m,*]  = mbv.(i).(m).(j).coldFractionsNetABCD.galaxy[massInd,*]
+            yvals_halo[m,*] = mbv.(i).(m).(j).coldFractionsNetABCD.halo[massInd,*]
+          endfor ;m
+        
+          ; smooth and set zeros to a plottable value
+          for m=0,2 do begin
+            yvals_gal[*,m]  = smooth(yvals_gal[*,m],sK,/nan)
+            yvals_halo[*,m] = smooth(yvals_halo[*,m],sK,/nan)
+          endfor
+      
+          ; plot this combination of: run,massbin (vs redshift)
+          cgPlot,xvals,yvals_gal[*,1],color=simColors[i],psym=psyms[i],line=lines[j],symsize=symsize,/overplot
+          
+          ;cgPlot,xvals,yvals_halo[*,1],color=simColors[i],psym=psyms[i],line=lines[j],symsize=symsize,/overplot
+          
+        endfor ; accModes 
+      endforeach ; massBins
+    endfor ; runs
+      
+    legend,accModes[1:*],linestyle=lines[1:*],linesize=0.6,/bottom,/right
+    legend,simNames,textcolor=simColors,/top,/left
+  
+  end_PS
+  
+  ; plot (3d) - coldfrac_acc vs redshift, galaxy only, all accModes on plot (updated)
   if plotUnused then begin
   start_PS, sP.(0).(0).(0).plotPath + 'coldFracAccVsRedshift.galaxy.' + plotStrMB + '-allModes.eps', /small
   
@@ -1341,9 +1556,8 @@ pro plotsVsRedshift
       endif
       
     end_PS
-    endif ;plotUnused
     
-    ; plot (4b) - net rates vs redshift, galaxy hot/cold (alternative definitions)
+    ; plot (4b) - net rates vs redshift, galaxy hot/cold (updated)
     start_PS, sP.(0).(0).(0).plotPath + 'netRateVsRedshift.galaxy.' + plotStrAM + '.eps', /small
     
       ; plot config
@@ -1450,6 +1664,7 @@ pro plotsVsRedshift
       endif
       
     end_PS
+    endif ;plotUnused
     
     ; plot (4c) - net rates vs redshift, galaxy hot/cold (abcd method)
     start_PS, sP.(0).(0).(0).plotPath + 'netRateVsRedshift.galaxy_abcd.' + plotStrAM + '.eps', /small
@@ -1628,9 +1843,8 @@ pro plotsVsRedshift
       legend,simNames,textcolor=simColors,/top,/left
     
     end_PS
-    endif ;plotUnused
     
-    ; plot (5b) - net/in/out rates vs redshift, galaxy hot/cold (alternative definitions)
+    ; plot (5b) - net/in/out rates vs redshift, galaxy hot/cold (updated)
     start_PS, sP.(0).(0).(0).plotPath + 'accOutNetRatesVsRedshift.galaxy.' + plotStrAM + '.eps', /small
     
       yrange2 = yrange_rate*[20,0.7]
@@ -1755,8 +1969,9 @@ pro plotsVsRedshift
       legend,simNames,textcolor=simColors,/top,/left
     
     end_PS
+    endif ;plotUnused
     
-    ; plot (5c) - net/in/out rates vs redshift, galaxy hot/cold (abcd)
+    ; plot (5c) - net/in/out rates vs redshift, galaxy hot/cold (abcd method)
     start_PS, sP.(0).(0).(0).plotPath + 'accOutNetRatesVsRedshift.galaxy_abcd.' + plotStrAM + '.eps', /small
     
       yrange2 = yrange_rate*[20,0.7]
@@ -1768,7 +1983,7 @@ pro plotsVsRedshift
       if accRateModel eq 2 and accModes[j] eq 'stripped' then yrange2 = [0.01,5.0]
       if accRateModel eq 2 and accModes[j] eq 'clumpy'   then yrange2 = [0.1,40.0]
       
-      if accRateModel eq 0 and accModes[j] eq 'smooth'   then yrange2 = [0.8,20.0]
+      if accRateModel eq 0 and accModes[j] eq 'smooth'   then yrange2 = [0.1,40.0]
       if accRateModel eq 0 and accModes[j] eq 'all'      then yrange2 = [1.0,100.0]
       if accRateModel eq 0 and accModes[j] eq 'stripped' then yrange2 = [0.5,10.0]
       if accRateModel eq 0 and accModes[j] eq 'clumpy'   then yrange2 = [0.5,50.0]
@@ -1926,6 +2141,7 @@ pro plotsVsRedshift
     endif ;plotUnused
     
     ; plot (6b) - net cold fractions vs redshift, galaxy hot/cold (updated)
+    if plotUnused then begin
     start_PS, sP.(0).(0).(0).plotPath + 'coldFracNetVsRedshift.galaxy-halo.' + plotStrAM + '.eps', /small
     
       cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange_frac,xs=5,ys=5,/ylog,/noerase,$
@@ -1961,6 +2177,77 @@ pro plotsVsRedshift
             
             yvals_gal[m,*]  = mbv.(i).(m).(j).coldFractionsNet.galaxy[massInd,*]
             yvals_halo[m,*] = mbv.(i).(m).(j).coldFractionsNet.halo[massInd,*]
+          endfor ;m
+        
+          ; smooth and set zeros to a plottable value
+          for m=0,2 do begin
+            yvals_gal[*,m]  = smooth(yvals_gal[*,m],sK,/nan)
+            yvals_halo[*,m] = smooth(yvals_halo[*,m],sK,/nan)
+          endfor
+        
+          ; plot this combination of: run,massbin (vs redshift)
+          cgPlot,xvals,yvals_gal[*,1],color=simColors[i],psym=psyms[i],symsize=symsize,line=linesHC[0],/overplot
+          cgPlot,xvals,yvals_halo[*,1],color=simColors[i],psym=psyms[i],symsize=symsize,line=linesHC[1],/overplot
+          
+          ; 25th-75th percentile (errorbars)
+          ;for m=0,n_elements(xvals)-1 do begin
+          ;  tFac = 1.0
+          ;  xOffset = 0.01 * ( (i eq 0)*2 - 1.0 )
+          ;  
+          ;  cgPlot,[xvals[m],xvals[m]]+xOffset,[yvals_gal[m,0],yvals_gal[m,2]],$
+          ;    color=simColors[i],line=linesHC[0],thick=!p.thick-tFac,/overplot
+          ;  cgPlot,[xvals[m],xvals[m]]+xOffset,[yvals_halo[m,0],yvals_halo[m,2]],$
+          ;    color=simColors[i],line=linesHC[1],thick=!p.thick-tFac,/overplot
+          ;endfor
+          
+        endforeach ; massBins
+        
+      endfor ;i
+      
+      ;legend,textoidl("M_{halo} = "+string(massStrs,format='(f4.1)')),/top,/right
+      legend,['galaxy','halo'],linestyle=linesHC[0:1],$
+        color=cgColor('black'),textcolors=['black','black'],linesize=0.4,box=0,/bottom,/right
+      legend,simNames,textcolor=simColors,/top,/right
+  
+    end_PS
+    endif ;plotUnused
+    
+    ; plot (6c) - net cold fractions vs redshift, galaxy hot/cold (abcd method)
+    start_PS, sP.(0).(0).(0).plotPath + 'coldFracNetVsRedshift_abcd.galaxy-halo.' + plotStrAM + '.eps', /small
+    
+      cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange_frac,xs=5,ys=5,/ylog,/noerase,$
+        pos=pos_single
+        
+      cgPolygon,[xrange_z[0],xrange_z[1],xrange_z[1],xrange_z[0],xrange_z[0]],$
+        [py_min,py_min,py_max,py_max,py_min],color=cgColor(py_cl),/fill
+      cgPolygon,[xrange_z[0],xrange_z[1],xrange_z[1],xrange_z[0],xrange_z[0]],$
+        [py_min2,py_min2,py_max2,py_max2,py_min2],color=cgColor(py_cl2),/fill
+    
+      cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange_frac,xs=9,/ys,/ylog,yminor=0,$
+        ytitle=textoidl("(dM/dt)^{"+dMdt_top+"}_{T_{max}<T_{vir,acc}} / (dM/dt)^{"+dMdt_top+"}_{total,"+$
+               accModes[j]+" }"),$
+        xtitle="Redshift",/noerase,pos=pos_single
+        
+      universeage_axis, xrange_z, yrange_frac, /ylog
+        
+      ; loop over runs      
+      for i=0,n_tags(sP)-1 do begin
+        ; loop over mass bins (just one now)
+        massStrs = []
+        foreach massInd,massInds,k do begin
+        
+          massStrs = [massStrs, mbv.(i).(0).(0).logMassBinCen[massInd]]
+        
+          xvals      = fltarr(n_elements(redshifts))
+          yvals_gal  = fltarr(n_elements(redshifts),3)
+          yvals_halo = fltarr(n_elements(redshifts),3)
+        
+          ; loop over redshifts
+          for m=0,n_tags(sP.(i))-1 do begin
+            xvals[m] = sP.(i).(m).(j).redshift
+            
+            yvals_gal[m,*]  = mbv.(i).(m).(j).coldFractionsNetABCD.galaxy[massInd,*]
+            yvals_halo[m,*] = mbv.(i).(m).(j).coldFractionsNetABCD.halo[massInd,*]
           endfor ;m
         
           ; smooth and set zeros to a plottable value
@@ -2136,6 +2423,7 @@ pro plotsVsRedshift
     endif ;plotUnused
     
     ; plot (8b) - net cold fractions, galaxy/halo (updated)
+    if plotUnused then begin
     start_PS, sP.(0).(0).(0).plotPath + 'coldFracNet4Redshifts.galaxy-halo.' + plotStrAM + '.eps', /extrabig
       
       foreach zInd,zInds,k do begin
@@ -2162,6 +2450,52 @@ pro plotsVsRedshift
           cgPlot,xvals,yvals[*,1],color=simColors[i],line=linesHC[0],/overplot ; gal
           
           yvals = smooth(mbv.(i).(zInd).(j).coldFractionsNet.halo,sK,/nan) ;< 1.0
+          cgPlot,xvals,yvals[*,1],color=simColors[i],line=linesHC[1],/overplot ; halo
+        endfor
+                
+        ; redshift legend
+        legend,textoidl('z_{ }=_{ }'+string(redshifts[zInd],format='(f3.1)')),$
+          pos=[xrange_halo[1]-0.6,yrange_frac[1]-0.25]
+          
+        ; panel-specific legends
+        if k eq 2 then $
+          legend,['galaxy','halo'],linestyle=linesHC[0:1],$
+          color=cgColor('black'),textcolors=['black','black'],linesize=0.4,box=0,/top,/left
+          
+        if k eq 3 then $
+          legend,simNames,textcolors=simColors,box=0,/top,/left
+      endforeach
+
+    end_PS
+    endif ;plotUnused
+    
+    ; plot (8c) - net cold fractions, galaxy/halo (abcd method)
+    start_PS, sP.(0).(0).(0).plotPath + 'coldFracNet4Redshifts_abcd.galaxy-halo.' + plotStrAM + '.eps', /extrabig
+      
+      foreach zInd,zInds,k do begin
+        cgPlot,[0],[0],/nodata,xrange=xrange_halo,yrange=yrange_frac,xs=5,ys=5,$
+          /noerase,pos=pos[k],/ylog,yminor=0 ; suppress all axes, only establish coordinate system
+      
+        cgPolygon,[xrange_halo[0],xrange_halo[1],xrange_halo[1],xrange_halo[0],xrange_halo[0]],$
+          [py_min,py_min,py_max,py_max,py_min],color=cgColor(py_cl),/fill
+        cgPolygon,[xrange_halo[0],xrange_halo[1],xrange_halo[1],xrange_halo[0],xrange_halo[0]],$
+          [py_min2,py_min2,py_max2,py_max2,py_min2],color=cgColor(py_cl2),/fill
+          
+        cgPlot,[px_min,px_min],[yrange_frac[0],yrange_frac[1]],line=2,/overplot,color=cgColor(px_cl3)
+        cgPlot,[px_max,px_max],[yrange_frac[0],yrange_frac[1]],line=2,/overplot,color=cgColor(px_cl3)
+          
+        cgPlot,[0],[0],/nodata,xrange=xrange_halo,yrange=yrange_frac,/xs,/ys,/ylog,yminor=0,$
+          ytitle=textoidl("(dM/dt)^{"+dMdt_top+"}_{T_{max}<T_{vir,acc}} / (dM/dt)^{"+dMdt_top+$
+                 "}_{total,"+accModes[j]+" }"),$
+          xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),/noerase,pos=pos[k]
+      
+        for i=0,n_tags(sP)-1 do begin
+          xvals = alog10( 10.0^mbv.(i).(zInd).(j).logMassBinCen / units.hubbleParam )
+          
+          yvals = smooth(mbv.(i).(zInd).(j).coldFractionsNetABCD.galaxy,sK,/nan) ;< 1.0
+          cgPlot,xvals,yvals[*,1],color=simColors[i],line=linesHC[0],/overplot ; gal
+          
+          yvals = smooth(mbv.(i).(zInd).(j).coldFractionsNetABCD.halo,sK,/nan) ;< 1.0
           cgPlot,xvals,yvals[*,1],color=simColors[i],line=linesHC[1],/overplot ; halo
         endfor
                 
@@ -2230,372 +2564,79 @@ pro plotsVsRedshift
 
   ; wind comparison plots
   ; ---------------------
-  if accRateModel eq 0 or plotUnused then begin
-  ; plot (10) - vs halo mass at one redshift
+  if accRateModel eq 0 then begin
+  
+  ; plot config
+  xrange = xrange_halo + [0.0,1.0]
+  tColor = [150,150,150]
+  bColor = [150,50,50]
+    
+  legendStrs   = [sP.(0).(0).(0).simName,$
+                  sP.(1).(0).(0).simName,$
+                  'Illustris \eta_w',$
+                  'Illustris v_w [km/s]']
+  legendColors = [sP.(0).(0).(0).colors[cInd],sP.(1).(0).(0).colors[cInd],$
+                  getColor24(tColor),getColor24(bColor)]
+  
   foreach zInd,zInds do begin
-  
-    sMasses = codeMassToLogMsun( logMsunToCodeMass( mbv.(0).(0).(0).logMassBinCen ) / units.hubbleParam )
     
-    start_PS,sP.(0).(0).(0).plotPath + 'wind_scalings_' + plotStr + '_zInd'+str(zInd)+'.eps', $
-      xs=10.0, ys=4.0
-    
-      ; plot config
-      xrange = xrange_halo + [0.0,1.0]
-      tColor = [150,150,150]
-      bColor = [150,50,50]
-      yrange2 = [1,10000]
-      yrange3 = [0.6,1.05]
-      
-      legendStrs   = [sP.(0).(0).(0).simName,$
-                      sP.(1).(0).(0).simName,$
-                      'Illustris \eta_w',$
-                      'Illustris v_w [km/s]']
-      legendColors = [sP.(0).(0).(0).colors[cInd],sP.(1).(0).(0).colors[cInd],$
-                      getColor24(tColor),getColor24(bColor)]
-
-      plot_pos = plot_pos(rows=1,cols=2,/gap)
-          
-      ; plot (a) - eta_w
-      cgPlot,[0],[0],/nodata,xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),$
-        ytitle=textoidl("\eta_w or v_w"),$
-        xrange=xrange,/xs,/ylog,yminor=0,yrange=yrange2,pos=plot_pos[0],/noerase
-        
-      cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_eta,$
-        line=0,thick=!p.thick*4,color=cgColor(tColor),/overplot
-        
-      cgPlot,[px_min,px_min],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-      cgPlot,[px_max,px_max],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-      
-      cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_vel,$
-        line=0,thick=!p.thick*2,color=cgColor(bColor),/overplot
-      
-      foreach run,runs,i do begin
-        cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,mbv.(i).(zInd).mode0_all.eta_w_unbinned,$
-          psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
-        
-        w = where(mbv.(i).(zInd).mode0_all.eta_w_binned eq 0.0,count)
-        if count gt 0 then mbv.(i).(zInd).mode0_all.eta_w_binned[w] = !values.f_nan
-        
-        cgPlot,sMasses,smooth(mbv.(i).(zInd).mode0_all.eta_w_binned[*,1],sK,/nan),$
-          line=0,color=sP.(i).(0).(0).colors[cInd],/overplot
-          
-        for j=0,2 do $
-          cgPlot,sMasses,smooth(mbv.(i).(zInd).mode0_all.eta_w_binned[*,j],sK,/nan),$
-            line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ; 25th/75th percentiles
-      endforeach
-
-      legend,textoidl(legendStrs),textcolors=legendColors,/top,/right  
-      
-      ; plot (b) - eta/(1+eta)
-      cgPlot,[0],[0],/nodata,$
-        xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),ytitle=textoidl("\eta_w / (1+\eta_w)"),$
-        xrange=xrange,/xs,yrange=yrange3,/ys,pos=plot_pos[1],/noerase
-        
-      cgPlot,xrange,[1.0,1.0],line=0,color=cgColor('light gray'),/overplot
-      
-      w_eta = wind_model.vs_M.(zInd).wind_eta
-      cgPlot,wind_model.vs_M.(zInd).halo_mass,w_eta/(1+w_eta),$
-        line=0,thick=!p.thick*4,color=cgColor(tColor),/overplot
-      
-      cgPlot,[px_min,px_min],[yrange3[0],yrange3[1]],line=2,/overplot,color=cgColor(px_cl3)
-      cgPlot,[px_max,px_max],[yrange3[0],yrange3[1]],line=2,/overplot,color=cgColor(px_cl3)
-      
-      foreach run,runs,i do begin
-        yy = mbv.(i).(zInd).mode0_all.eta_w_unbinned
-        cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,yy/(1+yy),$
-          psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
-        
-        yy = mbv.(i).(zInd).mode0_all.eta_w_binned[*,1]
-        cgPlot,sMasses,smooth(yy/(1+yy),sK,/nan),$
-          line=0,color=sP.(i).(0).(0).colors[cInd],/overplot
-          
-        for j=0,2 do begin
-          yy = mbv.(i).(zInd).mode0_all.eta_w_binned[*,j]
-          cgPlot,sMasses,smooth(yy/(1+yy),sK,/nan),$
-            line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ; 25th/75th percentiles
-        endfor  
-      endforeach
-           
-      legend,['z='+string(redshifts[zInd],format='(f3.1)')],/top,/right
-           
-    end_PS
-    
-    ; plot (10b) - abcd method
-    start_PS,sP.(0).(0).(0).plotPath + 'wind_scalings_abcd_' + plotStr + '_zInd'+str(zInd)+'.eps', $
-      xs=10.0, ys=4.0
-    
-      ; plot config
-      xrange = xrange_halo + [0.0,1.0]
-      tColor = [150,150,150]
-      bColor = [150,50,50]
-      yrange2 = [1,10000]
-      yrange3 = [0.6,1.05]
-      
-      legendStrs   = [sP.(0).(0).(0).simName,$
-                      sP.(1).(0).(0).simName,$
-                      'Illustris \eta_w',$
-                      'Illustris v_w [km/s]']
-      legendColors = [sP.(0).(0).(0).colors[cInd],sP.(1).(0).(0).colors[cInd],$
-                      getColor24(tColor),getColor24(bColor)]
-
-      plot_pos = plot_pos(rows=1,cols=2,/gap)
-          
-      ; plot (a) - eta_w
-      cgPlot,[0],[0],/nodata,xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),$
-        ytitle=textoidl("\eta_w or v_w"),$
-        xrange=xrange,/xs,/ylog,yminor=0,yrange=yrange2,pos=plot_pos[0],/noerase
-        
-      cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_eta,$
-        line=0,thick=!p.thick*4,color=cgColor(tColor),/overplot
-        
-      cgPlot,[px_min,px_min],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-      cgPlot,[px_max,px_max],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-      
-      cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_vel,$
-        line=0,thick=!p.thick*2,color=cgColor(bColor),/overplot
-      
-      foreach run,runs,i do begin
-        cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,mbv.(i).(zInd).mode0_all.eta_abcd_unbinned,$
-          psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
-        
-        w = where(mbv.(i).(zInd).mode0_all.eta_abcd_binned eq 0.0,count)
-        if count gt 0 then mbv.(i).(zInd).mode0_all.eta_abcd_binned[w] = !values.f_nan
-        
-        cgPlot,sMasses,smooth(mbv.(i).(zInd).mode0_all.eta_abcd_binned[*,1],sK,/nan),$
-          line=0,color=sP.(i).(0).(0).colors[cInd],/overplot
-          
-        for j=0,2 do $
-          cgPlot,sMasses,smooth(mbv.(i).(zInd).mode0_all.eta_abcd_binned[*,j],sK,/nan),$
-            line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ; 25th/75th percentiles
-      endforeach
-
-      legend,textoidl(legendStrs),textcolors=legendColors,/top,/right  
-      
-      ; plot (b) - eta/(1+eta)
-      cgPlot,[0],[0],/nodata,$
-        xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),ytitle=textoidl("\eta_w / (1+\eta_w)"),$
-        xrange=xrange,/xs,yrange=yrange3,/ys,pos=plot_pos[1],/noerase
-        
-      cgPlot,xrange,[1.0,1.0],line=0,color=cgColor('light gray'),/overplot
-      
-      w_eta = wind_model.vs_M.(zInd).wind_eta
-      cgPlot,wind_model.vs_M.(zInd).halo_mass,w_eta/(1+w_eta),$
-        line=0,thick=!p.thick*4,color=cgColor(tColor),/overplot
-      
-      cgPlot,[px_min,px_min],[yrange3[0],yrange3[1]],line=2,/overplot,color=cgColor(px_cl3)
-      cgPlot,[px_max,px_max],[yrange3[0],yrange3[1]],line=2,/overplot,color=cgColor(px_cl3)
-      
-      foreach run,runs,i do begin
-        yy = mbv.(i).(zInd).mode0_all.eta_abcd_unbinned
-        cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,yy/(1+yy),$
-          psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
-        
-        yy = mbv.(i).(zInd).mode0_all.eta_abcd_binned[*,1]
-        cgPlot,sMasses,smooth(yy/(1+yy),sK,/nan),$
-          line=0,color=sP.(i).(0).(0).colors[cInd],/overplot
-          
-        for j=0,2 do begin
-          yy = mbv.(i).(zInd).mode0_all.eta_abcd_binned[*,j]
-          cgPlot,sMasses,smooth(yy/(1+yy),sK,/nan),$
-            line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ; 25th/75th percentiles
-        endfor  
-      endforeach
-           
-      legend,['z='+string(redshifts[zInd],format='(f3.1)')],/top,/right
-           
-    end_PS
-  
-    ; plot (10c) - abcd2 method
-    start_PS,sP.(0).(0).(0).plotPath + 'wind_scalings_abcd2_' + plotStr + '_zInd'+str(zInd)+'.eps', $
-      xs=10.0, ys=4.0
-    
-      ; plot config
-      xrange = xrange_halo + [0.0,1.0]
-      tColor = [150,150,150]
-      bColor = [150,50,50]
-      yrange2 = [1,10000]
-      yrange3 = [0.6,1.05]
-      
-      legendStrs   = [sP.(0).(0).(0).simName,$
-                      sP.(1).(0).(0).simName,$
-                      'Illustris \eta_w',$
-                      'Illustris v_w [km/s]']
-      legendColors = [sP.(0).(0).(0).colors[cInd],sP.(1).(0).(0).colors[cInd],$
-                      getColor24(tColor),getColor24(bColor)]
-
-      plot_pos = plot_pos(rows=1,cols=2,/gap)
-          
-      ; plot (a) - eta_w
-      cgPlot,[0],[0],/nodata,xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),$
-        ytitle=textoidl("\eta_w or v_w"),$
-        xrange=xrange,/xs,/ylog,yminor=0,yrange=yrange2,pos=plot_pos[0],/noerase
-        
-      cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_eta,$
-        line=0,thick=!p.thick*4,color=cgColor(tColor),/overplot
-        
-      cgPlot,[px_min,px_min],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-      cgPlot,[px_max,px_max],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-      
-      cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_vel,$
-        line=0,thick=!p.thick*2,color=cgColor(bColor),/overplot
-      
-      foreach run,runs,i do begin
-        cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,mbv.(i).(zInd).mode0_all.eta_abcd2_unbinned,$
-          psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
-        
-        w = where(mbv.(i).(zInd).mode0_all.eta_abcd2_binned eq 0.0,count)
-        if count gt 0 then mbv.(i).(zInd).mode0_all.eta_abcd2_binned[w] = !values.f_nan
-        
-        cgPlot,sMasses,smooth(mbv.(i).(zInd).mode0_all.eta_abcd2_binned[*,1],sK,/nan),$
-          line=0,color=sP.(i).(0).(0).colors[cInd],/overplot
-          
-        for j=0,2 do $
-          cgPlot,sMasses,smooth(mbv.(i).(zInd).mode0_all.eta_abcd2_binned[*,j],sK,/nan),$
-            line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ; 25th/75th percentiles
-      endforeach
-
-      legend,textoidl(legendStrs),textcolors=legendColors,/top,/right  
-      
-      ; plot (b) - eta/(1+eta)
-      cgPlot,[0],[0],/nodata,$
-        xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),ytitle=textoidl("\eta_w / (1+\eta_w)"),$
-        xrange=xrange,/xs,yrange=yrange3,/ys,pos=plot_pos[1],/noerase
-        
-      cgPlot,xrange,[1.0,1.0],line=0,color=cgColor('light gray'),/overplot
-      
-      w_eta = wind_model.vs_M.(zInd).wind_eta
-      cgPlot,wind_model.vs_M.(zInd).halo_mass,w_eta/(1+w_eta),$
-        line=0,thick=!p.thick*4,color=cgColor(tColor),/overplot
-      
-      cgPlot,[px_min,px_min],[yrange3[0],yrange3[1]],line=2,/overplot,color=cgColor(px_cl3)
-      cgPlot,[px_max,px_max],[yrange3[0],yrange3[1]],line=2,/overplot,color=cgColor(px_cl3)
-      
-      foreach run,runs,i do begin
-        yy = mbv.(i).(zInd).mode0_all.eta_abcd2_unbinned
-        cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,yy/(1+yy),$
-          psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
-        
-        yy = mbv.(i).(zInd).mode0_all.eta_abcd2_binned[*,1]
-        cgPlot,sMasses,smooth(yy/(1+yy),sK,/nan),$
-          line=0,color=sP.(i).(0).(0).colors[cInd],/overplot
-          
-        for j=0,2 do begin
-          yy = mbv.(i).(zInd).mode0_all.eta_abcd2_binned[*,j]
-          cgPlot,sMasses,smooth(yy/(1+yy),sK,/nan),$
-            line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ; 25th/75th percentiles
-        endfor  
-      endforeach
-           
-      legend,['z='+string(redshifts[zInd],format='(f3.1)')],/top,/right
-           
-    end_PS
-  
-  endforeach ;zInds
-  
-  ; plot (11)
-  start_PS,sP.(0).(0).(0).plotPath + 'wind_scalings_z_' + plotStrMB + '.eps', xs=10.0, ys=4.0
+  ; plot (10) - wind model comparison plot for main text (abcd method, corrected)
+  start_PS,sP.(0).(0).(0).plotPath + 'wind_scalings_abcd_z_' + plotStrMB + '_zInd'+str(zInd) + '.eps', xs=12.0, ys=4.5
    
-    plot_pos = plot_pos(row=1,col=2,/gap)
+    plot_pos = plot_pos(row=1,col=3,/gap)
     
-    if massInd ge 20 then yrange2=[1,100]
-    if massInd lt 20 then yrange2=[1,1000]
-    yrange3 = [0.5,1.05]
-        
-    ; plot (a)
-    cgPlot,[0],[0],/nodata,$
-      xtitle="Redshift",ytitle=textoidl("\eta_w"),$
-      xrange=xrange_z,/xs,yrange=yrange2,/ys,/ylog,yminor=0,pos=plot_pos[0]
+    ; plot (a): left, correction factor 
+    yrange2 = [-4.0,4.0]
+     
+    cgPlot,[0],[0],/nodata,xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),$
+      ytitle=textoidl("log ( SFR / dM/dt_{net} )"),$
+      xrange=xrange,/xs,yrange=yrange2,pos=plot_pos[0]-[0.02,0,0.02,0],/noerase
       
-    cgPlot,wind_model.vs_z.z_vals,wind_model.vs_z.wind_eta,color=cgColor(tColor),thick=!p.thick*4,/overplot
-            
+    cgPlot,xrange,[0.0,0.0],line=0,color=cgColor('gray'),/overplot
+      
+    cgPlot,[px_min,px_min],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
+    cgPlot,[px_max,px_max],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
+   
     foreach run,runs,i do begin
-      ; collect in redshift
-      zz_eta_w = fltarr(n_elements(redshifts),3)
-      foreach redshift,redshifts,j do zz_eta_w[j,*] = mbv.(i).(j).mode0_all.eta_w_binned[massInd,*]
+
+      cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,mbv.(i).(zInd).mode0_all.eta_sfr2_net_abcd,$
+        psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
       
-      cgPlot,redshifts,zz_eta_w[*,1],psym=-16,color=sP.(i).(0).(0).colors[cInd],/overplot
-      cgPlot,redshifts,zz_eta_w[*,0],line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ;25th
-      cgPlot,redshifts,zz_eta_w[*,2],line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ;75th
-      
-      ; un-binned
-      foreach redshift,redshifts,j do begin
-        w = where(mbv.(i).(j).mode0_all.eta_w_xvals ge px_min and $
-                  mbv.(i).(j).mode0_all.eta_w_xvals lt px_max,count)
-        if count eq 0 then continue
+      ; plot fit
+      ;if redshifts[zInd] le 1.0 then begin
+        gcMasses = mbv.(i).(zInd).mode0_all.eta_w_xvals
+        yy = mbv.(i).(zInd).mode0_all.eta_sfr2_net_abcd
+        w=where(gcMasses ge 10.0 and gcMasses le 13.0 and yy ge -4.0 and yy lt 2.0)
         
-        zz_eta_w_unbinned = mbv.(i).(j).mode0_all.eta_w_unbinned[w]
-        cgPlot,replicate(redshift,count),zz_eta_w_unbinned,$
-          psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
-      endforeach
+        fit3 = poly_fit(gcMasses[w],yy[w],3,measure_errors=1.0/2.0^gcMasses[w])
+
+        xpts = linspace(10.0,xrange[1],100)
+        ypts = fit3[0] + fit3[1]*xpts + fit3[2]*xpts^2 + fit3[3]*xpts^3
+        
+        cgPlot,xpts,ypts,line=0,color=sP.(i).(0).(0).colors[cInd],/overplot
+        
+        ; extrapolated fit
+        xpts = linspace(9.0,10.0,100)
+        ypts = fit3[0] + fit3[1]*xpts + fit3[2]*xpts^2 + fit3[3]*xpts^3
+        
+        cgPlot,xpts,ypts,line=1,color=sP.(i).(0).(0).colors[cInd],/overplot
+      ;endif
+      
+      legend,textoidl(legendStrs[0:1]),textcolors=legendColors[0:1],/top,/left
+      legend,['z='+string(redshifts[zInd],format='(f3.1)')],/bottom,/right
+      
     endforeach
     
-    legend,textoidl([string(px_min,format='(f4.1)')+' < M_{halo} < '+string(px_max,format='(f4.1)')]),$
-      /top,/right
-    
-    ; plot (b)
-    cgPlot,[0],[0],/nodata,$
-      xtitle="Redshift",ytitle=textoidl("\eta_w / (1+\eta_w)"),$
-      xrange=xrange_z,/xs,yrange=yrange3,/ys,pos=plot_pos[1],/noerase
-      
-    cgPlot,[0.0,5.0],[1.0,1.0],line=0,color=cgColor('light gray'),/overplot
-    cgPlot,wind_model.vs_z.z_vals,wind_model.vs_z.wind_eta/(1+wind_model.vs_z.wind_eta),$
-      color=cgColor(tColor),thick=!p.thick*4,/overplot
-    
-    foreach run,runs,i do begin
-      ; collect in redshift
-      zz_eta_w = fltarr(n_elements(redshifts),3)
-      foreach redshift,redshifts,j do zz_eta_w[j,*] = mbv.(i).(j).mode0_all.eta_w_binned[massInd,*]
-      
-      cgPlot,redshifts,zz_eta_w[*,1]/(1+zz_eta_w[*,1]),$
-        line=0,psym=-16,color=sP.(i).(0).(0).colors[cInd],/overplot ; median
-      cgPlot,redshifts,zz_eta_w[*,0]/(1+zz_eta_w[*,0]),$
-        line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ;25th
-      cgPlot,redshifts,zz_eta_w[*,2]/(1+zz_eta_w[*,2]),$
-        line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ;75th
-      
-      ; un-binned
-      foreach redshift,redshifts,j do begin
-        w = where(mbv.(i).(j).mode0_all.eta_w_xvals ge px_min and $
-                  mbv.(i).(j).mode0_all.eta_w_xvals lt px_max,count)
-        if count eq 0 then continue
-        
-        zz_eta_w_unbinned = mbv.(i).(j).mode0_all.eta_w_unbinned[w]
-        cgPlot,replicate(redshift,count),zz_eta_w_unbinned/(1+zz_eta_w_unbinned),$
-          psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
-      endforeach
-    endforeach
-      
-    legend,textoidl(legendStrs[0:-2]),textcolors=legendColors[0:-2],/bottom,/left
-  
-  end_PS
-  
-  ; plot (12)
-  start_PS,sP.(0).(0).(0).plotPath + 'wind_scalings_z_' + plotStrMB + '_zInd'+str(zInd) + '.eps', xs=10.0, ys=4.0
-   
-    zInd = where(redshifts eq 0.0)
-    plot_pos = plot_pos(row=1,col=2,/gap)
-    
-    ; plot (a): left of plot10
+    ; plot (b): center
     sMasses = codeMassToLogMsun( logMsunToCodeMass( mbv.(0).(0).(0).logMassBinCen ) / units.hubbleParam )
         
-    xrange = xrange_halo + [0.0,1.0]
-    tColor = [150,150,150]
-    bColor = [150,50,50]
     yrange2 = [1,10000]
-    yrange3 = [0.6,1.05]
-    
-    legendStrs   = [sP.(0).(0).(0).simName,$
-                    sP.(1).(0).(0).simName,$
-                    'Illustris \eta_w',$
-                    'Illustris v_w [km/s]']
-    legendColors = [sP.(0).(0).(0).colors[cInd],sP.(1).(0).(0).colors[cInd],$
-                    getColor24(tColor),getColor24(bColor)]
 
-    plot_pos = plot_pos(rows=1,cols=2,/gap)
+    plot_pos = plot_pos(rows=1,cols=3,/gap)
         
     cgPlot,[0],[0],/nodata,xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),$
-      ytitle=textoidl("\eta_w"),$
-      xrange=xrange,/xs,/ylog,yminor=0,yrange=yrange2,ys=9,pos=plot_pos[0],/noerase
+      ytitle=textoidl("\eta_w, v_w [km/s]"),$
+      xrange=xrange,/xs,/ylog,yminor=0,yrange=yrange2,ys=1,pos=plot_pos[1],/noerase
       
     cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_eta,$
       line=0,thick=!p.thick*4,color=cgColor(tColor),/overplot
@@ -2604,42 +2645,41 @@ pro plotsVsRedshift
     cgPlot,[px_max,px_max],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
        
     foreach run,runs,i do begin
-      cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,mbv.(i).(zInd).mode0_all.eta_w_unbinned,$
+      cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,mbv.(i).(zInd).mode0_all.eta_abcd_unbinned_cor,$
         psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
       
-      w = where(mbv.(i).(zInd).mode0_all.eta_w_binned eq 0.0,count)
-      if count gt 0 then mbv.(i).(zInd).mode0_all.eta_w_binned[w] = !values.f_nan
+      w = where(mbv.(i).(zInd).mode0_all.eta_abcd_binned_cor eq 0.0,count)
+      if count gt 0 then mbv.(i).(zInd).mode0_all.eta_abcd_binned_cor[w] = !values.f_nan
       
-      cgPlot,sMasses,smooth(mbv.(i).(zInd).mode0_all.eta_w_binned[*,1],sK,/nan),$
+      cgPlot,sMasses,smooth(mbv.(i).(zInd).mode0_all.eta_abcd_binned_cor[*,1],sK,/nan),$
         line=0,color=sP.(i).(0).(0).colors[cInd],/overplot
         
       for j=0,2 do $
-        cgPlot,sMasses,smooth(mbv.(i).(zInd).mode0_all.eta_w_binned[*,j],sK,/nan),$
+        cgPlot,sMasses,smooth(mbv.(i).(zInd).mode0_all.eta_abcd_binned_cor[*,j],sK,/nan),$
           line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ; 25th/75th percentiles
     endforeach
     
-    axis,yaxis=1,/ylog,yrange=[10,1000],ytitle=textoidl("v_w [km/s]"),yminor=0,/save;,$
+    ;axis,yaxis=1,/ylog,yrange=[10,1000],ytitle=textoidl("v_w [km/s]"),yminor=0,/save;,$
       ;yticks=2,ytickv=[10,100,1000],ytickn=textoidl(['10^1','10^2','10^3'])
     cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_vel,$
       line=0,thick=!p.thick*2,color=cgColor(bColor),/overplot
 
-    legend,textoidl(legendStrs[2:3]),textcolors=legendColors[2:3],/top,/left   
-    legend,['z='+string(redshifts[zInd],format='(f3.1)')],/top,/right
+    legend,textoidl(legendStrs[2:3]),textcolors=legendColors[2:3],/top,/right   
+    legend,['z='+string(redshifts[zInd],format='(f3.1)')],/bottom,/right
     
-    ; plot (b): left of plot11
-    if massInd ge 20 then yrange2=[1,100]
-    if massInd lt 20 then yrange2=[1,1000]
-    yrange3 = [0.5,1.05]
+    ; plot (c): right
+    if massInd ge 20 then yrange2 = [1,100]
+    if massInd lt 20 then yrange2 = [1,1000]
     
     cgPlot,[0],[0],/nodata,xtitle="Redshift",ytitle=textoidl("\eta_w"),$
-      xrange=xrange_z,/xs,yrange=yrange2,/ys,/ylog,yminor=0,pos=plot_pos[1]+[0.04,0,0.04,0],/noerase
+      xrange=xrange_z,/xs,yrange=yrange2,/ys,/ylog,yminor=0,pos=plot_pos[2],/noerase
       
     cgPlot,wind_model.vs_z.z_vals,wind_model.vs_z.wind_eta,color=cgColor(tColor),thick=!p.thick*4,/overplot
             
     foreach run,runs,i do begin
       ; collect in redshift
       zz_eta_w = fltarr(n_elements(redshifts),3)
-      foreach redshift,redshifts,j do zz_eta_w[j,*] = mbv.(i).(j).mode0_all.eta_w_binned[massInd,*]
+      foreach redshift,redshifts,j do zz_eta_w[j,*] = mbv.(i).(j).mode0_all.eta_abcd_binned_cor[massInd,*]
       
       cgPlot,redshifts,zz_eta_w[*,1],psym=-16,color=sP.(i).(0).(0).colors[cInd],/overplot
       cgPlot,redshifts,zz_eta_w[*,0],line=2,color=sP.(i).(0).(0).colors[cInd],/overplot ;25th
@@ -2651,122 +2691,56 @@ pro plotsVsRedshift
                   mbv.(i).(j).mode0_all.eta_w_xvals lt px_max,count)
         if count eq 0 then continue
         
-        zz_eta_w_unbinned = mbv.(i).(j).mode0_all.eta_w_unbinned[w]
-        cgPlot,replicate(redshift,count),zz_eta_w_unbinned,$
+        zz_eta_unbinned = mbv.(i).(j).mode0_all.eta_abcd_unbinned_cor[w]
+        cgPlot,replicate(redshift,count),zz_eta_unbinned,$
           psym=3,color=sP.(i).(0).(0).colors[cInd],/overplot
       endforeach
     endforeach
     
     legend,textoidl([string(px_min,format='(f4.1)')+' < M_{halo} < '+string(px_max,format='(f4.1)')]),$
-      /top,/left
-    legend,textoidl(legendStrs[0:1]),textcolors=legendColors[0:1],/top,/right 
+      /bottom,/left
       
   end_PS
+  endforeach ;zInds
+  endif ;acr=0
   
-  ; plot (13) - correction factor given the SFR/NetAcc ratio
-  z_targets = [0.0,1.0]
+  ; plot (11) - talk plot
+  zInd = 12
   
-  foreach z_target,z_targets do begin
-    start_PS,sP.(0).(0).(0).plotPath + 'wind_correction_' + plotStr + '_z'+str(round(z_target*100))+'.eps', xs=10.5, ys=3.5
+  start_PS,sP.(0).(0).(0).plotPath + 'wind_scalings_talk_' + plotStrMB + '_zInd'+str(zInd) + '.eps', xs=10.0, ys=4.5
    
-      zInd = closest(redshifts,z_target)
-   
-      ; plot config
-      xrange  = xrange_halo + [0.0,1.0]
-      yrange2 = [-4.0,4.0]
-      
-      plot_pos = plot_pos(rows=1,cols=2,/gap)
-          
-      foreach run,runs,i do begin
-        cgPlot,[0],[0],/nodata,xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),$
-          ytitle=textoidl("log( SFR / GalaxyNetAccRate )"),$
-          xrange=xrange,/xs,yrange=yrange2,pos=plot_pos[i],/noerase
-          
-        cgPlot,xrange,[0.0,0.0],line=0,color=cgColor('gray'),/overplot
-          
-        cgPlot,[px_min,px_min],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-        cgPlot,[px_max,px_max],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-      
-        cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,mbv.(i).(zInd).mode0_all.eta_sfr2_net,$
-          psym=4,color=cgColor('black'),/overplot
-        
-        fit = mbv.(i).(zInd).mode0_all.eta_fit
-        cgPlot,xrange,xrange*fit[1]+fit[0],line=0,color=sP.(i).(zInd).mode0_all.colors[cInd],/overplot
-        
-        legend,[sP.(i).(0).(0).simName,'z='+string(z_target,format='(f4.1)')],$
-          textcolor=[sP.(i).(0).(0).colors[cInd],0],/top,/right
-      endforeach
-  
-    end_PS
+    plot_pos = plot_pos(row=1,col=2,/gap)
     
-    ; plot (13b) - abcd method
-    start_PS,sP.(0).(0).(0).plotPath + 'wind_correction_abcd_' + plotStr + '_z'+str(round(z_target*100))+'.eps', xs=10.5, ys=3.5
-   
-      zInd = closest(redshifts,z_target)
-   
-      ; plot config
-      xrange  = xrange_halo + [0.0,1.0]
-      yrange2 = [-4.0,4.0]
-      
-      plot_pos = plot_pos(rows=1,cols=2,/gap)
-          
-      foreach run,runs,i do begin
-        cgPlot,[0],[0],/nodata,xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),$
-          ytitle=textoidl("log( SFR / GalaxyNetAccRateAbcd )"),$
-          xrange=xrange,/xs,yrange=yrange2,pos=plot_pos[i],/noerase
-          
-        cgPlot,xrange,[0.0,0.0],line=0,color=cgColor('gray'),/overplot
-          
-        cgPlot,[px_min,px_min],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-        cgPlot,[px_max,px_max],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-      
-        cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,mbv.(i).(zInd).mode0_all.eta_sfr2_net_abcd,$
-          psym=4,color=cgColor('black'),/overplot
+    ; plot (a): left, correction factor 
+    yrange2 = [1,10000]
         
-        fit = mbv.(i).(zInd).mode0_all.eta_fit
-        cgPlot,xrange,xrange*fit[1]+fit[0],line=0,color=sP.(i).(zInd).mode0_all.colors[cInd],/overplot
-        
-        legend,[sP.(i).(0).(0).simName,'z='+string(z_target,format='(f4.1)')],$
-          textcolor=[sP.(i).(0).(0).colors[cInd],0],/top,/right
-      endforeach
-  
-    end_PS
+    cgPlot,[0],[0],/nodata,xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),$
+      ytitle=textoidl("\eta_w"),$
+      xrange=xrange,/xs,/ylog,yminor=0,yrange=yrange2,ys=1,pos=plot_pos[0],/noerase
+      
+    cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_eta,$
+      line=0,thick=!p.thick*5,color=cgColor(tColor),/overplot
+      
+    ;cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_vel,$
+    ;  line=0,thick=!p.thick*2,color=cgColor(bColor),/overplot
+
+    legend,textoidl(legendStrs[2]),textcolors=legendColors[2],/top,/right
     
-    ; plot (13c) - abcd2 method
-    start_PS,sP.(0).(0).(0).plotPath + 'wind_correction_abcd2_' + plotStr + '_z'+str(round(z_target*100))+'.eps', xs=10.5, ys=3.5
-   
-      zInd = closest(redshifts,z_target)
-   
-      ; plot config
-      xrange  = xrange_halo + [0.0,1.0]
-      yrange2 = [-4.0,4.0]
+    ; plot (b): right, wind velocity        
+    cgPlot,[0],[0],/nodata,xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),$
+      ytitle=textoidl("v_w [km/s]"),$
+      xrange=xrange,/xs,/ylog,yminor=0,yrange=yrange2,ys=1,pos=plot_pos[1],/noerase
       
-      plot_pos = plot_pos(rows=1,cols=2,/gap)
-          
-      foreach run,runs,i do begin
-        cgPlot,[0],[0],/nodata,xtitle=textoidl("M_{halo} [_{ }log M_{sun }]"),$
-          ytitle=textoidl("log( SFR / GalaxyNetAccRateAbcd2 )"),$
-          xrange=xrange,/xs,yrange=yrange2,pos=plot_pos[i],/noerase
-          
-        cgPlot,xrange,[0.0,0.0],line=0,color=cgColor('gray'),/overplot
-          
-        cgPlot,[px_min,px_min],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
-        cgPlot,[px_max,px_max],[yrange2[0],yrange2[1]],line=2,/overplot,color=cgColor(px_cl3)
+    ;cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_eta,$
+    ;  line=0,thick=!p.thick*4,color=cgColor(tColor),/overplot
       
-        cgPlot,mbv.(i).(zInd).mode0_all.eta_w_xvals,mbv.(i).(zInd).mode0_all.eta_sfr2_net_abcd2,$
-          psym=4,color=cgColor('black'),/overplot
-        
-        fit = mbv.(i).(zInd).mode0_all.eta_fit
-        cgPlot,xrange,xrange*fit[1]+fit[0],line=0,color=sP.(i).(zInd).mode0_all.colors[cInd],/overplot
-        
-        legend,[sP.(i).(0).(0).simName,'z='+string(z_target,format='(f4.1)')],$
-          textcolor=[sP.(i).(0).(0).colors[cInd],0],/top,/right
-      endforeach
-  
-    end_PS
-    
-  endforeach ; z_target
-  endif ;acr=0 or plotUnused
+    cgPlot,wind_model.vs_M.(zInd).halo_mass,wind_model.vs_M.(zInd).wind_vel,$
+      line=0,thick=!p.thick*5,color=cgColor(bColor),/overplot
+
+    legend,textoidl(legendStrs[3]),textcolors=legendColors[3],/top,/right   
+    legend,['z='+string(redshifts[zInd],format='(f3.1)')],/bottom,/right
+      
+  end_PS
   
   stop       
 end
