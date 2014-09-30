@@ -107,6 +107,14 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z2_h304_res128_gadget']   = 217
   sgIDs['z2_h304_res128_feedback'] = 151
   
+  ; z2.315 (FB paper, 11.3<M<11.4)
+  sgIDs['z2_h315_res512_tracer']   = 2570
+  sgIDs['z2_h315_res512_feedback'] = 2613
+  
+  ; z2.316 (FB paper, 11.3<M<11.4)
+  sgIDs['z2_h316_res512_tracer']   = 2384
+  sgIDs['z2_h316_res512_feedback'] = 2400
+  
   ; z3 h304 (tracked back from z=2)
   sgIDs['z3_h304_res512_tracer']   = 1668 ;old=669
   sgIDs['z3_h304_res512_gadget']   = 1902
@@ -254,13 +262,13 @@ pro rematch
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function loadGroupCat
 
-  sP1 = simParams(res=512,run='feedback',redshift=2.0)
-  sP2 = simParams(res=512,run='tracer',redshift=2.0)
+  sP1 = simParams(res=512,run='tracer',redshift=2.0)
+  sP2 = simParams(res=512,run='feedback',redshift=2.0)
 
   gc1 = loadGroupCat(sP=sP1,/skipIDs,/skipOffsets)
   gc2 = loadGroupCat(sP=sP2,/skipIDs,/skipOffsets)
 
-  known1gcIDs = [5755]
+  known1gcIDs = [2570]
   
   foreach gcID,known1gcIDs do begin
     ; find closest spatial match

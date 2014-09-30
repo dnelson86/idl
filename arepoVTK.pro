@@ -1,6 +1,6 @@
 ; arepoVTK.pro
 ; helper functions to test ArepoRT and ArepoVTK
-; dnelson jun.2014
+; dnelson sep.2014
 
 ; combineStereoFrames(): combine two frames into side-by-side (and do 16->8 bit mapping)
 
@@ -11,17 +11,18 @@ pro combineStereoFrames, mmNum=mmNum
   ; file config
   ; A[780,1399], B[1400,1999], C[2000,2599], D[2600,3199], E[3200,3975]
   ;mmNum = [0,3975] ;all
-  inStr   = 'C1'
-  inPath1 = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_360/'
+  inStr   = 'A0'
+  inPath1 = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_8192/'
   inPath2 = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_360_'+inStr+'/'
-  outPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/sbs_'+inStr+'/'
+  outPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_4k8bit/'
   
-  fileBase = "frame_1k360_"
+  fileBase = "frame_"
   fileEnd  = "_16bit.png"
   
   ; image config
   imMinMax = [0.0,0.65]
   imGamma  = 1.0 ; inverse of photoshop
+  downto4k = 1
   
   for i=mmNum[0],mmNum[1] do begin
     ; load
@@ -33,6 +34,8 @@ pro combineStereoFrames, mmNum=mmNum
     endif else begin
       image_out = image1 ; non-SbS
     endelse
+    
+    if downto4k eq 1 then image_out = rebin(image_out,3,4096,4096)
     
     ; scaling
     image_out /= 65535.0 ; normalize to [0,1]
@@ -87,9 +90,9 @@ pro checkMissingFrames
 
   ; config
   mmNum = [0,3975]
-  inPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_360/'
+  inPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_8192/'
   
-  fileBase = "frame_1k360_"
+  fileBase = "frame_"
   fileEnd  = "_16bit.png"
   
   for i=mmNum[0],mmNum[1] do begin

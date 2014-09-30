@@ -180,7 +180,7 @@ pro plotAccTimeDeltas
   ; config
   res      = 512
   runs     = ['feedback','tracer']
-  redshift = 0.0
+  redshift = 2.0
   
   ; index selection for difference ([1.0,0.75,0.5,0.25,0.15,0.05,0.01,first0.15,first1.0])
   rVirFacs = ['1.0 rvir','0.75 rvir','0.5 rvir','0.25 rvir','0.15 rvir','0.05 rvir',$
@@ -501,12 +501,22 @@ pro plotAccTimeDeltas
         xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),$
         ytitle=ytitleNorm,/xs,/ys,/xlog,xminor=0,pos=pos[j]+[0.06,0,0,0],/noerase
         
+      ; lower envelope line
+      if run eq 'tracer'   then xx = [0.3,1.5]
+      if run eq 'feedback' then xx = [0.4,2.5]
+      if run eq 'tracer'   then yoff = 0.5
+      if run eq 'feedback' then yoff = 0.8
+      yy = xx*0.5 - yoff
+      
+      if run eq 'feedback' then $
+      cgPlot,xx,yy,line=2,color=cgColor('black'),thick=!p.thick,/overplot
+        
       legend,[sPs.(j).simName],textcolors=[sPs.(j).colors[cInd]],/top,/left 
       
     endforeach ; runs
     
     end_PS
-      
+    
     ; plot (6) - split into 6 halo mass bins, one plot per run
     start_PS,sP.plotPath + 'accTimeDeltasVs_'+plotVal+'Max_'+'MassBin_'+plotStrG+'.eps', $
       xs=13, ys=7.4

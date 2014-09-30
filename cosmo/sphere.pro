@@ -1,6 +1,6 @@
 ; sphere.pro
 ; gas accretion project - interpolation of quantities onto healpix spheres
-; dnelson mar.2014
+; dnelson sep.2014
 
 ; sphereXYZCoords(): return a HEALPix subdivision at Nside resolution parameter scaled out to radius
 
@@ -196,6 +196,13 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
     vel = loadSnapshotSubset(sP=sP,partType=partType,field='vel')
   endif
   
+  if valName eq 'radvel' or valName eq 'angmom' then begin
+    ; convert particle velocities to proper
+    scalefac = 1.0 / (1.0 + sP.redshift)
+    if scalefac le 0.0 or scalefac gt 1.0 then message,'Error'
+    vel *= sqrt(scalefac)
+  endif
+  
   if valName eq 'veldisp' then begin
     veldisp = loadHsmlDir(sP=sP,partType=partType,/readVelDisp,/verbose)
   endif
@@ -274,7 +281,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       rnorm = sqrt(rnorm0*rnorm0 + rnorm1*rnorm1 + rnorm2*rnorm2)
       
       ; make velocities relative to bulk halo motion, and add hubble flow
-      gVel = gc.subgroupVel[*,subgroupID]
+      gVel = gc.subgroupVel[*,subgroupID] ; already peculiar (no scalefac correction needed)
       
       loc_vel[0,*] = reform(loc_vel[0,*] - (gVel[0] + (rnorm * units.H_z) * rnorm0/rnorm))
       loc_vel[1,*] = reform(loc_vel[1,*] - (gVel[1] + (rnorm * units.H_z) * rnorm1/rnorm))
@@ -300,7 +307,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       loc_vel = vel[*,wRadCut]
       
       ; make velocities relative to bulk halo motion
-      gVel = gc.subgroupVel[*,subgroupID]
+      gVel = gc.subgroupVel[*,subgroupID] ; already peculiar (no scalefac correction needed)
       loc_vel[0,*] = reform(loc_vel[0,*] - gVel[0])
       loc_vel[1,*] = reform(loc_vel[1,*] - gVel[1])
       loc_vel[2,*] = reform(loc_vel[2,*] - gVel[2])
