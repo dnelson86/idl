@@ -207,7 +207,7 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
     ; calculate norm of radial velocity vector
     rad = reform(loc_pos[0,*]^2.0 + loc_pos[1,*]^2.0 + loc_pos[2,*]^2.0)
 
-    sgcen_vel = gc.subgroupVel[*,gcIndCur]
+    sgcen_vel = gc.subgroupVel[*,gcIndCur] ; already peculiar (no scalefac conversion needed)
     loc_vrad = reform( (loc_vel[0,*]-sgcen_vel[0]) * loc_pos[0,*] + $
                        (loc_vel[1,*]-sgcen_vel[1]) * loc_pos[1,*] + $
                        (loc_vel[2,*]-sgcen_vel[2]) * loc_pos[2,*]) / sqrt(rad)

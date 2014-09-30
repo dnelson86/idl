@@ -1,6 +1,6 @@
 ; ICs_cosmoZoom.pro
 ; zoom project - helper for generating zoom ICs with MUSIC (O. Hahn)
-; dnelson feb.2014
+; dnelson sep.2014
 
 ; checkBHDerefGal(): debugging
 
@@ -740,7 +740,7 @@ function zoomTargetHalo, sP=sP, gc=gc
     posDiffs = periodicDists(expectedHaloPos,gc.subgroupPos,sP=sP)
     
     ; pick closest mass match within a positional search of 1rvir around expected location
-    w = where(posDiffs le 1.0*sP.targetHaloRvir,count)
+    w = where(posDiffs le 2.0*sP.targetHaloRvir,count)
     if count eq 0 then message,'Error'
     
     massDiffs = abs( sP.targetHaloMass - codeMassToLogMsun(gc.subgroupMass) )
@@ -1071,3 +1071,31 @@ pro plotCAMB
   stop
 
 end
+
+; zoomProperties(): helper for tables
+
+pro zoomProperties
+
+  ; config
+  resLevels = [9,10,11]
+  hInds = [0,1,2,4,5,6,7,8]
+  hDone = [1,1,0,0,0,0,1,1]
+
+  ; load
+  foreach resLevel,resLevels do begin
+    foreach hInd,hInds,i do begin
+      if hDone[i] eq 0 then continue
+      
+      sP = simParams(run='zoom_20Mpc',res=resLevel,hInd=hInd,redshift=2.0)
+      h = loadSnapshotHeader(sP=sP)
+      rCell = loadSnapshotSubset(sP=sP,partType='gas',field='cellSize')
+      rCell = rCell * 1000 / 0.7 ; kpc->pc, remove little h
+      rCell = rCell / (1+sP.redshift) ; comoving->physical
+      print,'h'+str(hInd)+'L'+str(resLevel)+': '+str(min(rCell))+' pPc'
+
+    endforeach
+  endforeach
+
+
+end
+

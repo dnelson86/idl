@@ -937,7 +937,7 @@ end
 ; mvbakrestarts(): wipe out Arepo restart files with backups
 
 pro mvbakrestarts
-  message,'remove for safety'
+  ;message,'remove for safety'
   files = file_search("bak-restart.*")
 
   foreach file,files,k do begin

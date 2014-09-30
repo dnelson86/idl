@@ -516,7 +516,7 @@ pro multiMapHaloComp
   hsmlFac     = 1.5          ; times each cell hsml for sph projections
   nPixels     = [800,800]    ; px
   xySize      = 3            ; final image is xySize*nPixels[0] high
-  axisPair    = [0,2]        ; xy, xz
+  axisPair    = [0,1]        ; xy, xz
   barAreaHeight = 0.1        ; fractional
   
   ; use which field and minmax for color mappings?

@@ -1,6 +1,6 @@
 ; spherePlot.pro
 ; gas accretion project - visualization/plotting of quantities onto healpix spheres
-; dnelson mar.2013
+; dnelson sep.2014
 
 ; plotMollweideProj(): plot the all-sky data in mollweide projection using some of the healpix tools
 ; 
@@ -483,10 +483,109 @@ pro plotHaloShellValComp
   
 end
   
+; plotShellDifferences(): compare temperature and density of inflow/outflow between two runs
+
+pro plotShellDifferences
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; config
+  redshift = 2
+  res      = 512
+  runs     = ['feedback','tracer']
+  haloIDs  = [304,314,315,316]        ; [304 314 315 316] z2.304 z2.301 z2.130 z2.64
+  radInds  = [5] ;[3,4,5,7]  ; pre-saved radFacs (3=0.25, 4=0.5, 5=0.75, 7=rvir)
+  cutSubS  = 1          ; cut satellite substructures out from halo
+  
+  vRadThresh = 50 ;km/s
+
+  colors = ['red','blue'] ; inflow,outflow
+  
+  ; load
+  foreach run,runs,m do begin
+    sP = simParams(res=res,run=run,redshift=redshift)
+    sPs = mod_struct( sPs, 'sP'+str(m)+'_'+run, sP )
+  endforeach
+  
+  ; start plot
+  start_PS, sPs.(0).plotPath+'shell_diff_'+$
+    sPs.(0).savPrefix+'_'+sPs.(1).savPrefix+str(sPs.(0).res)+'_z'+$
+    str(redshift)+'_h4.eps', /big
+
+    pos = plot_pos(row=2,col=2,/gap)
+    
+    foreach haloID,haloIDs,i do begin
+    
+    ; load
+    foreach run,runs,m do begin
+      sP = simParams(res=res,run=run,redshift=redshift)
+      gcID = getMatchedIDs(simParam=sP,haloID=haloID)
+      
+      temp = mod_struct( temp, run, $
+        haloShellValue(sP=sP,partType='gas',valName='temp',subgroupID=gcID,cutSubS=cutSubS) )
+      dens = mod_struct( dens, run, $
+        haloShellValue(sP=sP,partType='gas',valName='density',subgroupID=gcID,cutSubS=cutSubS) )
+      vrad = mod_struct( vrad, run, $
+        haloShellValue(sP=sP,partType='gas',valName='radvel',subgroupID=gcID,cutSubS=cutSubS) )
+      rmf  = mod_struct( rmf, run, $
+        haloShellValue(sP=sP,partType='gas',valName='radmassflux',subgroupID=gcID,cutSubS=cutSubS) )
+      
+      sPs = mod_struct( sPs, 'sP'+str(m)+'_'+run, sP )
+    endforeach
+    
+    ;healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) 
+    
+    foreach radInd,radInds,j do begin
+      ; select inflow and outflow
+      w_in0  = where(vrad.(0).value[*,radInd] lt -vRadThresh,count_in)
+      w_out0 = where(vrad.(0).value[*,radInd] gt vRadThresh,count_out)
+      w_in1  = where(vrad.(1).value[*,radInd] lt -vRadThresh,count_in)
+      w_out1 = where(vrad.(1).value[*,radInd] gt vRadThresh,count_out)
+      
+      ; histogram temperature difference
+      if count_in ge 2 then begin
+        temp_loc0 = reform( temp.(0).value[w_in0,radInd] )
+        temp_loc1 = reform( temp.(1).value[w_in1,radInd] )
+        
+        ;plothist, temp_loc0-temp_loc1, /auto, color=cgColor(colors[0]), $
+        ;  xtitle="Gas Temp (FB-noFB)",ytitle="N"
+          
+        zz = temp_loc0-temp_loc1
+        w = where(zz ge 0.0,count)
+        print,'fraction of inflow hotter in FB run: '+str(float(count)/n_elements(zz)*100)+'%'
+      endif
+      
+      if count_out ge 2 then begin
+        temp_loc0 = reform( temp.(0).value[w_out0,radInd] )
+        temp_loc1 = reform( temp.(1).value[w_out1,radInd] )
+        
+        ;plothist, temp_loc0-temp_loc1, /auto, color=cgColor(colors[1]), /overplot
+      endif
+      
+      ; histogram both
+      plothist, temp.(0).value[w_in0,radInd], /auto, color=cgColor(colors[0]), $
+        xtitle="Gas Temp of Inflow [log K]",ytitle="N", xrange=[3.9,6.4], /xs, pos=pos[i], /noerase
+      plothist, temp.(1).value[w_in1,radInd], /auto, color=cgColor(colors[1]), /overplot
+      
+      ; legend
+      cgPlot,[0,0],[0,1000],color=cgColor('light gray'),/overplot
+      ;legend,['inflow','outflow'],textcolor=colors,/top,/right
+      legend,['FB','noFB'],textcolor=colors,/top,/left
+      ;legend,[string(temp.(0).radFacs[radInd],format='(f5.2)')+' rvir',$
+      ;        'vradthresh = '+string(vRadThresh,format='(f5.1)')],/top,/left
+          
+    endforeach ;radInds,j
+    
+    endforeach ;haloIDs,i
+    
+  end_PS
+
+  stop
+
+end
+  
 ; plot2Halo3ValComp(): compare two matched halos with three values each (2 column)
 
 pro plot2Halo3ValComp
-
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
@@ -495,27 +594,25 @@ pro plot2Halo3ValComp
   sPg = simParams(res=512,run='feedback',redshift=float(redshift))
   sPa = simParams(res=512,run='tracer',redshift=float(redshift))
   
-  radInd   = 7        ; pre-saved radFacs (3=0.25, 4=0.5, 7=rvir)
+  radInd   = 7        ; pre-saved radFacs (3=0.25, 4=0.5, 5=0.75, 7=rvir)
   rot_ang  = [0,45]   ; [lat,long] center in deg (left,up)
   cutSubS  = 1        ; cut satellite substructures out from halo
 
-  haloID = 314 ;z2.304 z2.301 z2.130 z2.64
+  haloID = 304 ;z2[304 314 315 316] ;z2.304 z2.301 z2.130 z2.64
   gcID = getMatchedIDs(sPa=sPa,sPg=sPg,haloID=haloID)
 
   partTypes = ['gas','gas','gas']
   valNames  = ['temp','density','radmassflux']
-  ctNames   = ['helix','helix','brewer-redblue']
+  ctNames   = ['blue-red2','helix','brewer-browngreen']
   bartitles = ["T_{gas} [_{ }log K_{ }]",$
                "log ( \rho / <\rho> )",$
-               "Radial Mass Flux [_{ }M_{sun} kpc^{-2} Myr^{-1 }]"]
+               "Radial Mass Flux [_{ }log M_{sun} kpc^{-2} Myr^{-1 }]"]
 
   ; quantity bounds
-  ranges = list([4.3,6.5],[-1.0,1.5],[-2.0,2.0])
+  ranges = list([4.4,6.2],[-1.0,1.5],[-300,300]) ;[-2.5,2.5]
 
   ratioToMean = [0,1,0] ; plot value/mean(value) ratio
-  plotLog     = [0,1,1] ; plot log(value)
-  symMinMax   = [0,0,1] ; symmetric range about zero
-  mmRound     = [0.1,0.1,0.1] ; round range to a more equal number (slightly clip)
+  plotLog     = [0,1,0] ; plot log(value)
   
   pos = ['ul_3','cl_3','ll_3','ur_3','cr_3','lr_3']
 
@@ -534,32 +631,29 @@ pro plot2Halo3ValComp
       ; convert values into ratios to the mean
       if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
       else healpix_data = reform(hsv.value[*,radInd])
-      
+            
       if plotLog[i] then begin
-        if valNames[i] ne 'radmassflux' then begin
-          healpix_data = alog10(healpix_data)
-        endif else begin
-          w = where(healpix_data lt 0.0,count,comp=wc)
-          healpix_data[wc] = alog10(healpix_data[wc])
-          if count gt 0 then healpix_data[w] = -alog10(-healpix_data[w])
-        endelse
+        w = where(healpix_data gt 0.0,count,comp=wc,ncomp=ncomp)
+        if count gt 0 then healpix_data[w]  = alog10(healpix_data[w])
+        if ncomp gt 0 then healpix_data[wc] = -alog10(-healpix_data[wc])
       endif
       
       minMaxVal = ranges[i]
-
+      print,'run1: ',minmax(healpix_data),minMaxVal
+      
       w = where(healpix_data gt minMaxVal[1]*0.99,count)
       if count gt 0 then healpix_data[w] = minMaxVal[1] * 0.99
       w = where(healpix_data lt minMaxVal[0]*0.99,count)
       if count gt 0 then healpix_data[w] = minMaxVal[0] * 0.99
       
-      print,minMaxVal
-
       if i eq 0 then $
         plotMollweideProj,healpix_data,rot_ang=rot_ang,bartitle=bartitles[i],pos=pos[i],$
           ctName=ctNames[i],minmax=ranges[i],title=sPg.simName
       if i gt 0 then $
         plotMollweideProj,healpix_data,rot_ang=rot_ang,title="",bartitle=bartitles[i],pos=pos[i],$
           /noerase,ctName=ctNames[i],minmax=ranges[i]
+          
+      healpix_data_old = healpix_data
           
       ; RUN 2
       ; interpolate onto the shell
@@ -569,17 +663,21 @@ pro plot2Halo3ValComp
       ; convert values into ratios to the mean
       if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
       else healpix_data = reform(hsv.value[*,radInd])
-      if plotLog[i] then healpix_data = alog10(healpix_data)
+
+      if plotLog[i] then begin
+        w = where(healpix_data lt 0.0,count)
+        healpix_data = alog10(abs(healpix_data))
+        healpix_data[w] = -healpix_data[w]
+      endif
       
       minMaxVal = ranges[i]
-
-      w = where(healpix_data gt minMaxVal[1]*0.99,count)
-      if count gt 0 then healpix_data[w] = minMaxVal[1] * 0.99
-      w = where(healpix_data lt minMaxVal[0]*0.99,count)
-      if count gt 0 then healpix_data[w] = minMaxVal[0] * 0.99
+      print,'run2: ',minmax(healpix_data),minMaxVal
+            
+      ;w = where(healpix_data gt minMaxVal[1]*0.99,count)
+      ;if count gt 0 then healpix_data[w] = minMaxVal[1] * 0.99
+      ;w = where(healpix_data lt minMaxVal[0]*0.99,count)
+      ;if count gt 0 then healpix_data[w] = minMaxVal[0] * 0.99
       
-      print,minMaxVal
-
       if i eq 0 then $
         plotMollweideProj,healpix_data,rot_ang=rot_ang,bartitle="",pos=pos[i+3],$
           /noerase,ctName=ctNames[i],minmax=ranges[i],title=sPa.simName
@@ -589,7 +687,7 @@ pro plot2Halo3ValComp
     endfor
     
   end_PS, pngResize=60;, /deletePS
-
+  
 end
 
 ; plot2Halo3ValComp(): compare three matched halos with three values each (3x3)
@@ -606,12 +704,11 @@ pro plot3Halo3ValComp
   sPs = mod_struct( sPs, 'sP1', simParams(res=res,run='tracer',redshift=redshift) )
   sPs = mod_struct( sPs, 'sP2', simParams(res=res,run='gadget',redshift=redshift) )
   
-  radFacs   = [0.25,0.5,0.75,1.0,1.5]
-  radInd    = 3        ; indexes radFacs[]
+  radInd    = 7        ; pre-saved radFacs (3=0.25, 4=0.5, 7=rvir)
   rot_ang   = [0,45]   ; [lat,long] center in deg (left,up)
   cutSubS   = 1        ; cut satellite substructures out from halo
 
-  haloID    = 314 ;z2.304 z2.301 z2.130 z2.64
+  haloID    = 304 ;z2.304 z2.301 z2.130 z2.64
   partTypes = ['gas','gas','gas']
   valNames  = ['density','radvel','radmassflux']
   ctNames   = ['helix','brewer-redblue','brewer-browngreen']
@@ -641,7 +738,7 @@ pro plot3Halo3ValComp
       for j=0,2 do begin
       ; shell cutout
       hsv = haloShellValue(sP=sPs.(j),partType=partTypes[i],valName=valNames[i],$
-                           subgroupIDs=subgroupIDs[j],cutSubS=cutSubS,radFacs=radFacs)
+                           subgroupIDs=subgroupIDs[j],cutSubS=cutSubS)
 
       ; convert values into ratios to the mean
       if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
@@ -724,8 +821,6 @@ pro plotHaloShellValueComp
                
   ratioToMean = [0,1,0,0,0,0,0,0] ; plot value/mean(value) ratio
   plotLog     = [0,1,1,0,0,1,0,1] ; plot log(value)
-  symMinMax   = [0,0,0,1,1,0,0,0] ; symmetric range about zero
-  mmRound     = [0.1,0.1,0.1,0.1,10,0.1,0,0.1] ; round range to a more equal number (slightly clip)
   
   pos = ['ul_nt','ur_nt','ll_nt','lr_nt']
   
@@ -745,22 +840,13 @@ pro plotHaloShellValueComp
         ; convert values into ratios to the mean
         if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
         else healpix_data = reform(hsv.value[*,radInd])
-        if plotLog[i] then healpix_data = alog10(healpix_data)
         
-        ; calculate appropriate minmax and clip
-        ;if symMinMax[i] then begin
-        ;  minVal = -1.0 * max(abs(minmax(healpix_data)))
-        ;  maxVal = max(abs(minmax(healpix_data)))
-        ;endif else begin
-        ;  minVal = min(healpix_data)
-        ;  maxVal = max(healpix_data)
-        ;endelse
-       ; 
-       ; if mmRound[i] ne 0 then begin
-       ;   minVal = round(minVal/mmRound[i])*mmRound[i]
-       ;   maxVal = round(maxVal/mmRound[i])*mmRound[i]
-       ; endif
-  
+        if plotLog[i] then begin
+          w = where(healpix_data gt 0.0,count,comp=wc,ncomp=ncomp)
+          if count gt 0 then healpix_data[w]  = alog10(healpix_data[w])
+          if ncomp gt 0 then healpix_data[wc] = -alog10(-healpix_data[wc])
+        endif
+        
         minMaxVal = ranges[i]
 
         w = where(healpix_data gt minMaxVal[1]*0.99,count)
@@ -791,23 +877,14 @@ pro plotHaloShellValueComp
         ; convert values into ratios to the mean
         if ratioToMean[i] then healpix_data = reform(hsv.value[*,radInd] / mean(hsv.value[*,radInd])) $
         else healpix_data = reform(hsv.value[*,radInd])
-        if plotLog[i] then healpix_data = alog10(healpix_data)
+
+        if plotLog[i] then begin
+          w = where(healpix_data gt 0.0,count,comp=wc,ncomp=ncomp)
+          if count gt 0 then healpix_data[w]  = alog10(healpix_data[w])
+          if ncomp gt 0 then healpix_data[wc] = -alog10(-healpix_data[wc])
+        endif
 
         if valNames[i] eq 'metallicity' then healpix_data /= 0.0127 ; display rescaling
-
-        ; calculate appropriate minmax and clip
-        ;if symMinMax[i] then begin
-        ;  minVal = -1.0 * max(abs(minmax(healpix_data)))
-        ;  maxVal = max(abs(minmax(healpix_data)))
-        ;endif else begin
-        ;  minVal = min(healpix_data)
-        ;  maxVal = max(healpix_data)
-        ;endelse
-        ;
-        ;if mmRound[i] ne 0 then begin
-        ;  minVal = round(minVal/mmRound[i])*mmRound[i]
-        ;  maxVal = round(maxVal/mmRound[i])*mmRound[i]
-        ;endif
 
         minMaxVal = ranges[i]
 

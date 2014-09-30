@@ -686,7 +686,7 @@ pro plotsVsRedshift
                         ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0        ; use Tmax/Tviracc=1 to separate hot vs. cold
   accModes   = ['all','smooth','clumpy','stripped','recycled']
-  accRateModel = 0      ; 0=prim+rec, 2=prim
+  accRateModel = 2      ; 0=prim+rec, 2=prim
   
   ; plot config
   massInds = [21]        ; index logMassBinCen[], for plot vs redshift
@@ -1781,6 +1781,117 @@ pro plotsVsRedshift
       
     end_PS
     
+    ; plot (4d) - raw acc rates vs redshift, galaxy hot/cold (abcd method)
+    start_PS, sP.(0).(0).(0).plotPath + 'accRateVsRedshift.galaxy_abcd.' + plotStrAM + '.eps', /small
+    
+      ; plot config
+      yrange2 = yrange_rate*3
+      if accModes[j] eq 'all' then yrange2 *= 4
+      if accRateModel eq 2 then yrange2 /= 4
+      
+      if accRateModel eq 2 and accModes[j] eq 'smooth'   then yrange2 = [0.0005,15.0]
+      if accRateModel eq 2 and accModes[j] eq 'all'      then yrange2 = [0.005,20.0]
+      if accRateModel eq 2 and accModes[j] eq 'stripped' then yrange2 = [0.0005,2.0]
+      if accRateModel eq 2 and accModes[j] eq 'clumpy'   then yrange2 = [0.003,20.0]
+      
+      if accRateModel eq 0 and accModes[j] eq 'smooth'   then yrange2 = [0.001,15.0]
+      if accRateModel eq 0 and accModes[j] eq 'all'      then yrange2 = [0.1,50.0]
+      if accRateModel eq 0 and accModes[j] eq 'stripped' then yrange2 = [0.005,5.0]
+      if accRateModel eq 0 and accModes[j] eq 'clumpy'   then yrange2 = [0.05,20.0]
+      
+      ; subplot config
+      pos_sub = [0.58,0.23,0.89,0.48]
+      if accRateModel eq 2 then yrange_sub = [0.0,5.0]
+      if accRateModel eq 0 then yrange_sub = [0.0,4.0]
+      
+      cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange2,xs=9,/ys,/ylog,yminor=0,$
+        ytitle=textoidl("dM^{"+dMdt_top+"}_{gas,"+accModes[j]+" }/dt [_{ }M_{sun }/_{ }yr_{ }]"),$
+        xtitle="Redshift",/noerase,pos=pos_single
+        
+      universeage_axis, xrange_z, yrange2, /ylog
+      
+      ; loop over runs
+      temp_sub = {}
+      
+      for i=0,n_tags(sP)-1 do begin
+        ; loop over mass bins (just one now)
+        massStrs = []
+        foreach massInd,massInds,k do begin
+        
+          massStrs = [massStrs, mbv.(i).(0).(0).logMassBinCen[massInd]]
+        
+          xvals           = fltarr(n_elements(redshifts))
+          yvals_gal_hot   = fltarr(n_elements(redshifts),3)
+          yvals_gal_cold  = fltarr(n_elements(redshifts),3)
+          yvals_gal_tot   = fltarr(n_elements(redshifts),3)
+        
+          ; loop over redshifts
+          for m=0,n_tags(sP.(i))-1 do begin
+            xvals[m] = sP.(i).(m).(j).redshift
+            
+            yvals_gal_hot[m,*]  = reform( mbv.(i).(m).(j).galaxyRates.abcd_gal_acc.hot[massInd,*] )
+            yvals_gal_cold[m,*] = reform( mbv.(i).(m).(j).galaxyRates.abcd_gal_acc.cold[massInd,*] )
+            yvals_gal_tot[m,*]  = reform( mbv.(i).(m).(j).galaxyRates.abcd_gal_acc.total[massInd,*] )
+          endfor ;m
+                          
+          ; smooth and set zeros to a plottable value
+          for m=0,2 do begin
+            yvals_gal_hot[*,m]  = smooth(yvals_gal_hot[*,m]  / units.hubbleParam,sK,/nan)
+            yvals_gal_cold[*,m] = smooth(yvals_gal_cold[*,m] / units.hubbleParam,sK,/nan)
+            yvals_gal_tot[*,m]  = smooth(yvals_gal_tot[*,m]  / units.hubbleParam,sK,/nan)
+          endfor
+        
+          ; keep values for this run for subplot
+          save_struct = { gal_hot:yvals_gal_hot, gal_cold:yvals_gal_cold, gal_tot:yvals_gal_tot,z:xvals }
+          temp_sub = mod_struct( temp_sub, sP.(i).(0).(0).run, save_struct )
+        
+          ; 25th-75th
+          ;if i eq 0 then $
+          ;oplotBand,xvals,yvals_gal_hot[*,0],yvals_gal_hot[*,2],color='light gray',yrange=yrange2
+        
+          ; plot this combination of: run,massbin (vs redshift)
+          cgPlot,xvals,yvals_gal_hot[*,1],color=simColors[i],psym=psyms[i],symsize=symsize,line=linesHC[0],/overplot
+          cgPlot,xvals,yvals_gal_cold[*,1],color=simColors[i],psym=psyms[i],symsize=symsize,line=linesHC[1],/overplot
+          ;cgPlot,xvals,yvals_gal_tot[*,1],color=simColors[i],psym=psyms[i],symsize=symsize,line=2,/overplot
+          
+        endforeach ; massBins
+        
+      endfor ;i
+      
+      ;legend,textoidl("M_{halo} = "+string(massStrs,format='(f4.1)')),/top,/right
+      
+      legend,textoidl(["T_{max} > T_{vir,acc}","T_{max} < T_{vir,acc}"]),$
+        linestyle=linesHC[0:1],color=cgColor('black'),textcolor=cgColor('black'),/top,/left
+        
+      if accRateModel eq 2 then $
+        legend,simNames,textcolor=simColors,pos=[pos_sub[2]+0.02,pos_sub[3]+0.1],/right,/normal
+      if accRateModel eq 0 then $
+        legend,simNames,textcolor=simColors,/top,/right
+        
+      ; subplot
+      cgColorFill,pos_sub[[0,2,2,0,0]],pos_sub[[1,1,3,3,1]],/normal,color='WT2'
+      
+      cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange_sub,/xs,/ys,$
+        ytitle=textoidl("noFB_{ }/_{ }FB_{ }"),$
+        xtitle="Redshift",/noerase,pos=pos_sub,charsize=!p.charsize-0.3
+
+      if n_tags(temp_sub) ne 2 then print,'WARNING, check'
+      
+      if n_tags(temp_sub) eq 2 then begin
+        if accRateModel eq 0 then yval = 1.0
+        if accRateModel eq 2 then yval = 1.0
+        
+        cgPlot,xrange_z+[0.3,-0.3],[yval,yval],line=0,/overplot,color=cgColor('light gray')
+        
+        yy = smooth( temp_sub.tracer.gal_hot[*,1] / temp_sub.feedback.gal_hot[*,1] ,sK,/nan)
+        cgPlot,xvals,yy,line=linesHC[0],/overplot,color=cgColor('black')
+              
+        yy = smooth( temp_sub.tracer.gal_cold[*,1] / temp_sub.feedback.gal_cold[*,1] ,sK,/nan)
+        cgPlot,xvals,yy,line=linesHC[1],/overplot,color=cgColor('black')
+      endif
+      
+    end_PS
+    
     ; plot (5) - net/in/out rates vs redshift, galaxy hot/cold
     if plotUnused then begin
     start_PS, sP.(0).(0).(0).plotPath + 'accOutNetRatesVsRedshift.galaxyOld.' + plotStrAM + '.eps', /small
@@ -2064,10 +2175,10 @@ pro plotsVsRedshift
             cgPlot,xx,yy,line=0,color='gray',/overplot
             cgText,xx[0],yy[0]+1.3,textoidl("\propto z^1"),color='gray'
             
-            xx = [1.0,3.5]
-            yy = xx^0.5 * 0.3
-            cgPlot,xx,yy,line=0,color='gray',/overplot
-            cgText,xx[0],yy[0]-0.1,textoidl("\propto z^{1/2}"),color='gray'
+            ;xx = [1.0,3.5]
+            ;yy = xx^0.5 * 0.3
+            ;cgPlot,xx,yy,line=0,color='gray',/overplot
+            ;cgText,xx[0],yy[0]-0.1,textoidl("\propto z^{1/2}"),color='gray'
           endif
           
         endforeach ; massBins
@@ -2564,8 +2675,6 @@ pro plotsVsRedshift
 
   ; wind comparison plots
   ; ---------------------
-  if accRateModel eq 0 then begin
-  
   ; plot config
   xrange = xrange_halo + [0.0,1.0]
   tColor = [150,150,150]
@@ -2577,6 +2686,8 @@ pro plotsVsRedshift
                   'Illustris v_w [km/s]']
   legendColors = [sP.(0).(0).(0).colors[cInd],sP.(1).(0).(0).colors[cInd],$
                   getColor24(tColor),getColor24(bColor)]
+                  
+  if accRateModel eq 0 then begin
   
   foreach zInd,zInds do begin
     
