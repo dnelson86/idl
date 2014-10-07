@@ -321,13 +321,20 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
   endif
   
   ; redshift and halo mass
-  if (curRow eq 0 and curCol eq totCols-1) or (curRow eq 0 and totCols gt 3) then $
-    cgText,pos[2]-0.01,pos[1]+0.015,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
-           color=cgColor('white'),/normal
+  if totCols eq 4 then begin
+    ; zoom 4x4
+    if curRow eq 0 and curCol eq totCols-1 then $
+      cgText,pos[2]-0.01,pos[3]-0.02,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
+             color=cgColor('white'),/normal
+  endif else begin
+    if (curRow eq 0 and curCol eq totCols-1) or (curRow eq 0 and totCols gt 3) then $
+      cgText,pos[2]-0.01,pos[1]+0.015,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
+             color=cgColor('white'),/normal
              
-  if (curRow eq 1 and curCol eq totCols-1) or (curRow eq 1 and totCols gt 3) then $
-    cgText,pos[2]-0.01,pos[3]-0.03,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
-           color=cgColor('white'),/normal
+    if (curRow eq 1 and curCol eq totCols-1) or (curRow eq 1 and totCols gt 3) then $
+      cgText,pos[2]-0.01,pos[3]-0.03,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
+             color=cgColor('white'),/normal
+  endelse
   
   ; simulation name
   if curCol eq 0 then $
@@ -343,7 +350,7 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
   cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('black'),/overplot
   cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('black'),/overplot
           
-  ; colorbar
+  ; colorbar(s)
   if curRow eq 0 then begin
     xthick = !x.thick
     ythick = !y.thick
@@ -357,14 +364,25 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     if config.colorField eq 'vrad'     then labelText = "v_{rad} [_{ }km/s_{ }]"
     
     factor = 0.48 ; bar length, 0.5=whole
-    height = 0.04
+    height = 0.04 ; colorbar height, fraction of entire figure
+    hOffset = 0.4 ; padding between image and start of bar (fraction of height)
+    mOffset = 0.008
+    yOffset = 0.75
+    
+    ; zoom 4x4
+    if totCols eq 4 then begin
+      height = 0.02
+      mOffset = 0.005
+      yOffset = 0.9
+    endif
+    
     x_left  = mean(pos[[0,2]]) - (pos[2]-pos[0])*factor
     x_right = mean(pos[[0,2]]) + (pos[2]-pos[0])*factor
-    y_bottom = config.barAreaHeight - height*0.4 - height
-    y_top    = config.barAreaHeight - height*0.4
+    y_bottom = config.barAreaHeight - height*hOffset - height
+    y_top    = config.barAreaHeight - height*hOffset
     
     ; just one color bar for vs. redshift plot
-    if totCols gt 3 then begin
+    if totCols eq 3 then begin
       x_left = 0.25
       x_right = 0.75
     endif
@@ -383,9 +401,9 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     if config.colorField eq 'overdens' or config.colorField eq 'temptvir' then $
       cbLabels = str(string(config.mapMinMax,format='(f4.1)'))
     
-    y_middle = mean([y_bottom,y_top]) - 0.008
-    cgText,mean([x_left,x_right]),y_bottom-height*0.75,$
-      textoidl(labelText),alignment=0.5,color=cgColor('black'),charsize=!p.charsize-0.2,/normal
+    y_middle = mean([y_bottom,y_top]) - mOffset
+    cgText,mean([x_left,x_right]),y_bottom-height*yOffset,$
+      textoidl(labelText),alignment=0.5,color=cgColor('black'),charsize=!p.charsize,/normal
     cgText,x_left  + 0.01,y_middle,cbLabels[0],alignment=0.0,color=cgColor('black'),/normal
     cgText,x_right - 0.01,y_middle,cbLabels[1],alignment=1.0,color=cgColor('black'),/normal
     

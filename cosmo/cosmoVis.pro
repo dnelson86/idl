@@ -583,8 +583,14 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
     ; set mass=0 for star forming gas if projecting temperature (eEOS)
     if config.colorField eq 'temp' or config.colorField eq 'temptvir' then begin
       w = where(mapCutout.loc_sf eq 1B,count)
+      
       ;if count gt 0 then mapCutout.loc_mass[w] = 0.0 ;set weight to zero
-      if count gt 0 then mapCutout.loc_temp[w] = 1000.0 ; set to ~ISM temperature
+      
+      if count gt 0 then begin
+        fieldValMap[w] = 1000.0 ; set to ~ISM temperature
+        if config.colorField eq 'temptvir' then $
+          fieldValMap[w] /= haloVirTemp
+      endif
     endif
   
     sphmap = calcSphMap(mapCutout.loc_pos,mapCutout.loc_hsml,mapCutout.loc_mass,fieldValMap,$
