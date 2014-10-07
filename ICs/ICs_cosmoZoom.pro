@@ -735,7 +735,7 @@ function zoomTargetHalo, sP=sP, gc=gc
   if sP.redshift gt sP.targetRedshift then begin
     print,'zoomTargetHalo: sP.redshift > targetRedshift, choosing most massive in box!'
     hInd = 0
-  endif else begin
+  endif else begin    
     ; generally, we search at the ending redshift, do positional
     posDiffs = periodicDists(expectedHaloPos,gc.subgroupPos,sP=sP)
     
@@ -749,16 +749,29 @@ function zoomTargetHalo, sP=sP, gc=gc
     if count ne 1 then message,'Error'
   endelse
   
+  ; some overrides (h2)
+  if sP.hInd eq 2 and sP.res eq 9 then hInd = 1 ;look at stellar mass
+  if sP.hInd eq 2 and sP.res eq 10 then hInd = 1
+  
+  ; probably in the zooms should always be the most massive in box, if not, sanity check
   foundMass = codeMassToLogMsun( gc.subgroupMass[hInd] )
   foundRvir = gc.group_r_crit200[ gc.subgroupGrNr[hInd] ]
   distNorm = periodicDists(expectedHaloPos,gc.subgroupPos[*,hInd],sP=sP) / foundRvir
   
-  print,' zoom hInd: '+str(hInd)
-  print,' targetPos: '+str(gc.subgroupPos[*,hInd])
+  print,'zoomTargetHalo: h'+str(sP.hInd)+'L'+str(sP.res)
+  print,' zoom selected hInd: '+str(hInd)
+  print,' expectedPos: ',expectedHaloPos
+  print,' targetPos: ',gc.subgroupPos[*,hInd]
   print,' targetMass ['+str(sP.targetHaloMass)+'] foundMass ['+str(foundMass)+']'
   print,' targetRvir ['+str(sP.targetHaloRvir)+'] foundRvir ['+str(foundRvir)+']'
   print,' distNorm: ',distNorm
-
+  
+  priInds = gcIDList(gc=gc,select='pri')
+  if total(priInds eq hInd,/int) eq 0 then begin
+    print,'Check, not even primary!'
+    stop
+  endif
+  
   return, hInd
 end
 
@@ -767,7 +780,7 @@ end
 pro checkDMContamination
 
   ; config
-  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res='11',hInd='1',redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res='9',hInd='2',redshift=2.0) )
   ;sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_10Mpc_dm',res=11,hInd='3',redshift=0.0) )
   ;sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_10Mpc_dm',res=10,hInd='1b',redshift=0.0) )
   ;sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_convhull',res=10,hInd=1,redshift=2.0) )

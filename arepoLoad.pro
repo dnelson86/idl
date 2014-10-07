@@ -47,6 +47,43 @@ function loadVoronoiMesh, fileBase, m, nDims
   
 end
 
+; loadSliceField(): load "density_slice_", etc
+
+function loadSliceField, fileBase, m, field
+
+  ; set filename
+  if (str(m) eq 'none') then begin
+    ext = ''
+    f = fileBase
+  endif else begin
+    ext = string(m,format='(I3.3)')
+    f = fileBase + field + "_slice_" + ext
+  endelse
+  
+  if ~file_test(f) then message,'Error: File not found.'
+
+  ; load
+  openr,1,f
+    ;read header
+    nPixelsX = 0L
+    nPixelsY = 0L
+    
+    readu,1,nPixelsX
+    readu,1,nPixelsY
+
+    ;read density field
+    quant = fltarr(nPixelsY, nPixelsX)
+    readu,1,quant
+    
+  close,1
+
+  quant = transpose(quant)
+  
+  r = {nPixelsXY:[nPixelsX,nPixelsY],field:quant}
+  return,r  
+  
+end
+
 ; loadDensityField(): load "density_field_" or "proj_density_field" output file
 
 function loadDensityField, fileBase, m, axes=axes
@@ -94,7 +131,7 @@ function loadDensityField, fileBase, m, axes=axes
     
     ;read temperature field
     temp = fltarr(nPixelsY, nPixelsX)
-    ;readu,1,temp
+    readu,1,temp
     
   close,1
 

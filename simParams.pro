@@ -641,7 +641,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'/output'+dirStr+'/'
     r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'/'
     r.savPrefix  = 'Z'
-    r.simName    = 'ZOOM_h' + str(hInd) + 'L' + str(r.levelMax)
+    r.simName    = 'h' + str(hInd) + 'L' + str(r.levelMax)
     r.saveTag    = 'zH'+str(hInd)+'L'+str(r.levelMax)
     r.plotPrefix = 'zL'+str(r.levelMax)
     r.plotPath   = '/n/home07/dnelson/plots/'
