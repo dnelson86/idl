@@ -129,10 +129,11 @@ pro crotonTest
   xrange = [1,7]
   
   start_PS,'halo_SAM_vs_redshift.eps', ys=8, xs=6
+    pos = plot_pos(col=3,row=1,/gap)
     ; halo baryons
     cgPlot,1+redshifts,dM_b*1e10,xtitle='',ytitle=textoidl('dM/dt [M_{sun}/year]'),$
       /xlog,xrange=xrange,/xs,xminor=0,/ylog,yrange=[0.06,60.0],/ys,yminor=0,$
-      xtickv=[1,2,3,4,5,6,7],xtickname=replicate(' ',10),xticks=6,position=(sP.pos_3x1)[0]
+      xtickv=[1,2,3,4,5,6,7],xtickname=replicate(' ',10),xticks=6,position=pos[0]
       
     ; croton model, dM/dt cold split into rapid and slow
     cgPlot,1+redshifts,dM_cool*1e10,/overplot,color=cgColor('red')
@@ -149,7 +150,7 @@ pro crotonTest
     ; halo baryons
     cgPlot,1+redshifts,M_b*1e10,xtitle='',ytitle=textoidl('M_{cold} [M_{sun}]'),$
       /xlog,xrange=[1,7],/xs,xminor=0,/ylog,yrange=[1.5e8,2e11],/ys,yminor=0,$
-      xtickv=[1,2,3,4,5,6,7],xtickname=replicate(' ',10),xticks=6,/noerase,position=(sP.pos_3x1)[1]
+      xtickv=[1,2,3,4,5,6,7],xtickname=replicate(' ',10),xticks=6,/noerase,position=pos[1]
       
     ; croton model, dM/dt cold split into rapid and slow
     cgPlot,1+redshifts,M_cold*1e10,/overplot,color=cgColor('red')
@@ -167,7 +168,7 @@ pro crotonTest
 
     cgPlot,[0],[0],/nodata,xtitle='1+z',ytitle='Radius [kpc]',$
       /xlog,xrange=[1,7],/xs,xminor=0,yrange=[0,150],/ys,$
-      xtickv=[1,2,3,4,5,6,7],xtickname=['1','2','3','4','5','6','7'],xticks=6,/noerase,position=(sP.pos_3x1)[2]
+      xtickv=[1,2,3,4,5,6,7],xtickname=['1','2','3','4','5','6','7'],xticks=6,/noerase,position=pos[2]
       
     cgPlot,1+redshifts,R_vir,/overplot,color=cgColor('black')
     cgPlot,1+redshifts,R_cool,/overplot,color=cgColor('red')

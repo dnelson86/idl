@@ -695,18 +695,21 @@ pro compareTimescalesHalo
   hsp       = [0.005,0.02] ; rad, gyr
   nc        = 120 ; number of colors (of 255) to use for background 2d histo
   
+  pos = plot_pos(row=1,col=3,/gap)
+  
   ; plot (1) - cooling time vs current temperature scatter
   start_PS, $
     sP.plotPath + 'timescales_vs_tcool.'+hTag+'.'+str(sP.res)+'.'+sP.plotPrefix+'.'+str(sP.snap)+'.eps', ys=8, xs=6
+    
     cgPlot,ts.coolTime,ts.curTemp,psym=psym,xtitle="",ytitle=textoidl('T_{gas} [log K]'),$
-      xrange=coolingRange,yrange=tempRange,/xlog,/xs,/ys,xminor=0,position=(sP.pos_3x1)[0],xtickname=replicate(' ',10)
+      xrange=coolingRange,yrange=tempRange,/xlog,/xs,/ys,xminor=0,position=pos[0],xtickname=replicate(' ',10)
 
     cgPlot,ts.coolTime,alog10(rhoRatioToCrit(ts.curDens,redshift=sP.redshift)),psym=psym,xtitle="",$
       ytitle=textoidl('log( \rho_{gas} / \rho_{crit,z} )'),xtickname=replicate(' ',10),$
-      xrange=coolingRange,yrange=alog10(densRange),/xlog,/xs,/ys,xminor=0,/noerase,position=(sP.pos_3x1)[1]
+      xrange=coolingRange,yrange=alog10(densRange),/xlog,/xs,/ys,xminor=0,/noerase,position=pos[1]
       
     cgPlot,[0],[0],/nodata,xtitle=textoidl('\tau_{cool} [Gyr]'),ytitle=textoidl('\tau_{dyn} [Gyr]'),$
-      xrange=coolingRange,yrange=dynRange,/ys,/ylog,yminor=0,/xs,/xlog,xminor=0,position=(sP.pos_3x1)[2],/noerase
+      xrange=coolingRange,yrange=dynRange,/ys,/ylog,yminor=0,/xs,/xlog,xminor=0,position=pos[2],/noerase
     cgPlot,[0.04,1.8],[0.04,1.8],line=0,color=cgColor('light gray'),/overplot
     cgPlot,ts.coolTime,ts.dynTime,psym=psym,/overplot
   end_PS
@@ -718,7 +721,7 @@ pro compareTimescalesHalo
     ; ----------
     cgPlot,[0],[0],/nodata,xtitle="",ytitle="Timescale [Gyr]",$
       xrange=radRange,yrange=coolingRange+[0.0,10.0],/ylog,/xs,/ys,yminor=0,$
-      xtickv=[0.15,0.5,1.0,1.5],xticks=3,xtickname=replicate(' ',10),position=(sP.pos_3x1)[0]
+      xtickv=[0.15,0.5,1.0,1.5],xticks=3,xtickname=replicate(' ',10),position=pos[0]
       
     ; individual gas elements
     if ~keyword_set(do2DBin) then begin
@@ -761,7 +764,7 @@ pro compareTimescalesHalo
     ; temp
     ; ----
     cgPlot,[0],[0],/nodata,xtitle="",ytitle=textoidl('T_{gas} [log K]'),xrange=radRange,yrange=tempRange+[0.1,0.0],$
-      /xs,/ys,position=(sP.pos_3x1)[1],xtickv=[0.15,0.5,1.0,1.5],xticks=3,xtickname=replicate(' ',10),/noerase
+      /xs,/ys,position=pos[1],xtickv=[0.15,0.5,1.0,1.5],xticks=3,xtickname=replicate(' ',10),/noerase
       
     ; individual gas elements and median binned
     if ~keyword_set(do2DBin) then begin
@@ -788,7 +791,7 @@ pro compareTimescalesHalo
     ; dens
     ; ----
     cgPlot,[0],[0],/nodata,xtitle=textoidl("r / r_{vir}"),ytitle=textoidl('log( \rho_{gas} / \rho_{crit,z} )'),$
-      xrange=radRange,yrange=alog10(densRange),/xs,/ys,/noerase,position=(sP.pos_3x1)[2],$
+      xrange=radRange,yrange=alog10(densRange),/xs,/ys,/noerase,position=pos[2],$
       xtickv=[0.15,0.5,1.0,1.5],xticks=3,xtickname=['0.15','0.5','1.0','1.5']
       
     ; individual gas elements and median binned
@@ -835,7 +838,7 @@ pro compareTimescalesHalo
     ; top: cooling
     cgPlot,[0],[0],/nodata,xtitle="",ytitle=textoidl('\tau_{cool} [Gyr]'),$
       xrange=accRange,yrange=coolingRange,/xlog,/xs,/ys,xminor=0,/ylog,yminor=0,$
-      position=(sP.pos_3x1)[0],xtickname=replicate(' ',10)
+      position=pos[0],xtickname=replicate(' ',10)
     
     if ~keyword_set(do2DBin) then begin
       cgPlot,ts.accTime,ts.coolTime,psym=psym,/overplot,thick=pThick
@@ -851,7 +854,7 @@ pro compareTimescalesHalo
     ; middle: dynamical
     cgPlot,[0],[0],/nodata,xtitle="",ytitle=textoidl('\tau_{dyn} [Gyr]'),$
       xrange=accRange,yrange=dynRange,/xlog,/xs,/ys,xminor=0,/ylog,yminor=0,$
-      /noerase,position=(sP.pos_3x1)[1],xtickname=replicate(' ',10)
+      /noerase,position=pos[1],xtickname=replicate(' ',10)
 
     ; set a contour palette
     loadColorTable,'brewerc-blues'
@@ -885,7 +888,7 @@ pro compareTimescalesHalo
     ; bottom: ratio
     cgPlot,[0],[0],/nodata,xtitle=textoidl('\tau_{acc} [Gyr]'),ytitle=textoidl('\tau_{cool}/\tau_{dyn}'),$
       xrange=accRange,yrange=ratioRange,/ys,/xs,/xlog,xminor=0,/ylog,yminor=0,$
-      position=(sP.pos_3x1)[2],/noerase
+      position=pos[2],/noerase
       
     ; individual elements
     if ~keyword_set(do2DBin) then begin
@@ -909,7 +912,7 @@ pro compareTimescalesHalo
     ; top: radius
     cgPlot,[0],[0],/nodata,xtitle="",ytitle=textoidl('r / r_{vir}'),$
       xrange=accRange,yrange=radRange,/xlog,/xs,/ys,xminor=0,$
-      position=(sP.pos_3x1)[0],xtickname=replicate(' ',10),$
+      position=pos[0],xtickname=replicate(' ',10),$
       ytickv=[0.15,0.5,1.0,1.5],yticks=3,ytickname=['0.15','0.5','1.0','1.5']
     
     if ~keyword_set(do2DBin) then begin
@@ -923,7 +926,7 @@ pro compareTimescalesHalo
     ; middle: vrad
     cgPlot,[0],[0],/nodata,xtitle="",ytitle=textoidl('v_{rad} / v_{circ}'),$
       xrange=accRange,yrange=vradRange,/xlog,/xs,/ys,xminor=0,$
-      /noerase,position=(sP.pos_3x1)[1],xtickname=replicate(' ',10)
+      /noerase,position=pos[1],xtickname=replicate(' ',10)
 
     ; individual elements
     if ~keyword_set(do2DBin) then begin
@@ -941,7 +944,7 @@ pro compareTimescalesHalo
     rvradRatioRange = [-20.0,5.0]
     cgPlot,[0],[0],/nodata,xtitle=textoidl('\tau_{acc} [Gyr]'),$
       ytitle=textoidl('(v_{rad}/v_{circ}) / (r/r_{vir})'),$
-      xrange=accRange,yrange=rvradRatioRange,/ys,/xs,/xlog,xminor=0,position=(sP.pos_3x1)[2],/noerase
+      xrange=accRange,yrange=rvradRatioRange,/ys,/xs,/xlog,xminor=0,position=pos[2],/noerase
       
     yy = (ts.gasVrad/ts.gasVcirc) / (ts.gasRadii/ts.gasRvir)
     

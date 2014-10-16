@@ -750,8 +750,8 @@ function zoomTargetHalo, sP=sP, gc=gc
   endelse
   
   ; some overrides (h2)
-  if sP.hInd eq 2 and sP.res eq 9 then hInd = 1 ;look at stellar mass
-  if sP.hInd eq 2 and sP.res eq 10 then hInd = 1
+  if sP.hInd eq 2 and sP.snap eq 59 and sP.res eq 9 then hInd = 1 ;look at stellar mass
+  if sP.hInd eq 2 and sP.snap eq 59 and sP.res eq 10 then hInd = 1
   
   ; probably in the zooms should always be the most massive in box, if not, sanity check
   foundMass = codeMassToLogMsun( gc.subgroupMass[hInd] )

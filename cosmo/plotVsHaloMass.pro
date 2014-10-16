@@ -4,21 +4,23 @@
 
 ; plotPreBin():
 
-pro plotPreBin, sP=sP
+pro plotPreBin, sP=sP, redshifts=redshifts
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-
+  if n_elements(redshifts) eq 0 then message,'Error'
+  
   ; config
-  redshift   = sP.redshift ;2.0 ;redshifts  = [2.0,3.0]
+  ;redshift   = sP.redshift ;2.0
+  ;redshifts  = [2.0,3.0]
   res        = sP.res ;256
   run        = sP.run
 
   runs        = [sP.run] ;['feedback','gadget'] ;tracer
   resolutions = [sP.res]
-  timeWindows = list(500.0) ;,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
-  accModes    = list('all','smooth','clumpy','stripped','recycled')
+  timeWindows = list(250.0) ;,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
+  accModes    = list('smooth') ;list('all','smooth','clumpy','stripped','recycled')
   
-  ;foreach redshift,redshifts do begin
+  foreach redshift,redshifts do begin
     foreach timeWindow,timeWindows do begin
       foreach run,runs do begin
         foreach res,resolutions do begin
@@ -34,7 +36,7 @@ pro plotPreBin, sP=sP
         endforeach
       endforeach
     endforeach
-  ;endforeach
+  endforeach
   
   print,'Done.'
   

@@ -1,6 +1,6 @@
 ; binVsHaloMass.pro
 ; gas accretion project - bin quantities as a function of halo mass
-; dnelson jun.2014
+; dnelson oct.2014
 
 ; haloMassBinValues(): bin accretion rate (in cold/hot) and cold fraction as a function of halo mass
 ; approach controlled by sP.accRateModel value:
@@ -21,6 +21,7 @@
 ;    accretion time: membership mismatch between origSnap and targetSnap
 ;    outflow time: membership mismatch between targetSnap and origSnap
 ;    interpretation: 
+;  model (4): as in #0, but only 0.15rvir crossings, no (rho,temp) cut
 
 function haloMassBinValues, sP=sP, accMode=accModeIN, timeWindow=TW, search=search
 
@@ -149,7 +150,7 @@ function haloMassBinValues, sP=sP, accMode=accModeIN, timeWindow=TW, search=sear
   ; additional information required based on method
   print,'ACCRETION RATE MODEL ['+str(sP.accRateModel)+']:'
 
-  if sP.accRateModel eq 0 or sP.accRateModel eq 1 or sP.accRateModel eq 2 then begin
+  if sP.accRateModel eq 0 or sP.accRateModel eq 1 or sP.accRateModel eq 2 or sP.accRateModel eq 4 then begin
     at = accretionTimes(sP=sP)
       
     sz = size(at.accTime) ; make sure we have the additional two 'first' crossings
@@ -313,6 +314,12 @@ function haloMassBinValues, sP=sP, accMode=accModeIN, timeWindow=TW, search=sear
             loc_accFlag = af.accFlag[ (wAm.(k))[loc_inds] ]
             w = where(loc_accFlag eq 1, nloc) ; 1 = galaxy tracer accretion
           end ;3
+          
+          4: begin
+            ; (4) as in #0 but only spatial radial crossings
+            loc_atime = reform( accTime_radIndGalAcc[ (wAm.(k))[ loc_inds ] ] )
+            w = where(curtime - loc_atime le loc_timeWindow, nloc)
+          end ;4
         endcase
       
       galaxy.coldFrac.(k).num[i] = nloc
@@ -417,6 +424,21 @@ function haloMassBinValues, sP=sP, accMode=accModeIN, timeWindow=TW, search=sear
             endif
           endif
         end ;3
+        
+        4: begin
+          ; (4) as in #0 but only spatial radial crossings
+          if origSkipFlag eq 0 then begin
+            loc_atime = reform( outTime_radIndGalAcc[ (wAm.(k))[ loc_inds ] ] )
+            w = where(curtime - loc_atime le loc_timeWindow, nloc)
+          endif
+          
+          if nloc gt 0 then begin
+            ; maximum past temps, cur and acc tvirs for only those particles in the time window
+            loc_maxTemp = maxTemp.(k)[ loc_inds[w] ]
+            loc_curTvir = curTvir.(k)[ loc_inds[w] ]
+            loc_accTvir = accTvir.(k)[ loc_inds[w] ]
+          endif
+        end ;4
       endcase
       
       ; process outflow members (common)
@@ -475,6 +497,12 @@ function haloMassBinValues, sP=sP, accMode=accModeIN, timeWindow=TW, search=sear
             loc_accFlag = af.accFlag[ (wAm.(k))[loc_inds] ]
             w = where(loc_accFlag eq 2, nloc) ; 2 = halo tracer accretion
           end ;3
+          
+          4: begin
+            ; (4) as in #0 but only spatial radial crossings
+            loc_atime = reform( accTime_radIndHaloAcc[ (wAm.(k))[ loc_inds ] ] )
+            w = where(curtime - loc_atime le loc_timeWindow, nloc)
+          end
         endcase
       
       halo.coldFrac.(k).num[i] = nloc
@@ -567,6 +595,21 @@ function haloMassBinValues, sP=sP, accMode=accModeIN, timeWindow=TW, search=sear
             endif
           endif
         end ;3
+        
+        4: begin
+          ; (4) as in #0 but only spatial radial crossings
+          if origSkipFlag eq 0 then begin
+            loc_atime = reform( outTime_radIndHaloAcc[ (wAm.(k))[ loc_inds ] ] )
+            w = where(curtime - loc_atime le loc_timeWindow, nloc)
+          endif
+          
+          if nloc gt 0 then begin
+            ; maximum past temps, cur and acc tvirs for only those particles in the time window
+            loc_maxTemp = maxTemp.(k)[ loc_inds[w] ]
+            loc_curTvir = curTvir.(k)[ loc_inds[w] ]
+            loc_accTvir = accTvir.(k)[ loc_inds[w] ]
+          endif
+        end
       endcase
         
       ; process outflow members (common)

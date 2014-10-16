@@ -12,19 +12,19 @@
 ; h7L10: ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 9736.63 10236.63 10194.3 10694.3 10036.5 10536.5 #d
 ; h7L11: ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 9671.24 10171.24 10206.4 10706.4 9970.90 10470.9 #d
 
-; h0L9:  ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 9179.4  9679.4  9992.7 10492.7  9903.73 #r
-; h0L10: ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 9192.7  9692.7  9924.0 10424.0  9860.74 #r
+; h0L9:  ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 9179.4  9679.4  9992.7 10492.7  9903.73 #d
+; h0L10: ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 9192.7  9692.7  9924.0 10424.0  9860.74 #d
 ; h0L11: ./Arepo_slice param.txt 4 58 4000 4000 0 1 2 9249.0  9749.0 10011.6 10511.6  9775.30 #d(58)
-; h0L9:  ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 9179.4  9679.4  9992.7 10492.7  9653.7 10153.7 #
-; h0L10: ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 9192.7  9692.7  9924.0 10424.0  9610.7 10110.7 #
+; h0L9:  ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 9179.4  9679.4  9992.7 10492.7  9653.7 10153.7 #d
+; h0L10: ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 9192.7  9692.7  9924.0 10424.0  9610.7 10110.7 #d
 ; h0L11: ./Arepo_slice param.txt 5 58 4000 4000 0 1 2 9249.0  9749.0 10011.6 10511.6  9525.3 10025.3 #d(58)
 
 ; h1L9:  ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 10050.3 10550.3  9529.2 10029.2 10350.4 #d
-; h1L10: ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 10051.1 10551.1  9670.4 10170.4 10367.0 #r(JIT)
-; h1L11: ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 10244.3 10744.3  9945.7 10445.7 10500.1 #r(JIT)
+; h1L10: ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 10051.1 10551.1  9670.4 10170.4 10367.0 #d
+; h1L11: ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 10244.3 10744.3  9945.7 10445.7 10500.1 #d
 ; h1L9:  ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 10050.3 10550.3  9529.2 10029.2 10100.4 10600.4 #d
-; h1L10: ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 10051.1 10551.1  9670.4 10170.4 10117.0 10617.0
-; h1L11: ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 10244.3 10744.3  9945.7 10445.7 10250.1 10750.1
+; h1L10: ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 10051.1 10551.1  9670.4 10170.4 10117.0 10617.0 #d
+; h1L11: ./Arepo_slice param.txt 5 59 4000 4000 0 1 2 10244.3 10744.3  9945.7 10445.7 10250.1 10750.1 #d
 
 ; h8L9:  ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 9501.5 10001.5 10009.8 10509.8 10629.6
 ; h8L10: ./Arepo_slice param.txt 4 59 4000 4000 0 1 2 9356.9  9856.9 10001.1 10501.1 10622.8
@@ -39,7 +39,7 @@ pro zoomMeshAndSliceWithRes
   ; config
   resLevels = [9,10,11]
   redshift  = 2.0
-  hInd      = 0
+  hInd      = 1
   boxSize   = 500.0 ;ckpc side-length, but cannot change after post-processing
   fields    = ['density','metal','temp','velocity']
   rVirCircs = [0.15,0.5,1.0] ; times rvir to draw a circle
@@ -67,14 +67,7 @@ pro zoomMeshAndSliceWithRes
           string(gcPos[1]+0.5*boxSize,format='(f7.1)')+' '+$
           string(gcPos[2]-0.5*boxSize,format='(f7.1)')+' '+$
           string(gcPos[2]+0.5*boxSize,format='(f7.1)')+' '
-    print,sP.snap      9.98273      8.97853      7.97349      6.98719      6.48403      5.98860      5.89352      5.82306      5.68430
-      5.50366      5.39324      5.22047      5.13584      4.99050      4.92927      4.78883      4.67109      4.53676
-      4.40561      4.29568      4.15256      3.99618      3.92820      3.84454      3.77863      3.69750      3.63359
-      3.55493      3.49296      3.41668      3.35659      3.28263      3.20992      3.15265      3.08215      3.02661
-      2.99913      2.93123      2.90440      2.83811      2.79888      2.73439      2.67728      2.63970      2.57791
-      2.51716      2.47526      2.44563      2.39875      2.35826      2.31825      2.27871      2.23965      2.20105
-      2.15750      2.09328      2.05643      2.03557      2.01485      1.99940     -1.00000     -1.00000     -1.00000
-    continue
+
     ;if resLevel ge 11 then continue
     
     ; faces_list (Voronoi mesh slice): we pre-draw the mesh slice and save it as a raster image
@@ -128,7 +121,7 @@ pro zoomMeshAndSliceWithRes
     slices = mod_struct( slices, 'res_'+str(resLevel), sLoc )
     
   endforeach
-  stop
+  
   ; positioning
   x0 = 0.05 & x1 = 0.33 & xoff = 0.32
   y0 = 0.08 & y1 = 0.47 & yoff = 0.46
@@ -188,8 +181,12 @@ pro zoomMeshAndSliceWithRes
       ;sliceMap = alog10( slices.(j).temp > 1e-20 )
       
       ; colormap (dens proj)
-      mapMinMax = [2.0,5.0]
-      sliceMap = rhoRatioToCrit( slices.(j).proj_density > 1e-20, sP=sP, /log )
+      ;mapMinMax = [2.0,5.0]
+      ;sliceMap = rhoRatioToCrit( slices.(j).proj_density > 1e-20, sP=sP, /log )
+      
+      ; colormap (temp proj)
+      mapMinMax = [3.4,4.6]
+      sliceMap = alog10( slices.(j).proj_temp > 1e-20 )
       
       ; stretch
       sliceMap = (sliceMap-mapMinMax[0])*(255.0) / (mapMinMax[1]-mapMinMax[0])
@@ -221,7 +218,7 @@ pro multiMapZoomComp
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  redshift = 2.0
+  redshift = 2.02 ; NOTE!!!!!!!!!!!!!!!!!
   resLevel = 9
   hInds    = [2,4,5,6] ;[0,1,7,8]
 

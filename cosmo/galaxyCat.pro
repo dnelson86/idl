@@ -188,6 +188,10 @@ function galaxyCat, sP=sP, skipSave=skipSave
     wInter = where( ((temp - sP.galcut_rho*dens gt sP.galcut_T and rad_pri lt sP.radcut_rvir) or $ ; fail gal
                      (temp - sP.galcut_rho*dens lt sP.galcut_T and rad_pri gt sP.radcut_rvir)) and $ ; fail gmem
                      rad_pri le sP.radcut_out, countInter) ; keep outer rad cut
+                     
+    if countGal eq 0 or countGmem eq 0 or countInter eq 0 then $
+      message,'Warning: Strange zero counts, check. ' + strmid(saveFilename,strlen(sP.derivPath))
+                     
     temp = !NULL
     dens = !NULL
              
@@ -202,11 +206,6 @@ function galaxyCat, sP=sP, skipSave=skipSave
     ; make stellar cut
     wStars = where(rad_pri lt sP.radcut_rvir,countStars,comp=wStarsComp,ncomp=wStarsComp_num)
 
-    if countGal eq 0 or countGmem eq 0 then begin
-      print,'Warning: Empty galaxy cut or comp. Skipping: ' + strmid(saveFilename1,strlen(sP.derivPath))
-      continue
-    endif
-        
     ; load BH positions, calculate radial vector from group center (PRI)
     countBHs = 0
 
