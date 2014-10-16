@@ -310,7 +310,7 @@ pro plotAccTimeDeltas
       loadColorTable, 'helix', /reverse ; data
       tvim,h2_cmap,scale=0,pos=pos,/c_map,/noframe,/noerase
             
-      xtitle = textoidl("( t_{1} - t_{2} ) [Gyr]")
+      xtitle = textoidl("( t_{gal} - t_{halo} ) [Gyr]")
       ytitle = textoidl("M_{halo}")
             
       loadColorTable,'bw linear' ; axes/frame
@@ -325,7 +325,7 @@ pro plotAccTimeDeltas
 
       ; (no normalization)
       cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_pdf,pos=pos,$
-        xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),ytitle="PDF",$
+        xtitle=textoidl("( t_{gal} - t_{halo} ) [Gyr]"),ytitle="PDF",$
         /xs,/ys,/ylog,yminor=0,/xlog,xminor=0,title=""
       
       yy = alog10( 10.0^(pm.(j)) * units.hubbleParam )
@@ -392,7 +392,7 @@ pro plotAccTimeDeltas
   start_PS,sPs.(0).plotPath + 'accTimeDeltasMassBinsComp_' + plotStrG + '.eps'
   
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_pdf,pos=pos,$
-      xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),ytitle="PDF",$
+      xtitle=textoidl("( t_{gal} - t_{halo} ) [Gyr]"),ytitle="PDF",$
       /xs,/ys,/ylog,yminor=0,/xlog,xminor=0
   
     foreach run,runs,j do begin
@@ -428,7 +428,7 @@ pro plotAccTimeDeltas
   start_PS,sPs.(0).plotPath + 'accTimeDeltasComp_' + plotStrG + '.eps'
   
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_pdf,pos=pos,$
-      xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),ytitle="PDF",$
+      xtitle=textoidl("( t_{gal} - t_{halo} ) [Gyr]"),ytitle="PDF",$
       /xs,/ys,/ylog,yminor=0,/xlog,xminor=0
   
     foreach run,runs,j do begin
@@ -478,6 +478,8 @@ pro plotAccTimeDeltas
       
       parentS200 = codeMassToVirEnt( pm.(j), sP=sPs.(j), /log ) ; only used for 'ent'
       
+      xrangeLog2 = alog10( [0.1,2.0] )
+      
       xx = alog10( atd.(j).val )
       
       if plotVal eq 'temp' then $
@@ -486,8 +488,8 @@ pro plotAccTimeDeltas
         yy = alog10( 10.0^mvs.(j).maxEnt / 10.0^parentS200 )
           
       h2 = hist_nd_weight( transpose( [[xx],[yy]] ), weight=weights, [binSize_xx,binSize_yy], $
-          min=[xrangeLog[0]-binSize_xx*0.50,yrangeNorm[0]-binSize_yy*0.50],$
-          max=[xrangeLog[1]+binSize_xx*0.49,yrangeNorm[1]+binSize_yy*0.49])
+          min=[xrangeLog2[0]-binSize_xx*0.50,yrangeNorm[0]-binSize_yy*0.50],$
+          max=[xrangeLog2[1]+binSize_xx*0.49,yrangeNorm[1]+binSize_yy*0.49])
       
       ; colormap (each halo mass row individually scaled)
       h2_cmap = colorMapAccTime(h2,logHist=logHist,byRow=byRow,byCol=byCol)
@@ -497,18 +499,14 @@ pro plotAccTimeDeltas
       tvim,h2_cmap,scale=0,pos=pos[j]+[0.06,0,0,0],/c_map,/noframe,/noerase
             
       loadColorTable,'bw linear' ; axes/frame
-      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeNorm,title="",$
-        xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),$
+      cgPlot,[0],[0],/nodata,xrange=10.0^xrangeLog2,yrange=yrangeNorm,title="",$
+        xtitle=textoidl("( t_{gal} - t_{halo} ) [Gyr]"),$
         ytitle=ytitleNorm,/xs,/ys,/xlog,xminor=0,pos=pos[j]+[0.06,0,0,0],/noerase
         
       ; lower envelope line
-      if run eq 'tracer'   then xx = [0.3,1.5]
-      if run eq 'feedback' then xx = [0.4,2.5]
-      if run eq 'tracer'   then yoff = 0.5
-      if run eq 'feedback' then yoff = 0.8
-      yy = xx*0.5 - yoff
+      xx = [0.3,1.8]
+      yy = xx*0.5 - 0.8
       
-      if run eq 'feedback' then $
       cgPlot,xx,yy,line=2,color=cgColor('black'),thick=!p.thick,/overplot
         
       legend,[sPs.(j).simName],textcolors=[sPs.(j).colors[cInd]],/top,/left 
@@ -563,7 +561,7 @@ pro plotAccTimeDeltas
             
         loadColorTable,'bw linear' ; axes/frame
         cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeNorm,title="",$
-          xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),$
+          xtitle=textoidl("( t_{gal} - t_{halo} ) [Gyr]"),$
           ytitle=ytitleNorm,/xs,/ys,/xlog,xminor=0,pos=pos[3*j+k],/noerase
           
         legend,massBinStr,textcolors=cgColor('black'),/top,/left
@@ -616,7 +614,7 @@ pro plotAccTimeDeltas
             
       loadColorTable,'bw linear' ; axes/frame
       cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeNorm,title="",$
-        xtitle=textoidl("( t_{1} - t_{2} ) [Gyr]"),ytitle=ytitleNorm,$
+        xtitle=textoidl("( t_{gal} - t_{halo} ) [Gyr]"),ytitle=ytitleNorm,$
         /xs,/ys,/xlog,xminor=0,pos=pos_plot,/noerase
        
       ; colorbar
@@ -663,28 +661,105 @@ pro plotAccTimeDeltas
       /xs,/ys,pos=pos[j]+[0.06,0,-0.02,0],/noerase
       
     ; guiding lines
-    oneToOne = redshiftToAgeFlat([6.0,sPs.(j).redshift])
+    nRes = 20
+    dynRedshifts = linspace(6.0,sPs.(j).redshift,nRes)
+    oneToOne = redshiftToAgeFlat(dynRedshifts)
     cgPlot,oneToOne,oneToOne,color='yellow',line=2,/overplot
     
     ;cgPlot,[oneToOne[1]-1,oneToOne[1]],[oneToOne[1],oneToOne[1]],color=cgColor('orange'),line=1,/overplot
     ;cgPlot,[oneToOne[1],oneToOne[1]],[oneToOne[1]-1,oneToOne[1]],color=cgColor('orange'),line=1,/overplot
 
     ; dynTime only depends on redshift
-    sis_dm = sis_profile(1.0,mass=1.0,redshift=redshift)    
-    sis_gas = sis_gas_profile(mass_hot=50.0,sis_dm=sis_dm)
-    dynTime = sis_gas.dynTime_halo
+    dynTime = fltarr(nRes)
+    for q=0,nRes-1 do begin
+      sis_dm = sis_profile(1.0,mass=1.0,redshift=dynRedshifts[q])    
+      sis_gas = sis_gas_profile(mass_hot=50.0,sis_dm=sis_dm)
+      dynTime[q] = sis_gas.dynTime_halo
+    endfor
     
     cgPlot,oneToOne,oneToOne+0.5*dynTime,color='orange',line=1,/overplot
-    
+
     if redshift eq 2.0 then textPos = [2.0,2.4]
     if redshift eq 1.0 then textPos = [3.2,3.8]
     if redshift eq 0.0 then textPos = [5.0,5.0] ; todo
     
-    cgText,textPos[0],textPos[1],textoidl("t(T_{max}) = t_2 + t_{dyn }/2"),$
+    cgText,textPos[0],textPos[1],textoidl("t_{ }(T_{max}) = t_{halo} + t_{dyn }/2"),$
       orientation=40.0,color='orange',alignment=0.5
     
     cgPlot,[0],[0],/nodata,xrange=xrangeT,yrange=xrangeT,title="",$
-      xtitle=textoidl("t_{2} [Gyr]"),ytitle=textoidl("t( T_{max} ) [Gyr]"),$
+      xtitle=textoidl("t_{halo} [Gyr]"),ytitle=textoidl("t_{ }( T_{max} ) [Gyr]"),$
+      /xs,/ys,pos=pos[j]+[0.06,0,-0.02,0],/noerase
+    
+    legend,[sPs.(j).simName],textcolors=[sPs.(j).colors[cInd]],/top,/left
+    
+  endforeach ; runs
+  
+  end_PS
+  
+  ; plot (8) - correlation between TmaxTime and radial crossing times
+  start_PS,sP.plotPath + 'accTimeRatio_vs_TmaxTime_' + plotStrG + '.eps', $
+    xs=4.8, ys=3.8*n_elements(runs)
+      
+  pos = plot_pos(rows=n_elements(runs),cols=1,/gap)
+  
+  foreach run,runs,j do begin
+  
+    ; bin
+    weights = fltarr(n_elements(atd.(j).val)) + 1.0 ; uniform
+    
+    xx = reform( mvs.(j).atEarly ) ; scalefac
+    yy = mvs.(j).maxTempTime ; scalefac
+    
+    xx = redshiftToAgeFlat( 1/xx-1 )
+    yy = redshiftToAgeFlat( 1/yy-1 )
+    
+    yy /= xx ; ratio
+    
+    binSize_yy2 = 0.01
+    xrange2 = [0.8,1.2]
+    
+    h2 = hist_nd_weight( transpose( [[xx],[yy]] ), weight=weights, [binSize_xx,binSize_yy2], $
+        min=[xrangeT[0]-binSize_xx*0.50,xrange2[0]-binSize_yy2*0.50],$
+        max=[xrangeT[1]+binSize_xx*0.49,xrange2[1]+binSize_yy2*0.49])
+    
+    ; colormap (each halo mass row individually scaled)
+    h2_cmap = colorMapAccTime(h2,logHist=logHist,byRow=0,byCol=0)
+      
+    ; plot (a)
+    loadColorTable, 'helix', /reverse ; data
+    tvim,h2_cmap,scale=0,pos=pos[j]+[0.06,0,-0.02,0],/c_map,/noframe,/noerase
+          
+    loadColorTable,'bw linear' ; axes/frame
+    cgPlot,[0],[0],/nodata,xrange=xrangeT,yrange=xrange2,title="",$
+      xtitle="",ytitle="",xtickname=replicate(' ',10),ytickname=replicate(' ',10),$
+      /xs,/ys,pos=pos[j]+[0.06,0,-0.02,0],/noerase
+      
+    ; guiding lines
+    nRes = 20
+    dynRedshifts = linspace(6.0,sPs.(j).redshift,nRes)
+    oneToOne = redshiftToAgeFlat(dynRedshifts)
+    cgPlot,oneToOne,replicate(1.0,nRes),color='yellow',line=2,/overplot
+    
+    ;cgPlot,[oneToOne[1]-1,oneToOne[1]],[oneToOne[1],oneToOne[1]],color=cgColor('orange'),line=1,/overplot
+    ;cgPlot,[oneToOne[1],oneToOne[1]],[oneToOne[1]-1,oneToOne[1]],color=cgColor('orange'),line=1,/overplot
+
+    ; dynTime only depends on redshift
+    dynTimeRatio = fltarr(nRes)
+    for q=0,nRes-1 do begin
+      sis_dm = sis_profile(1.0,mass=1.0,redshift=dynRedshifts[q])    
+      sis_gas = sis_gas_profile(mass_hot=50.0,sis_dm=sis_dm)
+      dynTimeRatio[q] = sis_gas.dynTime_halo / oneToOne[q]
+    endfor
+    
+    cgPlot,oneToOne,1.0+0.5*dynTimeRatio,color='orange',line=1,/overplot
+
+    textPos = [max(dynRedshifts)*0.5,0.97]
+    
+    cgText,textPos[0],textPos[1],textoidl("t_{ }(T_{max}) = t_{halo} + t_{dyn }/2"),$
+      orientation=40.0,color='orange',alignment=0.5
+    
+    cgPlot,[0],[0],/nodata,xrange=xrangeT,yrange=xrange2,title="",$
+      xtitle=textoidl("t_{halo} [Gyr]"),ytitle=textoidl("t_{ }( T_{max} ) / t_{halo}"),$
       /xs,/ys,pos=pos[j]+[0.06,0,-0.02,0],/noerase
     
     legend,[sPs.(j).simName],textcolors=[sPs.(j).colors[cInd]],/top,/left
