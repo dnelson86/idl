@@ -1296,6 +1296,7 @@ end
 ; zooms:
 @ICs_cosmoZoom
 @zoomVis
+@zoomEvo
 
 @tracersVel_Cosmo
 ;@tracersVel_Halos

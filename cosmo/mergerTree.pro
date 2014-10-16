@@ -235,11 +235,13 @@ function mergerTreeSubset, sP=sP, verbose=verbose
       gcIDs[ gcIDList(gc=gc,select='sec') ] = -1
       
       times     = fltarr(numBack+floor(smoothKer/2.0))
+      snaps     = lonarr(numBack+floor(smoothKer/2.0))
       hPos      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDs))
       hVel      = fltarr(numBack+floor(smoothKer/2.0),3,n_elements(gcIDs))
       hMass     = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDs))
       hVirRad   = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDs))
       hVirTemp  = fltarr(numBack+floor(smoothKer/2.0),n_elements(gcIDs))
+      hInd      = lonarr(numBack+floor(smoothKer/2.0),n_elements(gcIDs)) - 1
       noParMask = bytarr(n_elements(gcIDs))
       hMinSnap  = intarr(n_elements(gcIDs)) - 1
     endif
@@ -271,7 +273,9 @@ function mergerTreeSubset, sP=sP, verbose=verbose
     hMass[i,w]    = gc.subgroupMass[gcIDs[w]]
     hVirRad[i,w]  = gc.group_r_crit200[gc.subgroupGrNr[gcIDs[w]]]
     hVirTemp[i,w] = alog10(codeMassToVirTemp(gc.subgroupMass[gcIDs[w]],sP=sP))
-
+    hInd[i,w]     = gcIDs[w]
+    snaps[i]      = sP.snap
+    
     ; load mergerTree and change subgroup IDs to parents at the prior snapshot
     Parent = mergerTree(sP=sP)
 
@@ -315,7 +319,7 @@ function mergerTreeSubset, sP=sP, verbose=verbose
   r = {gcIndOrig:gcIndOrig,gcIndOrigTrMC:-1,gcIndOrigTrVel:-1,$
        hPos:hPos,hVel:hVel,hPosSm:hPosSm,hVelSm:hVelSm,$
        hVirRad:hVirRad,hVirTemp:hVirTemp,hMass:hMass,hMinSnap:hMinSnap,$
-       times:times,minSnap:minSnap,maxSnap:maxSnap,smoothKer:smoothKer}
+       hInd:hInd,snaps:snaps,times:times,minSnap:minSnap,maxSnap:maxSnap,smoothKer:smoothKer}
 
   if sP.trMCPerCell gt 0 then begin
     gcIndOrigTrMC = galCatRepParentIDs(galcat=galcat,child_counts=galcat.trMC_cc)

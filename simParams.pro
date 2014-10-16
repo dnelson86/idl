@@ -31,6 +31,20 @@ function fillZoomParams, r, res=res, hInd=hInd
   if r.levelMax eq 10 then r.ids_offset =  50000000L
   if r.levelMax eq 11 then r.ids_offset = 500000000L
   
+  ; colors as a function of hInd and resolution (vis/ColorWheel-Base.png - outer ring, 3rd ring, 6th ring)
+  colors_red    = [['94'x,'07'x,'0a'x],['ce'x,'18'x,'1e'x],['f3'x,'7b'x,'70'x]]
+  colors_maroon = [['68'x,'00'x,'59'x],['8f'x,'18'x,'7c'x],['bd'x,'7c'x,'b5'x]]
+  colors_purple = [['39'x,'0a'x,'5d'x],['51'x,'24'x,'80'x],['82'x,'6a'x,'af'x]]
+  colors_navy   = [['9d'x,'1f'x,'63'x],['1c'x,'36'x,'87'x],['55'x,'65'x,'af'x]]
+  colors_blue   = [['00'x,'3d'x,'73'x],['00'x,'59'x,'9d'x],['5e'x,'8a'x,'c7'x]]
+  colors_teal   = [['00'x,'6d'x,'6f'x],['00'x,'95'x,'98'x],['59'x,'c5'x,'c7'x]]
+  colors_green  = [['00'x,'6c'x,'3b'x],['00'x,'93'x,'53'x],['65'x,'c2'x,'95'x]]
+  colors_lime   = [['40'x,'79'x,'27'x],['62'x,'a7'x,'3b'x],['ad'x,'d5'x,'8a'x]]
+  colors_yellow = [['a0'x,'96'x,'00'x],['e3'x,'d2'x,'00'x],['ff'x,'f6'x,'85'x]]
+  colors_brown  = [['9a'x,'67'x,'04'x],['d9'x,'91'x,'16'x],['fd'x,'c5'x,'78'x]]
+  colors_orange = [['98'x,'50'x,'06'x],['d4'x,'71'x,'1a'x],['f9'x,'a8'x,'70'x]]
+  colors_pink   = [['95'x,'23'x,'1f'x],['cf'x,'38'x,'34'x],['f6'x,'8e'x,'76'x]]
+  
   if hInd eq 0 then begin
     ;hInd =   95 mass = 11.97 rvir = 239.9 vol =  69.3 pos = [ 7469.41  5330.66  3532.18 ]
     ;ref_center = 0.3938, 0.2466, 0.1794
@@ -43,6 +57,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     
     if r.levelMax ge 9 then r.zoomShift = [13,32,41]
     r.rVirFac = -0.1 * r.zoomLevel + 4.0
+  
+    r.colors = getColor24(transpose(colors_red)) ;h0
   endif
   
   if hInd eq 1 then begin
@@ -63,6 +79,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     
     if str(hInd) eq '1b' then r.zoomShift = [22, -43, -39]
     if str(hInd) eq '1b' then r.rVirFac = 6.0
+
+    r.colors = getColor24(transpose(colors_maroon)) ;h1
   endif
   
   if hInd eq 2 then begin
@@ -81,6 +99,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 11 then r.zoomShift = [36, 29, 17]
     r.rVirFac = 0.2 * r.zoomLevel + 4.0
     if r.levelMax eq 11 then r.rVirFac = 6.0
+
+    r.colors = getColor24(transpose(colors_purple)) ;h2
   endif
   
   if hInd eq 3 then begin
@@ -97,6 +117,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 10 then r.zoomShift = [-7, 11, 32]
     if r.levelMax eq 11 then r.zoomShift = [-5, 12, 32]
     r.rVirFac = 1.0 * r.zoomLevel + 3.0
+
+    r.colors = getColor24(transpose(colors_navy)) ;h3
   endif
   
   if hInd eq 4 then begin
@@ -111,6 +133,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 10 then r.zoomShift = [37,20,27]
     if r.levelMax eq 11 then r.zoomShift = [37,20,27]
     r.rVirFac = 4.2
+
+    r.colors = getColor24(transpose(colors_blue)) ;h4
   endif
   
   if hInd eq 5 then begin
@@ -127,6 +151,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 10 then r.zoomShift = [12,0,-36]
     if r.levelMax eq 11 then r.zoomShift = [12,0,-36]
     r.rVirFac = 0.2 * r.zoomLevel + 4.0
+
+    r.colors = getColor24(transpose(colors_teal)) ;h5
   endif
   
   if hInd eq 6 then begin
@@ -144,6 +170,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 11 then r.zoomShift = [42, 21, 26]
     
     r.rVirFac = 1.0 * r.zoomLevel + 3.0
+
+    r.colors = getColor24(transpose(colors_green)) ;h6
   endif
   
   if hInd eq 7 then begin
@@ -169,6 +197,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     ; L12:
     if r.levelMax eq 12 then r.zoomShift = [43, -19, -12]
     if r.levelMax eq 12 then r.rVirFac = 8.0
+
+    r.colors = getColor24(transpose(colors_lime)) ;h7
   endif
   
   if hInd eq 8 then begin
@@ -185,6 +215,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 10 then r.zoomShift = [-26, -49, -15]
     if r.levelMax eq 11 then r.zoomShift = [-27, -50, -14]
     r.rVirFac = 0.5 * r.zoomLevel + 5.0
+
+    r.colors = getColor24(transpose(colors_brown)) ;h8
   endif
   
   if hInd eq 9 then begin
@@ -201,23 +233,9 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 10 then r.zoomShift = [6,0,-39]
     if r.levelMax eq 11 then r.zoomShift = [6,0,-39]
     r.rVirFac = 0.1 * r.zoomLevel + 4.0
+
+    r.colors = getColor24(transpose(colors_orange)) ;h9
   endif
-  
-  ; colors as a function of resolution
-  if r.res eq 9 then $
-    r.colors = [getColor24(['ff'x,'40'x,'40'x]), $ ; red, light to dark (L9/default)
-                getColor24(['ff'x,'00'x,'00'x]), $
-                getColor24(['a6'x,'00'x,'00'x])]
-                
-  if r.res eq 10 then $
-    r.colors = [getColor24(['ff'x,'5b'x,'00'x]), $ ; red, light to dark (L9/default)
-                getColor24(['ff'x,'7c'x,'00'x]), $
-                getColor24(['ff'x,'9d'x,'00'x])]
-                  
-  if r.res eq 11 then $
-    r.colors = [getColor24(['ff'x,'00'x,'5b'x]), $ ; red, light to dark (L9/default)
-                getColor24(['ff'x,'00'x,'7c'x]), $
-                getColor24(['ff'x,'00'x,'9d'x])]  
   
   ; convert zoomShift to zoomShiftPhys
   r.zoomShiftPhys = r.zoomShift / 2.0^r.levelMin * r.boxSize
@@ -363,7 +381,7 @@ function fillZoomParamsDwarf, r, res=res, hInd=hInd
     r.colors = [getColor24(['ff'x,'00'x,'5b'x]), $ ; red, light to dark (L9/default)
                 getColor24(['ff'x,'00'x,'7c'x]), $
                 getColor24(['ff'x,'00'x,'9d'x])]  
-  
+             
   ; convert zoomShift to zoomShiftPhys
   r.zoomShiftPhys = r.zoomShift / 2.0^r.levelMin * r.boxSize
   
@@ -441,10 +459,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
        accRateModel:  0,$ ; explore different ways to measure net/inflow/outflow rates
        $
        $ ; plotting/vis parameters:
-       colors:        [0L,0L,0L] ,$ ; color sequence for res 128,256,512
-       pos_3x1:       list([0.18,0.67,0.95,0.95],[0.18,0.39,0.95,0.67],[0.18,0.11,0.95,0.39]) ,$
-       pos_2x2:       list([0.13,0.5,0.53,0.9],[0.53,0.5,0.93,0.9],[0.13,0.1,0.53,0.5],[0.53,0.1,0.93,0.5]) ,$
-       pos_2x1:       list([0.15,0.55,0.95,0.95],[0.15,0.15,0.95,0.55])  ,$
+       colors:        [0L,0L,0L] ,$ ; color sequence (for 3 res levels)
        $
        $ ; GFM and other indications of optional snapshot fields
        gfmElements:   ['H','He','C','N','O','Ne','Mg','Si','Fe'] ,$
@@ -715,7 +730,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.gfmNumElements = 9
     r.gfmWinds       = 1
     r.gfmBHs         = 1
-    r.accRateModel   = 0 ;0,2,3
+    r.accRateModel   = 4 ;0,2,3,4
     
     if res eq 512 then r.subboxCen  = [5500,7000,7500]
     if res eq 512 then r.subboxSize = [4000,4000,4000]
@@ -859,7 +874,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.minNumGasPart = -1 ; no additional cut
     r.trMCPerCell   = 10
     r.trVelPerCell  = 1
-    r.accRateModel  = 0 ;0,2,3
+    r.accRateModel  = 4 ;0,2,3,4
     
     if res eq 128 or res eq 256 then $
       r.trMCFields    = [0,1,5,2,-1,3,4,-1,-1,-1,-1,-1,-1] ; even older code version than tracer.512, indices specified manually in Config.sh
