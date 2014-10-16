@@ -431,7 +431,7 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
         mbv_mode.(k).eta_sfr2_net_abcd2 = (alog10(sfr2/eta_acc))[gcW]
             
         ; rebin in halo mass
-        for m=0,n_elements(mbv_loc.logMassBinCen)-1 do begin
+        for m=0,n_elements(mbv_modeAll.(0).logMassBinCen)-1 do begin
           ; restrict medians to primary only (num>0)
           w = where(gcMasses gt mbv_modeAll.(k).logMassBins[m] and $
                     gcMasses le mbv_modeAll.(k).logMassBins[m+1] and $
@@ -629,7 +629,7 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
           mbv_mode.(k).eta_w_binned[m,*] = percentiles( eta_out[w] / eta_net[w] )
 
           ; apply correction (using linear fit)
-          sfr_acc_correction_factor = 10.0^(mbv_loc.logMassBinCen[m] * fit[1] + fit[0])
+          sfr_acc_correction_factor = 10.0^(mbv_modeAll.(0).logMassBinCen[m] * fit[1] + fit[0])
           mbv_mode.(k).eta_w_binned[m,*] /= sfr_acc_correction_factor
           
           ; ABCD approach (uncorrected)
@@ -642,8 +642,8 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
           
           ; ABCD approach (corrected)
           sfr_acc_correction_factor = $
-            10.0^(fit3[0] + fit3[1]*mbv_loc.logMassBinCen[m] + $
-                  fit3[2]*mbv_loc.logMassBinCen[m]^2 + fit3[3]*mbv_loc.logMassBinCen[m]^3)
+            10.0^(fit3[0] + fit3[1]*mbv_modeAll.(0).logMassBinCen[m] + $
+                  fit3[2]*mbv_modeAll.(0).logMassBinCen[m]^2 + fit3[3]*mbv_modeAll.(0).logMassBinCen[m]^3)
           
           loc_eta = eta_out[w] / eta_net[w] / sfr_acc_correction_factor
           w_eta = where(loc_eta gt 0.0)
@@ -686,11 +686,11 @@ pro plotsVsRedshift
                         ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0        ; use Tmax/Tviracc=1 to separate hot vs. cold
   accModes   = ['all','smooth','clumpy','stripped','recycled']
-  accRateModel = 2      ; 0=prim+rec, 2=prim
+  accRateModel = 4      ; 0=prim+rec, 2=prim
   
   ; plot config
   massInds = [21]        ; index logMassBinCen[], for plot vs redshift
-  zInds    = [4,6,8,12]  ; index redshifts[], for 2x2 panels vs halo mass
+  zInds    = [1,3,4,5] ;[4,6,8,12]  ; index redshifts[], for 2x2 panels vs halo mass
   
   plotUnused   = 0     ; 0=only make plots in paper, 1=make all
   
@@ -757,6 +757,7 @@ pro plotsVsRedshift
 
   if accRateModel eq 0 then dMdt_top = "p+r"
   if accRateModel eq 2 then dMdt_top = "prim"
+  if accRateModel eq 4 then dMdt_top = "p+r"
   
   plotStr  += str(res) + '_' + str(sP.(0).(0).(0).snap) + '_tw' + twStr + $
               '_arm' + str(accRateModel) 
@@ -1362,7 +1363,7 @@ pro plotsVsRedshift
             yvals_gal[m,*]  = mbv.(i).(m).(j).coldFractionsNetABCD.galaxy[massInd,*]
             yvals_halo[m,*] = mbv.(i).(m).(j).coldFractionsNetABCD.halo[massInd,*]
           endfor ;m
-        
+          
           ; smooth and set zeros to a plottable value
           for m=0,2 do begin
             yvals_gal[*,m]  = smooth(yvals_gal[*,m],sK,/nan)
@@ -1748,16 +1749,19 @@ pro plotsVsRedshift
       legend,textoidl(["T_{max} > T_{vir,acc}","T_{max} < T_{vir,acc}"]),$
         linestyle=linesHC[0:1],color=cgColor('black'),textcolor=cgColor('black'),/top,/left
         
-      if accRateModel eq 2 then $
-        legend,simNames,textcolor=simColors,pos=[pos_sub[2]+0.02,pos_sub[3]+0.1],/right,/normal
       if accRateModel eq 0 then $
         legend,simNames,textcolor=simColors,/top,/right
+      if accRateModel eq 2 then $
+        legend,simNames,textcolor=simColors,pos=[pos_sub[2]+0.02,pos_sub[3]+0.1],/right,/normal
+      if accRateModel eq 4 then $ ; tood
+        legend,simNames,textcolor=simColors,pos=[pos_sub[2]+0.02,pos_sub[3]+0.1],/right,/normal
         
       ; subplot
       cgColorFill,pos_sub[[0,2,2,0,0]],pos_sub[[1,1,3,3,1]],/normal,color='WT2'
       
-      if accRateModel eq 2 then yminor = 0
       if accRateModel eq 0 then yminor = 2
+      if accRateModel eq 2 then yminor = 0
+      if accRateModel eq 4 then yminor = 0
       
       cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange_sub,/xs,/ys,$
         ylog=(accRateModel eq 2),yminor=yminor,$
@@ -1769,6 +1773,7 @@ pro plotsVsRedshift
       if n_tags(temp_sub) eq 2 then begin
         if accRateModel eq 0 then yval = 1.0
         if accRateModel eq 2 then yval = 10.0
+        if accRateModel eq 4 then yval = 10.0 ; todo
         
         cgPlot,xrange_z+[0.3,-0.3],[yval,yval],line=0,/overplot,color=cgColor('light gray')
         
@@ -2057,19 +2062,6 @@ pro plotsVsRedshift
           ;    color=simColors[i],line=0,/overplot
           ;endfor
           
-          ; redshift scaling
-          if accRateModel eq 2 and accModes[j] eq 'smooth' then begin
-            xx = [0.5,2.5]
-            yy = xx^1.0 * 4.8
-            cgPlot,xx,yy,line=0,color='gray',/overplot
-            cgText,xx[0],yy[0]+1.3,textoidl("\propto z^1"),color='gray'
-            
-            xx = [1.0,3.5]
-            yy = xx^0.5 * 0.3
-            cgPlot,xx,yy,line=0,color='gray',/overplot
-            cgText,xx[0],yy[0]-0.1,textoidl("\propto z^{1/2}"),color='gray'
-          endif
-          
         endforeach ; massBins
         
       endfor ;i
@@ -2098,6 +2090,8 @@ pro plotsVsRedshift
       if accRateModel eq 0 and accModes[j] eq 'all'      then yrange2 = [1.0,100.0]
       if accRateModel eq 0 and accModes[j] eq 'stripped' then yrange2 = [0.5,10.0]
       if accRateModel eq 0 and accModes[j] eq 'clumpy'   then yrange2 = [0.5,50.0]
+      
+      if accRateModel eq 4 and accModes[j] eq 'smooth'   then yrange2 = [0.1,20.0]
       
       cgPlot,[0],[0],/nodata,xrange=xrange_z,yrange=yrange2,xs=9,/ys,/ylog,yminor=0,$
         ytitle=textoidl("dM^{"+dMdt_top+"}_{gas,"+accModes[j]+" }/dt [_{ }M_{sun }/_{ }yr_{ }]"),$
@@ -2169,17 +2163,17 @@ pro plotsVsRedshift
           ;endfor
           
           ; redshift scaling
-          if accRateModel eq 2 and accModes[j] eq 'smooth' then begin
-            xx = [0.5,2.5]
-            yy = xx^1.0 * 4.8
-            cgPlot,xx,yy,line=0,color='gray',/overplot
-            cgText,xx[0],yy[0]+1.3,textoidl("\propto z^1"),color='gray'
-            
-            ;xx = [1.0,3.5]
-            ;yy = xx^0.5 * 0.3
-            ;cgPlot,xx,yy,line=0,color='gray',/overplot
-            ;cgText,xx[0],yy[0]-0.1,textoidl("\propto z^{1/2}"),color='gray'
-          endif
+          ;if accRateModel eq 2 and accModes[j] eq 'smooth' then begin
+          ;  xx = [0.5,2.5]
+          ;  yy = xx^1.0 * 4.8
+          ;  cgPlot,xx,yy,line=0,color='gray',/overplot
+          ;  cgText,xx[0],yy[0]+1.3,textoidl("\propto z^1"),color='gray'
+          ;  
+          ;  ;xx = [1.0,3.5]
+          ;  ;yy = xx^0.5 * 0.3
+          ;  ;cgPlot,xx,yy,line=0,color='gray',/overplot
+          ;  ;cgText,xx[0],yy[0]-0.1,textoidl("\propto z^{1/2}"),color='gray'
+          ;endif
           
         endforeach ; massBins
         
@@ -2557,11 +2551,11 @@ pro plotsVsRedshift
         for i=0,n_tags(sP)-1 do begin
           xvals = alog10( 10.0^mbv.(i).(zInd).(j).logMassBinCen / units.hubbleParam )
           
-          yvals = smooth(mbv.(i).(zInd).(j).coldFractionsNet.galaxy,sK,/nan) ;< 1.0
-          cgPlot,xvals,yvals[*,1],color=simColors[i],line=linesHC[0],/overplot ; gal
+          yvals = smooth(reform(mbv.(i).(zInd).(j).coldFractionsNet.galaxy[*,1]),sK,/nan) ;< 1.0
+          cgPlot,xvals,yvals,color=simColors[i],line=linesHC[0],/overplot ; gal
           
-          yvals = smooth(mbv.(i).(zInd).(j).coldFractionsNet.halo,sK,/nan) ;< 1.0
-          cgPlot,xvals,yvals[*,1],color=simColors[i],line=linesHC[1],/overplot ; halo
+          yvals = smooth(reform(mbv.(i).(zInd).(j).coldFractionsNet.halo[*,1]),sK,/nan) ;< 1.0
+          cgPlot,xvals,yvals,color=simColors[i],line=linesHC[1],/overplot ; halo
         endfor
                 
         ; redshift legend
@@ -2603,11 +2597,11 @@ pro plotsVsRedshift
         for i=0,n_tags(sP)-1 do begin
           xvals = alog10( 10.0^mbv.(i).(zInd).(j).logMassBinCen / units.hubbleParam )
           
-          yvals = smooth(mbv.(i).(zInd).(j).coldFractionsNetABCD.galaxy,sK,/nan) ;< 1.0
-          cgPlot,xvals,yvals[*,1],color=simColors[i],line=linesHC[0],/overplot ; gal
+          yvals = smooth(reform(mbv.(i).(zInd).(j).coldFractionsNetABCD.galaxy[*,1]),sK,/nan) ;< 1.0
+          cgPlot,xvals,yvals,color=simColors[i],line=linesHC[0],/overplot ; gal
           
-          yvals = smooth(mbv.(i).(zInd).(j).coldFractionsNetABCD.halo,sK,/nan) ;< 1.0
-          cgPlot,xvals,yvals[*,1],color=simColors[i],line=linesHC[1],/overplot ; halo
+          yvals = smooth(reform(mbv.(i).(zInd).(j).coldFractionsNetABCD.halo[*,1]),sK,/nan) ;< 1.0
+          cgPlot,xvals,yvals,color=simColors[i],line=linesHC[1],/overplot ; halo
         endfor
                 
         ; redshift legend
