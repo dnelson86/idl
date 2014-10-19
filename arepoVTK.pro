@@ -61,7 +61,7 @@ pro interpMissingFrames
 
   ; file config
   ;nums   = [636,1281,1961,2353,2806,2989,3026,3533] ;C1
-  nums   = [2353,2806,2989,3026,3533]
+  nums   = [949] ;[2353,2806,2989,3026,3533]
   inPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_8192/'
   
   fileBase = "frame_"

@@ -732,6 +732,7 @@ function zoomTargetHalo, sP=sP, gc=gc
   expectedHaloPos = sP.targetHaloPos + sP.zoomShiftPhys
   
   ; searching at earlier redshift that target? pick largest by mass
+  if 0 then begin
   if sP.redshift gt sP.targetRedshift then begin
     print,'zoomTargetHalo: sP.redshift > targetRedshift, choosing most massive in box!'
     hInd = 0
@@ -748,6 +749,9 @@ function zoomTargetHalo, sP=sP, gc=gc
     
     if count ne 1 then message,'Error'
   endelse
+  endif ;0
+  
+  hInd = 0
   
   ; some overrides (h2)
   if sP.hInd eq 2 and sP.snap eq 59 and sP.res eq 9 then hInd = 1 ;look at stellar mass
