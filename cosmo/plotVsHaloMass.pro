@@ -18,7 +18,7 @@ pro plotPreBin, sP=sP, redshifts=redshifts
   runs        = [sP.run] ;['feedback','gadget'] ;tracer
   resolutions = [sP.res]
   timeWindows = list(250.0) ;,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
-  accModes    = list('smooth') ;list('all','smooth','clumpy','stripped','recycled')
+  accModes    = list('all','smooth','clumpy','stripped','recycled')
   
   foreach redshift,redshifts do begin
     foreach timeWindow,timeWindows do begin

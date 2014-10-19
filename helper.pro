@@ -818,7 +818,6 @@ function sampleColorTable, ctname, num, bounds=bounds
   ; determine indices, for each convert color to 24-bit and save
   inds = round( linspace(bounds[0],bounds[1],num) * n_elements(rr) )
   inds = inds > 0 < (n_elements(rr)-1)
-  print,inds
   
   foreach ind,inds,i do $
     colors[i] = getColor24( [ rr[ind],gg[ind],bb[ind] ] )
