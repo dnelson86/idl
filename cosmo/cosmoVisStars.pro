@@ -184,18 +184,16 @@ pro visStars
   ; config
   sP = simParams(res=9,run='zoom_20mpc',redshift=2.0,hInd=0)
   
-  haloID = 0 ;zoom.0 z2.304 z2.301 z2.130 z2.64
-  
   nPixels  = [800,800]    ; px
-  boxSize  = 20          ; ckpc
-  scaleBarLen = 2       ; ckpc
-  maxHSMLCutoff = 1.0    ; ckpc
-  axes     = [0,1]        ; xy
-  hsmlFac  = 2            ; times each cell hsml for sph projections
-  nbottom  = 50           ; lift minimum scatterplot color from zero (to distinguish from black)
+  boxSize  = 10           ; ckpc
+  scaleBarLen = 2         ; ckpc
+  maxHSMLCutoff = 2.0     ; ckpc
+  axes     = [0,2]        ; xy
+  hsmlFac  = 2.0          ; times each cell hsml for sph projections
+  nbottom  = 0            ; lift minimum scatterplot color from zero (to distinguish from black)
 
   ; load halo position
-  gcID = getMatchedIDs(haloID=haloID,simParams=sP)
+  gcID = zoomTargetHalo(sP=sP)
   gc = loadGroupCat(sP=sP,/skipIDs)
   subgroupCen = subgroupPosByMostBoundID(sP=sP)
   
@@ -233,6 +231,7 @@ pro visStars
   
   ; calculate hsml
   hsml = calcHSML(pos, ndims=3, nNGB=32, boxSize=0)
+  hsml *= hsmlFac
   
   ; make positions relative to halo center
   for i=0,2 do pos[i,*] -= subgroupCen[i,gcID]
@@ -248,10 +247,15 @@ pro visStars
   sphmap = calcSphMap(pos,hsml,mass,sft,boxSizeImg=replicate(boxSize,3),boxSizeSim=0,$
                       boxCen=[0,0,0],nPixels=nPixels,axes=axes,ndims=3)
                  
+  ; fix zeros to low positive value, take log
+  w = where(sphmap.dens_out le 0.0,count,comp=wc)
+  if count gt 0 then sphmap.dens_out[w] = min(sphmap.dens_out[wc]) * 1e-3
+
   sphmap.dens_out = alog10( sphmap.dens_out )
-  ;mapMinMax = minmax(sphmap.dens_out)
-  print,minmax(sphmap.dens_out)
-  mapMinMax = [-1.0,0.2] ;[-0.5,1.0]
+  print,'after log: minmax: ',minmax(sphmap.dens_out)
+  
+  ; colormap
+  mapMinMax = [-6.5,-3.0] ;[-0.5,1.0]
                  
   sphmap.dens_out = (sphmap.dens_out-mapMinMax[0])*(255.0) / (mapMinMax[1]-mapMinMax[0])
   sphmap.dens_out = fix(sphmap.dens_out) > 0 < 255 ; 0-255    
@@ -263,28 +267,26 @@ pro visStars
   ; plot
   start_PS, sP.plotPath + 'visStars_scat.eps', xs=8.0, ys=8.0
   
-    cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('black')
+    cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('red')
     loadct,0,/silent
 
     cgPlot, [0], [0], /nodata, xrange=xMinMax, yrange=yMinMax, pos=[0,0,1,1], /xs, /ys, /noerase
     
     ; scatter
-    cgPlot,pos[axes[0],*],pos[axes[1],*],psym=3,color=cgColor('red'),/overplot
+    cgPlot,pos[axes[0],*],pos[axes[1],*],psym=3,color=cgColor('white'),/overplot
     
     ; scale bar
     xpos = [xMinMax[0]*0.96,xMinMax[0]*0.96+scaleBarLen]
     ypos = replicate(yMinMax[1]*0.96,2)
     
-    cgText,mean(xpos),ypos*0.94,string(scaleBarLen,format='(i3)')+' kpc',$
-      alignment=0.5,color=cgColor('white')
-    ;loadct,0,/silent
-    oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
+    cgText,mean(xpos),ypos*0.94,str(string(scaleBarLen,format='(i3)'))+' kpc',alignment=0.5,color=cgColor('orange')
+    oplot,xpos,ypos,color=cgColor('orange'),thick=!p.thick+0.5
     
   end_PS, pngResize=50, /deletePS
                  
   start_PS, sP.plotPath + 'visStars_map.eps', xs=8.0, ys=8.0 
     
-    cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('black')
+    cgColorfill,[1,1,0,0,1],[1,0,0,1,1],/normal,color=cgColor('red')
     loadct,0,/silent
 
     cgPlot, [0], [0], /nodata, xrange=xMinMax, yrange=yMinMax, pos=[0,0,1,1], /xs, /ys, /noerase
@@ -297,9 +299,7 @@ pro visStars
     xpos = [xMinMax[0]*0.96,xMinMax[0]*0.96+scaleBarLen]
     ypos = replicate(yMinMax[1]*0.96,2)
     
-    cgText,mean(xpos),ypos*0.94,string(scaleBarLen,format='(i3)')+' kpc',$
-      alignment=0.5,color=cgColor('white')
-    ;loadct,0,/silent
+    cgText,mean(xpos),ypos*0.94,str(string(scaleBarLen,format='(i3)'))+' kpc',alignment=0.5,color=cgColor('white')
     oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
     
   end_PS, pngResize=50, /deletePS

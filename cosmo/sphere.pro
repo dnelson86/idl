@@ -50,13 +50,14 @@ end
 ; cutSubS = cut substructures (satellite subgroups) out before estimating densities
 
 function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=subgroupIDs, $
-                         Nside=Nside, radFacs=radFacs, cutSubS=cutSubS
+                         Nside=Nside, radFacs=radFacs, cutSubS=cutSubS, newSaves=newSaves
                          
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits(redshift=sP.redshift)
   
   ; config
   nNGB = 20  ; neighbor search in CalcTHVal
+  if n_elements(cutSubS) eq 0 then cutSubS = 0
   
   ; healpix resolution parameter, 8=768, 16~3k, 32~12k, 64~50k, 128~200k, 256~750k, 512~3M
   if ~keyword_set(Nside) then Nside = 64
@@ -70,14 +71,16 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   if ~keyword_set(valName) then message,'Error: Must specify valName'
     
   ; if one subgroupID, check for existence of a save
-  if keyword_set(cutSubS) then csTag = '.cutSubS' else csTag = ''
+  csTag = ''
+  if cutSubS eq 1 then csTag = '.cutSubS'
+  if cutSubS eq 2 then csTag = '.cutSubS2'
   
   saveFilename = sP.derivPath+'hShells/snap_'+str(sP.snap)+'/hShells.'+partType+'.'+valName+'.'+$
                  sP.savPrefix+str(sP.res)+csTag+'.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+$
                  str(subgroupIDs[0])+'.'+str(n_elements(radFacs)) + '.sav'
  
   if n_elements(subgroupIDs) eq 1 then begin
-    if file_test(saveFilename) then begin
+    if file_test(saveFilename) and ~keyword_set(newSaves) then begin
       restore,saveFilename
       return,r
     endif
@@ -93,7 +96,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   foreach fname, saveFilenames do begin
     if ~file_test(fname) then workFlag = 1
   endforeach
-  if workFlag eq 0 then begin
+  if workFlag eq 0 and ~keyword_set(newSaves) then begin
     print,valName+': All already done ('+str(n_elements(subgroupIDs))+' subgroups), returning.'
     return,[]
   endif
@@ -149,7 +152,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
     u = loadSnapshotSubset(sP=sP,partType=partType,field='u')
     nelec = loadSnapshotSubset(sP=sP,partType=partType,field='nelec')
     
-    temp_pres_ent = convertUtoTemp(u,nelec,/log)
+    temp_pres_ent = convertUtoTemp(u,nelec)
 
     u = !NULL
     nelec = !NULL
@@ -220,7 +223,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
                    sP.savPrefix+str(sP.res)+csTag+'.ns'+str(Nside)+'.'+str(sP.snap)+'.h'+$
                    str(subgroupID)+'.'+str(n_elements(radFacs)) + '.sav'
 
-    if file_test(saveFilename) then begin
+    if file_test(saveFilename) and ~keyword_set(newSaves) then begin
       print,'Skipping: ',subgroupID
       continue
     endif
@@ -340,7 +343,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
     if n_elements(posval) eq 0 then message,'Error: Unrecognized value name.'
     
     ; if cutting substructure, match secondary ids against local ids
-    if keyword_set(cutSubS) then begin
+    if cutSubS eq 1 then begin
       loc_ids = ids[wRadCut]
       
       ; remove the intersection of (satPIDs,loc_ids) from posval
@@ -356,6 +359,31 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       ids_ind = !NULL
       loc_ids = !NULL
 
+      if ncomp gt 0 then posval = posval[*,wSubSComp]
+    endif
+    
+    ; remove substructures (all particles in subfind groups other than target)? load ids and make secondary list
+    if cutSubS eq 2 then begin
+      ; verify our target ID is a primary (otherwise...)
+      priGCIDs = gcIDList(gc=gc,select='pri')
+      if total(subgroupID eq priGCIDs) eq 0 then message,'Error'
+      
+      loc_ids = ids[wRadCut]
+      
+      ; get ids of all gas cells in all substructures other than the target
+      ; (this differs from ids in the target, as it includes cells not in any subfind group)
+      myPIDs  = gcPIDList(gc=gc,valGCids=[subgroupID],partType='gas')
+      subPIDs = gcPIDList(gc=gc,select='all',partType='gas')
+      remPIDs = removeIntersectionFromB(myPIDs,subPIDs)
+      if n_elements(remPIDs) ne n_elements(subPIDs)-n_elements(myPIDs) then message,'Error'
+      
+      ; remove the intersection of (satPIDs,ids) from wRadCut
+      calcMatch,remPIDs,loc_ids,ind1,ind2,count=count
+      
+      all = bytarr(n_elements(loc_ids))
+      if count gt 0 then all[ind2] = 1B ; flag substructure gas cells, then select against
+      wSubSComp = where(all eq 0B, ncomp)
+      
       if ncomp gt 0 then posval = posval[*,wSubSComp]
     endif
   
@@ -415,6 +443,9 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       posvalwt = [posval,weights]
       r.value = CalcTHVal(posvalwt,sphereXYZ,ndims=3,nNGB=nNGB,thMode=thMode,boxSize=sP.boxSize,/weighted)
     endelse
+    
+    ; adjust for log
+    if valName eq 'temp' then r.value = alog10(r.value)
       
     save,r,filename=saveFilename
     print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))

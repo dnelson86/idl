@@ -39,7 +39,7 @@ pro zoomMeshAndSliceWithRes
   ; config
   resLevels = [9,10,11]
   redshift  = 2.0
-  hInd      = 1
+  hInd      = 0
   boxSize   = 500.0 ;ckpc side-length, but cannot change after post-processing
   fields    = ['density','metal','temp','velocity']
   rVirCircs = [0.15,0.5,1.0] ; times rvir to draw a circle
@@ -170,11 +170,12 @@ pro zoomMeshAndSliceWithRes
       cgPlot,[0],[0],/nodata,xrange=boxBounds*boxSize,yrange=boxBounds*boxSize,xs=5,ys=5,$
         pos=posBottom,/noerase,aspect=1.0
       
-      loadColorTable,'blue-red2'
+      ;loadColorTable,'blue-red2'
+      loadColorTable,'helix'
   
       ; colormap (dens slice)
-      ;mapMinMax = [-4.0,5.0]
-      ;sliceMap = rhoRatioToCrit( slices.(j).density > 1e-20, sP=sP, /log )
+      mapMinMax = [-3.0,5.0]
+      sliceMap = rhoRatioToCrit( slices.(j).density > 1e-20, sP=sP, /log )
       
       ; colormap (temp slice)
       ;mapMinMax = [4.0,5.0]
@@ -185,8 +186,8 @@ pro zoomMeshAndSliceWithRes
       ;sliceMap = rhoRatioToCrit( slices.(j).proj_density > 1e-20, sP=sP, /log )
       
       ; colormap (temp proj)
-      mapMinMax = [3.4,4.6]
-      sliceMap = alog10( slices.(j).proj_temp > 1e-20 )
+      ;mapMinMax = [3.4,4.6]
+      ;sliceMap = alog10( slices.(j).proj_temp > 1e-20 )
       
       ; stretch
       sliceMap = (sliceMap-mapMinMax[0])*(255.0) / (mapMinMax[1]-mapMinMax[0])
