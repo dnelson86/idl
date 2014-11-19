@@ -753,7 +753,7 @@ function zoomTargetHalo, sP=sP, gc=gc
   
   hInd = 0
   
-  ; some overrides (h2)
+  ; some overrides (h2) (still not right)
   if sP.hInd eq 2 and sP.snap eq 59 and sP.res eq 9 then hInd = 1 ;look at stellar mass
   if sP.hInd eq 2 and sP.snap eq 59 and sP.res eq 10 then hInd = 1
   

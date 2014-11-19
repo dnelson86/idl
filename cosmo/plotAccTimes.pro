@@ -66,10 +66,10 @@ function selectAccTimeDelta, sP=sP, at=at, am=am, galcat=galcat, $
   return, {w:w,val:val,norm_fac:age_earlier}
 end
 
-function colorMapAccTime, h2, logHist=logHist, byRow=byRow, byCol=byCol
+function colorMapAccTime, h2, logHist=logHist, byRow=byRow, byCol=byCol, min=min, max=max, range=range
   ; config
-  min = 10.0
-  max = 255.0
+  if n_elements(min) eq 0 then min = 10.0
+  if n_elements(max) eq 0 then max = 255.0
   
   h2_cmap = h2
   
@@ -108,8 +108,11 @@ function colorMapAccTime, h2, logHist=logHist, byRow=byRow, byCol=byCol
     return, h2_cmap
   endif
   
-  ; else: linear stretch from 10 (non-white) to 255
-  h2_cmap = fix( (h2_cmap-min(h2_cmap))/(max(h2_cmap)-0.0) * (max-min) + min )
+  ; else: linear stretch from min to max (e.g. 0-255)
+  if n_elements(range) eq 0 then range = minmax(h2_cmap)
+  h2_cmap = (h2_cmap-range[0])/(range[1]-0.0) * (max-min) + min
+  h2_cmap = h2_cmap > 0 < 255
+  h2_cmap = fix(h2_cmap)
   
   return, h2_cmap
 end

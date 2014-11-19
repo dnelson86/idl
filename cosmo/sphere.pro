@@ -283,15 +283,18 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       ; denominator
       rnorm = sqrt(rnorm0*rnorm0 + rnorm1*rnorm1 + rnorm2*rnorm2)
       
-      ; make velocities relative to bulk halo motion, and add hubble flow
+      ; make velocities relative to bulk halo motion
       gVel = gc.subgroupVel[*,subgroupID] ; already peculiar (no scalefac correction needed)
       
-      loc_vel[0,*] = reform(loc_vel[0,*] - (gVel[0] + (rnorm * units.H_z) * rnorm0/rnorm))
-      loc_vel[1,*] = reform(loc_vel[1,*] - (gVel[1] + (rnorm * units.H_z) * rnorm1/rnorm))
-      loc_vel[2,*] = reform(loc_vel[2,*] - (gVel[2] + (rnorm * units.H_z) * rnorm2/rnorm))
+      loc_vel[0,*] = reform(loc_vel[0,*] - gVel[0])
+      loc_vel[1,*] = reform(loc_vel[1,*] - gVel[1])
+      loc_vel[2,*] = reform(loc_vel[2,*] - gVel[2])
 
       ; dot(vel,rnorm) gives the magnitude of the projection of vel onto vec(r)
-      value = (loc_vel[0,*]*rnorm0 + loc_vel[1,*]*rnorm1 + loc_vel[2,*]*rnorm2) / rnorm; 1xN
+      value = (loc_vel[0,*]*rnorm0 + loc_vel[1,*]*rnorm1 + loc_vel[2,*]*rnorm2) / rnorm ; 1xN
+      
+      ; add hubble flow
+      value += rnorm * units.H_z
       
       posval = [loc_pos,value]
       thMode = 1 ; mean

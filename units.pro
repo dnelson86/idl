@@ -30,6 +30,7 @@ function getUnits, redshift=redshift
             ; constants
             boltzmann         : double(1.380650e-16)          ,$ ; cgs (erg/K)
             mass_proton       : double(1.672622e-24)          ,$ ; cgs
+            gamma             : 1.666666667                   ,$ ; 5/3
             hydrogen_massfrac : 0.76                          ,$ ; XH (solar)
             helium_massfrac   : 0.25                          ,$ ; Y (solar)
             mu                : 0.6                           ,$ ; ionized primordial (e.g. hot halo gas)
@@ -247,21 +248,35 @@ function codeDensToPhys, dens, sP=sP, scalefac=scalefac, cgs=cgs
   
 end
 
-; convertUtoTemp(): convert u,nelec pair in code units to temperature in Kelvin or log(Kelvin)
+; nH0ToPhys(): convert (NeutralHydrogenAbundance,density) pair from code units to mass density
+;   of neutral hydrogen (optionally in cgs)
 
-function convertUtoTemp, u, nelec, gamma=gamma, hmassfrac=hmassfrac, log=log
+function nH0ToPhys, nh0, dens, sP=sP, scalefac=scalefac, cgs=cgs
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
-  ; adiabatic index and hydrogen mass fraction defaults (valid for ComparisonProject)
-  if not keyword_set(gamma)     then gamma = 5.0/3.0
-  if not keyword_set(hmassfrac) then hmassfrac = units.hydrogen_massfrac
+  densPhys = codeDensToPhys(dens,sP=sP,scalefac=scalefac,cgs=cgs)
+  densPhys *= units.hydrogen_massfrac ; hydrogen mass density (code or cgs units)
+  ; note: hydrogen number density = densPhys / units.proton_mass
+  densPhys *= nh0 ; neutral hydrogen mass density (code or cgs units)
+  ; note: H+ number density = (H number density) - (H0 number density)
+  return, densPhys
+end
+
+; convertUtoTemp(): convert u,nelec pair in code units to temperature in Kelvin or log(Kelvin)
+
+function convertUtoTemp, u, nelec, log=log
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
+  ; hydrogen mass fraction default (valid for ComparisonProject)
+  hmassfrac = units.hydrogen_massfrac
   
   ; calculate mean molecular weight
   meanmolwt = 4.0/(1.0 + 3.0 * hmassfrac + 4.0* hmassfrac * nelec) * units.mass_proton
 
   ; calculate temperature (K)
-  temp = (gamma-1.0) * u / units.boltzmann * units.UnitEnergy_in_cgs / units.UnitMass_in_g * meanmolwt
+  temp = (units.gamma-1.0) * u / units.boltzmann * units.UnitEnergy_in_cgs / units.UnitMass_in_g * meanmolwt
   
   ; convert to log(K) if requested
   if keyword_set(log) then begin
@@ -275,19 +290,15 @@ end
 
 ; convertTempToU(): convert temperature in log(K) to u in code units
 
-function convertTempToU, logTemp, gamma=gamma, hmassfrac=hmassfrac, log=log
+function convertTempToU, logTemp, log=log
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   if max(logTemp) gt 10.0 then message,'Error: input temp probably not in log.'
   
-  ; adiabatic index and hydrogen mass fraction defaults (valid for ComparisonProject)
-  if not keyword_set(gamma)     then gamma = 5.0/3.0
-  if not keyword_set(hmassfrac) then hmassfrac = units.hydrogen_massfrac
-
   meanmolwt = 0.6 * units.mass_proton ; ionized, T > 10^4 K
   
   ;temp = (gamma-1.0) * u / units.boltzmann * units.UnitEnergy_in_cgs / units.UnitMass_in_g * meanmolwt
-  u = 10.0^logTemp * units.boltzmann * units.UnitMass_in_g / (units.UnitEnergy_in_cgs * meanmolwt * (gamma-1.0))
+  u = 10.0^logTemp * units.boltzmann * units.UnitMass_in_g / (units.UnitEnergy_in_cgs * meanmolwt * (units.gamma-1.0))
   
   ; convert to log(u) if requested
   if keyword_set(log) then begin
@@ -337,13 +348,10 @@ end
 
 ; convertTracerEntToCGS(): fix cosmological/unit system in TRACER_MC.MaxEnt
 
-function convertTracerEntToCGS, ent, gamma=gamma, log=log, sP=sP
-
+function convertTracerEntToCGS, ent, log=log, sP=sP
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function snapNumToRedshift
   units = getUnits()
-  
-  ; adiabatic index default (valid for ComparisonProject)
-  if not keyword_set(gamma) then gamma = 5.0/3.0
   
   atime = snapNumToRedshift(sP=sP,/time)
   a3inv = 1.0 / (atime*atime*atime)
@@ -357,7 +365,7 @@ function convertTracerEntToCGS, ent, gamma=gamma, log=log, sP=sP
   ent *= a3inv * float(units.UnitPressure_in_cgs / units.boltzmann)
   
   ; fix Density
-  ent /= float(units.UnitDensity_in_cgs/units.mass_proton)^gamma
+  ent /= float(units.UnitDensity_in_cgs/units.mass_proton)^units.gamma
   
   ; convert to log(entropy) if requested
   if keyword_set(log) then begin
@@ -372,7 +380,7 @@ end
 ; calcEntropyCGS(): calculate entropy as P/rho^gamma (rho is converted from comoving to physical)
 
 function calcEntropyCGS, u, dens, gamma=gamma, log=log, sP=sP
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function snapNumToRedshift
   units = getUnits()
   
@@ -399,7 +407,7 @@ end
 ; calcPressureCGS(): calculate pressure as (gamma-1)*u*rho
 
 function calcPressureCGS, u, dens, gamma=gamma, log=log, sP=sP
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function snapNumToRedshift
   units = getUnits()
   
@@ -429,7 +437,7 @@ end
 ; rhoRatioToCrit(): normalize density by the critical -baryon- density at some redshift
 
 function rhoRatioToCrit, rho, sP=sP, redshift=redshift, log=log
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   if n_elements(redshift) eq 0 and n_elements(sP) eq 0 then message,'error'
   if n_elements(redshift) eq 1 and n_elements(sP) eq 1 then message,'error'
   
@@ -448,7 +456,7 @@ end
 ; critRatioToCode(): convert a ratio of the critical density at some redshift to a code density
 
 function critRatioToCode, ratioToCrit, redshift=redshift
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits(redshift=redshift)
   if n_elements(redshift) eq 0 then message,'specify redshift'
 
@@ -461,7 +469,7 @@ end
 ; critBaryonRatioToCode(): convert a ratio of the critical baryon density at some redshift to a code density
 
 function critBaryonRatioToCode, ratioToCritB, redshift=redshift
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits(redshift=redshift)
   if n_elements(redshift) eq 0 then message,'specify redshift'
 
@@ -480,7 +488,7 @@ function dtdz, z, lambda0 = lambda0, q0 = q0
 end
    
 function redshiftToAge, z
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   ; config
@@ -509,7 +517,7 @@ end
 ; redshiftToAgeFlat(): analytical formula from Peebles, p. 317, eq. 13.2. 
 
 function redshiftToAgeFlat, z
-
+  compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
   
   w = where(z ge 0.0,count)
