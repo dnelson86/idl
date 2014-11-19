@@ -96,6 +96,163 @@ pro sphMapBox
   
 end
 
+; sphMapSubboxSBS: run sph kernel density projection on subboxes of two runs, side by side
+
+pro sphMapSubboxSBS, jobNum=jobNum, totJobs=totJobs
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  if n_elements(jobNum) eq 0 or n_elements(totJobs) eq 0 then message,'Error'
+
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+
+  ; config
+  res      = 512
+  runs     = ['tracer','feedback']
+
+  subboxMinMax = { x : [3500,7500] ,$
+                   y : [5000,9000] ,$
+                   z : [5500,9500] }
+  valMinMax = [3.0,7.5] ; log K (gas temp)
+  
+  ; plot config
+  nPixels     = [960,960] ;px per side
+  zoomFac     = 1    ; only in axes, not along projection direction
+  nNGB        = 32   ; use CalcHSML for HSML with nNGB
+  axes        = [0,1] ; x,y
+  scaleBarLen = 500.0 ; ckpc
+  ctName      = 'blue-red2'
+  savePath    = '/n/home07/dnelson/data5/frames/'
+
+  ; setup render config
+  boxSizeImg = [ subboxMinMax.x[1]-subboxMinMax.x[0] ,$
+                 subboxMinMax.y[1]-subboxMinMax.y[0] ,$
+                 subboxMinMax.z[1]-subboxMinMax.z[0] ]
+  ;if boxSizeImg[0] ne boxSizeImg[1] or boxSizeImg[0] ne boxSizeImg[2] then message,'Error'
+  boxCen     = [mean(subboxMinMax.x), mean(subboxMinMax.y), mean(subboxMinMax.z)]
+  
+  foreach k,axes do boxSizeImg[k] /= zoomFac
+    
+  xMinMax = [boxCen[0]-boxSizeImg[0]/2.0,boxCen[0]+boxSizeImg[0]/2.0]
+  yMinMax = [boxCen[1]-boxSizeImg[1]/2.0,boxCen[1]+boxSizeImg[1]/2.0]
+    
+  ; decide on subbox snapshots
+  foreach run,runs,i do begin
+    sP = simParams(res=res,run=run,redshift=0.0)
+    h = loadSnapshotHeader(sP=sP)
+    subboxSnapRedshifts = mod_struct( subboxSnapRedshifts, run, snapNumToRedshift(sP=sP,/all,/subBox) )
+    w = where( subboxSnapRedshifts.(i) ge 0, count )
+    subboxCounts = mod_struct( subboxCounts, run, count )
+  endforeach
+  
+  numFrames = max( [subboxCounts.(0), subboxCounts.(1)] )
+  print,'Want to render ['+str(numFrames)+'] total frames.'
+  
+  ; first run is dominant (has more subboxes)
+  if subboxCounts.(0) ne numFrames then message,'Error: rework logic.'
+  
+  frameSnapNums = mod_struct( frameSnapNums, runs[0], lonarr(numFrames) )
+  frameSnapNums = mod_struct( frameSnapNums, runs[1], lonarr(numFrames) )
+  
+  frameSnapNums.(0) = lindgen(numFrames)
+  
+  for j=0,numFrames-1 do begin
+    curRedshift = (subboxSnapRedshifts.(0))[j]
+    w = closest( subboxSnapRedshifts.(1), curRedshift )
+    frameSnapNums.(1)[j] = w
+  endfor
+  
+  if max(frameSnapNums.(1)) ge subboxCounts.(1) then message,'Error'
+  w = where( frameSnapNums.(1)-shift(frameSnapNums.(1),1) ne 1, count )
+  print,'Second run has ['+str(count-1)+'] of ['+str(subboxCounts.(1))+'] frames with non-ideal spacing.'
+  
+  ; loop over frames
+  framesPerJob = ceil(numFrames/totJobs)
+  frameMM = [framesPerJob*jobNum > 0,framesPerJob*(jobNum+1)-1 < numFrames]
+  print,'Job ['+str(jobNum)+'] of ['+str(totJobs)+'] frames: ',frameMM
+
+  ; for frameNum=frameMM[0],frameMM[1],1 do begin
+  frameNum = 100 ;100,400,1000,1400
+  print,' '+str(frameNum)
+  
+  maps = {}
+  
+  ; start plot
+  start_PS, savePath + 'frame_'+string(frameNum,format='(I04)')+'.eps', $
+    xs=nPixels[0]*2.0005/100.0, ys=nPixels[1]/100.0
+  loadColorTable,ctName
+  
+  ; setup paths and render config
+  foreach run,runs,i do begin
+    ; render setup
+    sP = simParams(res=res,run=run,snap=frameSnapNums.(i)[frameNum])
+  
+    ; save/restore (TEMPORARY)
+    outFilename = 'subboxMapTEMP_'+sP.saveTag+'_'+string(frameNum,format='(I04)')
+    if (file_test(sP.plotPath + outFilename + '.sav')) then begin
+      restore,sP.plotPath + outFilename + '.sav',/verbose
+    endif else begin
+
+      ; load gas quantities
+      mass  = loadSnapshotSubset(sP=sP,partType='gas',field='mass',/subBox)
+      pos   = loadSnapshotSubset(sP=sP,partType='gas',field='pos',/subBox)
+      hsml  = loadSnapshotSubset(sP=sP,partType='gas',field='hsml',/subBox)
+      quant = loadSnapshotSubset(sP=sP,partType='gas',field='temp',/subBox)
+      quant = 10.0^quant ; take out log
+      
+      sphMap = calcSphMap(pos,hsml,mass,quant,$
+                          boxSizeImg=boxSizeImg,boxSizeSim=h.boxSize,boxCen=boxCen,$
+                          nPixels=nPixels,axes=axes,ndims=3)
+      colMap = sphMap.quant_out
+      
+      save,colMap,filename=sP.plotPath + outFilename + '.sav'
+    endelse
+    
+    ; color scaling
+    w = where(colMap eq 0, count, comp=ww)
+    if count ne 0 then colMap[w] = min(colMap[ww])
+    
+    colMap = alog10(colMap)
+    colMap = colMap > valMinMax[0] < valMinMax[1]
+    colMap = (colMap-min(colMap))*255.0 / (max(colMap)-min(colMap)) ;0-255
+    colMap = colMap > 0 < 255
+
+    ; add to plot
+    pos = [0.5*i,0.0,0.5*(i+1),1.0]
+    tvim,colMap,xrange=xMinMax,yrange=yMinMax,pos=pos,/noerase,/noframe
+    
+    ; simname
+    cgText,0.5*i+0.01,0.97,sP.simName,alignment=0.0,/normal,color='white'
+  endforeach ; runs
+    
+  ; scale bar
+  xpos = [xMinMax[1]*0.92,xMinMax[1]*0.92+scaleBarLen]
+  ypos = replicate(yMinMax[1]*0.99,2)
+  
+  cgText,mean(xpos),ypos*0.99,string(scaleBarLen,format='(i3)')+' kpc',$
+    alignment=0.5,color=cgColor('white')
+  oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
+  
+  ; redshift
+  cgText,xMinMax[1]*0.97,yMinMax[0]*1.02,$
+    'z = '+str(string(subboxSnapRedshifts.(0)[frameNum],format='(f5.2)')),$
+    alignment=0.5,color=cgColor('white')
+  
+  ; colorbar
+  cbar_pos = [0.4,0.02,0.6,0.055]
+  loadColorTable,ctName
+  cgColorbar,position=cbar_pos,divisions=0,charsize=0.000001,bottom=0,ticklen=0.00001
+  
+  cgText,0.41,0.03,string(valMinMax[0],format='(f3.1)'),alignment=0.0,/normal,color='white'
+  cgText,0.59,0.03,string(valMinMax[1],format='(f3.1)'),alignment=1.0,/normal,color='white'
+  cgText,0.50,0.032,textoidl("T_{gas} [_{ }log K_{ }]"),alignment=0.5,/normal,color='black'
+  
+  ; finish plot
+  end_PS, pngResize=100, density=100, /deletePS
+  
+  ;endfor ; frameNum
+  
+end
+
 ; plotScatterAndMap(): plot side by side projection results from CalcSphMap
 
 pro plotScatterAndMap, map=sphmap, scatter=scatter, config=config, column=column
@@ -277,7 +434,7 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
   if ~keyword_set(sphmap) or ~keyword_set(config) or $
     ~keyword_set(row) or ~keyword_set(col) then $
     message,'Error: Specify all inputs.'
-    
+   
   ; decide position configuration
   curRow  = float(row[0])
   totRows = row[1]
@@ -290,6 +447,16 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
   
   topOffset  = 1.0 - rowHeight * (curRow+1)
   leftOffset = colWidth * (curCol)
+  
+  ; different plot types
+  zoom2x1 = 0
+  zoom4x2 = 0
+  zoom4x4 = 0
+  if totCols eq 2 and totRows eq 1 then zoom2x1 = 1
+  if totCols eq 4 and totRows eq 2 then zoom4x2 = 1
+  if totCols eq 4 and totRows eq 4 then zoom4x4 = 1
+  
+  if zoom4x2 then topOffset -= config.barAreaHeight*0.5
   
   ; box
   xMinMax = [config.boxCen[0]-config.boxSizeImg[0]/2.0,config.boxCen[0]+config.boxSizeImg[0]/2.0]
@@ -308,50 +475,90 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
   foreach rVirCirc,config.rVirCircs do $
     tvcircle,rVirCirc * config.haloVirRad,0,0,cgColor('white'),thick=0.8,/data    
   
-  ; scale bar
+  ; scale bar(s)
+  xfac  = 0.9
+  yfac  = 0.86
+  yfac2 = 0.93
+  
+  if zoom4x2 then yfac = 0.88 ; zoom 4x2
+  if zoom2x1 then yfac = 0.95
+  if zoom2x1 then xfac = 0.95
+  if zoom2x1 then yfac2 = 0.96
+  
   if curCol eq 0 and curRow eq 0 then begin
-    xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+config.scaleBarLen]
-    ypos = replicate(yMinMax[1]*0.93,2)
+    xpos = [xMinMax[0]*xfac,xMinMax[0]*xfac+config.scaleBarLen]
+    ypos = replicate(yMinMax[1]*yfac2,2)
     
-    cgText,mean(xpos),ypos*0.86,string(config.scaleBarLen,format='(i3)')+' ckpc',$
+    cgText,mean(xpos),ypos*yfac,string(config.scaleBarLen,format='(i3)')+' ckpc',$
       alignment=0.5,color=cgColor('white')
-    loadct,0,/silent
     oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
-    loadColorTable,'bw linear'
+  endif
+  
+  if zoom4x2 then begin
+    scaleBarLen = 0
+    if curCol eq 0 and curRow eq 1 then scaleBarLen = config.scaleBarLen * 0.5
+    if curCol eq 2 and curRow eq 1 then scaleBarLen = config.scaleBarLen * 2.0
+    
+    if scaleBarLen gt 0 then begin
+      xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+scaleBarLen]
+      ypos = replicate(yMinMax[1]*0.93,2)
+      
+      cgText,mean(xpos),ypos*yfac,string(scaleBarLen,format='(i3)')+' ckpc',$
+        alignment=0.5,color=cgColor('white')
+      oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
+    endif
   endif
   
   ; redshift and halo mass
+  loadct,0,/silent
+  
   if totCols eq 4 then begin
     ; zoom 4x4
-    if curRow eq 0 and curCol eq totCols-1 then $
+    if totRows eq 4 and curRow eq 0 and curCol eq totCols-1 then $
       cgText,pos[2]-0.01,pos[3]-0.02,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
              color=cgColor('white'),/normal
-  endif else begin
-    if (curRow eq 0 and curCol eq totCols-1) or (curRow eq 0 and totCols gt 3) then $
-      cgText,pos[2]-0.01,pos[1]+0.015,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
-             color=cgColor('white'),/normal
              
-    if (curRow eq 1 and curCol eq totCols-1) or (curRow eq 1 and totCols gt 3) then $
-      cgText,pos[2]-0.01,pos[3]-0.03,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
-             color=cgColor('white'),/normal
+  endif else begin
+    if zoom2x1 ne 1 then begin
+      if (curRow eq 0 and curCol eq totCols-1) or (curRow eq 0 and totCols gt 3) then $
+        cgText,pos[2]-0.01,pos[1]+0.015,"M = "+string(config.haloMass,format='(f4.1)'),alignment=1.0,$
+               color=cgColor('white'),/normal
+               
+      if (curRow eq 1 and curCol eq totCols-1) or (curRow eq 1 and totCols gt 3) then $
+        cgText,pos[2]-0.01,pos[3]-0.03,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
+               color=cgColor('white'),/normal
+    endif
   endelse
   
   ; simulation name
-  if curCol eq 0 then $
+  if curCol eq 0 and ~zoom4x2 and ~zoom2x1 then $
     cgText,0.03-0.01*(totCols gt 3),mean(pos[[1,3]]),config.sP.simName,charsize=!p.charsize+0.2,$
       alignment=0.5,/normal,orientation=90,color=cgColor('white')
-          
+      
+  if zoom2x1 then $
+    cgText,0.965,0.97,config.sP.simName+'z'+str(fix(config.sP.redshift)),$
+      charsize=!p.charsize+0.1,alignment=0.5,/normal,color='white'
+      
   ; quantity name
   ;if curRow eq 0 then $
   ;  cgText,mean(pos[[0,2]]),0.97,config.colorField,$
   ;    charsize=!p.charsize,alignment=0.5,/normal,color=cgColor('white')
     
   ; dividing lines
-  cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=1.0,color=cgColor('black'),/overplot
-  cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=1.0,color=cgColor('black'),/overplot
+  thick = 5.0
+  
+  if zoom2x1 ne 1 then begin
+    cgPlot,xMinMax,[yMinMax[1],yMinMax[1]],line=0,thick=thick,color=getColor24([254,254,254]),/overplot
+  
+    if curCol gt 0 then $
+      cgPlot,[xMinMax[0],xMinMax[0]],yMinMax,line=0,thick=thick,color=getColor24([254,254,254]),/overplot
+            
+    if curRow eq totRows-1 then $
+      cgPlot,xMinMax,[yMinMax[0],yMinMax[0]],line=0,thick=thick,color=getColor24([254,254,254]),/overplot
+  endif
           
   ; colorbar(s)
-  if curRow eq 0 then begin
+  if curRow eq 0 or (zoom4x2 and curRow eq 1) then begin
     xthick = !x.thick
     ythick = !y.thick
     !x.thick = 1.0
@@ -362,24 +569,61 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     if config.colorField eq 'entropy'  then labelText = "log S [_{ }K cm^{2 }]"
     if config.colorField eq 'overdens' then labelText = "log ( \rho_{gas} / \rho_{crit,b} )"
     if config.colorField eq 'vrad'     then labelText = "v_{rad} [_{ }km/s_{ }]"
+    if config.colorField eq 'dmdens'   then labelText = "log ( \rho_{dm} / \rho_{crit} )"
+    if config.colorField eq 'stardens' then labelText = "log ( \rho_{stars} / \rho_{crit,b} )"
     
     factor = 0.48 ; bar length, 0.5=whole
     height = 0.04 ; colorbar height, fraction of entire figure
     hOffset = 0.4 ; padding between image and start of bar (fraction of height)
     mOffset = 0.008
     yOffset = 0.75
+    tOffset = 0.01 ; move colorbar text numbers outside?
+    align   = [0.0,1.0]
     
-    ; zoom 4x4
-    if totCols eq 4 then begin
+    if zoom4x4 then begin
       height = 0.02
       mOffset = 0.005
       yOffset = 0.9
+    endif
+    
+    if zoom4x2 then begin
+      height  = 0.03
+      mOffset = 0.007
+      yOffset = -0.3 ;0.9
+      factor  = 0.34
+      tOffset = -0.006
+      align   = [1.0,0.0]
+    endif
+    
+    if zoom2x1 then begin
+      height  = 0.03
+      mOffset = 0.007
+      yOffset = -0.3 ;0.9
+      factor  = 0.25
+      ;tOffset = -0.006
+      ;align   = [1.0,0.0]
     endif
     
     x_left  = mean(pos[[0,2]]) - (pos[2]-pos[0])*factor
     x_right = mean(pos[[0,2]]) + (pos[2]-pos[0])*factor
     y_bottom = config.barAreaHeight - height*hOffset - height
     y_top    = config.barAreaHeight - height*hOffset
+    
+    if zoom4x2 then begin
+      if curRow eq 0 then begin ; top scalebars
+        y_bottom = pos[3] + height*hOffset ;config.barAreaHeight*0.5
+        y_top    = y_bottom + height ; config.barAreaHeight*0.5
+      endif
+      if curRow eq 1 then begin ; bottom scalebars
+        y_bottom -= config.barAreaHeight*0.5
+        y_top    -= config.barAreaHeight*0.5
+      endif
+    endif
+    
+    if zoom2x1 then begin
+      y_bottom = 0.01
+      y_top    = y_bottom + height
+    endif
     
     ; just one color bar for vs. redshift plot
     if totCols eq 3 then begin
@@ -394,18 +638,20 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     
     ; colorbar labels
     if config.colorField eq 'temp' or config.colorField eq 'entropy' then $
-      cbLabels = str(string([fix(10*config.mapMinMax[0])/10,$
-                             fix(10*config.mapMinMax[1])/10],format='(f3.1)'))
+      cbLabels = str(string(config.mapMinMax,format='(f3.1)'))
     if config.colorField eq 'vrad' then $
       cbLabels = str(config.mapMinMax)
-    if config.colorField eq 'overdens' or config.colorField eq 'temptvir' then $
+    if config.colorField eq 'overdens' or config.colorField eq 'temptvir' or $
+       config.colorField eq 'dmdens' or config.colorField eq 'stardens' then $
       cbLabels = str(string(config.mapMinMax,format='(f4.1)'))
+    
+    if zoom4x2 or zoom2x1 then cbLabels = strtrim(cbLabels) ; since outside
     
     y_middle = mean([y_bottom,y_top]) - mOffset
     cgText,mean([x_left,x_right]),y_bottom-height*yOffset,$
       textoidl(labelText),alignment=0.5,color=cgColor('black'),charsize=!p.charsize,/normal
-    cgText,x_left  + 0.01,y_middle,cbLabels[0],alignment=0.0,color=cgColor('black'),/normal
-    cgText,x_right - 0.01,y_middle,cbLabels[1],alignment=1.0,color=cgColor('black'),/normal
+    cgText,x_left  + tOffset,y_middle,cbLabels[0],alignment=align[0],color=cgColor('black'),/normal
+    cgText,x_right - tOffset,y_middle,cbLabels[1],alignment=align[1],color=cgColor('black'),/normal
     
     !x.thick = xthick
     !y.thick = ythick

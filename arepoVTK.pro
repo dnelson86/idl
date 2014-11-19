@@ -14,7 +14,7 @@ pro combineStereoFrames, mmNum=mmNum
   inStr   = 'A0'
   inPath1 = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_8192/'
   inPath2 = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_360_'+inStr+'/'
-  outPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_4k8bit/'
+  outPath = '/n/home07/dnelson/ArepoVTK/run.subbox0/output/frames_8k8bit/'
   
   fileBase = "frame_"
   fileEnd  = "_16bit.png"
@@ -22,7 +22,7 @@ pro combineStereoFrames, mmNum=mmNum
   ; image config
   imMinMax = [0.0,0.65]
   imGamma  = 1.0 ; inverse of photoshop
-  downto4k = 1
+  downto4k = 0
   
   for i=mmNum[0],mmNum[1] do begin
     ; load

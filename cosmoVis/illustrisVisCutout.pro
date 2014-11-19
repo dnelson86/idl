@@ -590,7 +590,7 @@ function illustrisSliceCutout, sP=sP, gcInd=gcInd, sliceWidth=sliceWidth, axes=a
   if ~keyword_set(sP) or n_elements(gcInd) ne 1 or n_elements(sliceWidth) ne 1 or $
     n_elements(axes) ne 3 then message,'Error'
   
-  saveFileBase = sP.derivPath + 'cutouts/slice.' + sP.savPrefix + str(sP.res) + '.' + $
+  saveFileBase = sP.derivPath + 'cutouts/sliceOff1.' + sP.savPrefix + str(sP.res) + '.' + $
       str(sP.snap) + '.h' + str(gcInd) + '.sw' + str(fix(sliceWidth)) + '.axes' + $
       str(axes[0]) + str(axes[1]) + str(axes[2]) + '_'
   
@@ -619,7 +619,7 @@ function illustrisSliceCutout, sP=sP, gcInd=gcInd, sliceWidth=sliceWidth, axes=a
     sP.redshift = 0.0
     sP.snap = redshiftToSnapNum(sP.redshift, sP=sP)
     
-      gc = loadGroupCat(sP=sP,/skipIDs,/skipOffsets,/verbose)
+    gc = loadGroupCat(sP=sP,/skipIDs,/skipOffsets,/verbose)
       
     ; restore sP
     sP.snap     = snapOld
@@ -632,6 +632,11 @@ function illustrisSliceCutout, sP=sP, gcInd=gcInd, sliceWidth=sliceWidth, axes=a
   
     print,'Halo GrNr ',haloGrNr
     print,'Halo pos  ',xyzCenter
+    
+    ; offset slice
+    xyzCenter[axes[2]] += sliceWidth*2.0
+    print,'OFFSET NEW pos ',xyzCenter
+    
     print,'Determining gas indices...'
     ; load all gas positions
     pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')

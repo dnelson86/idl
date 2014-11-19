@@ -196,7 +196,6 @@ function calcSphMap, pos, hsml, mass, quant, axes=axes, boxSizeImg=boxSizeImg, b
   cmStr = ''
   if n_elements(mass) eq 1 then begin
     cmStr = '_constantMass'
-    print,' (using constant mass sphMap)'
   endif
   
   ; only input two coordinates per particle in 3D?

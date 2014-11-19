@@ -10,7 +10,7 @@
 function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectHalo
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  units = getUnits()
+  units = getUnits(redshift=sP.redshift)
   
   velVecFac = 0.01 ; times velocity (km/s) in plotted kpc
   hsmlFac   = 1.75 ; increase arepo 'hsml' to decrease visualization noise
@@ -81,10 +81,26 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
   mass = loadSnapshotSubset(sP=sP,partType='gas',field='mass')
   sfr  = loadSnapshotSubset(sP=sP,partType='gas',field='sfr')
   
+  ; load dark matter and stars
+  pos_dm    = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
+  vel_dm    = loadSnapshotSubset(sP=sP,partType='dm',field='vel')
+  
+  pos_stars  = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
+  vel_stars  = loadSnapshotSubset(sP=sP,partType='stars',field='vel')
+  ;sft_stars  = loadSnapshotSubset(sP=sP,partType='stars',field='stellarformationtime')
+  mass_stars = loadSnapshotSubset(sP=sP,partType='stars',field='mass')
+  
+  ; calculate HSMLs for dark matter and stars
+  hsml_dm    = calcHSML(pos_dm,ndims=3,nNGB=32,boxSize=sP.boxSize)
+  hsml_stars = calcHSML(pos_stars,ndims=3,nNGB=32,boxSize=sP.boxSize)
+
   ; convert particle velocities to proper
   scalefac = 1.0 / (1.0 + sP.redshift)
   if scalefac le 0.0 or scalefac gt 1.0 then message,'Error'
-  vel *= sqrt(scalefac)
+  
+  vel       *= sqrt(scalefac)
+  vel_dm    *= sqrt(scalefac)
+  vel_stars *= sqrt(scalefac)
   
   ; randomly shuffle the points (break the peano ordering to avoid "square" visualization artifacts)
   print,'shuffling...'
@@ -103,7 +119,20 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
   
   if metalsFlag then metal = metal[sort_inds]
   
-  sort_inds = !NULL
+  ; randomly shuffle dm and stars
+  sort_inds = sort(randomu(iseed,n_elements(pos_dm[0,*])))
+  pos_dm  = pos_dm[*,sort_inds]
+  vel_dm  = vel_dm[*,sort_inds]
+  hsml_dm = hsml_dm[sort_inds] 
+  
+  sort_inds = sort(randomu(iseed,n_elements(pos_stars[0,*])))
+  pos_stars  = pos_stars[*,sort_inds]
+  vel_stars  = vel_stars[*,sort_inds]
+  ;sft_stars  = sft_stars[sort_inds]
+  mass_stars = mass_stars[sort_inds]
+  hsml_stars = hsml_stars[sort_inds]
+  
+  sort_inds = !NULL 
   
   ; now restrict all these quantities to fullhalo only if requested
   if keyword_set(selectHalo) then begin
@@ -152,6 +181,9 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
     boxSize    = ceil(sizeFac * haloVirRad / 10.0) * 10.0
     
     ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
+    
+    ; gas
+    ; ---
     xDist = pos[0,*] - boxCen[0]
     yDist = pos[1,*] - boxCen[1]
     zDist = pos[2,*] - boxCen[2]
@@ -183,10 +215,6 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
     loc_pos[1,*] = yDist[wCut]
     loc_pos[2,*] = zDist[wCut]
     
-    xDist = !NULL
-    yDist = !NULL
-    zDist = !NULL
-    
     loc_sf = bytarr(nCutout)
     w = where(sfr[wCut] gt 0.0,count)
     if count gt 0 then loc_sf[w] = 1B ; flag, 0=not star forming, 1=star forming
@@ -206,21 +234,98 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
     
     ; calculate norm of radial velocity vector
     rad = reform(loc_pos[0,*]^2.0 + loc_pos[1,*]^2.0 + loc_pos[2,*]^2.0)
+    rnorm = sqrt(rad)
 
     sgcen_vel = gc.subgroupVel[*,gcIndCur] ; already peculiar (no scalefac conversion needed)
-    loc_vrad = reform( (loc_vel[0,*]-sgcen_vel[0]) * loc_pos[0,*] + $
-                       (loc_vel[1,*]-sgcen_vel[1]) * loc_pos[1,*] + $
-                       (loc_vel[2,*]-sgcen_vel[2]) * loc_pos[2,*]) / sqrt(rad)
-                       
-    rad = !NULL
     
+    ; old: no hubble
+    loc_vrad_noH = reform( (loc_vel[0,*]-sgcen_vel[0]) * loc_pos[0,*] + $
+                           (loc_vel[1,*]-sgcen_vel[1]) * loc_pos[1,*] + $
+                           (loc_vel[2,*]-sgcen_vel[2]) * loc_pos[2,*]) / rnorm
+                    
+    ; new: add in hubble expansion (neglect mass growth term)                    
+    loc_vrad = loc_vrad_noH + rnorm * units.H_z
+
     ; create endpoint for each position point for the velocity vector line
     loc_pos2 = fltarr(3,nCutout)
     loc_pos2[0,*] = loc_pos[0,*] + loc_vel[0,*]*velVecFac
     loc_pos2[1,*] = loc_pos[1,*] + loc_vel[1,*]*velVecFac
     loc_pos2[2,*] = loc_pos[2,*] + loc_vel[2,*]*velVecFac
-    loc_vel = !NULL
 
+    ; dark matter
+    ; -----------
+    if keyword_set(selectHalo) then begin
+      loc_pos_dm  = -1
+      loc_pos2_dm = -1
+      loc_vel_dm  = -1
+    endif else begin
+      xDist = pos_dm[0,*] - boxCen[0]
+      yDist = pos_dm[1,*] - boxCen[1]
+      zDist = pos_dm[2,*] - boxCen[2]
+      
+      correctPeriodicDistVecs, xDist, sP=sP
+      correctPeriodicDistVecs, yDist, sP=sP
+      correctPeriodicDistVecs, zDist, sP=sP
+      
+      wCut = where(abs(xDist) le 0.5*boxSize and abs(yDist) le 0.5*boxSize and $
+                   abs(zDist) le 0.5*boxSize,nCutout)
+                   
+      loc_pos_dm = fltarr(3,nCutout)
+      loc_pos_dm[0,*] = xDist[wCut] ; delta
+      loc_pos_dm[1,*] = yDist[wCut]
+      loc_pos_dm[2,*] = zDist[wCut]
+      
+      loc_vel_dm  = vel_dm[*,wCut]
+      loc_hsml_dm = hsml_dm[wCut]
+      
+      loc_pos2_dm = fltarr(3,nCutout)
+      loc_pos2_dm[0,*] = loc_pos_dm[0,*] + loc_vel_dm[0,*]*velVecFac
+      loc_pos2_dm[1,*] = loc_pos_dm[1,*] + loc_vel_dm[1,*]*velVecFac
+      loc_pos2_dm[2,*] = loc_pos_dm[2,*] + loc_vel_dm[2,*]*velVecFac
+      
+      loc_vel_dm = sqrt( loc_vel_dm[0,*]^2.0 + loc_vel_dm[1,*]^2.0 + loc_vel_dm[2,*]^2.0 ) ; magnitude
+    endelse
+    
+    ; stars
+    ; -----
+    if keyword_set(selectHalo) then begin
+      loc_pos_stars  = -1
+      loc_pos2_stars = -1
+      loc_vel_stars  = -1
+      loc_mass_stars = -1
+      loc_sft_stars  = -1
+    endif else begin
+      xDist = pos_stars[0,*] - boxCen[0]
+      yDist = pos_stars[1,*] - boxCen[1]
+      zDist = pos_stars[2,*] - boxCen[2]
+      
+      correctPeriodicDistVecs, xDist, sP=sP
+      correctPeriodicDistVecs, yDist, sP=sP
+      correctPeriodicDistVecs, zDist, sP=sP
+      
+      wCut = where(abs(xDist) le 0.5*boxSize and abs(yDist) le 0.5*boxSize and $
+                   abs(zDist) le 0.5*boxSize,nCutout)
+                   
+      loc_pos_stars = fltarr(3,nCutout)
+      loc_pos_stars[0,*] = xDist[wCut] ; delta
+      loc_pos_stars[1,*] = yDist[wCut]
+      loc_pos_stars[2,*] = zDist[wCut]
+      
+      loc_vel_stars  = vel_stars[*,wCut]
+      loc_mass_stars = mass_stars[wCut]
+      ;loc_sft_stars  = sft_stars[wCut]
+      loc_hsml_stars = hsml_stars[wCut]
+      
+      loc_pos2_stars = fltarr(3,nCutout)
+      loc_pos2_stars[0,*] = loc_pos_stars[0,*] + loc_vel_stars[0,*]*velVecFac
+      loc_pos2_stars[1,*] = loc_pos_stars[1,*] + loc_vel_stars[1,*]*velVecFac
+      loc_pos2_stars[2,*] = loc_pos_stars[2,*] + loc_vel_stars[2,*]*velVecFac
+      
+      loc_vel_stars = sqrt( loc_vel_stars[0,*]^2.0 + $
+                            loc_vel_stars[1,*]^2.0 + $
+                            loc_vel_stars[2,*]^2.0 ) ; magnitude
+    endelse
+    
     ; fix halo mass if we're using old (x2 bug) catalogs
     if sP.run eq 'gadgetold' or sP.run eq 'arepo' then $
       haloMass = codeMassToLogMsun(0.5*gc.subgroupMass[gcIndCur])  
@@ -228,9 +333,12 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
     boxSizeImg = [boxSize,boxSize,boxSize] ; cube
     
     ; save
-    r = {loc_pos:loc_pos,loc_temp:loc_temp,loc_ent:loc_ent,loc_vrad:loc_vrad,loc_hsml:loc_hsml,$
-	   loc_pos2:loc_pos2,loc_mass:loc_mass,loc_metal:loc_metal,loc_ids:loc_ids,$
+    r = {loc_pos:loc_pos,loc_temp:loc_temp,loc_ent:loc_ent,loc_vrad:loc_vrad,loc_vrad_noH:loc_vrad_noH,$
+         loc_hsml:loc_hsml,loc_pos2:loc_pos2,loc_mass:loc_mass,loc_metal:loc_metal,loc_ids:loc_ids,$
          loc_dynTime:loc_dynTime,loc_coolTime:loc_coolTime,loc_dens:loc_dens,loc_sf:loc_sf,$
+         loc_pos_dm:loc_pos_dm,loc_pos2_dm:loc_pos2_dm,loc_vel_dm:loc_vel_dm,loc_hsml_dm:loc_hsml_dm,$
+         loc_pos_stars:loc_pos_stars,loc_pos2_stars:loc_pos2_stars,loc_vel_stars:loc_vel_stars,$
+         loc_mass_stars:loc_mass_stars,loc_hsml_stars:loc_hsml_stars,$;loc_sft_stars:loc_sft_stars,
          sP:sP,gcID:gcIndCur,boxCen:boxCen,boxSizeImg:boxSizeImg,sizeFac:sizeFac,$
          haloVirRad:haloVirRad,haloMass:haloMass,haloM200:haloM200,haloV200:haloV200}
          
@@ -489,7 +597,7 @@ end
 
 function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  units = getUnits()
+  units = getUnits(redshift=config.sP.redshift)
   
   haloVirTemp = codeMassToVirTemp(cutout.haloMass, sP=config.sP)
   
@@ -505,6 +613,8 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
   if config.colorField eq 'coolTime'  then fieldVal = cutout.loc_coolTime
   if config.colorField eq 'dynTime'   then fieldVal = cutout.loc_dynTime
   if config.colorField eq 'timeRatio' then fieldVal = cutout.loc_coolTime / cutout.loc_dynTime
+  if config.colorField eq 'dmdens'    then fieldVal = replicate(1.0,n_elements(cutout.loc_temp)) ;dummy
+  if config.colorField eq 'stardens'  then fieldVal = replicate(1.0,n_elements(cutout.loc_temp)) ;dummy
   
   if config.colorField eq 'radmassflux' then begin
     fieldVal = cutout.loc_dens * cutout.loc_vrad
@@ -555,8 +665,9 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
   
   ; cutoutMap? if so, use this second mapCutout to do a sph kernel projection and include it
   if n_elements(mapCutout) gt 0 then begin
+
     if config.colorField eq 'temp'      then fieldValMap = mapCutout.loc_temp
-    if config.colorField eq 'temptvir'  then fieldValMap = cutout.loc_temp / haloVirTemp
+    if config.colorField eq 'temptvir'  then fieldValMap = mapCutout.loc_temp / haloVirTemp
     if config.colorField eq 'entropy'   then fieldValMap = mapCutout.loc_ent
     if config.colorField eq 'density'   then fieldValMap = mapCutout.loc_dens
     if config.colorField eq 'overdens'  then fieldValMap = rhoRatioToCrit(mapCutout.loc_dens,sP=config.sP)
@@ -580,7 +691,7 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
       fieldValMap *= float(units.UnitMass_in_Msun) ; msun/yr/rad^2
     endif
   
-    ; set mass=0 for star forming gas if projecting temperature (eEOS)
+    ; handle star forming gas if projecting temperature (eEOS)
     if config.colorField eq 'temp' or config.colorField eq 'temptvir' then begin
       w = where(mapCutout.loc_sf eq 1B,count)
       
@@ -592,8 +703,58 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
           fieldValMap[w] /= haloVirTemp
       endif
     endif
-  
-    sphmap = calcSphMap(mapCutout.loc_pos,mapCutout.loc_hsml,mapCutout.loc_mass,fieldValMap,$
+    
+    ; set pos,hsml,mass,field
+    if config.colorField ne 'dmdens' and config.colorField ne 'stardens' then begin
+      loc_pos  = mapCutout.loc_pos
+      loc_hsml = mapCutout.loc_hsml
+      loc_mass = mapCutout.loc_mass
+    endif else begin
+      if config.colorField eq 'dmdens' then begin
+        ; handle dark matter: replicate masses
+        h = loadSnapshotHeader(sP=config.sP)
+        loc_pos  = mapCutout.loc_pos_dm
+        loc_hsml = mapCutout.loc_hsml_dm
+        loc_mass = float( h.massTable[ partTypeNum('dm') ] ) ; constant mass sphMap
+        
+        fieldValMap = fltarr(n_elements(mapCutout.loc_hsml_dm)) ; dummy
+      endif else begin
+        ; handle stars
+        loc_pos  = mapCutout.loc_pos_stars
+        loc_hsml = mapCutout.loc_hsml_stars
+        loc_mass = mapCutout.loc_mass_stars
+        
+        fieldValMap = fltarr(n_elements(mapCutout.loc_hsml_stars)) ; dummy
+      endelse
+    endelse
+    
+    ; rotation?
+    if tag_exist(config,'rotAxis') then begin
+      if ~tag_exist(config,'rotAngle') then message,'Error: rotAxis without rotAngle.'
+      
+      loc_pos_old = loc_pos
+      axis3 = (removeIntersectionFromB( config.axes, [0,1,2] ))[0]
+      axes = [config.axes[0],config.axes[1],axis3]
+      
+      if config.rotAxis eq 'x' then begin
+        loc_pos[axes[0],*] = loc_pos_old[axes[0],*] * cos(config.rotAngle) + $
+                             loc_pos_old[axes[2],*] * sin(config.rotAngle)
+        loc_pos[axes[1],*] = loc_pos_old[axes[1],*]
+        loc_pos[axes[2],*] = loc_pos_old[axes[2],*] * cos(config.rotAngle) - $
+                             loc_pos_old[axes[0],*] * sin(config.rotAngle)
+      endif
+      
+      if config.rotAxis eq 'y' then begin
+        loc_pos[axes[0],*] = loc_pos_old[axes[0],*]
+        loc_pos[axes[1],*] = loc_pos_old[axes[1],*] * cos(config.rotAngle) - $
+                             loc_pos_old[axes[2],*] * sin(config.rotAngle)
+        loc_pos[axes[2],*] = loc_pos_old[axes[2],*] * cos(config.rotAngle) + $
+                             loc_pos_old[axes[1],*] * sin(config.rotAngle)
+      endif
+    endif
+    
+    ; do projection with sph kernel
+    sphmap = calcSphMap(loc_pos,loc_hsml,loc_mass,fieldValMap,$
                         boxSizeImg=mapCutout.boxSizeImg,boxSizeSim=0,boxCen=[0,0,0],$
                         nPixels=config.nPixels,axes=config.axes,ndims=3)
                         
@@ -603,6 +764,9 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
     if config.colorField eq 'entropy'  then sphMap.quant_out = alog10( sphMap.quant_out )
     if config.colorField eq 'metal'    then sphMap.quant_out = alog10( sphMap.quant_out )
     if config.colorField eq 'overdens' then sphMap.quant_out = alog10( sphMap.quant_out )
+    if config.colorField eq 'dmdens'   then sphMap.quant_out = alog10( sphMap.dens_out/units.rhoCrit_z )
+    if config.colorField eq 'stardens' then $
+      sphMap.quant_out = rhoRatioToCrit(sphMap.dens_out,sP=config.sP,/log)
     
     ; set minimum for sphmap (mass-weighted quantity, do nothing with projected density)
     w = where(sphmap.quant_out eq 0.0,count,comp=wc)
@@ -618,10 +782,12 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
     ; some additional configuration manipulations for plotScatterAndMap
     if config.colorField eq 'temp'        then config.ctNameMap  = 'blue-red2'
     if config.colorField eq 'temptvir'    then config.ctNameMap  = 'blue-red2'
-    if config.colorField eq 'entropy'     then config.ctNameMap  = 'brewerR-yellowblue'
+    if config.colorField eq 'entropy'     then config.ctNameMap  = 'ocR/zeu'
     if config.colorField eq 'vrad'        then config.ctNameScat = 'brewer-redgreen'
     if config.colorField eq 'vrad'        then config.ctNameMap  = 'brewer-brownpurple'
-    if config.colorField eq 'overdens'    then config.ctNameMap   = 'helix'
+    if config.colorField eq 'overdens'    then config.ctNameMap  = 'helix'
+    if config.colorField eq 'dmdens'      then config.ctNameMap  = 'dnelson/dmdens'
+    if config.colorField eq 'stardens'    then config.ctNameMap  = 'bw linear'
     
     if config.colorField eq 'radmassflux'   then config.ctNameMap  = 'blue-red2'
     if config.colorField eq 'radmassflux'   then config.ctNameScat = 'blue-red2'

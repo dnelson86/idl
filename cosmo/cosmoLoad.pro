@@ -775,8 +775,8 @@ end
 
 function getSnapFilelist, fileBase, snapNum=m, subBox=subBox, checkExists=checkExists
 
-  sbstr = ''
-  if keyword_set(subBox) then sbstr = 'subbox0_'
+  if keyword_set(subBox) then sbstr  = 'subbox0_' else sbstr = ''
+  if keyword_set(subBox) then sbstr2 = 'subbox0/'  else sbstr2 = ''
 
   ; format snapNum and initial guess
   if (str(m) eq 'none') then begin
@@ -794,21 +794,21 @@ function getSnapFilelist, fileBase, snapNum=m, subBox=subBox, checkExists=checkE
     if (m gt 999) then $
       ext = string(m,format='(I4.4)')
       
-    f = fileBase + 'snapdir_' + sbstr + ext + '/snap_' + sbstr + ext
+    f = fileBase + sbstr2 + 'snapdir_' + sbstr + ext + '/snap_' + sbstr + ext
   endelse
 
   ; check for single (non-split)
-  if file_test(fileBase+'snap_'+sbstr+ext+'.hdf5') then $
-    return, [fileBase+'snap_'+sbstr+ext+'.hdf5']
+  if file_test(fileBase+sbstr2+'snap_'+sbstr+ext+'.hdf5') then $
+    return, [fileBase+sbstr2+'snap_'+sbstr+ext+'.hdf5']
 
   ; check for single groupordered
-  if file_test(fileBase+'snap-groupordered_'+ext+'.hdf5') then $
-    return, [fileBase+'snap-groupordered_'+ext+'.hdf5']
+  if file_test(fileBase+sbstr2+'snap-groupordered_'+ext+'.hdf5') then $
+    return, [fileBase+sbstr2+'snap-groupordered_'+ext+'.hdf5']
   
   ; check for multiple groupordered
-  if file_test(fileBase+'snapdir_'+ext+'/snap-groupordered_'+ext+'.0.hdf5') then begin
-    ff = file_search(fileBase + 'snapdir_' + ext + '/snap-groupordered_' + ext+".*hdf5")
-    return, fileBase + 'snapdir_' + ext + '/snap-groupordered_' + ext + '.' + $
+  if file_test(fileBase+sbstr2+'snapdir_'+ext+'/snap-groupordered_'+ext+'.0.hdf5') then begin
+    ff = file_search(fileBase + sbstr2 + 'snapdir_' + ext + '/snap-groupordered_' + ext+".*hdf5")
+    return, fileBase + sbstr2 + 'snapdir_' + ext + '/snap-groupordered_' + ext + '.' + $
             str(indgen(n_elements(ff))) + '.hdf5'
   endif
   

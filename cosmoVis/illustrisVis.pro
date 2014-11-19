@@ -218,7 +218,7 @@ function illustrisMakeMap, sP=sP,haloID=haloID,sizeFac=sizeFac,sliceWidth=sliceW
       str(fix(sliceWidth*10)) + '.hf' + str(fix(hsmlFac*100)) + $
       '.px' + str(nPixels) + '.axes' + str(axes[0]) + str(axes[1]) + '_' + quantName
   if keyword_set(wholeBoxSlice) then $
-    fileName = 'sliceMap.' + sP.savPrefix + str(sP.res) + '.' + $
+    fileName = 'sliceMapOff1.' + sP.savPrefix + str(sP.res) + '.' + $
       str(sP.snap) + '.h' + str(gcInd) + '.sw' + str(fix(sliceWidth)) + $
       '.hf' + str(fix(hsmlFac*100)) + $
       '.px' + str(nPixels) + '.axes' + str(axes[0]) + str(axes[1]) + str(axes[2]) + '_' + quantName
@@ -530,7 +530,7 @@ function illustrisMakeMap, sP=sP,haloID=haloID,sizeFac=sizeFac,sliceWidth=sliceW
     endif
            
     ; get box center
-    metaFilePath = sP.derivPath + 'cutouts/slice.' + sP.savPrefix + str(sP.res) + '.' + $
+    metaFilePath = sP.derivPath + 'cutouts/sliceOff1.' + sP.savPrefix + str(sP.res) + '.' + $
       str(sP.snap) + '.h' + str(gcInd) + '.sw' + str(fix(sliceWidth)) + '.axes' + $
       str(axes[0]) + str(axes[1]) + str(axes[2]) + '_meta.sav'
                  
@@ -893,19 +893,18 @@ end
 
 ; illustrisVisSlice():
 
-pro illustrisVisSlice, i_in=i_in, nPixels=nPixels, redshifts=redshifts
+pro illustrisVisSlice, i_in=i_in
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  foreach redshift,redshifts do begin
-  sP = simParams(res=1820,run='illustris',redshift=redshift)
+  sP = simParams(res=1820,run='illustris',redshift=0.0)
   
   haloID     = 0       ; fof number, 0, 1000
   sliceWidth = 7500    ; slice extent in
   axes       = [0,1,2] ; image in xy, slice in z
   
   ; plot configuration
-  ;nPixels    = 2048  ; px
+  nPixels    = 8192  ; px
   reduce     = 1.0    ; reduce final output image size (1.0 to disable)
   scaleBar   = 0      ; cMpc, 0 to disable
   
@@ -917,7 +916,7 @@ pro illustrisVisSlice, i_in=i_in, nPixels=nPixels, redshifts=redshifts
     p4 : {qName:'gas_vmag',    hF:2.5, mapMM:[50.0,960.0], ga:1.0, nB:0, ctName:'pm/f-34-35-36'} ,$
     p5 : {qName:'gas_xray',    hF:2.5, mapMM:[-7.6,-2.5],  ga:1.5, nB:0, ctName:'red-temp'} ,$
     p6 : {qName:'gas_sz_y',    hF:2.5, mapMM:[2.5,5.6],    ga:0.5, nB:0, ctName:'ocR/zeu'} ,$
-    p7 : {qName:'dm_dens',     hF:1.0, mapMM:[-4.0,0.4],   ga:0.7, nB:0, ctName:'helix'} ,$
+    p7 : {qName:'dm_dens',     hF:1.0, mapMM:[-2.8,0.0],   ga:1.0, nB:0, ctName:'dnelson/dmdens'} ,$
     p8 : {qName:'dm_vmag',     hF:1.0, mapMM:[50.0,960.0], ga:1.0, nB:0, ctName:'pm/f-34-35-36'} ,$
     p9 : {qName:'dm_vdisp',    hF:1.0, mapMM:[0.6,3.0],    ga:1.0, nB:0, ctName:'esri/events/fire_active_2'} ,$
     p10: {qName:'dm_annih',    hF:1.0, mapMM:[-12.0,-1.2], ga:1.0, nB:0, ctName:'td/DEM_poster'} ,$
@@ -993,7 +992,6 @@ pro illustrisVisSlice, i_in=i_in, nPixels=nPixels, redshifts=redshifts
   end_PS, density=density, pngResize=100, /deletePS
   
   endforeach ; pConfigs
-  endforeach ;redshifts
 end
 
 ; illustrisVisBox(): sphMap entire box with a CuboidRemap applied
