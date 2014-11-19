@@ -219,11 +219,11 @@ pro multiMapZoomComp
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  redshift = 2.02 ; NOTE!!!!!!!!!!!!!!!!!
+  redshift = 2.0
   resLevel = 9
-  hInds    = [2,4,5,6] ;[0,1,7,8]
+  hInds    = [0,1] ;[2,4,5,6] ;[0,1,7,8]
 
-  sizeFacMap  = 3.0            ; times rvir (image width, e.g. 2.0 shows out to the virial radius)
+  sizeFac     = 3.0            ; times rvir (image width, e.g. 2.0 shows out to the virial radius)
   rVirCircs   = [0.15,0.5,1.0] ; times rvir to draw a circle
   hsmlFac     = 2.0            ; times each cell radius for sph projections
   nPixels     = [1200,1200]    ; px
@@ -234,9 +234,8 @@ pro multiMapZoomComp
   ; use which field and minmax for color mappings?
   fields = { $
     field4 : { colorField : 'overdens',    mapMinMax : [-1.0,4.0] } ,$
-    field0 : { colorField : 'temp',        mapMinMax : [4.4,6.2] } ,$
-    field1 : { colorField : 'entropy',     mapMinMax : [6.5,8.9] } ,$
-    ;field3 : { colorField : 'radmassflux', mapMinMax : [-150,30] } ,$
+    field0 : { colorField : 'temp',        mapMinMax : [4.4,6.3] } ,$
+    field1 : { colorField : 'entropy',     mapMinMax : [6.5,9.1] } ,$
     field2 : { colorField : 'vrad',        mapMinMax : [-220,220] } };,$
     
   numFields = n_tags(fields)
@@ -253,7 +252,7 @@ pro multiMapZoomComp
   runsStr = sP.(0).saveTag + '_' + str(sP.(0).snap) + '_h' + strjoin(str(hInds))
   
   saveFilename = 'zoomMaps_'+str(sP.(0).res)+'_'+runsStr+'_axes'+str(axisPair[0])+str(axisPair[1])+'_'+$
-                  'sf' + str(fix(sizeFacMap*10)) + '_px' + str(nPixels[0]) + '_nF' +str(numFields)+'.eps'
+                  'sf' + str(fix(sizeFac*10)) + '_px' + str(nPixels[0]) + '_nF' +str(numFields)+'.eps'
                  
   xs = xySize*numFields
   ys = xySize*numRuns*(1/(1.0-barAreaHeight))
@@ -266,7 +265,7 @@ pro multiMapZoomComp
     print,sP.(i).saveTag + ' ['+str(gcIDs[i])+'] Mapping axes ['+str(axisPair[0])+','+str(axisPair[1])+']'
   
     ; spatial cutouts
-    mapCutout = cosmoVisCutout(sP=sP.(i),gcInd=gcIDs[i],sizeFac=sizeFacMap)
+    mapCutout = cosmoVisCutout(sP=sP.(i),gcInd=gcIDs[i],sizeFac=sizeFac)
     
     ; enhance hsml and make boxsize smaller for map cutout
     mapCutout.loc_hsml *= hsmlFac
@@ -293,5 +292,127 @@ pro multiMapZoomComp
   endfor ; numRuns,i
   
   end_PS, density=ceil(nPixels[0]/xySize), pngResize=100 ;, /deletePS
+  
+end
+
+; multiMapZoomRotFrames(): compare many quantities and scales of one zoom, and generate frames 
+;   rotating around an axis (no time evolution) for a movie
+
+pro multiMapZoomRotFrames, jobNum=jobNum, totJobs=totJobs, do4x2=do4x2, do2x1=do2x1
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  if n_elements(jobNum) eq 0 or n_elements(totJobs) eq 0 then message,'Error'
+  if n_elements(do4x2) eq 0 and n_elements(do2x1) eq 0 then message,'Error'
+  
+  ; config
+  redshift = 2.0
+  resLevel = 11
+  hInd     = 7
+  outPath  = '/n/home07/dnelson/data5/frames/'
+
+  hsmlFac      = 2.0      ; times each cell radius for sph projections
+  axes         = [0,1,2]  ; projection in direction of 3rd axis, rotation about first
+  framesPerRot = 600      ; 20 seconds @ 30fps
+  rotAxis      = 'y'      ; x or y
+  
+  ; zoom4x2:
+  if keyword_set(do4x2) then begin
+    sizeFac       = 7.8           ; times rvir (master, must be sqrt(2)*max(sizeFac) below)
+    nPixels       = [960,960]     ; sphMap projection grid size in pixels
+    xySize        = [3840,2160]   ; final image size
+    barAreaHeight = 0.108 ;14     ; fractional
+    numRows       = 2
+    fields        = { $
+      $ ; top
+      field0 : { colorField:'overdens', mapMinMax:[-0.5,4.0], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+      field1 : { colorField:'temp',     mapMinMax:[4.4,6.3],  sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+      field2 : { colorField:'entropy',  mapMinMax:[7.5,8.8],  sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+      field3 : { colorField:'vrad',     mapMinMax:[-200,200], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+      $ ; bottom
+      field4 : { colorField:'overdens', mapMinMax:[1.0,6.0],  sizeFac:1.0, rVirCircs:[0.15] } ,$
+      field5 : { colorField:'stardens', mapMinMax:[2.0,6.0],  sizeFac:1.0, rVirCircs:[0.15] } ,$
+      field6 : { colorField:'overdens', mapMinMax:[-1.0,4.0], sizeFac:5.5, rVirCircs:[0.5,1.0] } ,$
+      field7 : { colorField:'dmdens',   mapMinMax:[1.5,5.5],  sizeFac:5.5, rVirCircs:[0.5,1.0] } }
+  endif ;0
+  
+  ; zoom2x1:
+  if keyword_set(do2x1) then begin
+    sizeFac       = 4.3           ; times rvir (master, must be sqrt(2)*max(sizeFac) below)
+    nPixels       = [1920,2160]   ; sphMap projection grid size in pixels
+    xySize        = [3840,2160]   ; final image size
+    barAreaHeight = 0             ; fractional
+    numRows       = 1
+    fields        = { $
+      field0 : { colorField:'overdens', mapMinMax:[-0.5,4.5], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+      field1 : { colorField:'temp',     mapMinMax:[4.4,6.3],  sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] }  }
+  endif ;0
+
+  ; decide frameMM based on jobNum
+  if float(framesPerRot)/totJobs ne round(float(framesPerRot)/totJobs) then $
+    message,'Error: framesPerRot not divisable by totJobs.'
+    
+  framesPerJob = framesPerRot/totJobs
+  frameMM = [framesPerJob*jobNum,framesPerJob*(jobNum+1)-1]
+  numFields = n_tags(fields)/numRows
+  print,'Job ['+str(jobNum)+'] of ['+str(totJobs)+'] frames: ',frameMM
+
+  ; load
+  sP = simParams(run='zoom_20Mpc',res=resLevel,hInd=hInd,redshift=redshift)
+  gcID = zoomTargetHalo(sP=sP)
+  
+  mapCutout = cosmoVisCutout(sP=sP,gcInd=gcID,sizeFac=sizeFac)
+  mapCutout.loc_hsml *= hsmlFac
+  
+  for frameNum=frameMM[0],frameMM[1] do begin
+    rotAngle = (float(frameNum)/framesPerRot*(2*!pi)) ;mod (2*!pi)
+    print,'['+string(frameNum,format='(I04)')+'] rotAngle = '+string(rotAngle,format='(f6.4)')
+
+    saveFilename = 'zoomMaps_'+str(numFields)+'x'+str(numRows)+'_'+sP.saveTag+'_'+str(sP.snap)+$
+      '_rot-' + rotAxis + '_frame_'+string(frameNum,format='(I04)')+'.eps'
+                   
+    fac = 1.25
+    xs = xySize[0]/(300/fac)
+    ys = xySize[1]/(300/fac)
+    
+    start_PS, outPath + saveFilename, xs=xs, ys=ys
+    
+    ; loop over rows
+    for i=0,numRows-1 do begin
+      for j=0,numFields-1 do begin
+      
+        field = fields.(i*numFields+j)
+        
+        ; make boxsize smaller for map cutout
+        mapCutout.boxSizeImg = field.sizeFac*[mapCutout.haloVirRad,$ ;x
+                                              mapCutout.haloVirRad*nPixels[1]/nPixels[0],$ ;y
+                                              mapCutout.haloVirRad] ;z
+
+        ; mapping configuration
+        config = {saveFilename:'',nPixels:nPixels,axes:axes[0:1],fieldMinMax:[0,0],$
+                  gcID:gcID,haloMass:mapCutout.haloMass,haloVirRad:mapCutout.haloVirRad,$
+                  boxCen:[0,0,0],boxSizeImg:mapCutout.boxSizeImg,rVirCircs:field.rVirCircs,$
+                  ctNameScat:'',ctNameMap:'',sP:sP,bartype:'',scaleBarLen:200.0,$
+                  secondCutVal:-1,secondText:'',nbottom:0,secondGt:1,singleColorScale:1,$
+                  barAreaHeight:barAreaHeight,newBoxSize:field.sizeFac,rotAxis:rotAxis,rotAngle:rotAngle,$
+                  colorField:field.colorField,mapMinMax:field.mapMinMax}
+        
+        ;tempFilename = sP.plotPath + 'temp_sub_'+str(i)+'_'+str(j)+'.sav'
+        ;if file_test(tempFilename) then begin
+        ;  restore,tempFilename
+        ;endif else begin
+          sub = cosmoVisCutoutSub(cutout=mapCutout,mapCutout=mapCutout,config=config)
+        ;  save,sub,config,filename=tempFilename
+        ;endelse
+        ;config.barAreaHeight = barAreaHeight
+        
+        ; plot
+        plotMultiSphmap, map=sub, config=config, row=[i,numRows], col=[j,numFields]
+
+      endfor ; numFields,j
+    endfor ; numRows,i
+    
+    end_PS, density=300/fac, pngResize=100, /deletePS
+    
+  endfor ; m
   
 end

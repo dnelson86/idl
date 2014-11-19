@@ -749,6 +749,7 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse,
  
  ; matplotlib
  if ctName eq 'spectral'                then vis_loadct,15,/mpl
+ if ctName eq 'spectralR'               then vis_loadct,15,/mpl,/reverse
  
  ; cpt-city (name specifications must include directory)
  if strpos(ctName,"/") ge 1 and strpos(ctName,"R/") eq -1 then vis_loadct,cpt_filename=ctName
@@ -1296,6 +1297,8 @@ end
 @ICs_cosmoZoom
 @zoomVis
 @zoomEvo
+@zoomRays
+@zoomProfiles
 
 @tracersVel_Cosmo
 ;@tracersVel_Halos
