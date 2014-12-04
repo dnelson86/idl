@@ -1,6 +1,6 @@
 ; zoomProfiles.pro
 ; 'zoom project' 1D and 2D radial profiles, phase diagrams, PDFs of various quantities
-; dnelson nov.2014
+; dnelson dec.2014
 
 ; zoomRadialBin(): do radial binning (1d and 2d) for multiple particle types
 
@@ -8,15 +8,14 @@ function zoomRadialBin, sP=sP, gc=gc, partType=partType, halo=halo, mode=mode
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits(redshift=sP.redshift)
   
-  ; mode
-  if n_elements(mode) eq 0 then mode = 0
+  if n_elements(mode) eq 0 then message,'Error: Specify mode.'
   
   ; setup binning
   binSize = {}
   binCen  = {}
   
   for i=0,n_tags(halo.binMinMax)-1 do begin
-    bsLoc = ( halo.binMinMax.(i)[1] - halo.binMinMax.(i)[0] ) / halo.nBins
+    bsLoc = ( halo.binMinMax.(i)[1] - halo.binMinMax.(i)[0] ) / float(halo.nBins)
     binSize = mod_struct( binSize, (tag_names(halo.binMinMax))[i], bsLoc )
     binCen  = mod_struct( binCen, (tag_names(halo.binMinMax))[i], fltarr(halo.nBins) )
   endfor
@@ -129,7 +128,8 @@ function zoomRadialBin, sP=sP, gc=gc, partType=partType, halo=halo, mode=mode
                 / (rad_pri*halo.rVir)
             
     vrad += (rad_pri*halo.rVir) * units.H_z ; add in hubble expansion (neglect mass growth term)
-            
+    vrad = reform(vrad)
+    
     ; angm calculation: mean magnitude of specific angular momentum = rvec x vel
     ; make velocities relative to bulk halo motion
     vel[0,*] = reform(vel[0,*] - halo.pVel[0])
@@ -261,56 +261,66 @@ function zoomRadialBin, sP=sP, gc=gc, partType=partType, halo=halo, mode=mode
   ; 1d histograms (PDFs) in restricted radial ranges
   ; ------------------------------------------------
   if mode eq 1 then begin
-    foreach binFieldName,tag_names(halo.binMinMax) do begin
-      ; make struct (4 per quantity = [mean,lower quartile,median,upper quartile])
+    foreach radRange,halo.radRanges,m do begin
+      ; make struct (6 per quantity = [mean,lower quartile,median,upper quartile,count,mass frac])
       r = {}
       
       foreach fName,tag_names(halo.binMinMax) do begin
         if total(fName eq gasOnlyFields gt 0) and partType ne 'gas' then continue
-        r = mod_struct( r, fName, fltarr(halo.nBins,4) )
+        r = mod_struct( r, fName, fltarr(halo.nBins,6) )
       endforeach
       
-      ; indices
-      if total(binFieldName eq gasOnlyFields gt 0) and partType ne 'gas' then continue
-      tD1 = where( strcmp(tag_names(data),binFieldName) eq 1 )
-      tR1 = where( strcmp(tag_names(r),binFieldName) eq 1 ) ; unused
-      tH1 = where( strcmp(tag_names(halo.binMinMax),binFieldName) eq 1 ) ; also binSize,binCen 
+      ; radial restriction
+      w_rad = where(data.rad ge radRange[0] and data.rad lt radRange[1],count_rad)
+      if count_rad eq 0 then message,'Error'
       
-      print,' '+binFieldName
+      ; loop over each quantity
+      foreach fieldName,tag_names(halo.binMinMax) do begin
+        if total(fieldName eq gasOnlyFields gt 0) and partType ne 'gas' then continue
+        
+        ; indices
+        tD = (where( strcmp(tag_names(data),fieldName) eq 1 ))[0]
+        tH = (where( strcmp(tag_names(halo.binMinMax),fieldName) eq 1 ))[0]
+        tR = (where( strcmp(tag_names(r),fieldName) eq 1 ))[0]
+        
+        ; local data
+        data_loc = data.(tD)[w_rad]
+        mass_loc = mass[w_rad]
+        mass_tot = total( mass_loc )
+        
+        print,' '+fieldName
       
-      for i=0,halo.nBins-1 do begin
-        ; first dimension: boundaries
-        locMin = 10.0^( halo.binMinMax.(tH1)[0] + binSize.(tH1)*i )
-        locMax = 10.0^( halo.binMinMax.(tH1)[0] + binSize.(tH1)*(i+1) )
-        if binFieldName eq 'RAD' or binFieldName eq 'VRAD' then begin ; only linear ones
-          locMin = halo.binMinMax.(tH1)[0] + binSize.(tH1)*i
-          locMax = halo.binMinMax.(tH1)[0] + binSize.(tH1)*(i+1)
-        endif
-        
-        w = where(data.(tD1) ge locMin and data.(tD1) lt locMax,count)
-        
-        binCen.(tH1)[i] = mean([locMin,locMax]) ; unused
-        
-        if count eq 0 then continue
-        
-        foreach fieldName,tag_names(halo.binMinMax) do begin
-          if total(fieldName eq gasOnlyFields gt 0) and partType ne 'gas' then continue
+        for i=0,halo.nBins-1 do begin
+          ; bin boundaries
+          locMin = 10.0^( halo.binMinMax.(tH)[0] + binSize.(tH)*i )
+          locMax = 10.0^( halo.binMinMax.(tH)[0] + binSize.(tH)*(i+1) )
 
-          ; indices
-          tD2   = where( strcmp(tag_names(data),fieldName) eq 1 )
-          tR_1D = where( strcmp(tag_names(r),fieldName) eq 1 )
+          if fieldName eq 'RAD' or fieldName eq 'VRAD' then begin ; only linear ones
+            locMin = halo.binMinMax.(tH)[0] + binSize.(tH)*i
+            locMax = halo.binMinMax.(tH)[0] + binSize.(tH)*(i+1)
+          endif
           
-          ; 1D binning
-          r.(tR_1D)[i,0]   = mean( data.(tD2)[w] )
-          r.(tR_1D)[i,1:3] = percentiles( data.(tD2)[w] )
+          ; binning
+          w = where(data_loc ge locMin and data_loc lt locMax,count)
           
-        endforeach ;fieldName
-      endfor ;nBins,i
+          binCen.(tH)[i] = mean([locMin,locMax])
+          
+          if count eq 0 then continue
+            
+          r.(tR)[i,0]   = mean( data_loc[w] )
+          r.(tR)[i,1:3] = percentiles( data_loc[w] )
+          r.(tR)[i,4]   = count
+          r.(tR)[i,5]   = total( mass_loc[w] ) / mass_tot
+          
+        endfor ;nBins,i
+      
+      endforeach ;fieldName
       
       r = mod_struct( r, 'binCen', binCen )
       r = mod_struct( r, 'binSize', binSize )
+      r = mod_struct( r, 'radRange', radRange )
       
-      rr = mod_struct( rr, binFieldName, r )
+      rr = mod_struct( rr, 'range'+str(m), r )
     endforeach ; binFieldNames
   endif
   
@@ -324,7 +334,7 @@ pro plotZoomRadialProfiles ;, input=input
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  hInds     = [0,1,7,8] ;[0,1,2,3,4,5,6,7,8,9] [0,1,7,8]
+  hInds     = [5,9] ;[0,1,2,3,4,5,6,7,8,9] [0,1,7,8]
   resLevels = [9,10,11] ;[9,10,11]
   redshift  = 2.0
   newSaves  = 0 ; override existing saves
@@ -359,23 +369,23 @@ pro plotZoomRadialProfiles ;, input=input
   indivPlotsY = ['CSIZE'] ; single-panel 2d histos?
   
   ; plot config
-  pConfig = { rad   : { label:"r / r_{vir}",                 range:[0.0,2.0],  log:0 } ,$
-              temp  : { label:"log T_{gas} [_{ }K_{ }]",     range:[4.5,6.5],  log:1 } ,$
-              dens  : { label:"log n_{gas} [_{ }cm^{-3 }]",  range:[-4,-1],    log:1 } ,$
-              vrad  : { label:"v_{rad} [_{ }km/s_{ }]",      range:[-200,100], log:0 } ,$
-              csize : { label:"log r_{cell} [_{ }kpc_{ }]",  range:[-1.0,1.0], log:1 } ,$
-              entr  : { label:"log S_{gas} [_{ }K cm^{2 }]", range:[7.0,9.0],  log:1 } ,$
-              angm  : { label:"j_{gas} [_{ }kpc km/s_{ }]",  range:[3.0,5.0],  log:1 }  }
+  pConfig = { rad   : { label:"r / r_{vir}",                    range:[0.0,2.0],  log:0 } ,$
+              temp  : { label:"log T_{gas} [_{ }K_{ }]",        range:[4.5,6.5],  log:1 } ,$
+              dens  : { label:"log n_{gas} [_{ }cm^{-3 }]",     range:[-4,-1],    log:1 } ,$
+              vrad  : { label:"v_{rad} [_{ }km/s_{ }]",         range:[-200,100], log:0 } ,$
+              csize : { label:"log r_{cell} [_{ }kpc_{ }]",     range:[-1.0,1.0], log:1 } ,$
+              entr  : { label:"log S_{gas} [_{ }K cm^{2 }]",    range:[7.0,9.0],  log:1 } ,$
+              angm  : { label:"log j_{gas} [_{ }kpc km/s_{ }]", range:[3.0,5.0],  log:1 }  }
               
-  pConfig_dm = { rad   : { label:"r / r_{vir}",                range:[0.0,2.0],  log:0 } ,$
-                 dens  : { label:"log n_{DM} [_{ }cm^{-3 }]",  range:[-6.0,1.0], log:1 } ,$
-                 vrad  : { label:"v_{rad,DM} [_{ }km/s_{ }]",  range:[-100,200], log:0 } ,$
-                 angm  : { label:"j_{DM} [_{ }kpc km/s_{ }]",  range:[3.0,5.0],  log:1 }  }
+  pConfig_dm = { rad   : { label:"r / r_{vir}",                   range:[0.0,2.0],  log:0 } ,$
+                 dens  : { label:"log n_{DM} [_{ }cm^{-3 }]",     range:[-6.0,1.0], log:1 } ,$
+                 vrad  : { label:"v_{rad,DM} [_{ }km/s_{ }]",     range:[-100,200], log:0 } ,$
+                 angm  : { label:"log j_{DM} [_{ }kpc km/s_{ }]", range:[3.0,5.0],  log:1 }  }
                  
-  pConfig_stars = { rad   : { label:"r / r_{vir}",                   range:[0.0,2.0],  log:0 } ,$
-                    dens  : { label:"log n_{stars} [_{ }cm^{-3 }]",  range:[-6.0,1.0], log:1 } ,$
-                    vrad  : { label:"v_{rad,stars} [_{ }km/s_{ }]",  range:[-100,200], log:0 } ,$
-                    angm  : { label:"j_{stars} [_{ }kpc km/s_{ }]",  range:[3.0,5.0],  log:1 }  }
+  pConfig_stars = { rad   : { label:"r / r_{vir}",                      range:[0.0,2.0],  log:0 } ,$
+                    dens  : { label:"log n_{stars} [_{ }cm^{-3 }]",     range:[-6.0,1.0], log:1 } ,$
+                    vrad  : { label:"v_{rad,stars} [_{ }km/s_{ }]",     range:[-100,200], log:0 } ,$
+                    angm  : { label:"log j_{stars} [_{ }kpc km/s_{ }]", range:[3.0,5.0],  log:1 }  }
          
   radLines = [0.15,1.5]
   sK       = 1
@@ -398,7 +408,7 @@ pro plotZoomRadialProfiles ;, input=input
       ; get list of snapshots for this halo in the redshift range
       rLoc = {}
       
-      if resLevel eq 11 and total(hInd eq [2,3,4,5,6,9]) gt 0 then continue
+      ;if resLevel eq 11 and total(hInd eq [2,3,4,5,6,9]) gt 0 then continue
       
       sP = simParams(run='zoom_20Mpc',res=resLevel,hInd=hInd,redshift=redshift)     
       saveFilename = sP.derivPath + 'binnedVals/radProfiles.h'+str(hInd)+'.'+sP.savPrefix+str(sP.res) + $
@@ -426,9 +436,9 @@ pro plotZoomRadialProfiles ;, input=input
         halo = { tVir:tVir, rVir:rVir, pPos:pPos, pVel:pVel, gcInd:gcInd, $
                  nBins:nBins, binMinMax:binMinMax, cutSubS:cutSubS }
         
-        gas   = zoomRadialBin(sP=sP, gc=gc, partType='gas', halo=halo)
-        dm    = zoomRadialBin(sP=sP, gc=gc, partType='dm', halo=halo)
-        stars = zoomRadialBin(sP=sP, gc=gc, partType='stars', halo=halo)
+        gas   = zoomRadialBin(sP=sP, gc=gc, partType='gas', halo=halo, mode=0)
+        dm    = zoomRadialBin(sP=sP, gc=gc, partType='dm', halo=halo, mode=0)
+        stars = zoomRadialBin(sP=sP, gc=gc, partType='stars', halo=halo, mode=0)
         
         ; save all values for this halo+resLevel combination
         rLoc = mod_struct( rLoc, 'sP', sP )
@@ -524,10 +534,96 @@ pro plotZoomRadialProfiles ;, input=input
       endforeach ; tag_names(pConfig)
         
     end_PS
+    
+    ; plot (1b) - lower resolutions split into subpanels
+    start_PS, rp.(0).(0).sP.plotPath + 'zoomProfilesSubPanels_'+fName+'_Gas_1D_' + plotStr + '.eps', $
+      xs=8.0*1.4, ys=9.0*1.4
+    
+      pos = plot_pos(col=2,row=3,/gap)
+      subSize = 0.06
+      offset = [-0.02,0+subSize,0.02,0]
+      
+      count = 0
+      
+      foreach curField,tag_names(pConfig) do begin
+        if curField eq fName then continue
+        
+        yInd = where( tag_names(pConfig) eq curField )
+        zInd = where( tag_names(rp.(0).(0).gas.(qInd)) eq curField )
+        yrange = pConfig.(yInd).range
+        ytitle = pConfig.(yInd).label
+        
+        ; plot (i) - main panels
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,xlog=0,$
+          xtitle="",xtickname=replicate(" ",10),ytitle=textoidl(ytitle),pos=pos[count]+offset,/noerase
+          
+        foreach radLine,radLines do $
+          cgPlot,[radLine,radLine],yrange+[0.05,-0.05],line=1,color='light gray',/overplot
+          
+        for i=0,n_tags(rp)-1 do begin
+        
+          j = where( tag_names(rp.(i)) eq 'L11', count_ind )
+          if count_ind eq 0 then continue
+          
+          ;for j=0,n_tags(rp.(i))-1 do begin
+            xx = rp.(i).(j).gas.(qInd).binCen.(bInd)
+            if pConfig.(pInd).log eq 1 then xx = alog10( xx )
+            yy = rp.(i).(j).gas.(qInd).(zInd)
+            if pConfig.(yInd).log eq 1 then yy = alog10( yy )
+            
+            co = rp.(i).(j).sP.colors[cInds[j]]
+            th = !p.thick * thick[j]
+                    
+            cgPlot,xx,smooth(yy[*,0],sK),line=lines[j],color=co,thick=th,/overplot
+          ;endfor ;n_tags(rp.(i)),j
+        endfor ;n_tags(rp),i
+        
+        ;if count eq 1 then legend,rNames,linestyle=rLines,thick=rThick*!p.thick,/top,/right
+        if count eq 1 then legend,[rNames[0:1]+'/'+rNames[2],rNames[2]],$
+          linestyle=rLines,thick=rThick*!p.thick,/top,/right
+        if count eq 3 then legend,hNames,textcolor=hColors,/top,/left
+        
+        ; plot (ii) - subpanels, ratios L9/L11 and L10/L11
+        yrangeSub = [0.025,40.0]
+        ytickvSub = [0.1,1.0,10.0]
+        ytitleSub = "Ln/L11" ;"Ratio"
+        posSub = pos[count]+offset
+        posSub[1] -= subSize ; move y of lowerleft down
+        posSub[3] = posSub[1] + subSize ; set height of subpanel
+        
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeSub,/xs,/ys,xlog=0,ylog=1,yminor=1,$
+          xtitle=textoidl(xtitle),ytitle=textoidl(ytitleSub),ytickv=ytickvSub,yticks=2,pos=posSub,/noerase
+          
+        cgPlot,xrange,[1.0,1.0],line=0,color=cgColor('light gray'),/overplot
+        
+        for i=0,n_tags(rp)-1 do begin
+          ind_L11 = where( tag_names(rp.(i)) eq 'L11', count_ind )
+          if count_ind eq 0 then continue
+          
+          yy_L11 = rp.(i).(ind_L11).gas.(qInd).(zInd)
+          yy_L11 = yy_L11[*,0]
+          
+          for j=0,n_tags(rp.(i))-2 do begin
+            xx = rp.(i).(j).gas.(qInd).binCen.(bInd)
+            if pConfig.(pInd).log eq 1 then xx = alog10( xx )
+            yy = rp.(i).(j).gas.(qInd).(zInd)
+            yy = yy[*,0]
+            
+            yy /= yy_L11 ; plot ratio to highest resolution level
+            
+            co = rp.(i).(j).sP.colors[cInds[j]]
+            th = !p.thick * thick[j]
+                    
+            cgPlot,xx,smooth(yy,sK),line=lines[j],color=co,thick=th,psym=psym,/overplot
+          endfor ;n_tags(rp.(i)),j
+        endfor ;n_tags(rp),i
+        
+        count += 1
+      endforeach ; tag_names(pConfig)
+        
+    end_PS
   
   endforeach ; tag_names(pConfig)
-  
-  stop
   
   ; plot (2) - 1D radial profiles of DM/stars quantities, one per panel, all halos all resolutions
   foreach fName,tag_names(pConfig_dm) do begin
@@ -1167,58 +1263,57 @@ pro plotZoomSlicePDFs ;, input=input
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  hInds     = [0] ;[0,1,2,3,4,5,6,7,8,9] [0,1,7,8]
-  resLevels = [9] ;[9,10,11]
+  hInds     = [5,9] ;[0,1,2,3,4,5,6,7,8,9] [0,1,7,8]
+  resLevels = [9,10,11] ;[9,10,11]
   redshift  = 2.0
   newSaves  = 0 ; override existing saves
   cutSubS   = 1   ; remove substructures?
   
-  ; 2D plot config (binMinMax also plot bounds for 2D histos, must rebin if you change)
+  ; binning config (must rebin if you change)
   binMinMax = { rad   : [0.0,2.0]   ,$
                 temp  : [4.0,7.0]   ,$
                 dens  : [-6.0,0.0]  ,$
-                vrad  : [-400,250]  ,$
-                csize : [-1.0,0.75] ,$
-                entr  : [5.5,9.5]   ,$
-                angm  : [3.0,5.0]   ,$
+                vrad  : [-500,300]  ,$
+                csize : [-1.0,1.0]  ,$
+                entr  : [4.0,10.0]  ,$
+                angm  : [2.5,5.0]   ,$
                 nh0   : [-28,-24]    }
-                
-  ctName2D      = 'ncl/WhiteBlueGreenYellowRed' ;-dnA ; 2d histogram
-  lineColor2D   = ['black','black'] ; mean/median line color
-  line2D        = [3,0]             ; mean/median line style
-  thick2D       = [4.0,4.0]         ; mean/median line thickness
-  
-  h2dMinMax   = [0,8e7] ; linear color scaling of total mass per pixel (comment out to scale each 
-                        ; 2D histogram independently from its min to max)
-  logHist     = 0       ; take log of 2d histogram pixel values?
-  byRow       = 0       ; independently normalize 2d histograms row by row?
-  byCol       = 1       ; independently normalize 2d histograms col by col?
-
-  matrixPlots = ['RAD','TEMP','DENS','VRAD','ENTR','ANGM'] ; correlation matrix quantities
-  indivPlotsX = ['RAD']   ; single-panel 2d histos?
-  indivPlotsY = ['CSIZE'] ; single-panel 2d histos?
+  radRanges = list( [0.0,0.15], [0.25,0.5], [0.5,1.0], [1.25,1.75] )
+  nBins = 200 ; has to be same for all resolutions
   
   ; plot config
-  pConfig = { rad   : { label:"r / r_{vir}",                 range:[0.0,2.0],  log:0 } ,$
-              temp  : { label:"log T_{gas} [_{ }K_{ }]",     range:[4.5,6.5],  log:1 } ,$
-              dens  : { label:"log n_{gas} [_{ }cm^{-3 }]",  range:[-4,-1],    log:1 } ,$
-              vrad  : { label:"v_{rad} [_{ }km/s_{ }]",      range:[-200,100], log:0 } ,$
-              csize : { label:"log r_{cell} [_{ }kpc_{ }]",  range:[-1.0,1.0], log:1 } ,$
-              entr  : { label:"log S_{gas} [_{ }K cm^{2 }]", range:[7.0,9.0],  log:1 } ,$
-              angm  : { label:"j_{gas} [_{ }kpc km/s_{ }]",  range:[3.0,5.0],  log:1 }  }
-              
-  radLines = [0.15,1.5]
   sK       = 1
+  psym     = 0 ; 0=lines, 10=histogram mode
+  yrange   = [1e-5,1e-1]
+  ytitle   = "Mass-weighted PDF"
   
+  pConfig = { rad   : { label:"r / r_{vir}",                 range:[0.0,2.0],  log:0 } ,$
+              temp  : { label:"log T_{gas} [_{ }K_{ }]",     range:[4.0,6.75], log:1 } ,$
+              dens  : { label:"log n_{gas} [_{ }cm^{-3 }]",  range:[-5.2,0],   log:1 } ,$
+              vrad  : { label:"v_{rad} [_{ }km/s_{ }]",      range:[-400,300], log:0 } ,$
+              csize : { label:"log r_{cell} [_{ }kpc_{ }]",  range:[-1.0,1.0], log:1 } ,$
+              entr  : { label:"log S_{gas} [_{ }K cm^{2 }]", range:[4.5,9.5],  log:1 } ,$
+              angm  : { label:"j_{gas} [_{ }kpc km/s_{ }]",  range:[2.5,5.0],  log:1 }  }
+       
+  pConfig_dm = { rad   : { label:"r / r_{vir}",                range:[0.0,2.0],  log:0 } ,$
+                 dens  : { label:"log n_{DM} [_{ }cm^{-3 }]",  range:[-4.0,0.0], log:1 } ,$
+                 vrad  : { label:"v_{rad,DM} [_{ }km/s_{ }]",  range:[-400,300], log:0 } ,$
+                 angm  : { label:"j_{DM} [_{ }kpc km/s_{ }]",  range:[2.5,5.0],  log:1 }  }
+                 
+  pConfig_stars = { rad   : { label:"r / r_{vir}",                   range:[0.0,2.0],  log:0 } ,$
+                    dens  : { label:"log n_{stars} [_{ }cm^{-3 }]",  range:[-6.0,0.0], log:1 } ,$
+                    vrad  : { label:"v_{rad,stars} [_{ }km/s_{ }]",  range:[-400,300], log:0 } ,$
+                    angm  : { label:"j_{stars} [_{ }kpc km/s_{ }]",  range:[2.5,5.0],  log:1 }  }
+
   ; A (resolutions are different linestyles, all same color and thickness)
-  lines    = [1,2,0] ; line style, one per resLevel
-  cInds    = [1,1,1] ; color index, one per resLevel
-  thick    = [1,1,1] ; times !p.thick
+  ;lines    = [1,2,0] ; line style, one per resLevel
+  ;cInds    = [1,1,1] ; color index, one per resLevel
+  ;thick    = [1,1,1] ; times !p.thick
 
   ; B (resolutions are all solid lines, fainter and thinner for lower res)
-  ;lines   = [0,0,0]
-  ;thick   = [0.25,0.5,1.0]
-  ;cInds   = [2,1,0]
+  lines   = [0,0,0]
+  thick   = [0.25,0.5,1.0]
+  cInds   = [2,1,1]
   
   ; load  
   foreach hInd,hInds do begin
@@ -1228,17 +1323,13 @@ pro plotZoomSlicePDFs ;, input=input
       ; get list of snapshots for this halo in the redshift range
       rLoc = {}
       
-      if resLevel eq 11 and total(hInd eq [2,3,4,5,6,9]) gt 0 then continue
+      ;if resLevel eq 11 and total(hInd eq [2,3,4,5,6,9]) gt 0 then continue
       
       sP = simParams(run='zoom_20Mpc',res=resLevel,hInd=hInd,redshift=redshift)     
-      saveFilename = sP.derivPath + 'binnedVals/radProfiles.h'+str(hInd)+'.'+sP.savPrefix+str(sP.res) + $
+      saveFilename = sP.derivPath + 'binnedVals/radHistos.h'+str(hInd)+'.'+sP.savPrefix+str(sP.res) + $
                      '.cutSubS-' + str(cutSubS) + '.sav'
       
       if ~file_test(saveFilename) or newSaves eq 1 then begin
-                  
-        ; adjust binning based on resolution (increase as cube root of number of particles)
-        nBins = nBaseBins * 2.0^(sP.zoomLevel-2)
-        
         ; load group catalog, locate halo
         gc = loadGroupCat(sP=sP,readIDs=(cutSubS eq 1),skipIDs=(cutSubS eq 0))
         gcInd = zoomTargetHalo(sP=sP)
@@ -1254,11 +1345,11 @@ pro plotZoomSlicePDFs ;, input=input
         
         ; radial binning, 1D and 2D, all quantity combinations
         halo = { tVir:tVir, rVir:rVir, pPos:pPos, pVel:pVel, gcInd:gcInd, $
-                 nBins:nBins, binMinMax:binMinMax, cutSubS:cutSubS }
+                 nBins:nBins, binMinMax:binMinMax, radRanges:radRanges, cutSubS:cutSubS }
         
-        gas   = zoomRadialBin(sP=sP, gc=gc, partType='gas', halo=halo)
-        dm    = zoomRadialBin(sP=sP, gc=gc, partType='dm', halo=halo)
-        stars = zoomRadialBin(sP=sP, gc=gc, partType='stars', halo=halo)
+        gas   = zoomRadialBin(sP=sP, gc=gc, partType='gas', halo=halo, mode=1)
+        dm    = zoomRadialBin(sP=sP, gc=gc, partType='dm', halo=halo, mode=1)
+        stars = zoomRadialBin(sP=sP, gc=gc, partType='stars', halo=halo, mode=1)
         
         ; save all values for this halo+resLevel combination
         rLoc = mod_struct( rLoc, 'sP', sP )
@@ -1284,6 +1375,306 @@ pro plotZoomSlicePDFs ;, input=input
     
   endforeach ;hInds
   
-  ; TODO
+  ; plot setup
+  plotStr = 'h'
+  hNames  = 'h' + str(hInds)
+  hColors = []
+  rNames  = 'L' + str(resLevels)
+  rLines  = lines[0:n_elements(resLevels)-1]
+  rThick  = thick[0:n_elements(resLevels)-1]
+
+  foreach hInd,hInds do plotStr += str(hInd)
+  foreach hInd,hInds,i do hColors = [hColors,rp.(i).(0).sP.colors[cInds[-1]]]
+  plotStr += '_L'
+  foreach resLevel,resLevels do plotStr += str(resLevel)
+  plotStr += '_cutSubS-' + str(cutSubS)
+  
+  !except = 0
+
+  ; plot (1) - 1D histograms of all gas quantities (3x2), one per panel, all halos all resolutions
+  ; one plot per radial range
+  foreach radRange,radRanges,m do begin
+  
+    radRangeStr = textoidl(str(string(radRange[0],format='(f5.2)')) + " < r_{gas} < " + $
+                           str(string(radRange[1],format='(f5.2)')))
+                           
+    start_PS, rp.(0).(0).sP.plotPath + 'zoomPDFs_rr'+str(m)+'_Gas_1D_' + plotStr + '.eps', $
+      xs=12.0*1.4, ys=6.0*1.4
+    
+      pos = plot_pos(col=3,row=2,/gap)
+      offset = [-0.03,-0.02,-0.02,0]
+      
+      count = 0
+      
+      foreach curField,tag_names(pConfig) do begin
+        if curField eq 'RAD' then continue
+        
+        yInd = where( tag_names(pConfig) eq curField )
+        zInd = where( tag_names(rp.(0).(0).gas.(m)) eq curField )
+        bInd = where( tag_names(rp.(0).(0).gas.(m).binCen) eq curField )
+        
+        xrange = pConfig.(yInd).range
+        xtitle = pConfig.(yInd).label
+        
+        ; plot
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,xlog=0,ylog=1,yminor=1,$
+          xtitle=textoidl(xtitle),ytitle=textoidl(ytitle),pos=pos[count]+offset,/noerase
+          
+        for i=0,n_tags(rp)-1 do begin
+          for j=0,n_tags(rp.(i))-1 do begin
+            xx = rp.(i).(j).gas.(m).binCen.(bInd)
+            if pConfig.(yInd).log eq 1 then xx = alog10( xx )
+            
+            yy = rp.(i).(j).gas.(m).(zInd)
+            yy = yy[*,5] ; mass sum over total
+            
+            co = rp.(i).(j).sP.colors[cInds[j]]
+            th = !p.thick * thick[j]
+                    
+            cgPlot,xx,smooth(yy,sK),line=lines[j],color=co,thick=th,psym=psym,/overplot
+          endfor ;n_tags(rp.(i)),j
+        endfor ;n_tags(rp),i
+        
+        if count eq 1 then legend,hNames,textcolor=hColors,/top,/left
+        if count eq 1 then legend,rNames,linestyle=rLines,thick=rThick*!p.thick,/top,/right
+        if count eq 2 then legend,radRangeStr,/top,/right
+        
+        count += 1
+      endforeach ; tag_names(pConfig)
+        
+    end_PS
+  
+  endforeach ; radRanges
+  
+  ; plot (2) - 1D histograms of all DM/stars quantities (3x2), one per panel, all halos all resolutions
+  ; one plot per radial range
+  foreach radRange,radRanges,m do begin
+  
+    radRangeStr = textoidl(str(string(radRange[0],format='(f5.2)')) + " < r_{gas} < " + $
+                           str(string(radRange[1],format='(f5.2)')))
+                           
+    start_PS, rp.(0).(0).sP.plotPath + 'zoomPDFs_rr'+str(m)+'_DMStars_1D_' + plotStr + '.eps', $
+      xs=12.0*1.4, ys=6.0*1.4
+    
+      pos = plot_pos(col=3,row=2,/gap)
+      offset = [-0.03,-0.02,-0.02,0]
+      
+      count = 0
+      
+      ; (abc) - upper three panels are dark matter
+      foreach curField,tag_names(pConfig_dm) do begin
+        if curField eq 'RAD' then continue
+        
+        yInd = where( tag_names(pConfig_dm) eq curField )
+        zInd = where( tag_names(rp.(0).(0).dm.(m)) eq curField )
+        bInd = where( tag_names(rp.(0).(0).dm.(m).binCen) eq curField )
+        
+        xrange = pConfig_dm.(yInd).range
+        xtitle = pConfig_dm.(yInd).label
+        
+        ; plot
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,xlog=0,ylog=1,yminor=1,$
+          xtitle=textoidl(xtitle),ytitle=textoidl(ytitle),pos=pos[count]+offset,/noerase
+          
+        for i=0,n_tags(rp)-1 do begin
+          for j=0,n_tags(rp.(i))-1 do begin
+            xx = rp.(i).(j).dm.(m).binCen.(bInd)
+            if pConfig_dm.(yInd).log eq 1 then xx = alog10( xx )
+            
+            yy = rp.(i).(j).dm.(m).(zInd)
+            yy = yy[*,5] ; mass sum over total
+            
+            co = rp.(i).(j).sP.colors[cInds[j]]
+            th = !p.thick * thick[j]
+                    
+            cgPlot,xx,smooth(yy,sK),line=lines[j],color=co,thick=th,psym=psym,/overplot
+          endfor ;n_tags(rp.(i)),j
+        endfor ;n_tags(rp),i
+        
+        if count eq 0 then legend,hNames,textcolor=hColors,/top,/right
+        if count eq 1 then legend,rNames,linestyle=rLines,thick=rThick*!p.thick,/top,/left
+        if count eq 2 then legend,radRangeStr,/top,/right
+        
+        count += 1
+      endforeach ; tag_names(pConfig_dm)
+      
+      ; (def) - lower three panels are stellar
+      foreach curField,tag_names(pConfig_stars) do begin
+        if curField eq 'RAD' then continue
+        
+        yInd = where( tag_names(pConfig_stars) eq curField )
+        zInd = where( tag_names(rp.(0).(0).stars.(m)) eq curField )
+        bInd = where( tag_names(rp.(0).(0).stars.(m).binCen) eq curField )
+        
+        xrange = pConfig_stars.(yInd).range
+        xtitle = pConfig_stars.(yInd).label
+        
+        ; plot
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,xlog=0,ylog=1,yminor=1,$
+          xtitle=textoidl(xtitle),ytitle=textoidl(ytitle),pos=pos[count]+offset,/noerase
+          
+        for i=0,n_tags(rp)-1 do begin
+          for j=0,n_tags(rp.(i))-1 do begin
+            xx = rp.(i).(j).stars.(m).binCen.(bInd)
+            if pConfig_stars.(yInd).log eq 1 then xx = alog10( xx )
+            
+            yy = rp.(i).(j).stars.(m).(zInd)
+            yy = yy[*,5] ; mass sum over total
+            
+            co = rp.(i).(j).sP.colors[cInds[j]]
+            th = !p.thick * thick[j]
+                    
+            cgPlot,xx,smooth(yy,sK),line=lines[j],color=co,thick=th,psym=psym,/overplot
+          endfor ;n_tags(rp.(i)),j
+        endfor ;n_tags(rp),i
+        
+        count += 1
+      endforeach ; tag_names(pConfig_stars)
+        
+    end_PS
+  
+  endforeach ; radRanges
+  
+  ; plot (3) - 1D histograms of all gas quantities, one radRange per panel (2xN), all halos all res
+  ; one plot per quantity
+  foreach curField,tag_names(pConfig) do begin
+    if curField eq 'RAD' then continue
+    
+    yInd = where( tag_names(pConfig) eq curField )
+    zInd = where( tag_names(rp.(0).(0).gas.(0)) eq curField )
+    bInd = where( tag_names(rp.(0).(0).gas.(0).binCen) eq curField )
+
+    xrange = pConfig.(yInd).range
+    xtitle = pConfig.(yInd).label
+             
+    ; plot (3a)
+    start_PS, rp.(0).(0).sP.plotPath + 'zoomPDFs_'+curField+'_Gas_1D_' + plotStr + '.eps', $
+      xs=(4.0*n_elements(radRanges)/2)*1.4, ys=6.0*1.4
+    
+      pos = plot_pos(col=n_elements(radRanges)/2,row=2,/gap)
+      offset = [-0.03,-0.02,-0.02,0]
+      
+      count = 0
+      
+      foreach radRange,radRanges,m do begin
+        
+        radRangeStr = textoidl(str(string(radRange[0],format='(f5.2)')) + " < r_{gas} < " + $
+                               str(string(radRange[1],format='(f5.2)')))
+        
+        ; plot
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,xlog=0,ylog=1,yminor=1,$
+          xtitle=textoidl(xtitle),ytitle=textoidl(ytitle),pos=pos[count]+offset,/noerase
+          
+        for i=0,n_tags(rp)-1 do begin
+          for j=0,n_tags(rp.(i))-1 do begin
+            xx = rp.(i).(j).gas.(m).binCen.(bInd)
+            if pConfig.(yInd).log eq 1 then xx = alog10( xx )
+            
+            yy = rp.(i).(j).gas.(m).(zInd)
+            yy = yy[*,5] ; mass sum over total
+            
+            co = rp.(i).(j).sP.colors[cInds[j]]
+            th = !p.thick * thick[j]
+                    
+            cgPlot,xx,smooth(yy,sK),line=lines[j],color=co,thick=th,psym=psym,/overplot
+          endfor ;n_tags(rp.(i)),j
+        endfor ;n_tags(rp),i
+        
+        if count eq 0 then legend,hNames,textcolor=hColors,/top,/left
+        if count eq 1 then legend,rNames,linestyle=rLines,thick=rThick*!p.thick,/bottom,/right
+        legend,radRangeStr,/top,/right
+        
+        count += 1
+      endforeach ; radRanges
+        
+    end_PS
+    
+    ; plot (3b) - with subpanels  
+    start_PS, rp.(0).(0).sP.plotPath + 'zoomPDFsSubPanels_'+curField+'_Gas_1D_' + plotStr + '.eps', $
+      xs=(4.0*n_elements(radRanges)/2)*1.4, ys=6.0*1.4
+    
+      pos = plot_pos(col=n_elements(radRanges)/2,row=2,/gap)
+      subSize = 0.1
+      offset = [-0.03,-0.04+subSize,0.02,0]
+      
+      count = 0
+      
+      foreach radRange,radRanges,m do begin
+        
+        radRangeStr = textoidl(str(string(radRange[0],format='(f5.2)')) + " < r_{gas} < " + $
+                               str(string(radRange[1],format='(f5.2)')))
+        
+        ; plot (i) - PDFs all resolutions
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,xlog=0,ylog=1,yminor=1,$
+          xtitle="",xtickname=replicate(" ",10),ytitle=textoidl(ytitle),pos=pos[count]+offset,/noerase
+          
+        for i=0,n_tags(rp)-1 do begin
+        
+          j = where( tag_names(rp.(i)) eq 'L11', count_ind )
+          if count_ind eq 0 then continue
+          
+          ;for j=0,n_tags(rp.(i))-1 do begin
+            xx = rp.(i).(j).gas.(m).binCen.(bInd)
+            if pConfig.(yInd).log eq 1 then xx = alog10( xx )
+            
+            yy = rp.(i).(j).gas.(m).(zInd)
+            yy = yy[*,5] ; mass sum over total
+            
+            co = rp.(i).(j).sP.colors[cInds[j]]
+            th = !p.thick * thick[j]
+                    
+            cgPlot,xx,smooth(yy,sK),line=lines[j],color=co,thick=th,psym=psym,/overplot
+          ;endfor ;n_tags(rp.(i)),j
+        endfor ;n_tags(rp),i
+        
+        if count eq 0 then legend,hNames,textcolor=hColors,/top,/left
+        ;if count eq 3 then legend,[rNames[0:1]+'/'+rNames[2],rNames[2]],$
+        ;  linestyle=rLines,thick=rThick*!p.thick,/top,/left
+        legend,radRangeStr,/top,/right
+                
+        ; plot (ii) - subpanels, ratios L9/L11 and L10/L11
+        yrangeSub = [0.1,10.0]
+        ytickvSub = [0.2,1.0,5.0]
+        ytitleSub = "Ln/L11" ;"Ratio"
+        posSub = pos[count]+offset
+        posSub[1] -= subSize ; move y of lowerleft down
+        posSub[3] = posSub[1] + subSize ; set height of subpanel
+        
+        cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeSub,/xs,/ys,xlog=0,ylog=1,yminor=1,$
+          xtitle=textoidl(xtitle),ytitle=textoidl(ytitleSub),ytickv=ytickvSub,yticks=2,pos=posSub,/noerase
+          
+        cgPlot,xrange,[1.0,1.0],line=0,color=cgColor('light gray'),/overplot
+          
+        for i=0,n_tags(rp)-1 do begin
+          ind_L11 = where( tag_names(rp.(i)) eq 'L11', count_ind )
+          if count_ind eq 0 then continue
+          
+          yy_L11 = rp.(i).(ind_L11).gas.(m).(zInd)
+          yy_L11 = yy_L11[*,5]
+          
+          for j=0,n_tags(rp.(i))-2 do begin
+            xx = rp.(i).(j).gas.(m).binCen.(bInd)
+            if pConfig.(yInd).log eq 1 then xx = alog10( xx )
+            
+            yy = rp.(i).(j).gas.(m).(zInd)
+            yy = yy[*,5] ; mass sum over total
+            yy /= yy_L11 ; plot ratio to highest resolution level
+            
+            co = rp.(i).(j).sP.colors[cInds[j]]
+            th = !p.thick * thick[j]
+                    
+            cgPlot,xx,smooth(yy,sK),line=lines[j],color=co,thick=th,psym=psym,/overplot
+          endfor ;n_tags(rp.(i)),j
+        endfor ;n_tags(rp),i
+        
+        count += 1       
+        
+      endforeach ; radRanges
+        
+    end_PS
+  
+  endforeach ; tag_names(pConfig)
+  
+  stop
   
 end

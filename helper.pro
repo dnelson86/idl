@@ -1144,6 +1144,18 @@ function plot_pos, rows=rows, cols=cols, total=total, gap=gap
       
     endif
     
+    if rows eq 3 and cols eq 2 then begin ; xs=8, ys=9 (zoom)
+      ; 3x2 same left-right spacing as 2x2
+      x0 = 0.10 & x1 = 0.46 & xoff = 0.49
+      y0 = 0.05 & y1 = 0.32 & yoff = 0.33
+                
+      pos = list( [x0+0*xoff,y0+2*yoff,x1+0*xoff,y1+2*yoff] ,$ ; UL
+                  [x0+1*xoff,y0+2*yoff,x1+1*xoff,y1+2*yoff] ,$ ; UR
+                  [x0+0*xoff,y0+1*yoff,x1+0*xoff,y1+1*yoff] ,$ ; ML
+                  [x0+1*xoff,y0+1*yoff,x1+1*xoff,y1+1*yoff] ,$ ; MR
+                  [x0+0*xoff,y0+0*yoff,x1+0*xoff,y1+0*yoff] ,$ ; LL
+                  [x0+1*xoff,y0+0*yoff,x1+1*xoff,y1+0*yoff] ) ; LR
+    endif
     
     
     if rows eq 1 and cols eq 3 then begin ;xs=9, ys=4 (2d maxtemp histo for 3 runs)

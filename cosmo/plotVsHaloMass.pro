@@ -19,6 +19,14 @@ pro plotPreBin, sP=sP, redshifts=redshifts
   resolutions = [sP.res]
   timeWindows = list(250.0) ;,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
   accModes    = list('all','smooth','clumpy','stripped','recycled')
+
+  foreach redshift,redshifts do begin
+    sP = simParams(res=res,run=run,redshift=redshift)
+    x  = galaxyCat(sP=sP)
+    x = accretionTimes(sP=sP)
+    x = maxVals(sP=sP)
+    x = accretionMode(sP=sP)
+  endforeach
   
   foreach redshift,redshifts do begin
     foreach timeWindow,timeWindows do begin

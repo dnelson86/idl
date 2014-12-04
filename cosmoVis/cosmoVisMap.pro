@@ -100,10 +100,7 @@ end
 
 pro sphMapSubboxSBS, jobNum=jobNum, totJobs=totJobs
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  
   if n_elements(jobNum) eq 0 or n_elements(totJobs) eq 0 then message,'Error'
-
-  compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
   res      = 512
@@ -112,12 +109,11 @@ pro sphMapSubboxSBS, jobNum=jobNum, totJobs=totJobs
   subboxMinMax = { x : [3500,7500] ,$
                    y : [5000,9000] ,$
                    z : [5500,9500] }
-  valMinMax = [3.0,7.5] ; log K (gas temp)
+  valMinMax = [3.5,7.5] ; log K (gas temp)
   
   ; plot config
   nPixels     = [960,960] ;px per side
   zoomFac     = 1    ; only in axes, not along projection direction
-  nNGB        = 32   ; use CalcHSML for HSML with nNGB
   axes        = [0,1] ; x,y
   scaleBarLen = 500.0 ; ckpc
   ctName      = 'blue-red2'
@@ -169,9 +165,9 @@ pro sphMapSubboxSBS, jobNum=jobNum, totJobs=totJobs
   framesPerJob = ceil(numFrames/totJobs)
   frameMM = [framesPerJob*jobNum > 0,framesPerJob*(jobNum+1)-1 < numFrames]
   print,'Job ['+str(jobNum)+'] of ['+str(totJobs)+'] frames: ',frameMM
-
-  ; for frameNum=frameMM[0],frameMM[1],1 do begin
-  frameNum = 100 ;100,400,1000,1400
+  
+  for frameNum=frameMM[0],frameMM[1],1 do begin
+  ;frameNum = 100 ;100,400,1000,1400
   print,' '+str(frameNum)
   
   maps = {}
@@ -187,10 +183,10 @@ pro sphMapSubboxSBS, jobNum=jobNum, totJobs=totJobs
     sP = simParams(res=res,run=run,snap=frameSnapNums.(i)[frameNum])
   
     ; save/restore (TEMPORARY)
-    outFilename = 'subboxMapTEMP_'+sP.saveTag+'_'+string(frameNum,format='(I04)')
-    if (file_test(sP.plotPath + outFilename + '.sav')) then begin
-      restore,sP.plotPath + outFilename + '.sav',/verbose
-    endif else begin
+    ;outFilename = 'subboxMapTEMP_'+sP.saveTag+'_'+string(frameNum,format='(I04)')
+    ;if (file_test(sP.plotPath + outFilename + '.sav')) then begin
+    ;  restore,sP.plotPath + outFilename + '.sav',/verbose
+    ;endif else begin
 
       ; load gas quantities
       mass  = loadSnapshotSubset(sP=sP,partType='gas',field='mass',/subBox)
@@ -199,13 +195,17 @@ pro sphMapSubboxSBS, jobNum=jobNum, totJobs=totJobs
       quant = loadSnapshotSubset(sP=sP,partType='gas',field='temp',/subBox)
       quant = 10.0^quant ; take out log
       
+      sfr = loadSnapshotSubset(sP=sP,partType='gas',field='sfr',/subBox)
+      w = where(sfr gt 0.0,count)
+      if count gt 0 then quant[w] = 1000.0 ; set temp of SFing gas to ~ISM temperature (get off eEOS)
+      
       sphMap = calcSphMap(pos,hsml,mass,quant,$
                           boxSizeImg=boxSizeImg,boxSizeSim=h.boxSize,boxCen=boxCen,$
                           nPixels=nPixels,axes=axes,ndims=3)
       colMap = sphMap.quant_out
       
-      save,colMap,filename=sP.plotPath + outFilename + '.sav'
-    endelse
+    ;  save,colMap,filename=sP.plotPath + outFilename + '.sav'
+    ;endelse
     
     ; color scaling
     w = where(colMap eq 0, count, comp=ww)
@@ -213,12 +213,12 @@ pro sphMapSubboxSBS, jobNum=jobNum, totJobs=totJobs
     
     colMap = alog10(colMap)
     colMap = colMap > valMinMax[0] < valMinMax[1]
-    colMap = (colMap-min(colMap))*255.0 / (max(colMap)-min(colMap)) ;0-255
+    colMap = (colMap-valMinMax[0])*255.0 / (valMinMax[1]-valMinMax[0]) ;0-255
     colMap = colMap > 0 < 255
-
+    
     ; add to plot
     pos = [0.5*i,0.0,0.5*(i+1),1.0]
-    tvim,colMap,xrange=xMinMax,yrange=yMinMax,pos=pos,/noerase,/noframe
+    tvim,colMap,xrange=xMinMax,yrange=yMinMax,pos=pos,/noerase,/c_map,/noframe
     
     ; simname
     cgText,0.5*i+0.01,0.97,sP.simName,alignment=0.0,/normal,color='white'
@@ -249,7 +249,7 @@ pro sphMapSubboxSBS, jobNum=jobNum, totJobs=totJobs
   ; finish plot
   end_PS, pngResize=100, density=100, /deletePS
   
-  ;endfor ; frameNum
+  endfor ; frameNum
   
 end
 
@@ -485,7 +485,7 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
   if zoom2x1 then xfac = 0.95
   if zoom2x1 then yfac2 = 0.96
   
-  if curCol eq 0 and curRow eq 0 then begin
+  if curCol eq 0 and curRow eq 0 and ~tag_exist(config,'secondScaleBar') then begin
     xpos = [xMinMax[0]*xfac,xMinMax[0]*xfac+config.scaleBarLen]
     ypos = replicate(yMinMax[1]*yfac2,2)
     
@@ -494,10 +494,13 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
   endif
   
-  if zoom4x2 then begin
+  if zoom4x2 or tag_exist(config,'secondScaleBar') then begin
     scaleBarLen = 0
-    if curCol eq 0 and curRow eq 1 then scaleBarLen = config.scaleBarLen * 0.5
-    if curCol eq 2 and curRow eq 1 then scaleBarLen = config.scaleBarLen * 2.0
+    if zoom4x2 then targetRow = 1
+    if tag_exist(config,'secondScaleBar') then targetRow = 0
+    
+    if curCol eq 0 and curRow eq targetRow then scaleBarLen = config.scaleBarLen * 0.5
+    if curCol eq 2 and curRow eq targetRow then scaleBarLen = config.scaleBarLen * 2.0
     
     if scaleBarLen gt 0 then begin
       xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+scaleBarLen]
@@ -801,7 +804,7 @@ pro multiMapHaloComp
     gcIDs = [ gcIDs, getMatchedIDs(simParams=sP.(i),haloID=haloID) ]
     runsStr += sP.(i).saveTag + '.' + str(sP.(i).snap) + '.h' + str(gcIDs[i]) + '-'
   endforeach
-  
+  stop
   numRuns = n_tags(sP)
   
   saveFilename = 'sc.map.'+str(sP.(0).res)+'.'+runsStr+'axes'+str(axisPair[0])+str(axisPair[1])+'_'+$
