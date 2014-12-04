@@ -92,7 +92,7 @@ function getMatchedIDs, sPa=sPa, sPg=sPg, simParams=simParams, haloID=haloID, mo
   sgIDs['z3_h314_res128_feedback'] = 10
     
   ; z2.304 (four filaments aligned in a plus pattern, high mass example for paper)
-  sgIDs['z2_h304_res512_tracer']   = 2004 ;newer=1999
+  sgIDs['z2_h304_res512_tracer']   = 2005 ; 2004 REMADE GROUPCATS NOT QUITE THE SAME ;newer=1999
   sgIDs['z2_h304_res512_gadget']   = 2342
   sgIDs['z2_h304_res512_arepo']    = 2132
   sgIDs['z2_h304_res512_feedback'] = 2020
@@ -262,13 +262,13 @@ pro rematch
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function loadGroupCat
 
-  sP1 = simParams(res=512,run='tracer',redshift=2.0)
-  sP2 = simParams(res=512,run='feedback',redshift=2.0)
+  sP1 = simParams(res=512,run='feedback',redshift=2.0)
+  sP2 = simParams(res=512,run='tracer',redshift=2.0)
 
   gc1 = loadGroupCat(sP=sP1,/skipIDs,/skipOffsets)
   gc2 = loadGroupCat(sP=sP2,/skipIDs,/skipOffsets)
 
-  known1gcIDs = [2570]
+  known1gcIDs = [2020]
   
   foreach gcID,known1gcIDs do begin
     ; find closest spatial match

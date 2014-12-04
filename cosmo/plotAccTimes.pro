@@ -183,7 +183,7 @@ pro plotAccTimeDeltas
   ; config
   res      = 512
   runs     = ['feedback','tracer']
-  redshift = 2.0
+  redshift = 0.0
   
   ; index selection for difference ([1.0,0.75,0.5,0.25,0.15,0.05,0.01,first0.15,first1.0])
   rVirFacs = ['1.0 rvir','0.75 rvir','0.5 rvir','0.25 rvir','0.15 rvir','0.05 rvir',$
@@ -218,7 +218,7 @@ pro plotAccTimeDeltas
   ; plot config (vs maxvals)
   logHist    = 0 ; log 2d counts in each bin
   byRow      = 0 ; normalize 2d counts by row
-  byCol      = 0 ; normalize 2d counts by column
+  byCol      = 1 ; normalize 2d counts by column
   massBins2  = list( [10.5,10.6], [11.25,11.4], [11.7, 12.0] )
       
   ; load
@@ -652,7 +652,7 @@ pro plotAccTimeDeltas
         max=[xrangeT[1]+binSize_xx*0.49,xrangeT[1]+binSize_yy*0.49])
     
     ; colormap (each halo mass row individually scaled)
-    h2_cmap = colorMapAccTime(h2,logHist=logHist,byRow=0,byCol=0)
+    h2_cmap = colorMapAccTime(h2,logHist=logHist,byRow=byRow,byCol=byCol)
       
     ; plot (a)
     loadColorTable, 'helix', /reverse ; data

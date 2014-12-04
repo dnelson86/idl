@@ -1,7 +1,7 @@
 ; plotVsRedshift.pro
 ; feedback - plots skipping tconst/tvircur/tviracc definitions and timewindow variations
 ;   in favor of redshift evolution and redshift panels
-; dnelson jul.2014
+; dnelson oct.2014
 
 ; plotsVsRedshiftBin(): bin and save values for below plotting
     
@@ -159,6 +159,7 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
       ; truncate gcMasses to be the same as from mbv
       maxHist = n_elements(mbv_locAll.galaxy.netRate.total.hot.num)
       gcMasses = gcMasses[0:maxHist-1]
+      gcW      = gcW[where(gcW lt maxHist)]
       
       for k=0,nModes-1 do begin
         
@@ -373,7 +374,7 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
         eta_net = galaxy_galacc_hot + galaxy_galacc_cold ;#1
         
         ; calculate correction factor
-        if run eq 'tracer' and redshift gt 1.0 then begin
+        if (run eq 'tracer' and redshift gt 1.0) or (run eq 'tracer' and res eq 256) then begin
           ; for tracer z>1, group catalog has missing SFRs, just use z=1 values
           fit  = [0.19466,-0.043346]
           fit3 = [128.454,-34.7384,3.12015,-0.09328]
@@ -388,6 +389,9 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
           
           ; abcd cubic fit
           fit3 = poly_fit(gcMasses[w],yy[w],3,measure_errors=1.0/2.0^gcMasses[w])
+          
+          ; save unbinned values
+          mbv_mode.(k).eta_sfr2_net = yy[gcW]
         endelse
         
         ; un-binned
@@ -402,9 +406,7 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
                     
         mbv_mode.(k).eta_w_xvals    = xvals[gcW]
         mbv_mode.(k).eta_w_unbinned = eta_w_unbinned[gcW]
-        
-        mbv_mode.(k).eta_sfr2_net = yy[gcW]
-        mbv_mode.(k).eta_fit      = fit
+        mbv_mode.(k).eta_fit        = fit
         
         ; ABCD approach (uncorrected)
         eta_out = loc_abcd_gal_out_hot + loc_abcd_gal_out_cold
@@ -426,9 +428,11 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
         
         mbv_mode.(k).eta_abcd_unbinned_cor  = eta_abcd_unbinned[gcW]
         mbv_mode.(k).eta_abcd2_unbinned_cor = eta_abcd2_unbinned[gcW]
-        
-        mbv_mode.(k).eta_sfr2_net_abcd = (alog10(sfr2/eta_net))[gcW]
-        mbv_mode.(k).eta_sfr2_net_abcd2 = (alog10(sfr2/eta_acc))[gcW]
+          
+        if ((run eq 'tracer' and redshift le 1.0) or (run ne 'tracer')) and res ne 256 then begin
+          mbv_mode.(k).eta_sfr2_net_abcd = (alog10(sfr2/eta_net))[gcW]
+          mbv_mode.(k).eta_sfr2_net_abcd2 = (alog10(sfr2/eta_acc))[gcW]
+        endif
             
         ; rebin in halo mass
         for m=0,n_elements(mbv_modeAll.(0).logMassBinCen)-1 do begin
@@ -437,7 +441,7 @@ pro plotsVsRedshiftBin, tempFilename, runs, redshifts, res, $
                     gcMasses le mbv_modeAll.(k).logMassBins[m+1] and $
                     (mbv_modeAll.(0).galaxy.coldFrac.total.num+$
                      mbv_modeAll.(0).halo.coldFrac.total.num) gt 0,count)
-                    
+
           if count eq 0 then continue
           if max(w) ge maxHist then message,'Error'
           
@@ -679,14 +683,14 @@ pro plotsVsRedshift
   units = getUnits()
   
   ; config
-  runs       = ['feedback','tracer']
-  redshifts  = [5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 0.75, 0.5, 0.25, 0.0]
+  runs       = ['feedback'];['feedback','tracer']
+  redshifts  = [5.0,3.0,2.0,0.0] ;[5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 0.75, 0.5, 0.25, 0.0]
   res        = 512
   timeWindow = 250.0    ; consider accretion over this past time range (Myr)
                         ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
   tVirInd    = 0        ; use Tmax/Tviracc=1 to separate hot vs. cold
-  accModes   = ['all','smooth','clumpy','stripped','recycled']
-  accRateModel = 2      ; 0=prim+rec, 2=prim
+  accModes   = ['all'] ;['all','smooth','clumpy','stripped','recycled']
+  accRateModel = 4      ; 0=prim+rec (old), 2=prim, 4=p+r (new)
   
   ; plot config
   massInds = [21]        ; index logMassBinCen[], for plot vs redshift
@@ -734,7 +738,7 @@ pro plotsVsRedshift
   wind_model = wind_model(simPath=sP.(0).(0).(0).simPath, $
                           redshifts=redshifts, $
                           sMass=mbv.(0).(0).(0).logMassBinCen[massInds])
-  
+
   ; strings
   if isnumeric(timeWindow) then twStr = str(fix(timeWindow))
   if ~isnumeric(timeWindow) then twStr = "-"+timeWindow

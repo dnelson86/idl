@@ -1,6 +1,44 @@
 ; testing.pro
 ; anything temporary
-; dnelson may.2014
+; dnelson dec.2014
+
+pro actualTmaxColdHot
+  ; feedback.paper referee question
+  foreach redshift,[0.0,2.0,5.0] do begin
+    print,'z = ',redshift
+    sP = simParams(res=512,run='feedback',redshift=redshift)
+    
+    ; load
+    maxTemp = gcSubsetProp(sP=sP,/maxPastTemp,/accretionTimeSubset,accMode='smooth')
+    accTvir = gcSubsetProp(sP=sP,/accTvir,/accretionTimeSubset,accMode='smooth')
+    parMass = gcSubsetProp(sP=sP,/parMass,/accretionTimeSubset,accMode='smooth')
+    
+    ; combine
+    maxTemp = [maxTemp.gal,maxTemp.gmem,maxTemp.inter,maxTemp.stars,maxTemp.bhs]
+    accTvir = [accTvir.gal,accTvir.gmem,accTvir.inter,accTvir.stars,accTvir.bhs]
+    parMass = [parMass.gal,parMass.gmem,parMass.inter,parMass.stars,parMass.bhs]
+    parMass = alog10(10.0^parMass / 0.7) ; log msun
+    
+    ; select parent halo mass
+    w = where(parMass ge 11.3 and parMass lt 11.4)
+    
+    maxTemp = maxTemp[w]
+    accTvir = accTvir[w]
+    
+    ; select hot/cold
+    w_cold = where(maxTemp/accTvir le 1.0,count_cold)
+    w_hot  = where(maxTemp/accTvir gt 1.0,count_hot)
+    
+    print,' cold: ',count_cold,' hot: ',count_hot
+    print,' mean cold temp: ',mean(maxTemp[w_cold])
+    print,' mean hot temp: ',mean(maxTemp[w_hot])
+  
+  endforeach
+  
+  stop
+  
+  
+end
 
 pro sarahCheck
   compile_opt idl2, hidden, strictarr, strictarrsubs

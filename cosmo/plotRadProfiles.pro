@@ -136,10 +136,13 @@ pro plot2DHisto
   units = getUnits()
 
   ; config
-  sP = simParams(res=10,run='zoom_20mpc',hind=0,redshift=2.0)
+  ;sP = simParams(res=10,run='zoom_20mpc',hind=0,redshift=2.0)
+  sP = simParams(res=512,run='feedback',redshift=2.0)
+  
   ;massBins = [0.0,1000.0] ; no massbins
   ;massBins = [9.0,9.5,10.0,10.5,11.0,11.5,12.0,12.5] ; log(M)
-  massBins = [11.8,12.0] ; zoom z2
+  massBins = [11.1,11.3]
+  ;massBins = [11.8,12.0] ; zoom z2
   ;massBins = [11.5,11.6] ; zoom z3
   
   ; select one of:
@@ -149,7 +152,7 @@ pro plot2DHisto
   accTvir      = 0 ; virial temperature of parent halo at time of accretion
   
   curGasVal = 1 ; current single gas value
-    curField = 'cellsize' ; temp
+    curField = 'temp' ; temp, cellsize
   
   tVirNorm    = 0  ; normalize temperature by virial temp of parent halo at the starting time
   tVirAccNorm = 0  ; normalize temperature by virial temp of parent halo at the time of accretion
@@ -202,7 +205,7 @@ pro plot2DHisto
   endif
   
   ; log coolingrate or cellsize
-  if curGasVal then begin
+  if curGasVal and curField ne 'temp' then begin
     for i=0,n_tags(gcVal)-1 do begin
       w = where(gcVal.(i) ne 0.0,count)
       if count gt 0 then gcVal.(i)[w] = alog10( gcVal.(i)[w] )

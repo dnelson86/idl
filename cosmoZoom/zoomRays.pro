@@ -43,7 +43,7 @@ pro plotZoomRadialRays
       ; get list of snapshots for this halo in the redshift range
       rLoc = {}
       
-      if resLevel eq 11 and total(hInd eq [2,3,4,5,6,9]) gt 0 then continue
+      if resLevel eq 11 and total(hInd eq [3,4,6]) gt 0 then continue
       
       sP = simParams(run='zoom_20Mpc',res=resLevel,hInd=hInd,redshift=redshift)     
       gcInd = zoomTargetHalo(sP=sP)
