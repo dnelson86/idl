@@ -268,8 +268,8 @@ end
 pro scatterPlotPos
 
   ; config
-  basePath = '/n/home07/dnelson/sims.idealized/'
-  sP = { simPath  : basePath+'arepo.gasSphere.cylTest.1e4.norot.nocool.nosg/output/' ,$
+  basePath = '/n/home07/dnelson/sims.idealized/sims.gasSphere/'
+  sP = { simPath  : basePath+'m11_rot0_cool0_wind0/output/' ,$
          plotPath : basePath ,$
          snap     : 0 }
   
@@ -280,7 +280,7 @@ pro scatterPlotPos
 
   ; find number of snapshots and loop
   ;nSnaps = n_elements(file_search(filepath+'snap_*'))
-  snapRange = [0,20,1]
+  snapRange = [0,12,1]
   
   for snap=snapRange[0],snapRange[1],snapRange[2] do begin
     ; sizes
@@ -308,15 +308,102 @@ pro scatterPlotPos
     
       xyrange = [boxCen-zoomSize/2.0,boxCen+zoomSize/2.0]
     
-      fsc_plot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,xstyle=1,ystyle=1,$
+      cgPlot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,xstyle=1,ystyle=1,$
            xtitle="x [kpc]",ytitle="y [kpc]",aspect=1.0,$
            title="particle scatterplot - part ["+str(partType)+"] snap ["+str(snap)+"]"
     
-      fsc_plot,x,y,psym=3,/overplot
+      cgPlot,x,y,psym=3,/overplot
     
     end_PS, pngResize=60, /deletePS
   
   endfor ;i
+
+end
+
+; scatterPlotGasSphere(): make a 3x2 frame for GasSphere (gas and stars, different scales and directions)
+
+pro scatterPlotGasSphere
+
+  ; config
+  run = 'm11_rot0.1_cool1_wind1'
+  ;run = 'm11_rot0_cool0_wind0'
+  
+  sP = { simPath : '/n/home07/dnelson/sims.idealized/sims.gasSphere/'+run+'/output/' ,$
+         plotPath : '/n/home07/dnelson/data5/frames.gasSphere/' ,$
+         snap     : 0 }
+  
+  pConfigs = { p0 : { size:1000.0, pt:'gas',   axes:[0,2] } ,$
+               p1 : { size:100.0,  pt:'gas',   axes:[0,2] } ,$
+               p2 : { size:100.0,  pt:'gas',   axes:[0,1] } ,$
+               p3 : { size:100.0,  pt:'stars', axes:[0,2] } ,$
+               p4 : { size:40.0,   pt:'stars', axes:[0,2] } ,$
+               p5 : { size:40.0,   pt:'stars', axes:[0,1] } }
+
+  ; find number of snapshots and loop
+  nSnaps = n_elements(file_search(sP.simPath+'snap_*'))
+  snapRange = [0,nSnaps-1]
+  print,snapRange
+  
+  for snap=snapRange[0],snapRange[1],1 do begin
+    sP.snap = snap
+   
+    ; load
+    h = loadSnapshotHeader(sP=sP)
+    boxCen = h.boxSize/2.0 ;kpc
+  
+    gas_pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos')
+    
+    if h.nPartTot[partTypeNum('stars')] gt 0 then $
+      stars_pos = loadSnapshotSubset(sP=sP,partType='stars',field='pos')
+   
+    print,'['+string(snap,format='(I3)')+'] t = '+string(h.time,format='(f5.3)')+$
+      ' gas = '+string(h.nPartTot[partTypeNum('gas')],format='(I5)')+$
+      ' stars = ' + string(h.nPartTot[partTypeNum('stars')],format='(I5)')
+   
+    ; already exists?
+    if file_test(sP.plotPath + 'gasSphere_'+run+'_'+str(snap)+'.png') then continue
+   
+    ; start plot
+    start_PS, sP.plotPath + 'gasSphere_'+run+'_'+str(snap)+'.eps', xs=16.0, ys=9.0
+    
+      pos = plot_pos(col=3,row=2,/gap)
+      offset = [-0.06, -0.04, 0.02, 0.02]
+    
+      ; loop over each plot
+      for m=0,n_tags(pConfigs)-1 do begin
+        ; start plot
+        config = pConfigs.(m)
+        xyrange = [-config.size/2.0,config.size/2.0]
+        
+        cgPlot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,/xs,/ys,$
+           xtitle="x [kpc]",ytitle="y [kpc]",aspect=1.0,pos=pos[m]+offset,/noerase
+        
+        cgText,(pos[m])[0]-0.06,(pos[m])[3]-0.02,$
+          config.pt,color=cgColor('orange'),/normal
+        
+        if config.pt eq 'stars' and h.nPartTot[partTypeNum('stars')] eq 0 then continue
+        
+        ; spatial subset
+        if config.pt eq 'gas'   then loc_pos = gas_pos
+        if config.pt eq 'stars' then loc_pos = stars_pos
+        
+        w = where(abs(loc_pos[config.axes[0],*]-boxCen) le config.size and $
+                  abs(loc_pos[config.axes[1],*]-boxCen) le config.size,count)
+      
+        xx = loc_pos[config.axes[0],w] - boxCen
+        yy = loc_pos[config.axes[1],w] - boxCen
+        
+        ; plot points          
+        cgPlot,xx,yy,psym=3,/overplot
+           
+      endfor ;m
+      
+      cgText,0.02,0.02,"t = "+string(h.time,format='(f5.3)'),$
+        charsize=!p.charsize+0.5,color=cgColor('blue'),/normal
+      
+    end_PS, pngResize=40, /deletePS
+    
+  endfor ;snap
 
 end
 
