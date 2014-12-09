@@ -747,6 +747,11 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse,
  if ctName eq 'brewerR-cubehelix'       then cgLoadCt,28,ncolors=256,bottom=bottom,/brewer,/reverse
  if ctName eq 'brewerR-cool'            then cgLoadCt,29,ncolors=256,bottom=bottom,/brewer,/reverse
  
+ ; brewer qualitative (discrete)
+ if ctName eq 'brewer-set1'             then vis_loadct,29,/brewer ; 9 colors
+ if ctName eq 'brewer-set3'             then vis_loadct,27,/brewer ; 12 colors
+ ; could use 30,31,32 (8 colors each) as light,medium,dark for zoom
+ 
  ; matplotlib
  if ctName eq 'spectral'                then vis_loadct,15,/mpl
  if ctName eq 'spectralR'               then vis_loadct,15,/mpl,/reverse
@@ -1182,6 +1187,25 @@ function plot_pos, rows=rows, cols=cols, total=total, gap=gap
                   [x0,y0,x1,y1] ,$ ; ll
                   [x1,y0,x2,y1] ,$ ; lc
                   [x2,y0,x3,y1] )  ; lr
+    endif
+    
+    if rows eq 3 and cols eq 4 then begin
+      ; 3x4 compact, with space on left/bottom for labels, space on right for colorbar
+      x0 = 0.07 & xoff = 0.205
+      y0 = 0.08 & yoff = 0.30
+                
+      pos = list( [x0+0*xoff,y0+2*yoff,x0+1*xoff,y0+3*yoff] ,$ ; UL
+                  [x0+1*xoff,y0+2*yoff,x0+2*xoff,y0+3*yoff] ,$ ; U mid-L
+                  [x0+2*xoff,y0+2*yoff,x0+3*xoff,y0+3*yoff] ,$ ; U mid-R
+                  [x0+3*xoff,y0+2*yoff,x0+4*xoff,y0+3*yoff] ,$ ; UR
+                  [x0+0*xoff,y0+1*yoff,x0+1*xoff,y0+2*yoff] ,$ ; ML
+                  [x0+1*xoff,y0+1*yoff,x0+2*xoff,y0+2*yoff] ,$ ; M mid-L
+                  [x0+2*xoff,y0+1*yoff,x0+3*xoff,y0+2*yoff] ,$ ; M mid-R
+                  [x0+3*xoff,y0+1*yoff,x0+4*xoff,y0+2*yoff] ,$ ; MR
+                  [x0+0*xoff,y0+0*yoff,x0+1*xoff,y0+1*yoff] ,$ ; LL
+                  [x0+1*xoff,y0+0*yoff,x0+2*xoff,y0+1*yoff] ,$ ; L mid-L
+                  [x0+2*xoff,y0+0*yoff,x0+3*xoff,y0+1*yoff] ,$ ; L mid-R
+                  [x0+3*xoff,y0+0*yoff,x0+4*xoff,y0+1*yoff]  ) ; LR
     endif
   endelse
 
