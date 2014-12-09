@@ -91,11 +91,11 @@ end
 
 pro setupSingleSphereIso
 
-  input_fname  = "gasSphere.gasonly.1e4.nfw.M1e2.norot.dat.hdf5"
-  output_fname = "gasSphere.gasonly.1e4.nfw.M1e2.norot.noBack.dat"
+  input_fname  = "sphere_m11_c10_f0.1_L0.1.hdf5"
+  output_fname = "sphere_4e4_m11_c10_f0.1_L0.1.hdf5"
 
-  boxSize   = 5000.0 ;kpc
-  nBackGrid = 16 ;^3, nested twice
+  boxSize   = 1000.0 ;kpc
+  nBackGrid = 8 ;^3, nested twice
   
   ; load input sphere
   h = loadSnapshotHeader(fileName=input_fname,/verbose)
@@ -110,19 +110,19 @@ pro setupSingleSphereIso
   
   ; form gas (partType=0) and tracers (partType=3)
   gas_mass = fltarr(n_elements(gas_id)) + float(h.masstable[0]) ;copy same const gas mass
-  
+ 
+  ; add nested background grid
   gas = {pos:gas_pos,vel:gas_vel,id:gas_id,u:gas_u,mass:gas_mass}
 
-  ; add nested background grid
   boxSizeInner = ceil((max(gas.pos)-min(gas.pos))/100) * 100.0
-  uthermBackGrid = 0 ;1.0e4
+  uthermBackGrid = 1.0e4
   
-  ;gas = addICBackgroundGrid(gas, boxSize=boxSizeInner,uthermBackGrid=uthermBackGrid, $
-  ;                          boxCen=[boxSize/2.0,boxSize/2.0,boxSize/2.0], nBackGrid=nBackGrid)
-  ;gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid, uthermBackGrid=uthermBackGrid)
+  gas = addICBackgroundGrid(gas, boxSize=boxSizeInner,uthermBackGrid=uthermBackGrid, $
+                            boxCen=[boxSize/2.0,boxSize/2.0,boxSize/2.0], nBackGrid=nBackGrid)
+  gas = addICBackgroundGrid(gas, boxSize=boxSize, nBackGrid=nBackGrid, uthermBackGrid=uthermBackGrid)
 
   ; save
-  writeICFile,output_fname,part0=gas
+  writeICFileHDF5, output_fname, boxSize, gas=gas
   print,'Suggested target gas mass: '+string(h.masstable[0])
   print,minmax(gas.pos)
 

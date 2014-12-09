@@ -414,7 +414,7 @@ pro writeICFile, fOut, part0=part0, part1=part1, part2=part2, part3=part3, massa
 end
 
 ; writeICFileHDF5(): GAS ONLY
-pro writeICFileHDF5, fOut, boxSize, pos, vel, id, massOrDens, u
+pro writeICFileHDF5, fOut, boxSize, gas=gas
 
   ; load hdf5 template
   templatePath = '/n/home07/dnelson/make.ics/ArepoTemplate.hdf5'
@@ -428,8 +428,8 @@ pro writeICFileHDF5, fOut, boxSize, pos, vel, id, massOrDens, u
   
   ; modify HEADER
   s.HEADER._FILE                      = fOut
-  s.HEADER.NUMPART_THISFILE._DATA     = [n_elements(id),0,0,0,0,0]
-  s.HEADER.NUMPART_TOTAL._DATA        = [n_elements(id),0,0,0,0,0]
+  s.HEADER.NUMPART_THISFILE._DATA     = [n_elements(gas.id),0,0,0,0,0]
+  s.HEADER.NUMPART_TOTAL._DATA        = [n_elements(gas.id),0,0,0,0,0]
   s.HEADER.MASSTABLE._DATA            = [0.0,0.0,0.0,0.0,0.0,0.0]
   s.HEADER.TIME._DATA                 = 0.0
   s.HEADER.REDSHIFT._DATA             = 0.0
@@ -465,29 +465,29 @@ pro writeICFileHDF5, fOut, boxSize, pos, vel, id, massOrDens, u
   s.PARTTYPE0.INTERNALENERGY._FILE = fOut
     
   ; modify data
-  s.PARTTYPE0.COORDINATES._DIMENSIONS    = [3,n_elements(id)]
-  s.PARTTYPE0.COORDINATES._NELEMENTS     = n_elements(pos)
-  s1 = mod_struct(s.PARTTYPE0.COORDINATES,'_DATA',pos) ;change _DATA size
+  s.PARTTYPE0.COORDINATES._DIMENSIONS    = [3,n_elements(gas.id)]
+  s.PARTTYPE0.COORDINATES._NELEMENTS     = n_elements(gas.pos)
+  s1 = mod_struct(s.PARTTYPE0.COORDINATES,'_DATA',gas.pos) ;change _DATA size
   s2 = mod_struct(s.PARTTYPE0,'COORDINATES',s1) ;update PARTTYPE0 with child
 
-  s.PARTTYPE0.VELOCITIES._DIMENSIONS     = [3,n_elements(id)]
-  s.PARTTYPE0.VELOCITIES._NELEMENTS      = n_elements(vel)
-  s1 = mod_struct(s.PARTTYPE0.VELOCITIES,'_DATA',vel)
+  s.PARTTYPE0.VELOCITIES._DIMENSIONS     = [3,n_elements(gas.id)]
+  s.PARTTYPE0.VELOCITIES._NELEMENTS      = n_elements(gas.vel)
+  s1 = mod_struct(s.PARTTYPE0.VELOCITIES,'_DATA',gas.vel)
   s2 = mod_struct(s2,'VELOCITIES',s1)
   
-  s.PARTTYPE0.PARTICLEIDS._DIMENSIONS    = [n_elements(id)]
-  s.PARTTYPE0.PARTICLEIDS._NELEMENTS     = n_elements(id)
-  s1 = mod_struct(s.PARTTYPE0.PARTICLEIDS,'_DATA',id)
+  s.PARTTYPE0.PARTICLEIDS._DIMENSIONS    = [n_elements(gas.id)]
+  s.PARTTYPE0.PARTICLEIDS._NELEMENTS     = n_elements(gas.id)
+  s1 = mod_struct(s.PARTTYPE0.PARTICLEIDS,'_DATA',gas.id)
   s2 = mod_struct(s2,'PARTICLEIDS',s1)
 
-  s.PARTTYPE0.INTERNALENERGY._DIMENSIONS = [n_elements(u)]
-  s.PARTTYPE0.INTERNALENERGY._NELEMENTS  = n_elements(u)
-  s1 = mod_struct(s.PARTTYPE0.INTERNALENERGY,'_DATA',u)
+  s.PARTTYPE0.INTERNALENERGY._DIMENSIONS = [n_elements(gas.u)]
+  s.PARTTYPE0.INTERNALENERGY._NELEMENTS  = n_elements(gas.u)
+  s1 = mod_struct(s.PARTTYPE0.INTERNALENERGY,'_DATA',gas.u)
   s2 = mod_struct(s2,'INTERNALENERGY',s1)
   
-  s.PARTTYPE0.MASSES._DIMENSIONS = [n_elements(massOrDens)]
-  s.PARTTYPE0.MASSES._NELEMENTS  = n_elements(massOrDens)
-  s1 = mod_struct(s.PARTTYPE0.MASSES,'_DATA',massOrDens)
+  s.PARTTYPE0.MASSES._DIMENSIONS = [n_elements(gas.mass)]
+  s.PARTTYPE0.MASSES._NELEMENTS  = n_elements(gas.mass)
+  s1 = mod_struct(s.PARTTYPE0.MASSES,'_DATA',gas.mass)
   s2 = mod_struct(s2,'MASSES',s1)
   
   s = mod_struct(s,'PARTTYPE0',s2) ;import new PARTTYPE0 structure

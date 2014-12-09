@@ -1,6 +1,6 @@
 ; sphere.pro
 ; gas accretion project - interpolation of quantities onto healpix spheres
-; dnelson sep.2014
+; dnelson dec.2014
 
 ; sphereXYZCoords(): return a HEALPix subdivision at Nside resolution parameter scaled out to radius
 
@@ -54,6 +54,8 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
                          
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits(redshift=sP.redshift)
+  
+  if partType ne 'dm' and partType ne 'gas' then message,'Error: Check. Thinkt through for stars.'
   
   ; config
   nNGB = 20  ; neighbor search in CalcTHVal
@@ -137,7 +139,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   sgpos  = subgroupPosByMostBoundID(sP=sP)
   
   ; if this is an Arepo run, we need the cell masses to use as weights
-  if sP.trMCPerCell ne 0 and valName ne 'density' then begin
+  if sP.trMCPerCell ne 0 then begin
     if partType eq 'dm' then $
       mass = replicate(h.massTable[partTypeNum('dm')],h.nPartTot[partTypeNum('dm')]) $
     else $
@@ -189,9 +191,10 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
   
   if valName eq 'density' then begin
     if partType eq 'dm' then $
-      mass = replicate(h.massTable[partTypeNum('dm')],h.nPartTot[partTypeNum('dm')]) $
-    else $
-      mass = loadSnapshotSubset(sP=sP,partType=partType,field='mass')
+      mass = replicate(h.massTable[partTypeNum('dm')],h.nPartTot[partTypeNum('dm')])
+      
+    if partType eq 'gas' then $
+      dens = loadSnapshotSubset(sP=sP,partType=partType,field='density')
   endif
     
   if valName eq 'angmom' then begin
@@ -337,10 +340,19 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
     endif
     
     if valName eq 'density' then begin
-      value = reform(mass[wRadCut],[1,n_elements(wRadCut)]) ; 1xN
+      ; gas: mean (take average of stored gas cell densities falling within kernel)
+      if partType eq 'gas' then begin
+        value = reform(dens[wRadCut],[1,n_elements(wRadCut)]) ; 1xN
+        thMode = 1
+      endif
+      
+      ; dm: total/volume (use the adaptive kernel as a spatial density estimator)
+      if partType eq 'dm' then begin
+        value = reform(mass[wRadCut],[1,n_elements(wRadCut)]) ; 1xN
+        thMode = 3
+      endif
       
       posval = [loc_pos,value]
-      thMode = 3 ; total/volume
     endif
     
     if n_elements(posval) eq 0 then message,'Error: Unrecognized value name.'
@@ -447,8 +459,14 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       r.value = CalcTHVal(posvalwt,sphereXYZ,ndims=3,nNGB=nNGB,thMode=thMode,boxSize=sP.boxSize,/weighted)
     endelse
     
-    ; adjust for log
+    ; units, log
     if valName eq 'temp' then r.value = alog10(r.value)
+      
+    if valName eq 'density' then begin
+      ; density unit conversion (from code_mass/code_volume)
+      r.value = codeDensToPhys(r.value, sP=sP, /cgs)
+      r.value /= units.mass_proton ;g/cm^3 -> cm^(-3) number density
+    endif
       
     save,r,filename=saveFilename
     print,'Saved: '+strmid(saveFilename,strlen(sp.derivPath))
