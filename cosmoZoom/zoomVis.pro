@@ -35,6 +35,7 @@
 
 pro zoomMeshAndSliceWithRes
   compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
   
   ; config
   resLevels = [9,10,11]
@@ -139,9 +140,15 @@ pro zoomMeshAndSliceWithRes
     foreach resLevel,resLevels,i do begin
       j = i < 2
       
+      ; ckpc/h -> physical kpc
+      scalefac = 1.0/(1+redshift)
+      convFac = scalefac / units.HubbleParam
+      slices.(j).rVir *= convFac
+      xyrange = [0,120] ;xyrange = convFac*boxBounds*boxSize
+      
       ; top row: mesh
       posTop = pos[i+0*n_elements(resLevels)]
-      cgPlot,[0],[0],/nodata,xrange=boxBounds*boxSize,yrange=boxBounds*boxSize,xs=5,ys=5,$
+      cgPlot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,xs=5,ys=5,$
         pos=posTop,/noerase,aspect=1.0
       
       loadColorTable,'bw linear'
@@ -162,22 +169,21 @@ pro zoomMeshAndSliceWithRes
       foreach rVirCirc,rVirCircs do $
         tvcircle,rVirCirc * slices.(j).rVir,0,0,cgColor('red'),thick=0.8,/data,/quadrant
       
-      cgPlot,[0],[0],/nodata,xrange=boxBounds*boxSize,yrange=boxBounds*boxSize,/xs,/ys,$
+      cgPlot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,/xs,/ys,$
         pos=posTop,title='h'+str(hInd)+'L'+str(resLevel),/noerase,aspect=1.0
       
       ; bottom row: slice quantity
       posBottom = pos[i+1*n_elements(resLevels)]
-      cgPlot,[0],[0],/nodata,xrange=boxBounds*boxSize,yrange=boxBounds*boxSize,xs=5,ys=5,$
+      cgPlot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,xs=5,ys=5,$
         pos=posBottom,/noerase,aspect=1.0
-      
-      ;loadColorTable,'blue-red2'
-      loadColorTable,'helix'
-  
+        
       ; colormap (dens slice)
-      mapMinMax = [-3.0,5.0]
-      sliceMap = rhoRatioToCrit( slices.(j).density > 1e-20, sP=sP, /log )
+      ;loadColorTable,'helix'
+      ;mapMinMax = [-3.0,5.0]
+      ;sliceMap = rhoRatioToCrit( slices.(j).density > 1e-20, sP=sP, /log )
       
       ; colormap (temp slice)
+      ;loadColorTable,'blue-red2'
       ;mapMinMax = [4.0,5.0]
       ;sliceMap = alog10( slices.(j).temp > 1e-20 )
       
@@ -186,8 +192,9 @@ pro zoomMeshAndSliceWithRes
       ;sliceMap = rhoRatioToCrit( slices.(j).proj_density > 1e-20, sP=sP, /log )
       
       ; colormap (temp proj)
-      ;mapMinMax = [3.4,4.6]
-      ;sliceMap = alog10( slices.(j).proj_temp > 1e-20 )
+      loadColorTable,'blue-red2'
+      mapMinMax = [3.4,4.6]
+      sliceMap = alog10( slices.(j).proj_temp > 1e-20 )
       
       ; stretch
       sliceMap = (sliceMap-mapMinMax[0])*(255.0) / (mapMinMax[1]-mapMinMax[0])
@@ -203,7 +210,7 @@ pro zoomMeshAndSliceWithRes
       foreach rVirCirc,rVirCircs do $
         tvcircle,rVirCirc * slices.(j).rVir,0,0,cgColor('white'),thick=0.8,/data,/quadrant
       
-      cgPlot,[0],[0],/nodata,xrange=boxBounds*boxSize,yrange=boxBounds*boxSize,/xs,/ys,$
+      cgPlot,[0],[0],/nodata,xrange=xyrange,yrange=xyrange,/xs,/ys,$
         pos=posBottom,/noerase,aspect=1.0
       
     endforeach
@@ -220,8 +227,8 @@ pro multiMapZoomComp, doOne=doOne, doTwo=doTwo
   
   ; config
   redshift = 2.0
-  resLevel = [11,11,11,11] ;[11,10,11,11] ;
-  hInds    = [0,1,7,8] ;[2,4,5,9] ;[6,3] 
+  resLevel = [10,10,10,10] ;[11,11,11,11] ;
+  hInds    = [2,4,5,9] ;[0,1,7,8] ;[6,3] 
 
   ; plot config
   sizeFac       = 7.8          ; times rvir (master, must be >=max(sizeFac) below)
@@ -295,7 +302,7 @@ pro multiMapZoomComp, doOne=doOne, doTwo=doTwo
       config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:[0,0],$
                 gcID:gcIDs[i],haloMass:mapCutout.haloMass,haloVirRad:mapCutout.haloVirRad,$
                 boxCen:[0,0,0],boxSizeImg:mapCutout.boxSizeImg,rVirCircs:fields.(j).rVirCircs,$
-                ctNameScat:'',ctNameMap:'',sP:sP.(i),bartype:'',scaleBarLen:200.0,$
+                ctNameScat:'',ctNameMap:'',sP:sP.(i),bartype:'',scaleBarLen:100.0,$
                 secondCutVal:-1,secondText:'',nbottom:0,secondGt:1,singleColorScale:1,$
                 barAreaHeight:barAreaHeight,newBoxSize:fields.(j).sizeFac,$
                 colorField:fields.(j).cF,mapMinMax:fields.(j).mapMM}

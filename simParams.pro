@@ -635,7 +635,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.levelMin       = 7 ; uniform box @ 128
     r.levelMax       = 7 ; default
     r.snapRange      = [0,59]
-    r.groupCatRange  = [5,59] ; z10=0, z6=5, z5=14, z4=21, z3=36, z2=59 (sometimes 57 or 58, ugh)
+    r.groupCatRange  = [5,59] ; z10=0, z6=5, z5=14, z4=21, z3=36, z2=59 (sometimes 57 or 58, but unused)
 
     if n_elements(hInd) gt 0 then r = fillZoomParams(r,res=res,hInd=hInd)
               

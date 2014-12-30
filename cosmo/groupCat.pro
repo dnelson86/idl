@@ -262,13 +262,15 @@ pro rematch
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function loadGroupCat
 
-  sP1 = simParams(res=512,run='feedback',redshift=2.0)
-  sP2 = simParams(res=512,run='tracer',redshift=2.0)
-
+  ;sP1 = simParams(res=512,run='feedback',redshift=2.0)
+  ;sP2 = simParams(res=512,run='tracer',redshift=2.0)
+  sP1 = simParams(res=11,run='zoom_20mpc',redshift=2.0,hInd=2)
+  sP2 = simParams(res=10,run='zoom_20mpc',redshift=2.0,hInd=2)
+  
   gc1 = loadGroupCat(sP=sP1,/skipIDs,/skipOffsets)
   gc2 = loadGroupCat(sP=sP2,/skipIDs,/skipOffsets)
 
-  known1gcIDs = [2020]
+  known1gcIDs = [0]
   
   foreach gcID,known1gcIDs do begin
     ; find closest spatial match
@@ -281,7 +283,8 @@ pro rematch
     
     ; report closest
     print,'Matched known ['+str(gcID)+'] to new ['+str(w[0])+'].'
-    print,'Masses ',gc1.subgroupMass[gcID],gc2.subgroupMass[w[0]]
+    print,'Masses (Tot):   ',gc1.subgroupMass[gcID],gc2.subgroupMass[w[0]]
+    print,'Masses (Stars): ',gc1.subgroupMassType[4,gcID],gc2.subgroupMassType[4,w[0]]
     print,'Distance of match: ['+string(min(dists),format='(f5.1)')+'] and second closest: ['+$
       string(dists[1],format='(f5.1)')+'] with mass: '+$
       string(gc2.subgroupMass[dists_sort[1]],format='(f6.2)')+' ind: ['+str(dists_sort[1])+']'

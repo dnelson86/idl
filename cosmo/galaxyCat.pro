@@ -1,420 +1,401 @@
 ; galaxyCat.pro
 ; gas accretion project - gas selections of interest (galaxy/halo catalogs)
-; dnelson may.2014
+; dnelson dec.2014
 
-; galaxyCat(): if snap not specified, create and save complete galaxy catalog from the group catalog by 
-;              imposing additional cut in the (rho,temp) plane (same as that used by Torrey+ 2011)
-;              if snap is specified, create only for one snapshot number or return previously saved
-;              results for that snapshot
+; galaxyCat(): create and save complete galaxy catalog from the group catalog by imposing additional 
+;  cut in the (rho,temp) plane (same as that used by Torrey+ 2011), or return previously saved
+;  results for that snapshot
 ; Note: the galaxyCat catalogs have the same size (and indexing) as the subgroups
 ; skipSave=1 : calculate on the fly and return IDs (don't save)
 
 function galaxyCat, sP=sP, skipSave=skipSave
-
   compile_opt idl2, hidden, strictarr, strictarrsubs
+  if sP.snap eq -1 then message,'Error: Specify snapshot.'
 
-  ; if snap specified, run only one snapshot (and/or just return previous results)
-  if (sP.snap ne -1) then begin
-    saveFilename = sP.derivPath + 'galCat/galaxyCat.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) +'.sav'
+  saveFilename = sP.derivPath + 'galCat/galaxyCat.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) +'.sav'
     
-    ; results exist, return
-    if file_test(saveFilename) then begin
-      restore,saveFilename
-      return,r
-    endif
+  ; results exist, return
+  if file_test(saveFilename) then begin
+    restore,saveFilename
+    return,r
+  endif
     
-    ; need to compute, set restricted range of snapshots to process
-    snapRange = [sP.snap,sP.snap]
-  endif else begin
-    snapRange = sP.groupCatRange
-  endelse
+  ; load ids of particles in all primary subfind groups
+  gc = loadGroupCat(sP=sP,/readIDs)
+  gcPIDs = gcPIDList(gc=gc,select='pri',partType='gas')
+
+  ; load gas ids and match to catalog
+  ; --------
+  ids_gas = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
+  calcMatch,gcPIDs,ids_gas,gc_ind,ids_ind,count=countMatch
+  ids_ind = ids_ind[calcSort(gc_ind)] ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs
+
+  if countMatch ne n_elements(gcPIDs) then message,'Error: Failed to locate all gas gcPIDs in gas ids.'
+
+  ids_gas = ids_gas[ids_ind]
   
-  for m=snapRange[0],snapRange[1],1 do begin
-    sP.snap = m
-    
-    ; skip if previous results exist
-    saveFilename = sP.derivPath + 'galCat/galaxyCat.' + sP.savPrefix + str(sP.res) + '.' + str(sP.snap) + '.sav'
-        
-    ; load ids of particles in all primary subfind groups
-    gc = loadGroupCat(sP=sP,/readIDs)
-    gcPIDs = gcPIDList(gc=gc,select='pri',partType='gas')
+  ; load star ids and match to catalog
+  ; ---------
+  gcPIDs_stars = gcPIDList(gc=gc,select='pri',partType='stars')
+  ids_stars = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
+  calcMatch,gcPIDs_stars,ids_stars,gc_ind,ids_ind_stars,count=countMatch
+  ids_ind_stars = ids_ind_stars[calcSort(gc_ind)] ; IMPORTANT! rearrange ids_ind_stars
 
-    ; load gas ids and match to catalog
-    ; --------
-    ids_gas = loadSnapshotSubset(sP=sP,partType='gas',field='ids')
-    calcMatch,gcPIDs,ids_gas,gc_ind,ids_ind,count=countMatch
-    ids_ind = ids_ind[calcSort(gc_ind)] ; IMPORTANT! rearrange ids_ind to be in the order of gcPIDs
-
-    if countMatch ne n_elements(gcPIDs) then message,'Error: Failed to locate all gas gcPIDs in gas ids.'
-
-    gcPIDs = !NULL
-    ids_gas = ids_gas[ids_ind]
-    
-    ; load star ids and match to catalog
-    ; ---------
-    gcPIDs_stars = gcPIDList(gc=gc,select='pri',partType='stars')
-    ids_stars = loadSnapshotSubset(sP=sP,partType='stars',field='ids')
-    calcMatch,gcPIDs_stars,ids_stars,gc_ind,ids_ind_stars,count=countMatch
-    ids_ind_stars = ids_ind_stars[calcSort(gc_ind)] ; IMPORTANT! rearrange ids_ind_stars
-
-    if countMatch ne n_elements(gcPIDs_stars) then message,'Error: Failed to locate all star gcPIDs in star ids.'
-    
-    ; if GFM_WINDS, remove any wind particles from these stars
-    if sP.gfmWinds ne 0 then begin
-        btime_stars = loadSnapshotSubset(sP=sP,partType='stars',field='gfm_sftime')
-        
-        w_nonwind = where(btime_stars[ids_ind_stars] ge 0.0,count_nonwind,ncomp=count_wind,comp=w_wind)
-        
-        if count_nonwind eq 0 then message,'Error'
-        print,'Excluding ['+str(count_wind)+'] wind particles ('+$
-          string(float(count_wind)/countMatch,format='(f5.2)')+'%) from galaxy.'
-        
-        ; take subset of stellar ids which are in the wind (for inter)
-        ids_stars_wind = ids_stars[ids_ind_stars[w_wind]]
-        
-        ; modify stellar indices to keep considering for gal(stars) membership
-        ids_ind_stars = ids_ind_stars[w_nonwind]
-    endif
-    
-    gcPIDs = !NULL
-    gcPIDs_stars = !NULL
-    ids_stars = ids_stars[ids_ind_stars]
-    
-    ; load BHs ids and match to catalog
-    ; --------
-    if sP.gfmBHs ne 0 then begin
-      gcPIDs_BHs = gcPIDList(gc=gc,select='pri',partType='BHs')
-      ids_BHs = loadSnapshotSubset(sP=sP,partType='BHs',field='ids')
-      calcMatch,gcPIDs_BHs,ids_BHs,gc_ind,ids_ind_BHs,count=countMatch
-      ids_ind_BHs = ids_ind_BHs[calcSort(gc_ind)] ; IMPORTANT! rearrange ids_ind_BHs
-
-      if countMatch ne n_elements(gcPIDs_BHs) then message,'Error: Failed to locate all BH gcPIDs in star ids.'
-      
-      gcPIDs_BHs = !NULL
-      ids_BHs = ids_BHs[ids_ind_BHs]
-    endif
-    
-    ; load u,nelec and calculate temp of gas
-    ; ------------
-    u     = loadSnapshotSubset(sP=sP,partType='gas',field='u',inds=ids_ind)
-    nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec',inds=ids_ind)
-    
-    temp  = convertUtoTemp(u,nelec,/log)
-    u     = !NULL
-    nelec = !NULL
-    
-    ; load rho of gas and make galaxy (rho,temp) plane cut
-    dens = loadSnapshotSubset(sP=sP,partType='gas',field='density',inds=ids_ind)
-    
-    ; scale Torrey+ (2011) galaxy cut to physical density
-    scalefac = snapNumToRedshift(sP=sP,/time) ; time flag gives simulation time = scale factor
-    a3inv = 1.0 / (scalefac*scalefac*scalefac)
-    dens = alog10( dens * a3inv )
-    
-    ; calculate radial distances of gas elements to primary parents
-    pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos',inds=ids_ind)
-      
-    ; find group center positions with most bound particles for each group
-    subgroupCen = subgroupPosByMostBoundID(sP=sP)
+  if countMatch ne n_elements(gcPIDs_stars) then message,'Error: Failed to locate all star gcPIDs in star ids.'
   
-    ; create PRIMARY parent -subgroup- ID list
-    if gc.nSubgroupsTot ne total(gc.groupNsubs,/int) then message,'Error: Subgroup counts mismatch.'
+  ; if GFM_WINDS, remove any wind particles from these stars
+  if sP.gfmWinds ne 0 then begin
+      btime_stars = loadSnapshotSubset(sP=sP,partType='stars',field='gfm_sftime')
+      
+      w_nonwind = where(btime_stars[ids_ind_stars] ge 0.0,count_nonwind,ncomp=count_wind,comp=w_wind)
+      
+      if count_nonwind eq 0 then message,'Error'
+      print,'Excluding ['+str(count_wind)+'] wind particles ('+$
+        string(float(count_wind)/countMatch,format='(f5.2)')+'%) from galaxy.'
+      
+      ; take subset of stellar ids which are in the wind (for inter)
+      ids_stars_wind = ids_stars[ids_ind_stars[w_wind]]
+      
+      ; modify stellar indices to keep considering for gal(stars) membership
+      ids_ind_stars = ids_ind_stars[w_nonwind]
+  endif
   
-    ; replicate group parent IDs (of PRIMARY/parent) to each member particle
-    ptNum = { gas : partTypeNum('gas'), stars : partTypeNum('stars'), BHs : partTypeNum('BHs') }
+  gcPIDs = !NULL
+  gcPIDs_stars = !NULL
+  ids_stars = ids_stars[ids_ind_stars]
+  
+  ; load BHs ids and match to catalog
+  ; --------
+  if sP.gfmBHs ne 0 then begin
+    gcPIDs_BHs = gcPIDList(gc=gc,select='pri',partType='BHs')
+    ids_BHs = loadSnapshotSubset(sP=sP,partType='BHs',field='ids')
+    calcMatch,gcPIDs_BHs,ids_BHs,gc_ind,ids_ind_BHs,count=countMatch
+    ids_ind_BHs = ids_ind_BHs[calcSort(gc_ind)] ; IMPORTANT! rearrange ids_ind_BHs
+
+    if countMatch ne n_elements(gcPIDs_BHs) then message,'Error: Failed to locate all BH gcPIDs in star ids.'
     
-    sgIDs_pri = gcIDList(gc=gc,select='pri')    
+    gcPIDs_BHs = !NULL
+    ids_BHs = ids_BHs[ids_ind_BHs]
+  endif
+  
+  ; load u,nelec and calculate temp of gas
+  ; ------------
+  u     = loadSnapshotSubset(sP=sP,partType='gas',field='u',inds=ids_ind)
+  nelec = loadSnapshotSubset(sP=sP,partType='gas',field='nelec',inds=ids_ind)
+  
+  temp  = convertUtoTemp(u,nelec,/log)
+  u     = !NULL
+  nelec = !NULL
+  
+  ; load rho of gas and make galaxy (rho,temp) plane cut
+  dens = loadSnapshotSubset(sP=sP,partType='gas',field='density',inds=ids_ind)
+  
+  ; scale Torrey+ (2011) galaxy cut to physical density
+  scalefac = snapNumToRedshift(sP=sP,/time) ; time flag gives simulation time = scale factor
+  a3inv = 1.0 / (scalefac*scalefac*scalefac)
+  dens = alog10( dens * a3inv )
+  
+  ; calculate radial distances of gas elements to primary parents
+  pos = loadSnapshotSubset(sP=sP,partType='gas',field='pos',inds=ids_ind)
     
-    sgParIDs_gas   = lonarr(total(gc.subgroupLenType[ptNum.gas,sgIDs_pri],/int))
-    sgParIDs_stars = lonarr(total(gc.subgroupLenType[ptNum.stars,sgIDs_pri],/int))
+  ; find group center positions with most bound particles for each group
+  subgroupCen = subgroupPosByMostBoundID(sP=sP)
+
+  ; create PRIMARY parent -subgroup- ID list
+  if gc.nSubgroupsTot ne total(gc.groupNsubs,/int) then message,'Error: Subgroup counts mismatch.'
+
+  ; replicate group parent IDs (of PRIMARY/parent) to each member particle
+  ptNum = { gas : partTypeNum('gas'), stars : partTypeNum('stars'), BHs : partTypeNum('BHs') }
+  
+  sgIDs_pri = gcIDList(gc=gc,select='pri')    
+  
+  sgParIDs_gas   = lonarr(total(gc.subgroupLenType[ptNum.gas,sgIDs_pri],/int))
+  sgParIDs_stars = lonarr(total(gc.subgroupLenType[ptNum.stars,sgIDs_pri],/int))
+  
+  if sP.gfmBHs ne 0 then $
+    sgParIDs_BHs = lonarr(total(gc.subgroupLenType[ptNum.BHs,sgIDs_pri],/int))
+  
+  offset = { gas : 0L, stars: 0L, BHs: 0L }
     
-    if sP.gfmBHs ne 0 then $
-      sgParIDs_BHs = lonarr(total(gc.subgroupLenType[ptNum.BHs,sgIDs_pri],/int))
-    
-    offset = { gas : 0L, stars: 0L, BHs: 0L }
-      
-    foreach sgID,sgIDs_pri do begin
-      if gc.subgroupLenType[ptNum.gas,sgID] gt 0 then begin
-        sgParIDs_gas[offset.gas:offset.gas+gc.subgroupLenType[ptNum.gas,sgID]-1] = $
-          cmreplicate(sgID,gc.subgroupLenType[ptNum.gas,sgID])
-        offset.gas += gc.subgroupLenType[ptNum.gas,sgID]
-      endif
-       
-      if gc.subgroupLenType[ptNum.stars,sgID] gt 0 then begin
-        sgParIDs_stars[offset.stars:offset.stars+gc.subgroupLenType[ptNum.stars,sgID]-1] = $
-          cmreplicate(sgID,gc.subgroupLenType[ptNum.stars,sgID])
-        offset.stars += gc.subgroupLenType[ptNum.stars,sgID]
-      endif
-      
-      if gc.subgroupLenType[ptNum.BHs,sgID] gt 0 then begin
-        sgParIDs_BHs[offset.BHs:offset.BHs+gc.subgroupLenType[ptNum.BHs,sgID]-1] = $
-          cmreplicate(sgID,gc.subgroupLenType[ptNum.BHs,sgID])
-        offset.BHs += gc.subgroupLenType[ptNum.BHs,sgID]
-      endif
-    endforeach
-      
-    ; if GFM_WINDS, restrict sgParIDs_stars to non-wind particles
-    if sP.gfmWinds ne 0 then begin
-      sgParIDs_stars = sgParIDs_stars[w_nonwind]
-      offset.stars -= count_wind
+  foreach sgID,sgIDs_pri do begin
+    if gc.subgroupLenType[ptNum.gas,sgID] gt 0 then begin
+      sgParIDs_gas[offset.gas:offset.gas+gc.subgroupLenType[ptNum.gas,sgID]-1] = $
+        cmreplicate(sgID,gc.subgroupLenType[ptNum.gas,sgID])
+      offset.gas += gc.subgroupLenType[ptNum.gas,sgID]
     endif
-      
-    if offset.gas   ne n_elements(sgParIDs_gas)   then message,'Error: Bad parent ID replication.'
-    if offset.stars ne n_elements(sgParIDs_stars) then message,'Error: Bad parent ID star rep.'
-    if offset.BHs   ne n_elements(sgParIDs_BHs)   then message,'Error: Bad parent ID BH rep.'
-      
-    ; fof has rvir=0 (no SO values) if zero subgroups, marginal overdensity, or low total mass
-    ; these are low mass halos which we aren't going to plot anyways
-    w = where(gc.group_r_crit200 eq 0.0,count)
-    if count gt 0 then gc.group_r_crit200[w] = 1e-8 ; remove with outer radial cut
-      
-    ; calculate radial vector of gas from group center (PRI)
-    rad_pri  = periodicDists(subgroupCen[*,sgParIDs_gas],pos,sP=sP)
-    par_rvir = gc.group_r_crit200[gc.subgroupGrNr[sgParIDs_gas]] ; normalize by fof parent rvir
-
-    rad_pri /= par_rvir
-
-    ; make a mask for "inter": all gas failing both the gal and gmem cuts, and all stars
-    ; failing the star cut, plus any current wind particles
-    interMask_gas   = intarr(n_elements(temp))
-    interMask_stars = intarr(n_elements(sgParIDs_stars))
+     
+    if gc.subgroupLenType[ptNum.stars,sgID] gt 0 then begin
+      sgParIDs_stars[offset.stars:offset.stars+gc.subgroupLenType[ptNum.stars,sgID]-1] = $
+        cmreplicate(sgID,gc.subgroupLenType[ptNum.stars,sgID])
+      offset.stars += gc.subgroupLenType[ptNum.stars,sgID]
+    endif
     
-    ; (rho,temp,rad) cut
-    wGal  = where(temp - sP.galcut_rho*dens lt sP.galcut_T and rad_pri lt sP.radcut_rvir,countGal)
+    if gc.subgroupLenType[ptNum.BHs,sgID] gt 0 then begin
+      sgParIDs_BHs[offset.BHs:offset.BHs+gc.subgroupLenType[ptNum.BHs,sgID]-1] = $
+        cmreplicate(sgID,gc.subgroupLenType[ptNum.BHs,sgID])
+      offset.BHs += gc.subgroupLenType[ptNum.BHs,sgID]
+    endif
+  endforeach
     
-    wGmem = where(temp - sP.galcut_rho*dens ge sP.galcut_T and $
-                   rad_pri ge sP.radcut_rvir and rad_pri le sP.radcut_out,countGmem)
+  ; if GFM_WINDS, restrict sgParIDs_stars to non-wind particles
+  if sP.gfmWinds ne 0 then begin
+    sgParIDs_stars = sgParIDs_stars[w_nonwind]
+    offset.stars -= count_wind
+  endif
+    
+  if offset.gas   ne n_elements(sgParIDs_gas)   then message,'Error: Bad parent ID replication.'
+  if offset.stars ne n_elements(sgParIDs_stars) then message,'Error: Bad parent ID star rep.'
+  if offset.BHs   ne n_elements(sgParIDs_BHs)   then message,'Error: Bad parent ID BH rep.'
+    
+  ; fof has rvir=0 (no SO values) if zero subgroups, marginal overdensity, or low total mass
+  ; these are low mass halos which we aren't going to plot anyways
+  w = where(gc.group_r_crit200 eq 0.0,count)
+  if count gt 0 then gc.group_r_crit200[w] = 1e-8 ; remove with outer radial cut
+    
+  ; calculate radial vector of gas from group center (PRI)
+  rad_pri  = periodicDists(subgroupCen[*,sgParIDs_gas],pos,sP=sP)
+  par_rvir = gc.group_r_crit200[gc.subgroupGrNr[sgParIDs_gas]] ; normalize by fof parent rvir
+
+  rad_pri /= par_rvir
+
+  ; make a mask for "inter": all gas failing both the gal and gmem cuts, and all stars
+  ; failing the star cut, plus any current wind particles
+  interMask_gas   = intarr(n_elements(temp))
+  interMask_stars = intarr(n_elements(sgParIDs_stars))
+  
+  ; (rho,temp,rad) cut
+  wGal  = where(temp - sP.galcut_rho*dens lt sP.galcut_T and rad_pri lt sP.radcut_rvir,countGal)
+  
+  wGmem = where(temp - sP.galcut_rho*dens ge sP.galcut_T and $
+                 rad_pri ge sP.radcut_rvir and rad_pri le sP.radcut_out,countGmem)
+                 
+  wInter = where( ((temp - sP.galcut_rho*dens gt sP.galcut_T and rad_pri lt sP.radcut_rvir) or $ ; fail gal
+                   (temp - sP.galcut_rho*dens lt sP.galcut_T and rad_pri gt sP.radcut_rvir)) and $ ; fail gmem
+                   rad_pri le sP.radcut_out, countInter) ; keep outer rad cut
                    
-    wInter = where( ((temp - sP.galcut_rho*dens gt sP.galcut_T and rad_pri lt sP.radcut_rvir) or $ ; fail gal
-                     (temp - sP.galcut_rho*dens lt sP.galcut_T and rad_pri gt sP.radcut_rvir)) and $ ; fail gmem
-                     rad_pri le sP.radcut_out, countInter) ; keep outer rad cut
-                     
-    if countGal eq 0 or countGmem eq 0 or countInter eq 0 then $
-      message,'Warning: Strange zero counts, check. ' + strmid(saveFilename,strlen(sP.derivPath))
-                     
-    temp = !NULL
-    dens = !NULL
-             
-    ; load stellar positions, calculate radial vector from group center (PRI)
-    pos = loadSnapshotSubset(sP=sP,partType='stars',field='pos',inds=ids_ind_stars)
-     
-    rad_pri  = periodicDists(subgroupCen[*,sgParIDs_stars],pos,sP=sP)
-    par_rvir = gc.group_r_crit200[gc.subgroupGrNr[sgParIDs_stars]] ; normalize by fof parent rvir
-      
+  if countGal eq 0 or countGmem eq 0 or countInter eq 0 then $
+    message,'Warning: Strange zero counts, check. ' + strmid(saveFilename,strlen(sP.derivPath))
+                   
+  temp = !NULL
+  dens = !NULL
+           
+  ; load stellar positions, calculate radial vector from group center (PRI)
+  pos = loadSnapshotSubset(sP=sP,partType='stars',field='pos',inds=ids_ind_stars)
+   
+  rad_pri  = periodicDists(subgroupCen[*,sgParIDs_stars],pos,sP=sP)
+  par_rvir = gc.group_r_crit200[gc.subgroupGrNr[sgParIDs_stars]] ; normalize by fof parent rvir
+    
+  rad_pri /= par_rvir
+  
+  ; make stellar cut
+  wStars = where(rad_pri lt sP.radcut_rvir,countStars,comp=wStarsComp,ncomp=wStarsComp_num)
+
+  ; load BH positions, calculate radial vector from group center (PRI)
+  countBHs = 0
+
+  if sP.gfmBHs ne 0 then begin
+    pos = loadSnapshotSubset(sP=sP,partType='BHs',field='pos',inds=ids_ind_bhs)
+   
+    rad_pri  = periodicDists(subgroupCen[*,sgParIDs_BHs],pos,sP=sP)
+    par_rvir = gc.group_r_crit200[gc.subgroupGrNr[sgParIDs_BHs]] ; normalize by fof parent rvir
+    
     rad_pri /= par_rvir
     
-    ; make stellar cut
-    wStars = where(rad_pri lt sP.radcut_rvir,countStars,comp=wStarsComp,ncomp=wStarsComp_num)
+    wBHs = where(rad_pri lt sP.radcut_rvir,countBHs)
+  endif
 
-    ; load BH positions, calculate radial vector from group center (PRI)
-    countBHs = 0
-
-    if sP.gfmBHs ne 0 then begin
-      pos = loadSnapshotSubset(sP=sP,partType='BHs',field='pos',inds=ids_ind_bhs)
-     
-      rad_pri  = periodicDists(subgroupCen[*,sgParIDs_BHs],pos,sP=sP)
-      par_rvir = gc.group_r_crit200[gc.subgroupGrNr[sgParIDs_BHs]] ; normalize by fof parent rvir
-      
-      rad_pri /= par_rvir
-      
-      wBHs = where(rad_pri lt sP.radcut_rvir,countBHs)
-    endif
-
-    ; "inter" is all non-galaxy, non-gmem gas in the subgroup, plus any current wind
-    ids_inter = []
-    
-    if countInter gt 0 then ids_inter = [ ids_inter,ids_gas[wInter] ]
-    
-    if wStarsComp_num gt 0 then ids_inter = [ ids_inter,ids_stars[wStarsComp] ]
-    
-    if sP.gfmWinds ne 0 then $
-      if count_wind gt 0 then ids_inter = [ ids_inter,ids_stars_wind ]
-    
-    countInter = n_elements(ids_inter)
-    
-    ; make subsets of ids matching galaxy cut and complement
-    countTot = countGal + countGmem + countStars + countInter + countBHs
-
-    types = {gal:1, gmem:2, inter:3, stars:4}
-    if countBHs gt 0 then types = mod_struct( types, 'bhs', 5)
-    
-    ; construct galaxy catalog
-    r = { len   : lonarr(gc.nSubgroupsTot) ,$
-          off   : lonarr(gc.nSubgroupsTot) ,$
-          ;ids   : lon64arr(countTot)      ,$ ; add below
-          type  : intarr(countTot)         ,$
-          rad   : fltarr(countTot)         ,$
-          vrad  : fltarr(countTot)         ,$
-          types : types                    ,$
-          trMC_cc   : -1                   ,$
-          trMC_ids  : -1                   ,$
-          trVel_cc  : -1                   ,$
-          trVel_ids : -1                   ,$
-          countGal: countGal, countGmem: countGmem, countStars: countStars ,$
-          countInter: countInter, countBHs: countBHs, countTot:countTot,$
-          nGroups: gc.nSubgroupsTot }
-          
-    if size(gc.IDs,/tname) eq 'LONG'    then r = create_struct(r, {IDs:lonarr(countTot)})
-    if size(gc.IDs,/tname) eq 'ULONG'   then r = create_struct(r, {IDs:ulonarr(countTot)})
-    if size(gc.IDs,/tname) eq 'LONG64'  then r = create_struct(r, {IDs:lon64arr(countTot)})
-    if size(gc.IDs,/tname) eq 'ULONG64' then r = create_struct(r, {IDs:ulon64arr(countTot)})
-    
-    ; insert IDs and types
-    nextOff = 0L
-    
-    if countGal gt 0 then begin
-      ids_gal = ids_gas[wGal]
-      r.ids[nextOff : nextOff+countGal-1] = ids_gal
-      r.type[nextOff : nextOff+countGal-1] = 1
-      nextOff += countGal
-    endif
-
-    if countGmem gt 0 then begin
-      ids_groupmem = ids_gas[wGmem]
-      r.ids[nextOff : nextOff+countGmem-1] = ids_groupmem
-      r.type[nextOff : nextOff+countGmem-1] = 2
-      nextOff += countGmem
-    endif
-    
-    if countInter gt 0 then begin
-      r.ids[nextOff : nextOff+countInter-1] = ids_inter
-      r.type[nextOff : nextOff+countInter-1] = 3
-      nextOff += countInter
-    endif
-    
-    if countStars gt 0 then begin
-      ids_stars = ids_stars[wStars]
-      r.ids[nextOff : nextOff+countStars-1] = ids_stars
-      r.type[nextOff : nextOff+countStars-1] = 4
-      nextOff += countStars
-    endif
-    
-    if countBHs gt 0 then begin
-      ids_bh = ids_BHs[wBHs]
-      r.ids[nextOff : nextOff+countBHs-1] = ids_bh
-      r.type[nextOff : nextOff+countBHs-1]   = 5
-      nextOff += countBHs
-    endif
-    
-    if nuniq(r.ids) ne n_elements(r.ids) then message,'Error: r.ids is not unique.'
-
-    calcMatch,r.ids,gc.IDs,r_ind,gc_ind,count=countCheck
-    gc_ind = gc_ind[sort(r_ind)]
-    if countCheck ne n_elements(r.ids) then message,'Error: Count mismatch.'
-    
-    ; calculate which parent subgroup each belongs to, and rearrange in order of SG parent
-    gcIDs_pri = gcIDList(gc=gc,select='pri')
-    par_inds = gcIDs_pri[ value_locate(gc.subgroupOffset[gcIDs_pri],gc_ind) ]
-      
-    if min(par_inds) lt 0 or max(par_inds) ge n_elements(gc.subgroupOffset) then message,'Error'
-    
-    par_inds_sort = sort(par_inds)
-    
-    r.ids  = r.ids[par_inds_sort]
-    r.type = r.type[par_inds_sort]
-    
-    ; calculate the galaxyCat length and offset for each subgroup
-    r.len = histogram(par_inds,min=0,max=n_elements(gc.subgroupOffset)-1)
-    r.off = [0,(total(r.len,/int,/cum))[0:-2]]
-
-    ; check that len of all secondary groups is zero
-    gcIDs_sec = gcIDList(gc=gc,select='sec')
-    if total(r.len[gcIDs_sec]) gt 0 then message,'Error'
-    
-    ; calculate number of tracer children of each parent (trMC)
-    if sP.trMCPerCell gt 0 then begin
-      galcat_trids = cosmoTracerChildren(sP=sP, /getIDs, gasIDs=r.ids, child_counts=galcat_cc)
-      r = mod_struct( r, 'trMC_cc', galcat_cc )
-      r = mod_struct( r, 'trMC_ids', galcat_trids )
-    endif
-    
-    ; calculate radius and radial velocity for each member
-    h = loadSnapshotHeader(sP=sP)
-    gcParIDs = galCatRepParentIDs(galcat=r)
-    
-    ; restrict gas particle positions to gal/gmem gas only
-    parTypes = ['gas','stars','BHs']
-    
-    foreach parType,parTypes do begin
-    
-      ; skip non-existent particle types
-      if h.nPartTot[partTypeNum(parType)] eq 0 then continue
-
-	; sub-match to parents of this type
-      ids_type = loadSnapshotSubset(sP=sP,partType=parType,field='ids')
-       
-      calcMatch,r.ids,ids_type,galcat_ind,ids_type_ind,count=countType
-      if countType eq 0 then continue
-      
-      ids_type_ind = ids_type_ind[calcSort(galcat_ind)] ; rearrange indices to be in the order of r.ids
-      galcat_ind   = galcat_ind[calcSort(galcat_ind)]
-      
-      gcParIDs_type = gcParIDs[galcat_ind]
-      
-      if countType eq 0 then print,'Warning: Skipping parent type '+parType
-    
-      ; trVel has only GAS parents, must pass in only gas ids
-      ; DISABLED, not working well
-      if 0 and sP.trVelPerCell gt 0 then begin
-        galcat_cc = !NULL
-        galcat_trids = cosmoTracerVelChildren(sP=sP,/getIDs,gasIDs=r.ids[galcat_ind],child_counts=galcat_cc)
-        
-        ; replicate return child_counts such that zero for non-gas members of galcat
-        if size(galcat_cc,/tname) eq 'LONG' then galcat_cc_rep = lonarr(r.countTot)
-        if size(galcat_cc,/tname) eq 'UINT' then galcat_cc_rep = uintarr(r.countTot)
-        if size(galcat_cc,/tname) ne 'LONG' and size(galcat_cc,/tname) ne 'UINT' then message,'Error'
-        galcat_cc_rep[galcat_ind] = galcat_cc
-        
-        r = mod_struct( r, 'trVel_cc', galcat_cc_rep )
-        r = mod_struct( r, 'trVel_ids', galcat_trids )
-        
-        galcat_cc = !NULL
-        galcat_cc_rep = !NULL
-        galcat_trids = !NULL
-      endif
-    
-      ids_type = !NULL
-    
-      ; calculate radial distances to parent
-      pos = loadSnapshotSubset(sP=sP,partType=parType,field='pos')
-      pos = pos[*,ids_type_ind]
-            
-      ; calulate radial vector of gas from group center
-      r.rad[galcat_ind] = periodicDists(subgroupCen[*,gcParIDs_type],pos,sP=sP)
-      
-      ; replace coordinates by relative coordinates (radial vectors) to direct parent
-      for i=0,2 do begin
-        pos_rel = reform(pos[i,*] - subgroupCen[i,gcParIDs_type])
-        correctPeriodicDistVecs, pos_rel, sP=sP
-        pos[i,*] = pos_rel
-      endfor
-    
-      ; load velocities and correct for scalefactor
-      vel = loadSnapshotSubset(sP=sP,partType=parType,field='vel')
-      vel = vel[*,ids_type_ind]
-      
-      scalefac = 1.0 / (1.0 + sP.redshift)
-      if scalefac le 0.0 or scalefac gt 1.0 then message,'Error'
-      vel *= sqrt(scalefac)
-
-      r.vrad[galcat_ind] = ((vel[0,*] - gc.subgroupVel[0,gcParIDs_type]) * pos[0,*] + $
-                            (vel[1,*] - gc.subgroupVel[1,gcParIDs_type]) * pos[1,*] + $
-                            (vel[2,*] - gc.subgroupVel[2,gcParIDs_type]) * pos[2,*]) $
-                            / r.rad[galcat_ind]
-    
-    endforeach
-    
-    ; immediate return and skip save?
-    if keyword_set(skipSave) then return, r
-      
-    ; save galaxy catalog
-    save,r,filename=saveFilename
-    print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
-
-  endfor ;snapRange
+  ; "inter" is all non-galaxy, non-gmem gas in the subgroup, plus any current wind
+  ids_inter = []
   
-  ; if just one snap requested and just calculated, return it now
-  if snapRange[0] eq snapRange[1] then return, r
+  if countInter gt 0 then ids_inter = [ ids_inter,ids_gas[wInter] ]
+  
+  if wStarsComp_num gt 0 then ids_inter = [ ids_inter,ids_stars[wStarsComp] ]
+  
+  if sP.gfmWinds ne 0 then $
+    if count_wind gt 0 then ids_inter = [ ids_inter,ids_stars_wind ]
+  
+  countInter = n_elements(ids_inter)
+  
+  ; make subsets of ids matching galaxy cut and complement
+  countTot = countGal + countGmem + countStars + countInter + countBHs
+
+  types = {gal:1, gmem:2, inter:3, stars:4}
+  if countBHs gt 0 then types = mod_struct( types, 'bhs', 5)
+  
+  ; construct galaxy catalog
+  r = { len   : lonarr(gc.nSubgroupsTot) ,$
+        off   : lonarr(gc.nSubgroupsTot) ,$
+        ;ids   : lon64arr(countTot)      ,$ ; add below
+        type  : intarr(countTot)         ,$
+        rad   : fltarr(countTot)         ,$
+        vrad  : fltarr(countTot)         ,$
+        types : types                    ,$
+        trMC_cc   : -1                   ,$
+        trMC_ids  : -1                   ,$
+        trVel_cc  : -1                   ,$
+        trVel_ids : -1                   ,$
+        countGal: countGal, countGmem: countGmem, countStars: countStars ,$
+        countInter: countInter, countBHs: countBHs, countTot:countTot,$
+        nGroups: gc.nSubgroupsTot }
+        
+  if size(gc.IDs,/tname) eq 'LONG'    then r = create_struct(r, {IDs:lonarr(countTot)})
+  if size(gc.IDs,/tname) eq 'ULONG'   then r = create_struct(r, {IDs:ulonarr(countTot)})
+  if size(gc.IDs,/tname) eq 'LONG64'  then r = create_struct(r, {IDs:lon64arr(countTot)})
+  if size(gc.IDs,/tname) eq 'ULONG64' then r = create_struct(r, {IDs:ulon64arr(countTot)})
+  
+  ; insert IDs and types
+  nextOff = 0L
+  
+  if countGal gt 0 then begin
+    ids_gal = ids_gas[wGal]
+    r.ids[nextOff : nextOff+countGal-1] = ids_gal
+    r.type[nextOff : nextOff+countGal-1] = 1
+    nextOff += countGal
+  endif
+
+  if countGmem gt 0 then begin
+    ids_groupmem = ids_gas[wGmem]
+    r.ids[nextOff : nextOff+countGmem-1] = ids_groupmem
+    r.type[nextOff : nextOff+countGmem-1] = 2
+    nextOff += countGmem
+  endif
+  
+  if countInter gt 0 then begin
+    r.ids[nextOff : nextOff+countInter-1] = ids_inter
+    r.type[nextOff : nextOff+countInter-1] = 3
+    nextOff += countInter
+  endif
+  
+  if countStars gt 0 then begin
+    ids_stars = ids_stars[wStars]
+    r.ids[nextOff : nextOff+countStars-1] = ids_stars
+    r.type[nextOff : nextOff+countStars-1] = 4
+    nextOff += countStars
+  endif
+  
+  if countBHs gt 0 then begin
+    ids_bh = ids_BHs[wBHs]
+    r.ids[nextOff : nextOff+countBHs-1] = ids_bh
+    r.type[nextOff : nextOff+countBHs-1]   = 5
+    nextOff += countBHs
+  endif
+  
+  if nuniq(r.ids) ne n_elements(r.ids) then message,'Error: r.ids is not unique.'
+
+  calcMatch,r.ids,gc.IDs,r_ind,gc_ind,count=countCheck
+  gc_ind = gc_ind[sort(r_ind)]
+  if countCheck ne n_elements(r.ids) then message,'Error: Count mismatch.'
+  
+  ; calculate which parent subgroup each belongs to, and rearrange in order of SG parent
+  gcIDs_pri = gcIDList(gc=gc,select='pri')
+  par_inds = gcIDs_pri[ value_locate(gc.subgroupOffset[gcIDs_pri],gc_ind) ]
+    
+  if min(par_inds) lt 0 or max(par_inds) ge n_elements(gc.subgroupOffset) then message,'Error'
+  
+  par_inds_sort = sort(par_inds)
+  
+  r.ids  = r.ids[par_inds_sort]
+  r.type = r.type[par_inds_sort]
+  
+  ; calculate the galaxyCat length and offset for each subgroup
+  r.len = histogram(par_inds,min=0,max=n_elements(gc.subgroupOffset)-1)
+  r.off = [0,(total(r.len,/int,/cum))[0:-2]]
+
+  ; check that len of all secondary groups is zero
+  gcIDs_sec = gcIDList(gc=gc,select='sec')
+  if total(r.len[gcIDs_sec]) gt 0 then message,'Error'
+  
+  ; calculate number of tracer children of each parent (trMC)
+  if sP.trMCPerCell gt 0 then begin
+    galcat_trids = cosmoTracerChildren(sP=sP, /getIDs, gasIDs=r.ids, child_counts=galcat_cc)
+    r = mod_struct( r, 'trMC_cc', galcat_cc )
+    r = mod_struct( r, 'trMC_ids', galcat_trids )
+  endif
+  
+  ; calculate radius and radial velocity for each member
+  h = loadSnapshotHeader(sP=sP)
+  gcParIDs = galCatRepParentIDs(galcat=r)
+  
+  ; restrict gas particle positions to gal/gmem gas only
+  parTypes = ['gas','stars','BHs']
+  
+  foreach parType,parTypes do begin
+  
+    ; skip non-existent particle types
+    if h.nPartTot[partTypeNum(parType)] eq 0 then continue
+
+    ; sub-match to parents of this type
+    ids_type = loadSnapshotSubset(sP=sP,partType=parType,field='ids')
+     
+    calcMatch,r.ids,ids_type,galcat_ind,ids_type_ind,count=countType
+    if countType eq 0 then continue
+    
+    ids_type_ind = ids_type_ind[calcSort(galcat_ind)] ; rearrange indices to be in the order of r.ids
+    galcat_ind   = galcat_ind[calcSort(galcat_ind)]
+    
+    gcParIDs_type = gcParIDs[galcat_ind]
+    
+    if countType eq 0 then print,'Warning: Skipping parent type '+parType
+  
+    ; trVel has only GAS parents, must pass in only gas ids
+    ; DISABLED, not working well
+    if 0 and sP.trVelPerCell gt 0 then begin
+      galcat_cc = !NULL
+      galcat_trids = cosmoTracerVelChildren(sP=sP,/getIDs,gasIDs=r.ids[galcat_ind],child_counts=galcat_cc)
+      
+      ; replicate return child_counts such that zero for non-gas members of galcat
+      if size(galcat_cc,/tname) eq 'LONG' then galcat_cc_rep = lonarr(r.countTot)
+      if size(galcat_cc,/tname) eq 'UINT' then galcat_cc_rep = uintarr(r.countTot)
+      if size(galcat_cc,/tname) ne 'LONG' and size(galcat_cc,/tname) ne 'UINT' then message,'Error'
+      galcat_cc_rep[galcat_ind] = galcat_cc
+      
+      r = mod_struct( r, 'trVel_cc', galcat_cc_rep )
+      r = mod_struct( r, 'trVel_ids', galcat_trids )
+      
+      galcat_cc = !NULL
+      galcat_cc_rep = !NULL
+      galcat_trids = !NULL
+    endif
+  
+    ids_type = !NULL
+  
+    ; calculate radial distances to parent
+    pos = loadSnapshotSubset(sP=sP,partType=parType,field='pos')
+    pos = pos[*,ids_type_ind]
+          
+    ; calulate radial vector of gas from group center
+    r.rad[galcat_ind] = periodicDists(subgroupCen[*,gcParIDs_type],pos,sP=sP)
+    
+    ; replace coordinates by relative coordinates (radial vectors) to direct parent
+    for i=0,2 do begin
+      pos_rel = reform(pos[i,*] - subgroupCen[i,gcParIDs_type])
+      correctPeriodicDistVecs, pos_rel, sP=sP
+      pos[i,*] = pos_rel
+    endfor
+  
+    ; load velocities and correct for scalefactor
+    vel = loadSnapshotSubset(sP=sP,partType=parType,field='vel')
+    vel = vel[*,ids_type_ind]
+    
+    scalefac = 1.0 / (1.0 + sP.redshift)
+    if scalefac le 0.0 or scalefac gt 1.0 then message,'Error'
+    vel *= sqrt(scalefac)
+
+    r.vrad[galcat_ind] = ((vel[0,*] - gc.subgroupVel[0,gcParIDs_type]) * pos[0,*] + $
+                          (vel[1,*] - gc.subgroupVel[1,gcParIDs_type]) * pos[1,*] + $
+                          (vel[2,*] - gc.subgroupVel[2,gcParIDs_type]) * pos[2,*]) $
+                          / r.rad[galcat_ind]
+  
+  endforeach
+  
+  ; immediate return and skip save?
+  if keyword_set(skipSave) then return, r
+    
+  ; save galaxy catalog
+  save,r,filename=saveFilename
+  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
+  
+  return, r
   
 end
 

@@ -732,28 +732,29 @@ function zoomTargetHalo, sP=sP, gc=gc
   expectedHaloPos = sP.targetHaloPos + sP.zoomShiftPhys
   
   ; searching at earlier redshift that target? pick largest by mass
-  if 0 then begin
-  if sP.redshift gt sP.targetRedshift then begin
-    print,'zoomTargetHalo: sP.redshift > targetRedshift, choosing most massive in box!'
-    hInd = 0
-  endif else begin    
-    ; generally, we search at the ending redshift, do positional
-    posDiffs = periodicDists(expectedHaloPos,gc.subgroupPos,sP=sP)
+  ;if 0 then begin
+  if sP.redshift gt sP.targetRedshift then $
+    message,'zoomTargetHalo: sP.redshift > targetRedshift, use tree instead!'
     
-    ; pick closest mass match within a positional search of 1rvir around expected location
-    w = where(posDiffs le 2.0*sP.targetHaloRvir,count)
-    if count eq 0 then message,'Error'
-    
-    massDiffs = abs( sP.targetHaloMass - codeMassToLogMsun(gc.subgroupMass) )
-    hInd = ( where(massDiffs eq min(massDiffs[w]),count) )[0]
-    
-    if count ne 1 then message,'Error'
-  endelse
-  endif ;0
+  ; generally, we search at the ending redshift, do positional
+  posDiffs = periodicDists(expectedHaloPos,gc.subgroupPos,sP=sP)
   
-  hInd = 0
+  ; pick closest mass match within a positional search of 1rvir around expected location
+  w = where(posDiffs le 2.0*sP.targetHaloRvir,count)
+  if count eq 0 then message,'Error'
   
-  ; some overrides (h2) (still not right)
+  massDiffs = abs( sP.targetHaloMass - codeMassToLogMsun(gc.subgroupMass) )
+  hInd = ( where(massDiffs eq min(massDiffs[w]),count) )[0] ; closest total mass
+  
+  ;starMasses = codeMassToLogMsun(gc.subgroupMassType[partTypeNum('stars'),*])
+  ;hInd = ( where(starMasses eq max(starMasses[w]),count) )[0] ; maximum stellar mass
+  
+  if count ne 1 then message,'Error'
+  
+  hInd = 0 ; force to most massive subgroup
+  
+  ; some overrides (h2, in right position to match to L11 for rays, but no galaxy at that 
+  ; location in L9 or L10)
   if sP.hInd eq 2 and sP.snap eq 59 and sP.res eq 9 then hInd = 1 ;look at stellar mass
   if sP.hInd eq 2 and sP.snap eq 59 and sP.res eq 10 then hInd = 1
   
@@ -771,10 +772,8 @@ function zoomTargetHalo, sP=sP, gc=gc
   print,' distNorm: ',distNorm
   
   priInds = gcIDList(gc=gc,select='pri')
-  if total(priInds eq hInd,/int) eq 0 then begin
-    print,'Check, not even primary!'
-    stop
-  endif
+  if total(priInds eq hInd,/int) eq 0 then $
+    print,'zoomTargetHalo: Picked NON-PRIMARY subgroup!'
   
   return, hInd
 end
@@ -784,7 +783,7 @@ end
 pro checkDMContamination
 
   ; config
-  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res='11',hInd='2',redshift=2.0) )
+  sPs = mod_struct( sPs, 'sP0', simParams(run='zoom_20Mpc',res='11',hInd='4',redshift=2.0) )
   ;sPs = mod_struct( sPs, 'sP1', simParams(run='zoom_10Mpc_dm',res=11,hInd='3',redshift=0.0) )
   ;sPs = mod_struct( sPs, 'sP2', simParams(run='zoom_10Mpc_dm',res=10,hInd='1b',redshift=0.0) )
   ;sPs = mod_struct( sPs, 'sP3', simParams(run='zoom_20Mpc_convhull',res=10,hInd=1,redshift=2.0) )
@@ -850,7 +849,7 @@ end
 pro checkGasContamination
 
   ; config
-  sP = simParams(run='zoom_20Mpc',res='11',hInd='2',redshift=2.0)
+  sP = simParams(run='zoom_20Mpc',res='11',hInd='4',redshift=2.0)
 
   ; load
   h = loadSnapshotHeader(sP=sP)
