@@ -111,6 +111,19 @@ pro reportMemory, msg=msg
   print,msg+': memory highwater: ['+high_GB+'] GB, current: ['+cur_GB+'] GB. ('+str(mem[1])+' '+str(mem[2])+')'
 end
 
+pro restoreBench, filepath, verbose=verbose
+  ; restore a save file, benchmark the read speed
+  read_size = (file_info(filepath)).size
+  start_time = systime(/seconds)
+  
+  restore, filepath, verbose=keyword_set(verbose)
+  
+  elapsed_time =  systime(/seconds)-start_time
+  read_speed = read_size / 1024.0 / 1024.0 / elapsed_time
+  print,"% RESTORE: Elapsed time: "+str(string(elapsed_time,format='(f5.1)'))+" sec (Read speed: "+$
+    str(string(read_speed,format='(f10.1)'))+' MB/s)'
+end
+
 ; general algorithms
 ; ------------------
 

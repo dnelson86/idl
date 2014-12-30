@@ -671,9 +671,10 @@ end
 function evolIGMTemp, sP=sP
   
   ; config
+  redshiftStart = 6.0
   redshiftEnd = 0.0
   
-  snapRange = [sP.groupCatRange[0],redshiftToSnapNum(redshiftEnd,sP=sP)]
+  snapRange = redshiftToSnapNum([redshiftStart,redshiftEnd],sP=sP)
   nSnaps = snapRange[1]-snapRange[0]+1
   
   ; binning for histograms

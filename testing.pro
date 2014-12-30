@@ -2,6 +2,48 @@
 ; anything temporary
 ; dnelson dec.2014
 
+; fix ent h^2
+pro fixCutouts
+ 
+  message,'DO NOT RUN AGAIN'
+ 
+  hInds = [0,1,2,3,4,5,6,7,8,9]
+  resLevels = [9,10,11]
+  
+  fixFactor_entr = (0.7)^(-4.0/3.0) ; new=old*fixFactor, entr
+  fixFactor_angm = 1/0.7 ; angmom
+  
+  foreach hInd,hInds do begin
+    foreach resLevel,resLevels do begin
+    
+      ; search
+      sP = simParams(res=resLevel,run='zoom_20mpc',hInd=hInd,redshift=2.0)
+      ;path = sP.derivPath + 'hShells/snap_'+str(sP.snap)+'/*angmom*'
+      ;path = sP.derivPath + 'cutouts/zoomRadialBin.*_gas_*.sav'
+      path = sP.derivPath + 'binnedVals/sphMap.*entropy*.sav'
+      print,path
+      
+      filepaths = file_search(path)
+      if n_elements(filepaths) eq 1 then begin
+        if filepaths[0] eq '' then continue
+      endif
+      
+      foreach filepath,filepaths do begin
+        restore,filepath,/verbose
+        
+        sphMap.quant = alog10( 10.0^(sphMap.quant)*fixFactor_entr )
+        
+        save,sphMap,filename=filepath
+        
+        print,' '+strmid(filepath,strlen('/n/home07/dnelson/sims.zooms/128_20Mpc_h8_L10/data.files'))
+      endforeach
+    
+    endforeach
+  endforeach
+
+
+end
+
 pro actualTmaxColdHot
   ; feedback.paper referee question
   foreach redshift,[0.0,2.0,5.0] do begin

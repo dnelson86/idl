@@ -485,11 +485,19 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
   if zoom2x1 then xfac = 0.95
   if zoom2x1 then yfac2 = 0.96
   
+  ; convert ckpc/h -> kpc by adjusting size, leaving label
+  scalefac = 1.0/(1+config.sP.redshift)
+  convFac = 1.0
+  sLabel = 'ckpc'
+  
+  if zoom4x4 then convFac = scalefac / 0.7
+  if zoom4x4 then sLabel = 'kpc'
+  
   if curCol eq 0 and curRow eq 0 and ~tag_exist(config,'secondScaleBar') then begin
-    xpos = [xMinMax[0]*xfac,xMinMax[0]*xfac+config.scaleBarLen]
+    xpos = [xMinMax[0]*xfac,xMinMax[0]*xfac+config.scaleBarLen/convFac]
     ypos = replicate(yMinMax[1]*yfac2,2)
     
-    cgText,mean(xpos),ypos*yfac,string(config.scaleBarLen,format='(i3)')+' ckpc',$
+    cgText,mean(xpos),ypos*yfac,string(config.scaleBarLen,format='(i3)')+' '+sLabel,$
       alignment=0.5,color=cgColor('white')
     oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
   endif
@@ -503,10 +511,10 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     if curCol eq 2 and curRow eq targetRow then scaleBarLen = config.scaleBarLen * 2.0
     
     if scaleBarLen gt 0 then begin
-      xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+scaleBarLen]
+      xpos = [xMinMax[0]*0.9,xMinMax[0]*0.9+scaleBarLen/convFac]
       ypos = replicate(yMinMax[1]*0.93,2)
       
-      cgText,mean(xpos),ypos*yfac,string(scaleBarLen,format='(i3)')+' ckpc',$
+      cgText,mean(xpos),ypos*yfac,string(scaleBarLen,format='(i3)')+' '+sLabel,$
         alignment=0.5,color=cgColor('white')
       oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
     endif

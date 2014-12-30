@@ -232,9 +232,11 @@ end
 
 ; codeDensToPhys(): convert comoving->Physical and add little_h factors
 
-function codeDensToPhys, dens, sP=sP, scalefac=scalefac, cgs=cgs
+function codeDensToPhys, dens, sP=sP, scalefac=scalefac, redshift=redshift, cgs=cgs
   compile_opt idl2, hidden, strictarr, strictarrsubs
   units = getUnits()
+  
+  if n_elements(redshift) gt 0 and n_elements(scalefac) eq 0 then scalefac = 1.0/(1+redshift)
   
   if n_elements(scalefac) eq 0 and n_elements(sP) eq 0 then message,'error'
   if n_elements(scalefac) gt 0 and n_elements(sP) gt 0 then message,'error'
@@ -322,9 +324,9 @@ function codeMassToVirEnt, mass, redshift=redshift, sP=sP, log=log
   
   virTempLog = codeMassToVirTemp(mass,redshift=redshift,sP=sP,/log)
   virU = convertTempToU(virTempLog)
-  r200crit = critRatioToCode(200.0,redshift=redshift)
+  r200crit = critBaryonRatioToCode(200.0,redshift=redshift)
   
-  s200 = calcEntropyCGS(virU, r200crit, sP=sP, log=log)
+  s200 = calcEntropyCGS(virU, r200crit, redshift=redshift, log=log)
   
   return, s200
 
@@ -379,18 +381,22 @@ end
 
 ; calcEntropyCGS(): calculate entropy as P/rho^gamma (rho is converted from comoving to physical)
 
-function calcEntropyCGS, u, dens, gamma=gamma, log=log, sP=sP
+function calcEntropyCGS, u, dens, gamma=gamma, log=log, sP=sP, redshift=redshift
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function snapNumToRedshift
   units = getUnits()
   
+  if n_elements(redshift) eq 0 and n_elements(sP) eq 0 then message,'Error: need redshift or sP.'
+  
   ; adiabatic index default (valid for ComparisonProject)
   if not keyword_set(gamma) then gamma = 5.0/3.0
   
-  atime = snapNumToRedshift(sP=sP,/time)
+  if n_elements(redshift) eq 0 then atime = snapNumToRedshift(sP=sP,/time)
+  if n_elements(redshift) gt 0 then atime = 1.0/(1+redshift)
   a3inv = 1.0 / (atime*atime*atime)
 
   ; cosmological and unit system conversions
+  dens *= units.HubbleParam^2.0 ; remove all little h factors
   pressure = (gamma-1.0) * u * dens * a3inv * float(units.UnitPressure_in_cgs / units.boltzmann) ; [K/cm^3]
   entropy  = pressure / ( (dens * float(units.UnitDensity_in_cgs/units.mass_proton)*a3inv)^gamma ) ; [K cm^2]
   

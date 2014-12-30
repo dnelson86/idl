@@ -313,6 +313,10 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       correctPeriodicDistVecs, rvec1, sP=sP
       correctPeriodicDistVecs, rvec2, sP=sP
       
+      rvec0 /= units.HubbleParam ; remove little h from Coordinates for angmom
+      rvec1 /= units.HubbleParam
+      rvec2 /= units.HubbleParam
+      
       loc_vel = vel[*,wRadCut]
       
       ; make velocities relative to bulk halo motion

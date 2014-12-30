@@ -138,6 +138,7 @@ function zoomRadialBin, sP=sP, gc=gc, partType=partType, halo=halo, mode=mode
     
     ; angular momentum magnitude
     jvec = fltarr(3,countRad)
+    pos /= units.HubbleParam ; remove little h from Coordinates for angmom
     jvec[0,*] = pos[1,*] * vel[2,*] - pos[2,*] * vel[1,*]
     jvec[1,*] = pos[2,*] * vel[0,*] - pos[0,*] * vel[2,*]
     jvec[2,*] = pos[0,*] * vel[1,*] - pos[1,*] * vel[0,*]
@@ -334,7 +335,7 @@ pro plotZoomRadialProfiles ;, input=input
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  hInds     = [5,9] ;[0,1,2,3,4,5,6,7,8,9] [0,1,7,8]
+  hInds     = [2] ;[0,1,5,7,8,9] ;[3,4,6][0,1,7,8]
   resLevels = [9,10,11] ;[9,10,11]
   redshift  = 2.0
   newSaves  = 0 ; override existing saves
@@ -408,7 +409,7 @@ pro plotZoomRadialProfiles ;, input=input
       ; get list of snapshots for this halo in the redshift range
       rLoc = {}
       
-      ;if resLevel eq 11 and total(hInd eq [2,3,4,5,6,9]) gt 0 then continue
+      if resLevel eq 11 and total(hInd eq [3,6]) gt 0 then continue
       
       sP = simParams(run='zoom_20Mpc',res=resLevel,hInd=hInd,redshift=redshift)     
       saveFilename = sP.derivPath + 'binnedVals/radProfiles.h'+str(hInd)+'.'+sP.savPrefix+str(sP.res) + $
@@ -463,7 +464,7 @@ pro plotZoomRadialProfiles ;, input=input
     rp = mod_struct( rp, 'h'+str(hInd), hLoc )
     
   endforeach ;hInds
-
+  
   ; plot setup
   plotStr = 'h'
   hNames  = 'h' + str(hInds)
@@ -1263,7 +1264,7 @@ pro plotZoomSlicePDFs ;, input=input
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  hInds     = [5,9] ;[0,1,2,3,4,5,6,7,8,9] [0,1,7,8]
+  hInds     = [0,1,5,7,8,9] ;[3,4,6][0,1,7,8]
   resLevels = [9,10,11] ;[9,10,11]
   redshift  = 2.0
   newSaves  = 0 ; override existing saves
