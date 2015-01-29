@@ -1,6 +1,6 @@
 ; mergerTree.pro
 ; cosmological halo tracking / merger tree through time
-; dnelson mar.2013
+; dnelson jan.2015
 
 ; mergerTree(): construct simplified merger tree for tracking halos/subhalos through time across snaps
 ; 
@@ -9,11 +9,12 @@
 
 function mergerTree, sP=sP, makeNum=makeNum
   compile_opt idl2, hidden, strictarr, strictarrsubs
-
+  if sP.snap eq 0 then message,'Error'
+  
   ; config
-  partMatchFracTol = 0.55  ; 55% minimum match between particle members of the specified type
-  massDiffFracTol  = 0.4   ; 40% agreement in total mass or better
-  positionDiffTol  = 200.0 ; 200kpc maximum separation
+  partMatchFracTol = 0.1   ; 55% minimum match between particle members of the specified type
+  ;massDiffFracTol  = 0.1   ; 40% agreement in total mass or better
+  ;positionDiffTol  = 200.0 ; 200kpc maximum separation
   minSubgroupLen   = 60    ; do not try to match subgroups with less than N total particles (for speed)
 
   ptNum = partTypeNum('dm') ; use dark matter particles (only) for matching
@@ -23,17 +24,22 @@ function mergerTree, sP=sP, makeNum=makeNum
   if keyword_set(makeNum) then minSnap = sP.snap - makeNum + 1
   
   ; earliest possible snapshot to create Parents for is the one after the first group catalog
-  if minSnap le sP.groupCatRange[0] then minSnap = sP.groupCatRange[0] + 1
+  if minSnap le sP.groupCatRange[0] then minSnap = 1 ;sP.groupCatRange[0] + 1
 
   ; set maximum/starting snapshot (minimum/starting redshift)
   maxSnap = sP.snap
 
   ; check for existing catalog
+  saveFilename = sP.derivPath+'mergerTree/mergerTree.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.sav'
+  
   if ~keyword_set(makeNum) then begin
-    saveFilename = sP.derivPath+'mergerTree/mergerTree.'+sP.savPrefix+str(sP.res)+'.'+str(sP.snap)+'.sav'
+    if file_test(saveFilename) then begin
+      restore, saveFilename
+      return, Parent
+    endif
     
-    restore, saveFilename
-    return, Parent
+    ; not found, just make the one
+    minSnap = sP.snap
   endif
   
   ; if creating new catalog, start loop over snapshots
@@ -142,8 +148,13 @@ function mergerTree, sP=sP, makeNum=makeNum
       correctPeriodicDistVecs, xyzDist, sP=sP
       positionDiff = (sqrt( xyzDist[0]*xyzDist[0] + xyzDist[1]*xyzDist[1] + xyzDist[2]*xyzDist[2] ) )[0]
 
-      if massDiffFrac lt massDiffFracTol and positionDiff lt positionDiffTol and $
-         maxFrac gt partMatchFracTol then Parent[i] = max_index
+      ;if massDiffFrac lt massDiffFracTol and positionDiff lt positionDiffTol and $
+      ;   maxFrac gt partMatchFracTol then Parent[i] = max_index
+         
+      ;if positionDiff lt positionDiffTol and maxFrac gt partMatchFracTol then Parent[i] = max_index
+      
+      ; NEW: no pos or mass tolerances, always pick max index (for zooms)
+      if maxFrac gt partMatchFracTol then Parent[i] = max_index
          
       ; DEBUG: what matches are we loosing?
       ;if massDiffFrac gt massDiffFracTol or positionDiff gt positionDiffTol or $
@@ -188,6 +199,7 @@ function mergerTree, sP=sP, makeNum=makeNum
   
   sP.snap = maxSnap ; restore sP.snap
 
+  if ~keyword_set(makeNum) then return,Parent
 end
 
 ; mergerTreeSubset():
@@ -372,7 +384,7 @@ function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
       sP.snap = m + 1 * (step eq 1) ; want to load one snapshot ahead if moving forward
       
       ; haven't failed yet, keep recording positions
-      if failSnap eq -1 then begin
+      if failSnap eq -1 and sP.snap gt 0 then begin
         sgcen = subgroupPosByMostBoundID(sP=sP)
         sgCenters[*,ind] = sgcen[*,gcIDcur]
               
@@ -405,7 +417,6 @@ function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
         haloPos = sgCenters[*,0]
       endif else begin
         ; at least two parents (three positions), do an extrapolation to the ending snapshot
-        print,'untested'
         sP.snap = endSnap
         h = loadSnapshotHeader(sP=sP)
         timeEnd = redshiftToAgeFlat(1/h.time-1)
@@ -413,9 +424,9 @@ function trackHaloPosition, sP=sP, gcID=gcID, endSnap=endSnap
         inds = where(times ne 0.0,count)
         if count lt 3 then message,'error'
         
-        xPos = interpol(sgCenters[0,w],times[w],timeEnd)
-        yPos = interpol(sgCenters[1,w],times[w],timeEnd)
-        zPos = interpol(sgCenters[2,w],times[w],timeEnd)
+        xPos = interpol(sgCenters[0,inds],times[inds],timeEnd)
+        yPos = interpol(sgCenters[1,inds],times[inds],timeEnd)
+        zPos = interpol(sgCenters[2,inds],times[inds],timeEnd)
         haloPos = [xPos,yPos,zPos]
       endelse
     endelse

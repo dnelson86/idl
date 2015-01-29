@@ -1,10 +1,11 @@
 ; zoomRays.pro
 ; 'zoom project' radial rays at different angles
-; dnelson dec.2014
+; dnelson jan.2015
 
 ; helper function
-pro plotColoredRays, rr=rr, config=config, kBounds=kBounds
+pro plotColoredRays, rr=rr, co_rr=co_rr, config=config, kBounds=kBounds
   compile_opt idl2, hidden, strictarr, strictarrsubs
+  if n_elements(rr) eq 0 or n_elements(co_rr) eq 0 or n_elements(config) eq 0 then message,'Error'
   
   ; config
   thick = 0.1
@@ -13,8 +14,10 @@ pro plotColoredRays, rr=rr, config=config, kBounds=kBounds
   xx = rr.radFacs
   
   ; colormap
+  loadColorTable,config.ctName
+  
   co_mm = config.yrange
-  co_vv = reform( rr.value )
+  co_vv = reform( co_rr.value )
   
   if config.cbarLog eq 1 then begin
     co_mm = alog10(co_mm)
@@ -29,6 +32,9 @@ pro plotColoredRays, rr=rr, config=config, kBounds=kBounds
   ; plot each radial ray, corresponding to one healpix pixel
   for rayNum=kBounds[0],kBounds[1] do begin
     yy = reform( rr.value[rayNum,*] )
+    
+    ; select: todo
+    ; sort: todo
     
     ; use temperature at each radial sample to color segment, map into [0,255] CT indices
     co = reform(co_vv[rayNum,*])
@@ -46,25 +52,27 @@ pro plotZoomRadialRays
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  hInds     = [2] ;[0,1,5,7,8,9] ;[2,4] [3,6]
+  hInds     = [0,1,2,4,5,7,8,9] ;[3,6]
   resLevels = [9,10,11]
   redshift  = 2.0
   newSaves  = 0 ; override existing shell saves
   
   ; binning config
-  Nside   = [8,16,32,64] ;[8,16,32,64]  ; healpix resolution parameter, 2=12*4, 8=768, 16~3k, 32~12k, 64~50k
-  Nrad    = [100,200,400] ;[100,200,400] ; number of radial sampling points
+  Nside   = [64] ;[8,16,32,64]  ; healpix resolution parameter, 2=12*4, 8=768, 16~3k, 32~12k, 64~50k
+  Nrad    = [400] ;[100,200,400] ; number of radial sampling points
   cutSubS = 2 ; remove substructures? (0=no, 1=satellites, 2=all subfind other than target group)
 
   ; individual rays (+sorting/selections), all 1d plots, which halo/res/ns/nr?
   hIndiv  = 0   ; which halo to plot individuals from
   rIndiv  = 9   ; which resolution level to plot individuals from
-  nsIndiv = 8  ; Nside indiv
-  nrIndiv = 100 ; Nrad indiv
+  nsIndiv = 64 ; Nside indiv
+  nrIndiv = 400 ; Nrad indiv
 
-  skipRaw = 1   ; skip plots (1) and (2) showing all rays individually (not a good idea Ns>=32)
-  skip2D  = 1   ; skip making 2D panel plots
+  skipRaw   = 1 ; skip plots (1) and (2) showing all rays individually (not a good idea Ns>=32)
+  skipSel   = 1 ; skip select testing plots
+  skip2D    = 1 ; skip making 2D panel plots
   skipStats = 1 ; skip ray statistics plots
+  skipPDFs  = 0 ; skip ray PDF plots
   
   ; plot config
   config = { temp : { valName   : 'temp',$
@@ -136,16 +144,17 @@ pro plotZoomRadialRays
   print,'haloJvir: '+str(alog10(haloJvir))+' log kpc km/s'
   
   pdfTvirFacs = [1.0,0.2] ; for tempFracs plots, when showing NsNr convergence or all halos
-  ttLines = [1,0] ; line styles for pdfTvirFacs
+  ttLines = [3,0] ; line styles for pdfTvirFacs
   
   selections = { sel_0 : { value  : 0.5*haloTvir                       ,$ ; Kelvin (for 12bins)
                            quant  : 'TEMP'                             ,$
-                           rMin   : 0.75                               ,$ ; r/rvir
+                           rMin   : 0.50                               ,$ ; r/rvir
                            rMax   : 2.0                                ,$ ; r/rvir
                            xtitle : "T_{thresh} [_{ }log K_{ }]"       ,$ ; for stats plot
                            xrange : [3.0,6.5]                          ,$ ; log K, for rayStats
                            xstep  : 0.01                               ,$ ; log K, for rayStats
                            xlog   : 1                                  ,$ ; for rayStats
+                           vStr   : '0.5T_{vir}'                       ,$ ; for raySelect
                            sTag   : '_TmaxComp'                         } ,$
                  sel_1 : { value  : -0.25*haloVvir                     ,$ ; km/s (for 12bins)
                            quant  : 'VRAD'                             ,$
@@ -155,15 +164,17 @@ pro plotZoomRadialRays
                            xrange : [-400,400]                         ,$ ; km/s, for rayStats
                            xstep  : 1.0                                ,$ ; km/s, for rayStats
                            xlog   : 0                                  ,$ ; for rayStats
+                           vStr   : '-0.25v_{vir}'                     ,$ ; for raySelect
                            sTag   : '_vRadMaxComp'                      } ,$
                  sel_2 : { value  : 2.0*haloSvir                       ,$ ; cgs (for 12bins)
                            quant  : 'ENTR'                             ,$
-                           rMin   : 0.9                                ,$ ; r/rvir
+                           rMin   : 0.8                                ,$ ; r/rvir
                            rMax   : 2.0                                ,$ ; r/rvir
                            xtitle : "S_{thresh} [_{ }log K cm^{2 }]"   ,$ ; for rayStats
                            xrange : [6.0,10.0]                         ,$ ; cgs, for rayStats
                            xstep  : 0.01                               ,$ ; cgs, for rayStats
                            xlog   : 1                                  ,$ ; for rayStats
+                           vStr   : '2.0S_{vir}'                       ,$ ; for raySelect
                            sTag   : '_EntrMaxComp'                      } ,$
                  sel_3 : { value  : 1.0*haloJvir                       ,$ ; cgs (for 12bins)
                            quant  : 'ANGM'                             ,$
@@ -173,6 +184,7 @@ pro plotZoomRadialRays
                            xrange : [3.4,5.2]                          ,$ ; cgs, for rayStats
                            xstep  : 0.01                               ,$ ; cgs, for rayStats
                            xlog   : 1                                  ,$ ; for rayStats
+                           vStr   : '1.0J_{vir}'                       ,$ ; for raySelect
                            sTag   : '_AngMomMaxComp'                    } }
   
   sorts = { $
@@ -312,13 +324,13 @@ pro plotZoomRadialRays
     ; add this halo to the save struct
     rr = mod_struct( rr, 'h'+str(hInd), hLoc )
     
+  endforeach ;hInds
     save,rr,filename=saveFilename
     print,'Saved: ['+saveFilename+']'
-  endforeach ;hInds
   endif else begin
     restore,saveFilename,/verbose
   endelse
-  
+
   ; plot setup
   plotStr = 'h'
   hNames  = 'h' + str(hInds)
@@ -409,35 +421,9 @@ pro plotZoomRadialRays
         foreach radLine,radLines do $
           cgPlot,[radLine,radLine],config.(count).yrange+[0.05,-0.05],line=1,color='light gray',/overplot
           
-        ; select data
-        xx = rr.(i).(j).hsv.(count).(k).(m).radFacs
-        
-        ; colormap
-        co_ind = where( tag_names(config) eq coName )
-        loadColorTable,config.(co_ind).ctName
-        
-        co_mm = config.(co_ind).yrange
-        co_vv = reform( rr.(i).(j).hsv.(co_ind).(k).(m).value )
-        
-        if config.(co_ind).cbarLog eq 1 then begin
-          co_mm = alog10(co_mm)
-          co_vv = alog10(co_vv)
-        endif
-        
-        co_vv = bytscl( co_vv, min=co_mm[0], max=co_mm[1] )
-        
-        ; plot each radial ray, corresponding to one healpix pixel
-        for rayNum=kBounds[0],kBounds[1] do begin
-          yy = reform( rr.(i).(j).hsv.(count).(k).(m).value[rayNum,*] )
-          
-          ; use temperature at each radial sample to color segment, map into [0,255] CT indices
-          co = reform(co_vv[rayNum,*])
-          
-          for rayPt=0,n_elements(yy)-2 do $
-            oplot,[xx[rayPt],xx[rayPt+1]],[yy[rayPt],yy[rayPt+1]],color=co[rayPt],line=0,thick=thick
-        
-        endfor ;rayNum
-          
+        plotColoredRays, rr=rr.(i).(j).hsv.(count).(k).(m), co=rr.(i).(j).hsv.(co_ind).(k).(m), $
+          config=config.(co_ind), kBounds=kBounds
+                    
         loadColorTable,config.(co_ind).ctName
         
         posCbar = pos[pInd]+offset
@@ -494,32 +480,9 @@ pro plotZoomRadialRays
           xtitle=xtitle,ytitle=ytitle,xtickname=xtickn,ytickname=ytickn,$
           /noerase,pos=pos[rayBinNum]+offset
           
-        ; select data
-        xx = rr.(i).(j).hsv.(count).(k).(m).radFacs
-        
-        ; colormap
-        co_mm = config.(co_ind).yrange
-        co_vv = reform( rr.(i).(j).hsv.(co_ind).(k).(m).value )
-        
-        if config.(co_ind).cbarLog eq 1 then begin
-          co_mm = alog10(co_mm)
-          co_vv = alog10(co_vv)
-        endif
-        
-        co_vv = bytscl( co_vv, min=co_mm[0], max=co_mm[1] )
-        
-        ; plot each radial ray, corresponding to one healpix pixel
-        for rayNum=kBounds[0],kBounds[1] do begin
-          yy = reform( rr.(i).(j).hsv.(count).(k).(m).value[rayNum,*] )
+        plotColoredRays, rr=rr.(i).(j).hsv.(count).(k).(m), co_rr=rr.(i).(j).hsv.(co_ind).(k).(m), $
+          config=config.(co_ind), kBounds=kBounds
           
-          ; use temperature at each radial sample to color segment, map into [0,255] CT indices
-          co = reform(co_vv[rayNum,*])
-          
-          for rayPt=0,n_elements(yy)-2 do $
-            oplot,[xx[rayPt],xx[rayPt+1]],[yy[rayPt],yy[rayPt+1]],color=co[rayPt],line=0,thick=thick
-        
-        endfor ;rayNum
-      
       endfor ; rayBins
       
       posCbar = [0.90,0.08,0.90+cbarSize,0.98]+offset
@@ -777,20 +740,21 @@ pro plotZoomRadialRays
       endforeach ; coNames
     endforeach ; tag_names(config),yName
   endfor ;method
-  
   endif ;skipRaw
   
-  ; plot (2c) - combined selections (yes/no side by side), all rays raster, mean on top
-  methods = [0,1] ; first splits by column, second splits by row
+  ; plot (3a) - combined selections (yes/no side by side), all rays raster, mean on top
+  if skipSel eq 0 then begin
+  methods = [1,2] ; first splits by column, second splits by row
   yName   = 'TEMP' ; what value to put on the y-axis
   coName  = 'ENTR' ; what value to color by
   xysize  = [8.0,5.0]
+  nRandom = 20
   
-  start_PS, rr.(i).(j).sP.plotPath + 'raySelect_2x2_' + plotStrIndiv + '_'+yName+'_'+coName+'.eps', $
-    xs=xysize[0]*1.4, ys=xysize[1]*1.4
+  start_PS, rr.(i).(j).sP.plotPath + 'raySelect_2x2='+str(methods[0])+str(methods[1])+'_' + $
+    plotStrIndiv + '_'+yName+'_'+coName+'.eps', xs=xysize[0]*1.4, ys=xysize[1]*1.4
   
   pos = plot_pos(row=2,col=2,/gap)
-  offset = [-0.01,-0.03,0.0,0]
+  offset = [-0.02,-0.03,-0.06,0]
   
   count = (where( tag_names(config) eq yName ))[0]
   ;coNames = ['VRAD','ENTR','TEMP','DENS','ANGM']
@@ -805,48 +769,93 @@ pro plotZoomRadialRays
   
   foreach method,methods,method_count do begin
     
+    ; selection A
     select_ind = (where( tag_names(config) eq selections.(method).quant ))[0]
       
     select_rVals = rr.(i).(j).hsv.(select_ind).(k).(m).radFacs
     select_rInds = where(select_rVals ge selections.(method).rMin and $
                          select_rVals le selections.(method).rMax)
+    ; selection B        
+    method2 = methods[ where(methods ne method) ]
+    select_ind2 = (where( tag_names(config) eq selections.(method2).quant ))[0]
+      
+    select_rVals2 = rr.(i).(j).hsv.(select_ind2).(k).(m).radFacs
+    select_rInds2 = where(select_rVals ge selections.(method2).rMin and $
+                          select_rVals le selections.(method2).rMax)             
   
     ; loop twice, make series of plots for passing/failing the selection criterion
     for select=0,1 do begin
   
-      loc_pos = pos[method_count*2+select]+offset
-      loc_ar  = ( loc_pos[2]-loc_pos[0] ) / ( loc_pos[3]-loc_pos[1] ) * (xySize[0]/xySize[1])
-  
-      ; we pre-draw the allrays view and save it as a raster image (match aspect ratio)
-      saveFilename = rr.(i).(j).sP.plotPath + 'allrays_image_' + plotStrIndiv +$
-                     '_' + yName + '_' + coName + '_m' + str(method) + '_s' + str(select)
+      ; select data
+      xx = rr.(i).(j).hsv.(count).(k).(m).radFacs
+      yy = rr.(i).(j).hsv.(count).(k).(m).value
+      yy_select  = reform( rr.(i).(j).hsv.(select_ind).(k).(m).value[*,select_rInds] )
+      yy_select2 = reform( rr.(i).(j).hsv.(select_ind2).(k).(m).value[*,select_rInds2] )
       
-      if ~file_test(saveFilename+'.png') then begin
-        print,' '+saveFilename+' : drawing all rays...'
-        
-        ; start image
-        start_PS, saveFilename + '.eps', xs=10, ys=10/loc_ar
-          cgPlot,[0],[0],/nodata,xrange=xrange,yrange=config.(count).yrange,xs=1,ys=1,$;xs=5,ys=5,$
-            xlog=xlog,ylog=config.(count).cbarLog,yminor=yminor,/noerase,pos=[0,0,1,1]
-            
-          loadColorTable,config.(co_ind).ctName
-            
-          ; TODO: all blue, check
-          ; TODO: need to add black/white colors to indexed table
-          plotColoredRays, rr=rr.(i).(j).hsv.(count).(k).(m), config=config.(co_ind)
-          
-          cgWindow_SetDefs, /im_png8 ; write 8-bit indexed PNG instead of 24-bit truecolor PNG
-          
-        end_PS, pngResize=20
-        
+      ; four permutations
+      if method_count eq 0 and select eq 0 then $
+        w_select = where( max(yy_select,dim=2) ge selections.(method).value and $
+                          max(yy_select2,dim=2) ge selections.(method2).value )
+      if method_count eq 0 and select eq 1 then $
+        w_select = where( max(yy_select,dim=2) lt selections.(method).value and $
+                          max(yy_select2,dim=2) lt selections.(method2).value )
+      if method_count eq 1 and select eq 1 then $
+        w_select = where( max(yy_select,dim=2) ge selections.(method).value and $
+                          max(yy_select2,dim=2) lt selections.(method2).value )
+      if method_count eq 1 and select eq 0 then $
+        w_select = where( max(yy_select,dim=2) lt selections.(method).value and $
+                          max(yy_select2,dim=2) ge selections.(method2).value )
+  
+      ; bin 2d histo for background
+      loc_pos = pos[ method_count*2+select ] + offset
+      loc_ar  = ( loc_pos[2]-loc_pos[0] ) / ( loc_pos[3]-loc_pos[1] ) * (xySize[0]/xySize[1])
+      
+      nBinsX = n_elements(rr.(i).(j).hsv.(count).(k).(m).radFacs)
+      nBinsY = round(nBinsX/loc_ar)
+
+      raysRaster = fltarr(nBinsX,nBinsY) - 1.0
+      
+      yMin = config.(count).yrange[0]
+      yMax = config.(count).yrange[1]
+      
+      if config.(count).cbarLog eq 1 then begin
+        yMin = alog10( yMin )
+        yMax = alog10( yMax )
       endif
       
-      ; load image and draw
-      raysRaster = read_png( saveFilename + '.png' )
-      ;raysRaster = reform( raysRaster[1,*,*] )
+      yStep = (yMax-yMin)/nBinsY
       
-      loadColorTable,config.(co_ind).ctName
+      for x=0,nBinsX-1 do begin
+        yLoc = reform(yy[w_select,x])
+        if config.(count).cbarLog eq 1 then yLoc = alog10( yLoc )
       
+        for y=0,nBinsY-1 do begin
+          ; select based on x-axis and y-axis for this bin
+          yMinLoc = yMin + yStep*y
+          yMaxLoc = yMin + yStep*(y+1)
+          
+          w = where(yLoc ge yMinLoc and yLoc lt yMaxLoc,count)
+          if count eq 0 then continue
+          
+          ; mean of color quantity in this bin
+          raysRaster[x,y] = mean(rr.(i).(j).hsv.(co_ind).(k).(m).value[w_select[w],x])
+        endfor
+      endfor
+  
+      ; colormap 2d histo
+      wZero = where(raysRaster eq -1.0,countZero)
+      
+      co_mm = config.(co_ind).yrange
+      if config.(co_ind).cbarLog eq 1 then begin
+        co_mm = alog10(co_mm)
+        raysRaster = alog10(raysRaster)
+      endif
+      
+      raysRaster = bytscl( raysRaster, min=co_mm[0], max=co_mm[1], top=254 ) + 1
+      if countZero gt 0 then raysRaster[wZero] = 0
+      
+      ; draw 2d histo
+      loadColorTable,config.(co_ind).ctName,/white0
       tv, raysRaster, loc_pos[0], loc_pos[1], /normal, xsize=loc_pos[2]-loc_pos[0]
       
       ; panel axes
@@ -855,28 +864,728 @@ pro plotZoomRadialRays
         xtitle=textoidl("r / r_{vir}"),ytitle=textoidl(config.(count).ytitle),$
         /noerase,pos=loc_pos
       
+      ; draw individual rays
+      co_mm = config.(co_ind).yrange
+      co_vv = reform( rr.(i).(j).hsv.(co_ind).(k).(m).value )
+      
+      if config.(co_ind).cbarLog eq 1 then begin
+        co_mm = alog10(co_mm)
+        co_vv = alog10(co_vv)
+      endif
+      
+      co_vv = bytscl( co_vv, min=co_mm[0], max=co_mm[1] )
+      
+      ; plot each radial ray, corresponding to one healpix pixel
+      rayNums = shuffle(lindgen(n_elements(w_select)),seed=4242) ; shuffle indices of selected rays
+      rayNums = rayNums[0:(nRandom<n_elements(w_select))-1] ; sub-select nRandom of them
+      rayNums = w_select[rayNums] ; transform to value[] indices
+      
+      foreach rayNum,rayNums do begin
+        yLoc = reform( rr.(i).(j).hsv.(count).(k).(m).value[rayNum,*] )
+        
+        ; use temperature at each radial sample to color segment, map into [0,255] CT indices
+        co = reform(co_vv[rayNum,*])
+        
+        cgPlot,xx,yLoc,color='black',/overplot,thick=thick,line=0
+        ;for rayPt=0,n_elements(yLoc)-2 do $
+        ;  oplot,[xx[rayPt],xx[rayPt+1]],[yLoc[rayPt],yLoc[rayPt+1]],color=co[rayPt],line=0,thick=thick
+      
+      endforeach ;rayNums
+      
       ; draw mean
       xx = rr.(i).(j).hsv.(count).(k).(m).radFacs
-      yy = rr.(i).(j).hsv.(count).(k).(m).value
-      yy_select = reform( rr.(i).(j).hsv.(select_ind).(k).(m).value[*,select_rInds] )
+      yy = mean(rr.(i).(j).hsv.(count).(k).(m).value[w_select,*],dim=1)
+      co = mean(co_vv[w_select,*],dim=1)
       
-      if select eq 0 then ww = where( max(yy_select,dim=2) ge selections.(method).value )
-      if select eq 1 then ww = where( max(yy_select,dim=2) lt selections.(method).value )
+      cgPlot,xx,yy,color='black',line=0,thick=!p.thick+6.0,/overplot
+      for rayPt=0,n_elements(yy)-2 do $
+        oplot,[xx[rayPt],xx[rayPt+1]],[yy[rayPt],yy[rayPt+1]],color=co[rayPt],line=0,thick=!p.thick+2.0
       
-      cgPlot,xx,mean(yy[ww,*],dim=1),color='black',line=0,thick=!p.thick,/overplot
+      ; selection radial indicators
+      if method_count eq 1 and select eq 0 then begin
+        rMin = selections.(method).rMin
+        rMax = selections.(method).rMax
+        yMin = 10.0^4.1
+        yMax = 10.0^4.2
+        yMid = mean([yMin,yMax])
+        
+        cgPlot,[rMin,rMax],[yMid,yMid],line=0,/overplot
+        cgPlot,[rMin,rMin],[yMin,yMax],line=0,/overplot
+        cgPlot,[rMax,rMax],[yMin,yMax],line=0,/overplot
+        
+        rMin = selections.(method2).rMin
+        rMax = selections.(method2).rMax
+        yMin = 10.0^4.2
+        yMax = 10.0^4.3
+        yMid = mean([yMin,yMax])
+        
+        cgPlot,[rMin,rMax],[yMid,yMid],line=1,/overplot
+        cgPlot,[rMin,rMin],[yMin,yMax],line=0,/overplot
+        cgPlot,[rMax,rMax],[yMin,yMax],line=0,/overplot
+      endif
       
-      ; labels      
+      ; labels    
+      if method_count eq 0 and select eq 0 then $
+        selectStr = ['max('+selections.(method).quant + ') > '+textoidl(selections.(method).vStr),$
+                     'max('+selections.(method2).quant + ') > '+textoidl(selections.(method2).vStr)]
+      if method_count eq 0 and select eq 1 then $
+        selectStr = ['max('+selections.(method).quant + ') < '+textoidl(selections.(method).vStr),$
+                     'max('+selections.(method2).quant + ') < '+textoidl(selections.(method2).vStr)]
+      if method_count eq 1 and select eq 1 then $
+        selectStr = ['max('+selections.(method2).quant + ') < '+textoidl(selections.(method2).vStr),$
+                     'max('+selections.(method).quant + ') > '+textoidl(selections.(method).vStr)]
+      if method_count eq 1 and select eq 0 then $
+        selectStr = ['max('+selections.(method2).quant + ') > '+textoidl(selections.(method2).vStr),$
+                     'max('+selections.(method).quant + ') < '+textoidl(selections.(method).vStr)]
+
+      legend,selectStr,/top,/right
+      
+      ; colorbar
+      cbarSize = 0.03
+      posCbar = [loc_pos[2]+0.01,loc_pos[1],loc_pos[2]+0.01+cbarSize,loc_pos[3]]
+      ndiv = config.(co_ind).cbarDivs
+      
+      cgColorbar,pos=posCbar,divisions=ndiv,range=co_mm,/vertical,/right,$
+        title=textoidl(config.(co_ind).ytitle),charsize=!p.charsize*1.0
     
+    endfor ;select
+    
+  endforeach ;method
+  end_PS  
+  
+  ; plot (3b) - combined selections (yes/no side by side), random rays selection, mean on top
+  start_PS, rr.(i).(j).sP.plotPath + 'raySelectLines_2x2='+str(methods[0])+str(methods[1])+'_' + $
+    plotStrIndiv + '_'+yName+'_'+coName+'.eps', xs=xysize[0]*1.4, ys=xysize[1]*1.4
+  
+  pos = plot_pos(row=2,col=2,/gap)
+  offset = [-0.02,-0.03,-0.06,0]
+  
+  count = (where( tag_names(config) eq yName ))[0]
+  ;coNames = ['VRAD','ENTR','TEMP','DENS','ANGM']
+  
+  ;foreach coName,removeIntersectionFromB(yName,coNames),pInd do begin
+  
+  if config.(count).cbarLog eq 0 then yminor = 2
+  if config.(count).cbarLog eq 1 then yminor = 0
+
+  co_ind = where( tag_names(config) eq coName )
+  loadColorTable,config.(co_ind).ctName
+  
+  foreach method,methods,method_count do begin
+    
+    ; selection A
+    select_ind = (where( tag_names(config) eq selections.(method).quant ))[0]
+      
+    select_rVals = rr.(i).(j).hsv.(select_ind).(k).(m).radFacs
+    select_rInds = where(select_rVals ge selections.(method).rMin and $
+                         select_rVals le selections.(method).rMax)
+    ; selection B        
+    method2 = methods[ where(methods ne method) ]
+    select_ind2 = (where( tag_names(config) eq selections.(method2).quant ))[0]
+      
+    select_rVals2 = rr.(i).(j).hsv.(select_ind2).(k).(m).radFacs
+    select_rInds2 = where(select_rVals ge selections.(method2).rMin and $
+                          select_rVals le selections.(method2).rMax)             
+  
+    ; loop twice, make series of plots for passing/failing the selection criterion
+    for select=0,1 do begin
+  
+      ; select data
+      yy_select  = reform( rr.(i).(j).hsv.(select_ind).(k).(m).value[*,select_rInds] )
+      yy_select2 = reform( rr.(i).(j).hsv.(select_ind2).(k).(m).value[*,select_rInds2] )
+      
+      ; four permutations
+      if method_count eq 0 and select eq 0 then $
+        w_select = where( max(yy_select,dim=2) ge selections.(method).value and $
+                          max(yy_select2,dim=2) ge selections.(method2).value )
+      if method_count eq 0 and select eq 1 then $
+        w_select = where( max(yy_select,dim=2) lt selections.(method).value and $
+                          max(yy_select2,dim=2) lt selections.(method2).value )
+      if method_count eq 1 and select eq 1 then $
+        w_select = where( max(yy_select,dim=2) ge selections.(method).value and $
+                          max(yy_select2,dim=2) lt selections.(method2).value )
+      if method_count eq 1 and select eq 0 then $
+        w_select = where( max(yy_select,dim=2) lt selections.(method).value and $
+                          max(yy_select2,dim=2) ge selections.(method2).value )
+  
+      ; panel axes
+      loc_pos = pos[ method_count*2+select ] + offset
+      
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=config.(count).yrange,/xs,/ys,$
+        xlog=xlog,ylog=config.(count).cbarLog,yminor=yminor,$
+        xtitle=textoidl("r / r_{vir}"),ytitle=textoidl(config.(count).ytitle),$
+        /noerase,pos=loc_pos
+        
+      ; draw individual rays
+      co_mm = config.(co_ind).yrange
+      co_vv = reform( rr.(i).(j).hsv.(co_ind).(k).(m).value )
+      
+      if config.(co_ind).cbarLog eq 1 then begin
+        co_mm = alog10(co_mm)
+        co_vv = alog10(co_vv)
+      endif
+      
+      co_vv = bytscl( co_vv, min=co_mm[0], max=co_mm[1] )
+      
+      ; plot each radial ray, corresponding to one healpix pixel
+      rayNums = shuffle(lindgen(n_elements(w_select)),seed=4242) ; shuffle indices of selected rays
+      rayNums = rayNums[0:(nRandom<n_elements(w_select))-1] ; sub-select nRandom of them
+      rayNums = w_select[rayNums] ; transform to value[] indices
+      
+      foreach rayNum,rayNums do begin
+        yy = reform( rr.(i).(j).hsv.(count).(k).(m).value[rayNum,*] )
+        
+        ; use temperature at each radial sample to color segment, map into [0,255] CT indices
+        co = reform(co_vv[rayNum,*])
+        
+        for rayPt=0,n_elements(yy)-2 do $
+          oplot,[xx[rayPt],xx[rayPt+1]],[yy[rayPt],yy[rayPt+1]],color=co[rayPt],line=0,thick=thick
+      
+      endforeach ;rayNums
+      
+      ; draw mean
+      xx = rr.(i).(j).hsv.(count).(k).(m).radFacs
+      yy = mean(rr.(i).(j).hsv.(count).(k).(m).value[w_select,*],dim=1)
+      co = mean(co_vv[w_select,*],dim=1)
+      
+      cgPlot,xx,yy,color='black',line=0,thick=!p.thick+6.0,/overplot
+      for rayPt=0,n_elements(yy)-2 do $
+        oplot,[xx[rayPt],xx[rayPt+1]],[yy[rayPt],yy[rayPt+1]],color=co[rayPt],line=0,thick=!p.thick+2.0
+      
+      ; selection radial indicators
+      if method_count eq 1 and select eq 0 then begin
+        rMin = selections.(method).rMin
+        rMax = selections.(method).rMax
+        yMin = 10.0^4.1
+        yMax = 10.0^4.2
+        yMid = mean([yMin,yMax])
+        
+        cgPlot,[rMin,rMax],[yMid,yMid],line=0,/overplot
+        cgPlot,[rMin,rMin],[yMin,yMax],line=0,/overplot
+        cgPlot,[rMax,rMax],[yMin,yMax],line=0,/overplot
+        
+        rMin = selections.(method2).rMin
+        rMax = selections.(method2).rMax
+        yMin = 10.0^4.2
+        yMax = 10.0^4.3
+        yMid = mean([yMin,yMax])
+        
+        cgPlot,[rMin,rMax],[yMid,yMid],line=1,/overplot
+        cgPlot,[rMin,rMin],[yMin,yMax],line=0,/overplot
+        cgPlot,[rMax,rMax],[yMin,yMax],line=0,/overplot
+      endif
+      
+      ; labels    
+      if method_count eq 0 and select eq 0 then $
+        selectStr = ['max('+selections.(method).quant + ') > '+textoidl(selections.(method).vStr),$
+                     'max('+selections.(method2).quant + ') > '+textoidl(selections.(method2).vStr)]
+      if method_count eq 0 and select eq 1 then $
+        selectStr = ['max('+selections.(method).quant + ') < '+textoidl(selections.(method).vStr),$
+                     'max('+selections.(method2).quant + ') < '+textoidl(selections.(method2).vStr)]
+      if method_count eq 1 and select eq 1 then $
+        selectStr = ['max('+selections.(method2).quant + ') < '+textoidl(selections.(method2).vStr),$
+                     'max('+selections.(method).quant + ') > '+textoidl(selections.(method).vStr)]
+      if method_count eq 1 and select eq 0 then $
+        selectStr = ['max('+selections.(method2).quant + ') > '+textoidl(selections.(method2).vStr),$
+                     'max('+selections.(method).quant + ') < '+textoidl(selections.(method).vStr)]
+
+      legend,selectStr,/top,/right
+      
+      ; colorbar
+      cbarSize = 0.03
+      posCbar = [loc_pos[2]+0.01,loc_pos[1],loc_pos[2]+0.01+cbarSize,loc_pos[3]]
+      ndiv = config.(co_ind).cbarDivs
+      
+      cgColorbar,pos=posCbar,divisions=ndiv,range=co_mm,/vertical,/right,$
+        title=textoidl(config.(co_ind).ytitle),charsize=!p.charsize*1.0
     
     endfor ;select
     
   endforeach ;method
   end_PS
+  endif ;skipSel
   
+  ; plot (3c) - by hand selections, random rays selection, mean on top
+  ddSK = round(nrIndiv/100.0*3)
+  ddMinRad = 0.20 ; r/rvir
+
+  cbarSize = 0.015
+  
+  topSize = 0.1
+  yrangeTop = [-0.5,1.5]
+  yValsTop = [0.0,0.5,1.0,1.5]
+  nTopOther = 5.0 ; show how many other examples in top panel (thin lines)
+  
+  ddQuant = 'TEMP' ;'ENTR'
+  ddLabel = "dT_{gas }/dr" ;"dS_{gas }/dr"
+  select_ind_dd = (where( tag_names(config) eq ddQuant ))[0]
+  
+  laName = 'VRAD' ; what value to add spaced text labels for
+  coName = 'ENTR' ; what value to color lines by
+  
+  if skipSel ne 1 then begin
+  for plotVar=0,1 do begin
+    if plotVar eq 0 then begin
+      dimStr = '3x2'
+      xs = xysize[0]*1.8*1.2
+      ys = xysize[1]*1.5*1.2
+      
+      pos = plot_pos(row=2,col=3,/gap)
+      offset  = [-0.01,-0.04,-0.07,0.02-topSize]
+      
+      selMax = 5
+    endif
+    
+    if plotVar eq 1 then begin
+      dimStr = '2x2'
+      xs = xysize[0]*1.5
+      ys = xysize[1]*1.8
+      
+      pos = plot_pos(row=2,col=2,/gap)
+      offset  = [-0.03,-0.04,-0.05,0.01-topSize]
+      
+      selMax = 3
+    endif
+  
+  start_PS, rr.(i).(j).sP.plotPath + 'raySelectHand_'+dimStr+'_' + $
+    plotStrIndiv + '_'+yName+'_'+coName+'.eps', xs=xs, ys=ys
+  
+    count = (where( tag_names(config) eq yName ))[0]
+    
+    if config.(count).cbarLog eq 0 then yminor = 2
+    if config.(count).cbarLog eq 1 then yminor = 0
+
+    co_ind = where( tag_names(config) eq coName )
+    la_ind = where( tag_names(config) eq laName )
+    loadColorTable,config.(co_ind).ctName
+  
+    for select=0,selMax do begin
+    
+      loc_pos    = pos[select] + offset
+      loc_posTop = [loc_pos[0],loc_pos[3],loc_pos[2],loc_pos[3]+topSize]
+    
+      ; selections
+      if select eq 0 then begin
+        quant = 'TEMP'        
+        value = 2e5
+        rMin = 0.2
+        rMax = 1.4
+        
+        rMin2 = 0
+        rMax2 = 0
+        
+        selectStr = 'distant shock'
+        protRay = 5
+        protRayB = 439 ; 85 dip example
+      endif
+      
+      if select eq 1 then begin
+        quant = 'TEMP'        
+        value = 3e5
+        rMin = 0.2
+        rMax = 0.9
+        
+        value2 = 8e4
+        rMin2 = 1.75
+        rMax2 = 2.0
+        
+        selectStr = 'closer shock'
+        protRay = 5 ;20
+        protRayB = 626 ; dip example
+      endif
+      
+      if select eq 2 then begin
+        quant = 'TEMP'
+        value = 3e5
+        rMin  = 0.2
+        rMax  = 0.75   
+        
+        selectStr = 'gradual heating'
+        protRay = 10
+      endif
+      
+      if select eq 3 then begin
+        quant = 'ENTR'
+        value = 8e8
+        rMin  = 0.2
+        rMax  = 2.0
+        
+        selectStr = 'low entropy'
+        protRay = 0
+      endif
+      
+      if select eq 4 then begin
+        quant = 'TEMP'
+        value = 1e5
+        rMin  = 0.1
+        rMax  = 0.75
+        
+        quant = 'VRAD'
+        value = 0.0
+        rMin  = 0.2
+        rMax  = 1.0
+        
+        selectStr = 'big dips'
+        protRay = 0
+      endif
+      
+      if select eq 5 then begin
+        selectStr = 'remaining'
+        protRay = 0
+      endif
+    
+      select_ind = (where( tag_names(config) eq quant ))[0]
+      select_rVals = rr.(i).(j).hsv.(select_ind).(k).(m).radFacs
+      select_rInds = where(select_rVals ge rMin and select_rVals le rMax)
+      select_rInds2 = where(select_rVals ge rMin2 and select_rVals le rMax2)
+
+      ; compute derivatives (-1 means positive deriv for temp increasing towards smaller rad)
+      dd = rr.(i).(j).hsv.(select_ind_dd).(k).(m).value
+      for d=0,n_elements(dd[*,0])-1 do dd[d,*] = -1.0 * deriv(reform(alog10(dd[d,*])))
+      dd = dd/(2.0/nrIndiv)*0.1 ; deriv units: logK/(0.1r/rvir)
+    
+      ; select data
+      yy_select = reform( rr.(i).(j).hsv.(select_ind).(k).(m).value[*,select_rInds] )
+      yy_select2 = reform( rr.(i).(j).hsv.(select_ind).(k).(m).value[*,select_rInds2] )
+      
+      dd_max = max(dd[*,where(select_rVals ge ddMinRad)],dd_maxRad,dim=2)
+      dd_min = min(dd[*,where(select_rVals ge ddMinRad)],dd_minRad,dim=2)
+      dd_maxRad = select_rVals[reform((array_indices(dd,dd_maxRad))[1,*])] ; convert into r/rvir values
+      dd_minRad = select_rVals[reform((array_indices(dd,dd_minRad))[1,*])]
+          
+      ; selections
+      if select eq 0 then $
+        w_select = where( smooth(dd_max,ddSK) ge 0.25 and $
+                          dd_maxRad ge 1.5 and $
+                          dd_maxRad le 2.0 and $
+                          min(yy_select,dim=2) ge value, comp=w_remaining )
+      if select eq 1 then $
+        w_select = where( smooth(dd_max[w_remaining_prev],ddSK) ge 0.25 and $
+                          dd_maxRad[w_remaining_prev] ge 0.80 and $
+                          dd_maxRad[w_remaining_prev] le 1.5 and $
+                          min(yy_select[w_remaining_prev,*],dim=2) ge value and $
+                          max(yy_select2[w_remaining_prev,*],dim=2) le value2, comp=w_remaining )
+      if select eq 2 then $
+        w_select = where( min(yy_select[w_remaining_prev,*],dim=2) ge value and $
+                          dd_max[w_remaining_prev] le 0.8, comp=w_remaining )
+      if select eq 3 then $
+        w_select = where( max(yy_select[w_remaining_prev,*],dim=2) le value, comp=w_remaining)
+      if select eq 4 then $
+        w_select = where( max(yy_select[w_remaining_prev,*],dim=2) ge value, comp=w_remaining )
+      if select eq 5 then $
+        w_select = lindgen(n_elements(w_remaining_prev)) ; remaining  
+  
+      ; map indices into original rays (both for selection and remaining)
+      if select gt 0 then begin
+        w_select = w_remaining_prev[w_select]
+        if select lt 5 then w_remaining = w_remaining_prev[w_remaining]
+      endif
+      
+      w_remaining_prev = w_remaining
+    
+      ; panel axes
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=config.(count).yrange,xs=5,ys=5,$
+        xlog=xlog,ylog=config.(count).cbarLog,yminor=yminor,$
+        xtitle="",ytitle="",ytickname=replicate(" ",10),xtickname=replicate(" ",10),$
+        /noerase,pos=loc_pos
+        
+      ; draw individual rays
+      co_mm = config.(co_ind).yrange
+      co_vv = reform( rr.(i).(j).hsv.(co_ind).(k).(m).value )
+      
+      if config.(co_ind).cbarLog eq 1 then begin
+        co_mm = alog10(co_mm)
+        co_vv = alog10(co_vv)
+      endif
+      
+      co_vv = bytscl( co_vv, min=co_mm[0], max=co_mm[1] )
+      
+      ; plot each radial ray, corresponding to one healpix pixel
+      ;rayNums = shuffle(lindgen(n_elements(w_select)),seed=4242) ; shuffle indices of selected rays
+      ;;;;rayNums = rayNums[0:(nRandom<n_elements(w_select))-1] ; sub-select nRandom of them
+      ;rayNums = w_select[rayNums] ; transform to value[] indices
+      rayNums = w_select
+      
+      foreach rayNum,rayNums do begin
+        yy = reform( rr.(i).(j).hsv.(count).(k).(m).value[rayNum,*] )
+        
+        ; use temperature at each radial sample to color segment, map into [0,255] CT indices
+        co = reform(co_vv[rayNum,*])
+        
+        for rayPt=0,n_elements(yy)-2 do $
+          oplot,[xx[rayPt],xx[rayPt+1]],[yy[rayPt],yy[rayPt+1]],color=co[rayPt],line=0,thick=thick
+      
+      endforeach ;rayNums
+      
+      ; draw prototypical example(s) thicker
+      xx = rr.(i).(j).hsv.(count).(k).(m).radFacs
+      yy = rr.(i).(j).hsv.(count).(k).(m).value[rayNums[protRay],*]
+      co = co_vv[rayNums[protRay],*]
+      
+      cgPlot,xx,yy,color='black',line=0,thick=!p.thick+6.0,/overplot
+      for rayPt=0,n_elements(yy)-2 do $
+        oplot,[xx[rayPt],xx[rayPt+1]],[yy[rayPt],yy[rayPt+1]],color=co[rayPt],line=0,thick=!p.thick+2.0
+      
+      ; draw axes and ticks on top
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=config.(count).yrange,/xs,/ys,$
+        xlog=xlog,ylog=config.(count).cbarLog,yminor=yminor,$
+        xtitle=textoidl("r / r_{vir}"),ytitle=textoidl(config.(count).ytitle),$
+        /noerase,pos=loc_pos
+      
+      ; selection radial indicators
+      if 0 then begin
+        yMin = 10.0^4.1
+        yMax = 10.0^4.2
+        yMid = mean([yMin,yMax])
+        
+        cgPlot,[rMin,rMax],[yMid,yMid],line=1,/overplot
+        cgPlot,[rMin,rMin],[yMin,yMax],line=0,/overplot
+        cgPlot,[rMax,rMax],[yMin,yMax],line=0,/overplot
+        
+        yMin = 10.0^4.2
+        yMax = 10.0^4.28
+        yMid = mean([yMin,yMax])
+        
+        cgPlot,[rMin2,rMax2],[yMid,yMid],line=1,/overplot
+        cgPlot,[rMin2,rMin2],[yMin,yMax],line=0,/overplot
+        cgPlot,[rMax2,rMax2],[yMin,yMax],line=0,/overplot
+      endif ;0
+      
+      ; labels
+      laSpacing = ceil(nrIndiv/8.0)
+      la_vv = reform( rr.(i).(j).hsv.(la_ind).(k).(m).value )
+      
+      for rayPt=laSpacing,n_elements(yy)-laSpacing/2,laSpacing do begin
+        xLa = xx[rayPt]
+        
+        ; offset above local mean y-value
+        yLa = max(yy[rayPt-5>0:rayPt+5<n_elements(yy)-1])*1.5 
+        
+        ; label = mean of selected rays at this rad
+        vLa = mean( reform(la_vv[rayNums,rayPt]), dim=1 ) 
+        ; label = prototypical ray at this rad
+        ;vLa = la_vv[rayNums[protRay],rayPt] 
+        ; label = local mean of protRay
+        ;vLa = mean( la_vv[rayNums[protRay],rayPt-5>0:rayPt+5<n_elements(yy)-1] )
+        
+        sLa = str(string(round(vLa/5.0)*5.0,format='(I4)')) ; round to nearest 5 km/s
+        
+        cgText,xLa,yLa,sLa,color='black',alignment=0.5
+      endfor
+      
+      if select eq 0 or select eq 1 then begin
+        ; exception example
+        w_ex = where( smooth(dd_max,ddSK) ge 0.1 and $
+                          dd_maxRad ge 1.25 and $
+                          dd_maxRad le 2.0 and $
+                          min(yy_select,dim=2) lt 1e5 )
+
+        yy = rr.(i).(j).hsv.(count).(k).(m).value[protRayB,*]
+        cgPlot,xx,yy,color='black',line=0,thick=thick,/overplot
+      endif
+      
+      ; legend
+      rayFrac = n_elements(w_select)*100.0/n_elements(yy_select[*,0])
+      legend,[textoidl(selectStr),string(rayFrac,format='(f4.1)')+'%'],/top,/right
+      
+      ; colorbar
+      posCbar = [loc_pos[2]+0.01,loc_pos[1],loc_pos[2]+0.01+cbarSize,loc_pos[3]]
+      ndiv = config.(co_ind).cbarDivs
+      
+      cgColorbar,pos=posCbar,divisions=ndiv,range=co_mm,/vertical,/right,$
+        title=textoidl(config.(co_ind).ytitle),charsize=!p.charsize*1.0
+        
+      ; top panel
+      cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeTop,/xs,/ys,xlog=xlog,ylog=0,$
+        xtitle="",xtickname=replicate(" ",10),ytitle=textoidl(ddLabel),$
+        /noerase,pos=loc_posTop,ytickv=yValsTop,yticks=n_elements(yValsTop)-1
+      
+      ; draw derivative of prototypical ray
+      xx = rr.(i).(j).hsv.(count).(k).(m).radFacs
+      yy = dd[rayNums,*]
+      ;co = co_vv[rayNums[0],*]
+      ww = where(xx ge ddMinRad)
+      
+      raySkip = round(n_elements(rayNums)/5.0) ; show 5
+      
+      cgPlot,xx[ww],smooth(reform(yy[protRay,ww]),ddSK),color='black',line=0,thick=!p.thick+1.0,/overplot
+      for rayNum=0,n_elements(rayNums)-1,raySkip do $
+        cgPlot,xx[ww],reform(yy[rayNum,ww]),color='black',line=0,thick=thick,/overplot
+
+      ; top histogram
+      ;posHisto = [loc_posTop[2],loc_posTop[1],loc_posTop[2]+0.05,loc_posTop[3]]
+      
+      ;dd = rr.(i).(j).hsv.VRAD.(k).(m).value
+      ;for d=0,n_elements(dd[*,0])-1 do dd[d,*] = -1.0 * deriv(reform(alog10(dd[d,*])))
+      ;dd = dd/(2.0/nrIndiv)*0.1 ; deriv units: logK/(0.1r/rvir)
+      
+      ;dd_h = dd[*,where(select_rVals ge ddMinRad)]
+      ;dd_h = dd_h[w_select,*]
+      ;;dd_h = dd_max[w_select]
+      ;cgHistoplot,dd_h,binsize=0.1,pos=posHisto,/noerase,/rotate,$
+      ;  yrange=yrangeTop,/frequency,xs=9,ys=9,$
+      ;  xtickname=replicate(" ",10),ytickname=replicate(" ",10),xtitle=""
+      
+    endfor ; select
+      
+  end_PS
+  
+  endfor ;plotVar  
+  endif ;skipSel
+  
+  ; print stats
+  if 0 then begin
+  meanStatFracs = fltarr(n_tags(rr),n_tags(rr.(0)),5)
+  
+  for ii=0,n_tags(rr)-1 do begin
+    for jj=0,n_tags(rr.(ii))-1 do begin
+      for select=0,4 do begin
+      
+        ; selections
+        if select eq 0 then begin
+          quant = 'TEMP'        
+          value = 2e5
+          rMin = 0.2
+          rMax = 1.4
+          
+          rMin2 = 0
+          rMax2 = 0
+          
+          selectStr = 'distant shock'
+          protRay = 5
+          protRayB = 439 ; 85 dip example
+        endif
+        
+        if select eq 1 then begin
+          quant = 'TEMP'        
+          value = 3e5
+          rMin = 0.2
+          rMax = 0.9
+          
+          value2 = 8e4
+          rMin2 = 1.75
+          rMax2 = 2.0
+          
+          selectStr = 'closer shock'
+          protRay = 5 ;20
+          protRayB = 626 ; dip example
+        endif
+        
+        if select eq 2 then begin
+          quant = 'TEMP'
+          value = 3e5
+          rMin  = 0.2
+          rMax  = 0.75   
+          
+          selectStr = 'gradual heating'
+          protRay = 10
+        endif
+        
+        if select eq 3 then begin
+          quant = 'ENTR'
+          value = 8e8
+          rMin  = 0.2
+          rMax  = 2.0
+          
+          selectStr = 'low entropy'
+          protRay = 0
+        endif
+        
+        if select eq 4 then begin
+          quant = 'TEMP'
+          value = 1e5
+          rMin  = 0.1
+          rMax  = 0.75
+          
+          quant = 'VRAD'
+          value = 0.0
+          rMin  = 0.2
+          rMax  = 1.0
+          
+          selectStr = 'big dips'
+          protRay = 0
+        endif
+        
+        if select eq 5 then begin
+          selectStr = 'remaining'
+          protRay = 0
+        endif
+      
+        select_ind = (where( tag_names(config) eq quant ))[0]
+        select_rVals = rr.(ii).(jj).hsv.(select_ind).(k).(m).radFacs
+        select_rInds = where(select_rVals ge rMin and select_rVals le rMax)
+        select_rInds2 = where(select_rVals ge rMin2 and select_rVals le rMax2)
+
+        ; compute derivatives (-1 means positive deriv for temp increasing towards smaller rad)
+        dd = rr.(ii).(jj).hsv.(select_ind_dd).(k).(m).value
+        for d=0,n_elements(dd[*,0])-1 do dd[d,*] = -1.0 * deriv(reform(alog10(dd[d,*])))
+        dd = dd/(2.0/nrIndiv)*0.1 ; deriv units: logK/(0.1r/rvir)
+      
+        ; smooth derivative?
+        if nrIndiv eq 200 then dd = smooth(dd,3,/nan)
+        if nrIndiv eq 400 then dd = smooth(dd,5,/nan)
+      
+        ; select data
+        yy_select = reform( rr.(ii).(jj).hsv.(select_ind).(k).(m).value[*,select_rInds] )
+        yy_select2 = reform( rr.(ii).(jj).hsv.(select_ind).(k).(m).value[*,select_rInds2] )
+        
+        dd_max = max(dd[*,where(select_rVals ge ddMinRad)],dd_maxRad,dim=2)
+        dd_min = min(dd[*,where(select_rVals ge ddMinRad)],dd_minRad,dim=2)
+        dd_maxRad = select_rVals[reform((array_indices(dd,dd_maxRad))[1,*])] ; convert into r/rvir values
+        dd_minRad = select_rVals[reform((array_indices(dd,dd_minRad))[1,*])]
+            
+        ; selections
+        if select eq 0 then $
+          w_select = where( smooth(dd_max,ddSK) ge 0.25 and $
+                            dd_maxRad ge 1.5 and $
+                            dd_maxRad le 2.0 and $
+                            min(yy_select,dim=2) ge value, comp=w_remaining )
+        if select eq 1 then $
+          w_select = where( smooth(dd_max[w_remaining_prev],ddSK) ge 0.25 and $
+                            dd_maxRad[w_remaining_prev] ge 0.80 and $
+                            dd_maxRad[w_remaining_prev] le 1.5 and $
+                            min(yy_select[w_remaining_prev,*],dim=2) ge value and $
+                            max(yy_select2[w_remaining_prev,*],dim=2) le value2, comp=w_remaining )
+        if select eq 2 then $
+          w_select = where( min(yy_select[w_remaining_prev,*],dim=2) ge value and $
+                            dd_max[w_remaining_prev] le 0.8, comp=w_remaining )
+        if select eq 3 then $
+          w_select = where( max(yy_select[w_remaining_prev,*],dim=2) le value, comp=w_remaining)
+        if select eq 4 then $
+          w_select = where( max(yy_select[w_remaining_prev,*],dim=2) ge value, comp=w_remaining )
+        if select eq 5 then $
+          w_select = lindgen(n_elements(w_remaining_prev)) ; remaining  
+
+        ; map indices into original rays (both for selection and remaining)
+        if select gt 0 then begin
+          w_select = w_remaining_prev[w_select]
+          if select lt 5 then w_remaining = w_remaining_prev[w_remaining]
+        endif
+        
+        w_remaining_prev = w_remaining
+        
+        ; fractions
+        rayFrac = n_elements(w_select)*100.0/n_elements(yy_select[*,0])
+        print,'h'+str(rr.(ii).(jj).sP.hInd)+'L'+str(rr.(ii).(jj).sP.res)+': '+$
+          selectStr+' '+string(rayFrac,format='(f4.1)')+'%'
+          
+        meanStatFracs[ii,jj,select] = rayFrac
+      endfor ;select
+    endfor ;jj
+  endfor ;ii
+  
+  for select=0,4 do begin
+    for jj=0,n_tags(rr.(0))-1 do begin
+      xx = reform(meanStatFracs[*,jj,select])
+      print,'L'+str(rr.(0).(jj).sP.res)+' mean (select='+str(select)+'):'
+      print,' '+string(mean(xx),format='(f4.1)')+' pm '+string(stddev(xx),format='(f4.1)')
+    endfor
+  endfor
+  endif ;0
   
   ; ----------------------------------------------------------------------------------
   
-  ; plot (3a) - global 2D plot of all rays, single coloring per plot, one plot per value
+  ; plot (4a) - global 2D plot of all rays, single coloring per plot, one plot per value
   if skip2D ne 1 then begin
   foreach yName,tag_names(config) do begin
     
@@ -919,7 +1628,7 @@ pro plotZoomRadialRays
   
   endforeach ;tag_names(config),yName
   
-  ; plot (3b) - all 2D panels on one plot (5 narrow columns)
+  ; plot (4b) - all 2D panels on one plot (5 narrow columns)
   start_PS, rr.(i).(j).sP.plotPath + 'radialRays2DAll_'+plotStrIndiv+'.eps', xs=10.0*1.4, ys=8.0*1.4
    
     posBounds = [0.06,0.06,0.82,0.90]
@@ -974,7 +1683,7 @@ pro plotZoomRadialRays
   
   ; ----------------------------------------------------------------------------------
   
-  ; plot (4a) - ray statistics based on selections, one quantity per plot
+  ; plot (5a) - ray statistics based on selections, one quantity per plot
   if skipStats ne 1 then begin
   for method=0,n_tags(selections)-1 do begin
   
@@ -1064,7 +1773,7 @@ pro plotZoomRadialRays
   
   endfor ;method
   
-  ; plot (4b) - ray statistics based on selections, 2x2 panels (four quantities)
+  ; plot (5b) - ray statistics based on selections, 2x2 panels (four quantities)
   start_PS, rr.(i).(j).sP.plotPath + 'rayStats_2x2_' + plotStr + '.eps', xs=8*1.4, ys=5*1.4
   
   pos = plot_pos(row=2,col=2,/gap)
@@ -1129,7 +1838,7 @@ pro plotZoomRadialRays
       angFrac /= float(nRaysMax)
       
       ; plot
-      coth_ind = 0 ; jj_L11
+      coth_ind = 0 ;jj_L11 ;0
       co = rr.(ii).(jj_L11).sP.colors[cInds[coth_ind]]
       th = !p.thick * rThick[coth_ind]
           
@@ -1142,12 +1851,12 @@ pro plotZoomRadialRays
     meanAngFrac /= float(nRaysMax*n_tags(rr)) ; normalize
 
     for ff=0,5 do $
-      cgPlot,binVals,meanAngFrac[*,ff],line=ff,thick=!p.thick*rThick[jj_L11],color='black',/overplot
+      cgPlot,binVals,meanAngFrac[*,ff],line=ff,thick=!p.thick*rThick[jj_L11]+1.0,color='black',/overplot
     
     ; legends
     loadColorTable,'bw linear'    
     
-    if method eq 0 then legend,hNames,textcolor=hColors,/top,/left
+    if method eq 0 then legend,hNames,textcolor=hColors,pos=[3.3,0.8],/data
     
     legendStrs = ['\geq max','< max',$
                   '\geq min','< min',$
@@ -1162,7 +1871,8 @@ pro plotZoomRadialRays
       
   ; ----------------------------------------------------------------------------------
       
-  ; plot (5a) - ray PDF (fraction of sphere covered) based on temp criterion (indiv halo)
+  ; plot (6a) - ray PDF (fraction of sphere covered) based on temp criterion (indiv halo)
+  if skipPDFs eq 0 then begin
   start_PS, rr.(i).(j).sP.plotPath + 'rayRadHisto_TempFacs_' + plotStrIndivMax + '.eps'
   
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangePDF*[10,0.1],/xs,/ys,xlog=xlog,/ylog,yminor=5,$
@@ -1215,7 +1925,7 @@ pro plotZoomRadialRays
   
   end_PS
   
-  ; plot (5b) - cumulative ray PDF (fraction of sphere covered) based on temp criterion (indiv halo)
+  ; plot (6b) - cumulative ray PDF (fraction of sphere covered) based on temp criterion (indiv halo)
   start_PS, rr.(i).(j).sP.plotPath + 'rayRadHisto_TempFacsCumulative_' + plotStrIndivMax + '.eps'
   
     yrange2 = [0.0,1.05]
@@ -1265,7 +1975,7 @@ pro plotZoomRadialRays
   
   end_PS
   
-  ; plot (5c) - ray PDF (fraction of sphere covered) based on temp criterion (Nrad,Ns convergence)
+  ; plot (6c) - ray PDF (fraction of sphere covered) based on temp criterion (Nrad,Ns convergence)
   start_PS, rr.(0).(0).sP.plotPath + 'rayRadHisto_TempFacs_NrNsConv_' + plotStrIndiv2 + '.eps',$
     xs=7.5, ys=6.5
   
@@ -1374,16 +2084,17 @@ pro plotZoomRadialRays
   
   end_PS
   
-  ; plot (5d) - ray PDF (fraction of sphere covered) based on temp criterion
+  ; plot (6d) - ray PDF (fraction of sphere covered) based on temp criterion
   ; all haloes, L11 in main panel, ratios of L9/L11 and L10/L11 in subpanel
-  start_PS, rr.(0).(0).sP.plotPath + 'rayRadHisto_TempFacsSub_' + plotStr + '.eps', xs=7.5, ys=6.0
+  start_PS, rr.(0).(0).sP.plotPath + 'rayRadHisto_TempFacsSub_' + plotStr + '.eps', xs=7.5, ys=8.0
   
-    pos = [0.14,0.12,0.95,0.96]
-    subSize = 0.18
+    pos = [0.14,0.09,0.95,0.96]
+    subSize = 0.30
     offset = [0,-0+subSize,0,0]  
   
     ; (i) - main panel
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangePDF*[1,0.1],/xs,/ys,xlog=xlog,/ylog,yminor=5,$
+    yrange2 = [0.0,0.03]
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange2,/xs,/ys,xlog=xlog,$
       xtitle="",xtickname=replicate(" ",10),ytitle=textoidl(ytitleSA),pos=pos+offset,/noerase
 
     foreach radLine,radLines do $
@@ -1409,66 +2120,104 @@ pro plotZoomRadialRays
         ; rmax
         yy = rr.(ii).(jj).tempFracs.(k_max).(m_max).histoOuter[*,tt] / float(nRaysMax)
         yy /= radNorm
-        cgPlot,xx,smooth(yy,sK,/nan),line=ttLines[t],color=co,thick=th,/overplot
+        if targetFac eq 1.0 then yy /= 2.0 ; note! for display on same y-axis
+        cgPlot,xx[0:-2],smooth(yy[0:-2],sK+2,/nan),line=ttLines[t],color=co,thick=th,/overplot
+        
+        ; mark maxima locations?
+        if targetFac eq 0.2 then begin
+          yy_loc = smooth(yy[0:-2],sK+2,/nan)
+          ww = where(yy_loc eq max(yy_loc),count)
+          if count ne 1 then print,'WARNING: maxima count: '+str(count)
+          ;print,rr.(ii).(0).sP.hInd,xx[ww[0]]
+          cgPlot,replicate(xx[ww[0]],2),[0.0195,0.021],line=ttLines[t],color=co,thick=th,/overplot
+        endif
       endforeach ;targetFac
     endfor ;n_tags(rr),ii
     
     ; mark targetFacs
-    cgText,0.2,0.05,textoidl('r_{max }|_{ }T / T_{vir} > '+string(pdfTvirFacs[0],format='(f3.1)'))
-    cgText,1.4,0.03,textoidl('r_{max }|_{ }T / T_{vir} > '+string(pdfTvirFacs[1],format='(f3.1)'))
+    cgText,0.35,0.025,textoidl('r_{max }|_{ }T / T_{vir} > '+string(pdfTvirFacs[0],format='(f3.1)'))
+    cgText,1.32,0.018,textoidl('r_{max }|_{ }T / T_{vir} > '+string(pdfTvirFacs[1],format='(f3.1)'))
     
     ; legends
     loadColorTable,'bw linear'    
     
-    legend,hNames,textcolor=hColors,/top,/right   
-    legend,[rNames[0:1]+'/'+rNames[2],rNames[2]],linestyle=rLines,thick=rThick*!p.thick,/bottom,/right
-  
+    legend,hNames[0:3],textcolor=hColors[0:3],pos=[1.70,0.0268],/data
+    legend,hNames[4:*],textcolor=hColors[4:*],pos=[1.78,0.0268],/data
+    legend,rNames[2],linestyle=rLines[2],thick=rThick[2]*!p.thick,/top,/right
+    
     ; (ii) - subpanel
-    yrangeSub = [0.05,20.0]
-    ytickvSub = [0.1,1.0,10.0]
+    yrangeSub = [0.1,10.0]
+    ytickvSub = [0.1,0.2,0.5,1.0,2.0,5.0]
     ytitleSub = "Ln/L11" ;"Ratio"
     posSub = pos+offset
     posSub[1] -= subSize ; move y of lowerleft down
     posSub[3] = posSub[1] + subSize ; set height of subpanel
         
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeSub,/xs,/ys,xlog=xlog,/ylog,yminor=1,$
-      xtitle=textoidl("r / r_{vir}"),ytitle=textoidl(ytitleSub),ytickv=ytickvSub,yticks=2,$
+      xtitle=textoidl("r / r_{vir}"),ytitle=textoidl(ytitleSub),$
+      ytickv=ytickvSub,yticks=n_elements(ytickvSub)-1,$
       pos=posSub,/noerase
       
-    foreach ytick,[ytickvSub,0.5,2.0] do $
+    foreach ytick,[ytickvSub] do $
       cgPlot,xrange,replicate(ytick,2),line=0,color=cgColor('light gray'),thick=!p.thick-1.0,/overplot
   
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrangeSub,/xs,/ys,xlog=xlog,/ylog,yminor=1,$
-      xtitle="",ytitle="",ytickv=ytickvSub,yticks=2,pos=posSub,/noerase,$
+      xtitle="",ytitle="",ytickv=ytickvSub,yticks=n_elements(ytickvSub)-1,pos=posSub,/noerase,$
       xtickname=replicate(" ",10),ytickname=replicate(" ",10)      
+  
+    yy_stack = fltarr(3,2,nrIndiv)
   
     for ii=0,n_tags(rr)-1 do begin
       jj_L11 = where( tag_names(rr.(i)) eq 'L11', count_ind )
       if count_ind eq 0 then continue
       
-      for jj=0,n_tags(rr.(i))-2 do begin
-
-        xx = rr.(ii).(jj).hsv.temp.(k_max).(m_max).radFacs
-        co = rr.(ii).(jj).sP.colors[cInds[jj]]
-        th = !p.thick * rThick[jj]
+      foreach targetFac,pdfTvirFacs,t do begin
         
-        ; plot 
-        foreach targetFac,pdfTvirFacs,t do begin
-          tt = where(tempFacs eq targetFac)
+        tt = where(tempFacs eq targetFac)
+        yy_L11 = rr.(ii).(jj_L11).tempFracs.(k_max).(m_max).histoOuter[*,tt]
+        
+        yy_stack[2,t,*] += reform(yy_L11)
+        
+        for jj=0,n_tags(rr.(i))-2 do begin
+
+          xx = rr.(ii).(jj).hsv.temp.(k_max).(m_max).radFacs
+          co = rr.(ii).(jj).sP.colors[cInds[jj]]
+          th = !p.thick * rThick[jj]
           
           ; rmax
-          yy     = rr.(ii).(jj).tempFracs.(k_max).(m_max).histoOuter[*,tt]
-          yy_L11 = rr.(ii).(jj_L11).tempFracs.(k_max).(m_max).histoOuter[*,tt]
+          yy = rr.(ii).(jj).tempFracs.(k_max).(m_max).histoOuter[*,tt]
+          yy_stack[jj,t,*] += reform(yy)
           
           yy /= float(yy_L11)
           
-          cgPlot,xx,smooth(yy,sK,/nan),line=ttLines[t],color=co,thick=th,/overplot
-        endforeach ;targetFac
-        
-      endfor ;n_tags(rr.(ii)),jj
+          if targetFac eq 0.2 then $
+            cgPlot,xx,smooth(yy,sK+2,/nan),line=ttLines[t],color=co,thick=th,/overplot
+
+        endfor ;n_tags(rr.(ii)),jj
+      
+      endforeach ;targetFac
+      
     endfor ;n_tags(rr),ii
+    
+    ; halo-mean
+    for jj=0,n_tags(rr.(i))-2 do begin
+      foreach targetFac,pdfTvirFacs,t do begin
+        yy_loc = reform(yy_stack[jj,t,*])
+        yy_norm = reform(yy_stack[2,t,*])
+        
+        ww = -1
+        if targetFac eq 1.0 then ww = where(xx le 1.5)
+        if targetFac eq 0.2 then ww = where(xx ge 0.4)
+        
+        cgPlot,xx[ww],smooth(yy_loc[ww]/yy_norm[ww],sK+2,/nan),$
+          line=ttLines[t],color='black',thick=rThick[jj]*!p.thick*3,/overplot
+      endforeach
+    endfor
+
+    legend,[rNames[0:1]+'/'+rNames[2]],linestyle=rLines[0:1],thick=rThick[0:1]*!p.thick,/top,/right
   
   end_PS
+  endif ;skipPDFs
   
   stop
 

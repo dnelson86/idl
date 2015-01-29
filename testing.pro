@@ -2,6 +2,51 @@
 ; anything temporary
 ; dnelson dec.2014
 
+; checkGroupCens
+pro checkGroupCens
+
+  hInds = [0,1,3,4,5,6,7,8,9]
+  resLevels = [9,10,11]
+
+  foreach hInd,hInds do begin
+    foreach resLevel,resLevels do begin
+    
+      if hInd eq 3 or hInd eq 6 and resLevel eq 11 then continue
+    
+      ; load
+      sP = simParams(res=resLevel,run='zoom_20mpc',redshift=2.0,hInd=hInd)
+      redshifts = snapNumToRedshift(/all,sP=sP)
+      snaps = where(redshifts ge 0.0,count)
+      if count eq 0 then message,'Error'
+      
+      ; loop over each snapshot
+      foreach snap,snaps do begin
+        ; load group catalog and subgroupcen
+        sP.snap = snap
+        sgCen = subgroupPosByMostBoundID(sP=sP)
+        gc = loadGroupCat(sP=sP,/skipIDs,/skipOffsets)
+                
+        ; check for size mismatch
+        print,'h'+str(hInd)+'L'+str(resLevel)+' ['+str(sP.snap)+'] '+$
+          str(n_elements(sgCen[0,*]))+' '+str(gc.nSubgroupsTot)
+        if n_elements(sgCen[0,*]) ne gc.nSubgroupsTot then print,'ERROR '+str(snap)
+        
+        ; check for spatial displacements
+        ;diff = reform( sqrt( (sgCen[0,*]-gc.subgroupPos[0,*])^2.0 + $
+        ;                     (sgCen[1,*]-gc.subgroupPos[1,*])^2.0 + $
+        ;                     (sgCen[2,*]-gc.subgroupPos[2,*])^2.0 ) )
+        ;print,max(diff)
+        
+        ;wZero = where(diff eq 0.0,countZero)
+        ;wDiff = where(diff gt 0.0,countNonzero)
+        ;stop
+      endforeach
+    
+    endforeach
+  endforeach
+  
+end
+
 ; fix ent h^2
 pro fixCutouts
  

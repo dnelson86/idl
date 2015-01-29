@@ -646,7 +646,7 @@ end
 ;                   if rgb_table specified do not load into display, just return the table
 
 pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse, gamma=GA_in, $
-  GA_double2=GA_double2
+  GA_double2=GA_double2, white0=white0
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
@@ -814,6 +814,15 @@ pro loadColorTable, ctName, bottom=bottom, rgb_table=rgb_table, reverse=reverse,
    
    ss = long(n*((findgen(n)/n)^GA_try))
    r = r[ss] & g = g[ss] & b = b[ss]
+   tvlct,r,g,b
+ endif
+ 
+ if keyword_set(white0) then begin
+   ; experimental
+   tvlct,r,g,b,/get
+   n = n_elements(r)
+   r[0] = 255 & g[0] = 255 & b[0] = 255
+   
    tvlct,r,g,b
  endif
 
@@ -1348,6 +1357,7 @@ end
 @zoomEvo
 @zoomRays
 @zoomProfiles
+@zoomPDFs
 
 @tracersVel_Cosmo
 ;@tracersVel_Halos

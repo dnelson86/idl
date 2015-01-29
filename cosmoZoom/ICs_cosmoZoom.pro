@@ -732,7 +732,6 @@ function zoomTargetHalo, sP=sP, gc=gc
   expectedHaloPos = sP.targetHaloPos + sP.zoomShiftPhys
   
   ; searching at earlier redshift that target? pick largest by mass
-  ;if 0 then begin
   if sP.redshift gt sP.targetRedshift then $
     message,'zoomTargetHalo: sP.redshift > targetRedshift, use tree instead!'
     
@@ -750,13 +749,21 @@ function zoomTargetHalo, sP=sP, gc=gc
   ;hInd = ( where(starMasses eq max(starMasses[w]),count) )[0] ; maximum stellar mass
   
   if count ne 1 then message,'Error'
+ 
+  ; (h2L9L10, h3L10, h9L10 problems, we have fixed by moving to one earlier snap)
+  ; some overrides (h5L9 and h9L10 fix to match L11) (overwise should always find hInd=0)
+  changeOkFlag = 0
+  if sP.hInd eq 5 and sP.snap eq 59 and sP.res eq 9  then changeOkFlag = 1 ; hInd=76
+  if sP.hInd eq 9 and sP.snap eq 59 and sP.res eq 9  then changeOkFlag = 1 ; hInd=73
   
-  hInd = 0 ; force to most massive subgroup
+  ; some overrides (change h4 to a different halo also within the high res region due to contam?)
+  if sP.hInd eq 4 and sP.snap eq 59 and sP.res eq 9  then changeOkFlag = 1 ; hInd=69
+  if sP.hInd eq 4 and sP.snap eq 59 and sP.res eq 10 then changeOkFlag = 1 ; hInd=316  
+  if sP.hInd eq 4 and sP.snap eq 58 and sP.res eq 11 then changeOkFlag = 1 ; hInd=1947  
   
-  ; some overrides (h2, in right position to match to L11 for rays, but no galaxy at that 
-  ; location in L9 or L10)
-  if sP.hInd eq 2 and sP.snap eq 59 and sP.res eq 9 then hInd = 1 ;look at stellar mass
-  if sP.hInd eq 2 and sP.snap eq 59 and sP.res eq 10 then hInd = 1
+  ; h6 L9L10 wants hInd=1, need to check (non-pri)
+  if sP.hInd eq 6 and sP.snap eq 59 and sP.res eq 9  then changeOkFlag = 1 ; hInd=1
+  if sP.hInd eq 6 and sP.snap eq 59 and sP.res eq 10 then changeOkFlag = 1 ; hInd=1
   
   ; probably in the zooms should always be the most massive in box, if not, sanity check
   foundMass = codeMassToLogMsun( gc.subgroupMass[hInd] )
@@ -774,6 +781,8 @@ function zoomTargetHalo, sP=sP, gc=gc
   priInds = gcIDList(gc=gc,select='pri')
   if total(priInds eq hInd,/int) eq 0 then $
     print,'zoomTargetHalo: Picked NON-PRIMARY subgroup!'
+    
+  if changeOkFlag eq 0 and hInd ne 0 then message,'Error: Picked hInd>0 (unverified case).'
   
   return, hInd
 end
