@@ -608,8 +608,9 @@ function subgroupPosByMostBoundID, sP=sP
   gc = loadGroupCat(sP=sP,/skipIDs)
   
   groupCen = fltarr(3,gc.nSubgroupsTot)
+  ;typeCen  = intarr(gc.nSubgroupsTot)
   
-  partTypes = ['gas','dm','star','bh','tracervel']
+  partTypes = ['gas','dm','star','bh','tracervel'] ; tracervel=2 (also lowres DM in zooms)
   
   numFound = 0L
   
@@ -632,6 +633,7 @@ function subgroupPosByMostBoundID, sP=sP
 
       pos = loadSnapshotSubset(sP=sP,partType=partType,field='pos',inds=ids_ind)
       groupCen[*,gc_ind] = pos
+      ;typeCen[gc_ind] = partTypeNum(partType)
     endif
   endforeach
 
@@ -640,6 +642,7 @@ function subgroupPosByMostBoundID, sP=sP
   ; save
   save,groupCen,filename=saveFilename
   
+  ;return, {cen:groupCen,type:typeCen}
   return, groupCen
 end
 

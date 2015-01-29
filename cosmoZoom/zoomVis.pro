@@ -1,6 +1,6 @@
 ; zoomVis.pro
 ; 'zoom project' specialized visualization
-; dnelson oct.2014
+; dnelson jan.2015
 
 ; zoomMeshAndSliceWithRes(): Voronoi mesh and temperature slice @ L9,L10,L11 for one halo
 ; NOTE: requires that the snapshots be first post-processed with Arepo (restart-flag=4)
@@ -227,8 +227,8 @@ pro multiMapZoomComp, doOne=doOne, doTwo=doTwo
   
   ; config
   redshift = 2.0
-  resLevel = [10,10,10,10] ;[11,11,11,11] ;
-  hInds    = [2,4,5,9] ;[0,1,7,8] ;[6,3] 
+  resLevel = [9,10,10,10] ;[11,11,11,11] ;
+  hInds    = [3,3,5,9] ;[2,4,5,9] ;[0,1,7,8] ;[6,3] 
 
   ; plot config
   sizeFac       = 7.8          ; times rvir (master, must be >=max(sizeFac) below)
@@ -330,8 +330,8 @@ end
 
 ; multiMapZoomRotFrames(): compare many quantities and scales of one zoom, and generate frames 
 ;   rotating around an axis (no time evolution) for a movie
-
-pro multiMapZoomRotFrames, jobNum=jobNum, totJobs=totJobs, do4x2=do4x2, do2x1=do2x1
+; doSnap: if specified, track through time using tree and plot one frame (no rotation) at each snap
+pro multiMapZoomRotFrames, jobNum=jobNum, totJobs=totJobs, do4x2=do4x2, do2x1=do2x1, doSnaps=doSnaps, hInd=hInd
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   if n_elements(jobNum) eq 0 or n_elements(totJobs) eq 0 then message,'Error'
@@ -340,7 +340,8 @@ pro multiMapZoomRotFrames, jobNum=jobNum, totJobs=totJobs, do4x2=do4x2, do2x1=do
   ; config
   redshift = 2.0
   resLevel = 11
-  hInd     = 7
+  hInd     = 2
+  ;if n_elements(hInd) eq 0 then message,'Error'
   outPath  = '/n/home07/dnelson/data5/frames/'
 
   hsmlFac      = 2.0      ; times each cell radius for sph projections
@@ -387,58 +388,95 @@ pro multiMapZoomRotFrames, jobNum=jobNum, totJobs=totJobs, do4x2=do4x2, do2x1=do
   framesPerJob = framesPerRot/totJobs
   frameMM = [framesPerJob*jobNum,framesPerJob*(jobNum+1)-1]
   numFields = n_tags(fields)/numRows
-  print,'Job ['+str(jobNum)+'] of ['+str(totJobs)+'] frames: ',frameMM
-
+  
   ; load
   sP = simParams(run='zoom_20Mpc',res=resLevel,hInd=hInd,redshift=redshift)
-  gcID = zoomTargetHalo(sP=sP)
+  gcID = [zoomTargetHalo(sP=sP)]
   
-  mapCutout = cosmoVisCutout(sP=sP,gcInd=gcID,sizeFac=sizeFac)
-  mapCutout.loc_hsml *= hsmlFac
+  ; do rotation at one fixed snapshot?
+  if n_elements(doSnaps) eq 0 then begin
+    snapNums = [sP.snap]
+    print,'Job ['+str(jobNum)+'] of ['+str(totJobs)+'] rotation frames: ',frameMM
+  endif
   
-  for frameNum=frameMM[0],frameMM[1] do begin
-    rotAngle = (float(frameNum)/framesPerRot*(2*!pi)) ;mod (2*!pi)
-    print,'['+string(frameNum,format='(I04)')+'] rotAngle = '+string(rotAngle,format='(f6.4)')
+  ; do time evolution of tracked halo at one fixed rotation angle?
+  if n_elements(doSnaps) ne 0 then begin
+    ; time evolution, track using tree
+    track = trackHaloPosition(sP=sP, gcID=gcID[0], endSnap=0)
+    
+    wSnaps = where(track.gcIDs ge 0,countSnaps)
+    
+    ; override sP.snap, target subgroup ID, frame bracketing
+    snapsPerJob = countSnaps/totJobs
+    snapInds = wSnaps[snapsPerJob*jobNum:snapsPerJob*(jobNum+1)-1]
+    snapNums = track.snaps[snapInds]
+    
+    print,'Job ['+str(jobNum)+'] of ['+str(totJobs)+'] do snapshots: ',snapNums
+    
+    frameMM = [0,0]
+    gcID = track.gcIDs[snapInds]
+  endif
+  
+  if n_elements(gcID) ne n_elements(snapNums) then message,'Error: Mismatch.'
 
-    saveFilename = 'zoomMaps_'+str(numFields)+'x'+str(numRows)+'_'+sP.saveTag+'_'+str(sP.snap)+$
-      '_rot-' + rotAxis + '_frame_'+string(frameNum,format='(I04)')+'.eps'
-                   
-    fac = 1.25
-    xs = xySize[0]/(300/fac)
-    ys = xySize[1]/(300/fac)
+  foreach snapNum,snapNums,snapCount do begin
+  
+    sP.snap = snapNum
+    sP.redshift = snapNumToRedshift(sP=sP)
+  
+    mapCutout = cosmoVisCutout(sP=sP,gcInd=gcID[snapCount],sizeFac=sizeFac)
+    mapCutout.loc_hsml *= hsmlFac
     
-    start_PS, outPath + saveFilename, xs=xs, ys=ys
-    
-    ; loop over rows
-    for i=0,numRows-1 do begin
-      for j=0,numFields-1 do begin
+    for frameNum=frameMM[0],frameMM[1] do begin
+      rotAngle = (float(frameNum)/framesPerRot*(2*!pi)) ;mod (2*!pi)
+      print,'[snap='+string(snapNum,format='(I02)')+'] ['+$
+            string(frameNum,format='(I04)')+'] rotAngle = '+string(rotAngle,format='(f6.4)')
+
+      saveFilename = 'zoomMaps_'+str(numFields)+'x'+str(numRows)+'_'+sP.saveTag+'_'+string(sP.snap,format='(I02)')+$
+        '_rot-' + rotAxis + '_frame_'+string(frameNum,format='(I04)')+'.eps'
+                     
+      if file_test(outPath + strmid(saveFilename,0,strlen(saveFilename)-4)+'.png') then begin
+        print,' SKIP'
+        continue
+      endif
+                     
+      fac = 1.25
+      xs = xySize[0]/(300/fac)
+      ys = xySize[1]/(300/fac)
       
-        field = fields.(i*numFields+j)
+      start_PS, outPath + saveFilename, xs=xs, ys=ys
+      
+      ; loop over rows
+      for i=0,numRows-1 do begin
+        for j=0,numFields-1 do begin
         
-        ; make boxsize smaller for map cutout
-        mapCutout.boxSizeImg = field.sizeFac*[mapCutout.haloVirRad,$ ;x
-                                              mapCutout.haloVirRad*nPixels[1]/nPixels[0],$ ;y
-                                              mapCutout.haloVirRad] ;z
+          field = fields.(i*numFields+j)
+          
+          ; make boxsize smaller for map cutout
+          mapCutout.boxSizeImg = field.sizeFac*[mapCutout.haloVirRad,$ ;x
+                                                mapCutout.haloVirRad*nPixels[1]/nPixels[0],$ ;y
+                                                mapCutout.haloVirRad] ;z
 
-        ; mapping configuration
-        config = {saveFilename:'',nPixels:nPixels,axes:axes[0:1],fieldMinMax:[0,0],$
-                  gcID:gcID,haloMass:mapCutout.haloMass,haloVirRad:mapCutout.haloVirRad,$
-                  boxCen:[0,0,0],boxSizeImg:mapCutout.boxSizeImg,rVirCircs:field.rVirCircs,$
-                  ctNameScat:'',ctNameMap:'',sP:sP,bartype:'',scaleBarLen:200.0,$
-                  secondCutVal:-1,secondText:'',nbottom:0,secondGt:1,singleColorScale:1,$
-                  barAreaHeight:barAreaHeight,newBoxSize:field.sizeFac,rotAxis:rotAxis,rotAngle:rotAngle,$
-                  colorField:field.colorField,mapMinMax:field.mapMinMax}
-        
-        sub = cosmoVisCutoutSub(cutout=mapCutout,mapCutout=mapCutout,config=config)
-        
-        ; plot
-        plotMultiSphmap, map=sub, config=config, row=[i,numRows], col=[j,numFields]
+          ; mapping configuration
+          config = {saveFilename:'',nPixels:nPixels,axes:axes[0:1],fieldMinMax:[0,0],$
+                    gcID:gcID[snapCount],haloMass:mapCutout.haloMass,haloVirRad:mapCutout.haloVirRad,$
+                    boxCen:[0,0,0],boxSizeImg:mapCutout.boxSizeImg,rVirCircs:field.rVirCircs,$
+                    ctNameScat:'',ctNameMap:'',sP:sP,bartype:'',scaleBarLen:200.0,$
+                    secondCutVal:-1,secondText:'',nbottom:0,secondGt:1,singleColorScale:1,$
+                    barAreaHeight:barAreaHeight,newBoxSize:field.sizeFac,rotAxis:rotAxis,rotAngle:rotAngle,$
+                    colorField:field.colorField,mapMinMax:field.mapMinMax}
+          
+          sub = cosmoVisCutoutSub(cutout=mapCutout,mapCutout=mapCutout,config=config)
+          
+          ; plot
+          plotMultiSphmap, map=sub, config=config, row=[i,numRows], col=[j,numFields]
 
-      endfor ; numFields,j
-    endfor ; numRows,i
-    
-    end_PS, density=300/fac, pngResize=100, /deletePS
-    
-  endfor ; m
+        endfor ; numFields,j
+      endfor ; numRows,i
+      
+      end_PS, density=300/fac, pngResize=100, /deletePS
+      
+    endfor ; frameNum
+  endforeach ; snapNums
   
 end
