@@ -59,6 +59,7 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.rVirFac = -0.1 * r.zoomLevel + 4.0
   
     r.colors = getColor24(transpose(colors_red)) ;h0
+    r.hIndDisp = 0
   endif
   
   if hInd eq 1 then begin
@@ -80,7 +81,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     if str(hInd) eq '1b' then r.zoomShift = [22, -43, -39]
     if str(hInd) eq '1b' then r.rVirFac = 6.0
 
-    r.colors = getColor24(transpose(colors_maroon)) ;h1
+    r.colors = getColor24(transpose(colors_lime)) ;h1
+    r.hIndDisp = 1
   endif
   
   if hInd eq 2 then begin
@@ -101,6 +103,7 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 11 then r.rVirFac = 6.0
 
     r.colors = getColor24(transpose(colors_purple)) ;h2
+    r.hIndDisp = 4
   endif
   
   if hInd eq 3 then begin
@@ -119,6 +122,7 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.rVirFac = 1.0 * r.zoomLevel + 3.0
 
     r.colors = getColor24(transpose(colors_navy)) ;h3
+    r.hIndDisp = 9
   endif
   
   if hInd eq 4 then begin
@@ -135,6 +139,7 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.rVirFac = 4.2
 
     r.colors = getColor24(transpose(colors_blue)) ;h4
+    r.hIndDisp = 5
   endif
   
   if hInd eq 5 then begin
@@ -153,6 +158,7 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.rVirFac = 0.2 * r.zoomLevel + 4.0
 
     r.colors = getColor24(transpose(colors_teal)) ;h5
+    r.hIndDisp = 6
   endif
   
   if hInd eq 6 then begin
@@ -172,6 +178,7 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.rVirFac = 1.0 * r.zoomLevel + 3.0
 
     r.colors = getColor24(transpose(colors_green)) ;h6
+    r.hIndDisp = 8
   endif
   
   if hInd eq 7 then begin
@@ -198,7 +205,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 12 then r.zoomShift = [43, -19, -12]
     if r.levelMax eq 12 then r.rVirFac = 8.0
 
-    r.colors = getColor24(transpose(colors_lime)) ;h7
+    r.colors = getColor24(transpose(colors_orange)) ;h7
+    r.hIndDisp = 2
   endif
   
   if hInd eq 8 then begin
@@ -217,6 +225,7 @@ function fillZoomParams, r, res=res, hInd=hInd
     r.rVirFac = 0.5 * r.zoomLevel + 5.0
 
     r.colors = getColor24(transpose(colors_brown)) ;h8
+    r.hIndDisp = 3
   endif
   
   if hInd eq 9 then begin
@@ -234,7 +243,8 @@ function fillZoomParams, r, res=res, hInd=hInd
     if r.levelMax eq 11 then r.zoomShift = [6,0,-39]
     r.rVirFac = 0.1 * r.zoomLevel + 4.0
 
-    r.colors = getColor24(transpose(colors_orange)) ;h9
+    r.colors = getColor24(transpose(colors_maroon)) ;h9
+    r.hIndDisp = 7
   endif
   
   ; convert zoomShift to zoomShiftPhys
@@ -428,6 +438,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
        zoomLevel:      0,$     ; levelmax-levelmin
        rVirFac:        0.0,$   ; size of cutout in units of rvir tracer back from targetRedshift
        hInd:           0,$     ; zoom halo index (as in path)
+       hIndDisp:       -1,$    ; zoom halo index to display (in plots)
        zoomShift:      [0,0,0]       ,$ ; Music output: "Domain will be shifted by (X, X, X)"
        zoomShiftPhys:  [0.0,0.0,0.0] ,$ ; the domain shift in box units
        targetHaloPos:  [0.0,0.0,0.0] ,$ ; position at targetRedshift in fullbox

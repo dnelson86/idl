@@ -317,6 +317,10 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       rvec1 /= units.HubbleParam
       rvec2 /= units.HubbleParam
       
+      rvec0 *= scalefac ; convert to peculiar for angmom
+      rvec1 *= scalefac
+      rvec2 *= scalefac
+      
       loc_vel = vel[*,wRadCut]
       
       ; make velocities relative to bulk halo motion
@@ -330,7 +334,7 @@ function haloShellValue, sP=sP, partType=partType, valName=valName, subgroupIDs=
       jvec[0,*] = rvec1 * loc_vel[2,*] - rvec2 * loc_vel[1,*]
       jvec[1,*] = rvec2 * loc_vel[0,*] - rvec0 * loc_vel[2,*]
       jvec[2,*] = rvec0 * loc_vel[1,*] - rvec1 * loc_vel[0,*]
-      jnorm = sqrt(jvec[0,*]*jvec[0,*] + jvec[1,*]*jvec[1,*] + jvec[2,*]*jvec[2,*])
+      jnorm = reform( sqrt(jvec[0,*]*jvec[0,*] + jvec[1,*]*jvec[1,*] + jvec[2,*]*jvec[2,*]) )
       
       posval = [loc_pos,jnorm]
       thMode = 1 ; mean

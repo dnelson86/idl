@@ -50,13 +50,14 @@ end
 ; fix ent h^2
 pro fixCutouts
  
-  message,'DO NOT RUN AGAIN'
+  ;message,'DO NOT RUN AGAIN'
  
   hInds = [0,1,2,3,4,5,6,7,8,9]
   resLevels = [9,10,11]
   
-  fixFactor_entr = (0.7)^(-4.0/3.0) ; new=old*fixFactor, entr
-  fixFactor_angm = 1/0.7 ; angmom
+  ;fixFactor_entr = (0.7)^(-4.0/3.0) ; new=old*fixFactor, entr
+  ;fixFactor_angm_OLD = 1/0.7 ; angmom
+  fixFactor_angm = 0.3333333 ; angmom scalefactor at z=2
   
   foreach hInd,hInds do begin
     foreach resLevel,resLevels do begin
@@ -64,8 +65,9 @@ pro fixCutouts
       ; search
       sP = simParams(res=resLevel,run='zoom_20mpc',hInd=hInd,redshift=2.0)
       ;path = sP.derivPath + 'hShells/snap_'+str(sP.snap)+'/*angmom*'
-      ;path = sP.derivPath + 'cutouts/zoomRadialBin.*_gas_*.sav'
-      path = sP.derivPath + 'binnedVals/sphMap.*entropy*.sav'
+      ;path = sP.derivPath + 'cutouts/zoomRadialBin.*_stars_*.sav'
+      
+      ;;;;;path = sP.derivPath + 'binnedVals/sphMap.*entropy*.sav'
       print,path
       
       filepaths = file_search(path)
@@ -75,10 +77,18 @@ pro fixCutouts
       
       foreach filepath,filepaths do begin
         restore,filepath,/verbose
+        stop
         
-        sphMap.quant = alog10( 10.0^(sphMap.quant)*fixFactor_entr )
+        ;;sphMap.quant = alog10( 10.0^(sphMap.quant)*fixFactor_entr )
+        ;;jnorm = jnorm * fixFactor_angm
+        r.value = r.value * fixFactor_angm
         
-        save,sphMap,filename=filepath
+        ;;save,rad_pri,dens,vrad,jnorm,temp,mass,entr,csize,nh0,filename=filepath ;GAS
+        ;;save,rad_pri,dens,vrad,jnorm,filename=saveFilename ;DM
+        ;;save,rad_pri,dens,vrad,jnorm,mass,filename=saveFilename ;STARS
+        
+        ;;;;;save,r,filename=filepath
+        ;;;;;save,sphMap,filename=filepath
         
         print,' '+strmid(filepath,strlen('/n/home07/dnelson/sims.zooms/128_20Mpc_h8_L10/data.files'))
       endforeach
