@@ -52,19 +52,19 @@ pro plotZoomRadialRays
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  hInds     = [0,1,2,4,5,7,8,9] ;[3,6]
+  hInds     = [0] ;[0,1,7,8,2,4,5,9] ;re-ordered such that hIndDisp are in order ;[3,6]
   resLevels = [9,10,11]
   redshift  = 2.0
   newSaves  = 0 ; override existing shell saves
   
   ; binning config
-  Nside   = [64] ;[8,16,32,64]  ; healpix resolution parameter, 2=12*4, 8=768, 16~3k, 32~12k, 64~50k
-  Nrad    = [400] ;[100,200,400] ; number of radial sampling points
+  Nside   = [64] ;[64] ;[8,16,32,64]  ; healpix resolution parameter, 2=12*4, 8=768, 16~3k, 32~12k, 64~50k
+  Nrad    = [400] ;[400] ;[100,200,400] ; number of radial sampling points
   cutSubS = 2 ; remove substructures? (0=no, 1=satellites, 2=all subfind other than target group)
 
   ; individual rays (+sorting/selections), all 1d plots, which halo/res/ns/nr?
   hIndiv  = 0   ; which halo to plot individuals from
-  rIndiv  = 9   ; which resolution level to plot individuals from
+  rIndiv  = 11   ; which resolution level to plot individuals from
   nsIndiv = 64 ; Nside indiv
   nrIndiv = 400 ; Nrad indiv
 
@@ -72,7 +72,7 @@ pro plotZoomRadialRays
   skipSel   = 1 ; skip select testing plots
   skip2D    = 1 ; skip making 2D panel plots
   skipStats = 1 ; skip ray statistics plots
-  skipPDFs  = 0 ; skip ray PDF plots
+  skipPDFs  = 1 ; skip ray PDF plots
   
   ; plot config
   config = { temp : { valName   : 'temp',$
@@ -108,7 +108,7 @@ pro plotZoomRadialRays
                       cbarLog   : 1,$
                       cbarDivs  : 5,$
                       ctName    : 'blue-red2',$
-                      yrange    : [1e3,1e5],$ ; specific angular momentum (kpc km/s)
+                      yrange    : [1e3,1e5],$ ; specific angmom (kpc km/s)
                       ytitle    : "log j_{gas} [_{ }kpc km/s_{ }]"} $
            }
   
@@ -180,8 +180,8 @@ pro plotZoomRadialRays
                            quant  : 'ANGM'                             ,$
                            rMin   : 1.1                                ,$ ; r/rvir
                            rMax   : 2.0                                ,$ ; r/rvir
-                           xtitle : "J_{thresh} [_{ }log kpc km/s_{ }]",$ ; for rayStats
-                           xrange : [3.4,5.2]                          ,$ ; cgs, for rayStats
+                           xtitle : "j_{thresh} [_{ }log kpc km/s_{ }]",$ ; for rayStats
+                           xrange : [3.0,5.0]                          ,$ ; cgs, for rayStats
                            xstep  : 0.01                               ,$ ; cgs, for rayStats
                            xlog   : 1                                  ,$ ; for rayStats
                            vStr   : '1.0J_{vir}'                       ,$ ; for raySelect
@@ -333,13 +333,17 @@ pro plotZoomRadialRays
 
   ; plot setup
   plotStr = 'h'
-  hNames  = 'h' + str(hInds)
+  hNames  = []
   hColors = []
   rNames  = 'L' + str(resLevels)
   rLines  = rLines[0:n_elements(resLevels)-1]
 
-  foreach hInd,hInds do plotStr += str(hInd)
-  foreach hInd,hInds,i do hColors = [hColors,rr.(i).(0).sP.colors[cInds[-1]]]
+  foreach hInd,hInds,i do begin
+    plotStr += str(hInd)
+    hNames  = [hNames,'h'+str(rr.(i).(0).sP.hIndDisp)]
+    hColors = [hColors,rr.(i).(0).sP.colors[cInds[-1]]]
+  endforeach
+  
   plotStr += '_L'
   foreach resLevel,resLevels do plotStr += str(resLevel)
   plotStr += '_cutSubS-' + str(cutSubS)
@@ -1434,7 +1438,7 @@ pro plotZoomRadialRays
   endif ;skipSel
   
   ; print stats
-  if 0 then begin
+  ;if 0 then begin
   meanStatFracs = fltarr(n_tags(rr),n_tags(rr.(0)),5)
   
   for ii=0,n_tags(rr)-1 do begin
@@ -1452,23 +1456,19 @@ pro plotZoomRadialRays
           rMax2 = 0
           
           selectStr = 'distant shock'
-          protRay = 5
-          protRayB = 439 ; 85 dip example
         endif
         
         if select eq 1 then begin
           quant = 'TEMP'        
           value = 3e5
           rMin = 0.2
-          rMax = 0.9
+          rMax = 0.7 ; changed from 0.9 in draft0 (shy)
           
           value2 = 8e4
           rMin2 = 1.75
           rMax2 = 2.0
           
           selectStr = 'closer shock'
-          protRay = 5 ;20
-          protRayB = 626 ; dip example
         endif
         
         if select eq 2 then begin
@@ -1478,7 +1478,6 @@ pro plotZoomRadialRays
           rMax  = 0.75   
           
           selectStr = 'gradual heating'
-          protRay = 10
         endif
         
         if select eq 3 then begin
@@ -1488,7 +1487,6 @@ pro plotZoomRadialRays
           rMax  = 2.0
           
           selectStr = 'low entropy'
-          protRay = 0
         endif
         
         if select eq 4 then begin
@@ -1503,12 +1501,6 @@ pro plotZoomRadialRays
           rMax  = 1.0
           
           selectStr = 'big dips'
-          protRay = 0
-        endif
-        
-        if select eq 5 then begin
-          selectStr = 'remaining'
-          protRay = 0
         endif
       
         select_ind = (where( tag_names(config) eq quant ))[0]
@@ -1556,11 +1548,32 @@ pro plotZoomRadialRays
         if select eq 5 then $
           w_select = lindgen(n_elements(w_remaining_prev)) ; remaining  
 
+
+        ; SELECTIONS TEST
+        if 0 then begin
+        if select eq 0 then $
+          w_select = where( smooth(dd_max,ddSK) ge 0.25 and $
+                            dd_maxRad ge 1.5 and $
+                            dd_maxRad le 2.0 , comp=w_remaining )
+        if select eq 1 then $
+          w_select = where( smooth(dd_max[w_remaining_prev],ddSK) ge 0.25 and $
+                            dd_maxRad[w_remaining_prev] ge 0.80 and $
+                            dd_maxRad[w_remaining_prev] le 1.5 , comp=w_remaining )
+        if select eq 2 then $
+          w_select = where( dd_max[w_remaining_prev] le 0.8, comp=w_remaining )
+        if select eq 3 then $
+          w_select = where( max(yy_select[w_remaining_prev,*],dim=2) le value, comp=w_remaining)
+        if select eq 4 then $
+          w_select = where( max(yy_select[w_remaining_prev,*],dim=2) ge value, comp=w_remaining )
+        if select eq 5 then $
+          w_select = lindgen(n_elements(w_remaining_prev)) ; remaining  
+
         ; map indices into original rays (both for selection and remaining)
         if select gt 0 then begin
           w_select = w_remaining_prev[w_select]
           if select lt 5 then w_remaining = w_remaining_prev[w_remaining]
         endif
+        endif ;0
         
         w_remaining_prev = w_remaining
         
@@ -1581,7 +1594,7 @@ pro plotZoomRadialRays
       print,' '+string(mean(xx),format='(f4.1)')+' pm '+string(stddev(xx),format='(f4.1)')
     endfor
   endfor
-  endif ;0
+  ;endif ;0
   
   ; ----------------------------------------------------------------------------------
   
@@ -1673,8 +1686,11 @@ pro plotZoomRadialRays
       if yName eq 'VRAD' then ndiv = 3
       if yName eq 'ENTR' or yName eq 'TEMP' then ndiv /= 2
       
+      ctitle = textoidl(config.(ind).ytitle)
+      if yName eq 'TEMP' then ctitle = textoidl("log "+config.(ind).ytitle)
+      
       cgColorbar,pos=posCbar,divisions=ndiv,range=co_mm,/top,$
-        title=textoidl(config.(ind).ytitle),charsize=!p.charsize*1.0
+        title=ctitle,charsize=!p.charsize*1.0
       
     endforeach ;tag_names(config),yName
       
@@ -1842,7 +1858,7 @@ pro plotZoomRadialRays
       co = rr.(ii).(jj_L11).sP.colors[cInds[coth_ind]]
       th = !p.thick * rThick[coth_ind]
           
-      for ff=0,5 do $
+      foreach ff,[0,2,4] do $
         cgPlot,binVals,angFrac[*,ff],line=ff,thick=th,color=co,/overplot
     
     endfor ;ii
@@ -1850,13 +1866,16 @@ pro plotZoomRadialRays
     ; mean across the individual halos as black lines
     meanAngFrac /= float(nRaysMax*n_tags(rr)) ; normalize
 
-    for ff=0,5 do $
+    foreach ff,[0,2,4] do $
       cgPlot,binVals,meanAngFrac[*,ff],line=ff,thick=!p.thick*rThick[jj_L11]+1.0,color='black',/overplot
+    foreach ff,[1,3,5] do $
+      cgPlot,binVals,meanAngFrac[*,ff],line=ff,thick=!p.thick*rThick[jj_L11],color='black',/overplot
     
     ; legends
     loadColorTable,'bw linear'    
     
-    if method eq 0 then legend,hNames,textcolor=hColors,pos=[3.3,0.8],/data
+    if method eq 0 then legend,hNames[0:3],textcolor=hColors[0:3],pos=[3.05,0.65],/data
+    if method eq 0 then legend,hNames[4:*],textcolor=hColors[4:*],pos=[3.28,0.65],/data
     
     legendStrs = ['\geq max','< max',$
                   '\geq min','< min',$

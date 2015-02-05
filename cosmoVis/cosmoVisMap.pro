@@ -542,9 +542,14 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
   endelse
   
   ; simulation name
-  if curCol eq 0 and ~zoom4x2 and ~zoom2x1 then $
+  if curCol eq 0 and ~zoom4x2 and ~zoom2x1 and ~zoom4x4 then $
     cgText,0.03-0.01*(totCols gt 3),mean(pos[[1,3]]),config.sP.simName,charsize=!p.charsize+0.2,$
       alignment=0.5,/normal,orientation=90,color=cgColor('white')
+      
+  if curCol eq 0 and zoom4x4 then $
+    cgText,0.03-0.01*(totCols gt 3),mean(pos[[1,3]]),$
+      'h'+str(config.sP.hIndDisp)+'L'+str(config.sP.levelMax),$
+      charsize=!p.charsize+0.2,alignment=0.5,/normal,orientation=90,color=cgColor('white')
       
   if zoom2x1 then $
     cgText,0.965,0.97,config.sP.simName+'z'+str(fix(config.sP.redshift)),$

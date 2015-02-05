@@ -759,7 +759,7 @@ function zoomTargetHalo, sP=sP, gc=gc
   ; some overrides (change h4 to a different halo also within the high res region due to contam?)
   if sP.hInd eq 4 and sP.snap eq 59 and sP.res eq 9  then changeOkFlag = 1 ; hInd=69
   if sP.hInd eq 4 and sP.snap eq 59 and sP.res eq 10 then changeOkFlag = 1 ; hInd=316  
-  if sP.hInd eq 4 and sP.snap eq 58 and sP.res eq 11 then changeOkFlag = 1 ; hInd=1947  
+  if sP.hInd eq 4 and sP.snap eq 58 and sP.res eq 11 then changeOkFlag = 1 ; hInd=1947
   
   ; h6 L9L10 wants hInd=1, need to check (non-pri)
   if sP.hInd eq 6 and sP.snap eq 59 and sP.res eq 9  then changeOkFlag = 1 ; hInd=1

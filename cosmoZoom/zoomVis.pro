@@ -227,12 +227,12 @@ pro multiMapZoomComp, doOne=doOne, doTwo=doTwo
   
   ; config
   redshift = 2.0
-  resLevel = [9,10,10,10] ;[11,11,11,11] ;
-  hInds    = [3,3,5,9] ;[2,4,5,9] ;[0,1,7,8] ;[6,3] 
+  resLevel = [11,11,11,11] ;[9,10,10,10] ;
+  hInds    = [2,4,5,9] ;[0,1,7,8] ;[6,3] ;[3,3,5,9] ;
 
   ; plot config
   sizeFac       = 7.8          ; times rvir (master, must be >=max(sizeFac) below)
-  hsmlFac       = 2.0          ; times each cell radius for sph projections
+  hsmlFac       = 3.0 ; 2.0 in draft0! ; times each cell radius for sph projections
   nPixels       = [1200,1200]  ; px
   xySize        = 3            ; final image is xySize*nPixels[0] high
   axisPair      = [0,1]        ; xy, xz
@@ -340,7 +340,7 @@ pro multiMapZoomRotFrames, jobNum=jobNum, totJobs=totJobs, do4x2=do4x2, do2x1=do
   ; config
   redshift = 2.0
   resLevel = 11
-  hInd     = 2
+  ;hInd     = 2
   ;if n_elements(hInd) eq 0 then message,'Error'
   outPath  = '/n/home07/dnelson/data5/frames/'
 
