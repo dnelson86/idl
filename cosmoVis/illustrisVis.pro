@@ -568,6 +568,108 @@ function illustrisMakeMap, sP=sP,haloID=haloID,sizeFac=sizeFac,sliceWidth=sliceW
   return, sphMap
 end
 
+; catepillarMakeMap(): handle CalcSphMap-based map making for Grif's catepillar (Aquarius-like) runs
+                           
+function catepillarMakeMap, sP=sP,hsmlFac=hsmlFac,nPixels=nPixels,axes=axes,quantName=quantName
+                           
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  units = getUnits()
+  
+  ; config
+  boxSize = 2000.0 ; choose cut  
+  
+  ; load
+  fileName = 'sphMap.' + sP.savPrefix + str(sP.res) + '.' + $
+    str(sP.snap) + '.hf' + str(fix(hsmlFac*100)) + '.bs' + str(fix(boxSize)) + $
+    '.px' + str(nPixels) + '.axes' + str(axes[0]) + str(axes[1]) + '_' + quantName
+
+  saveFilename = sP.derivPath + 'binnedVals/' + fileName + '.sav'
+      
+  if file_test(saveFilename) then begin
+    ; if map already exists, immediate return
+    restore,saveFilename
+    return, sphMap
+  endif
+
+  ; load
+  h = loadSnapshotHeader(sP=sP)
+  
+  partNameS  = strsplit(quantName,"_",/extract)
+  partName   = partNameS[0]
+  rQuantName = partNameS[1]
+
+  mass = float( h.massTable[ partTypeNum('dm') ] )    
+  pos  = loadSnapshotSubset(sP=sP,partType='dm',field='pos') ;/doublePrec
+  
+  pos -= 50.0 ; center (Mpc units)
+  pos *= 1000.0 ; kpc
+
+  w = where(abs(pos[0,*]) le boxSize*0.5 and $
+            abs(pos[1,*]) le boxSize*0.5 and $
+            abs(pos[2,*]) le boxSize*0.5,count)
+            
+  print,'cut',count,n_elements(pos[0,*])
+  
+  pos = pos[*,w]
+  
+  ; CalcHSML: offset into positive [0,boxSize]
+  hsmlSaveName = sP.derivPath + 'binnedVals/hsml.sav'
+  
+  if ~file_test(hsmlSaveName) then begin
+    pos += boxSize*0.5
+    
+    hsml = calcHSML(pos, ndims=3, nNGB=32, boxSize=boxSize)
+    ;hsml = loadSnapshotSubset(sP=sP,partType='dm',field='subfind_hsml')
+
+    pos -= boxSize*0.5
+    
+    save,hsml,filename=hsmlSaveName
+    print,'saved hsml'
+  endif else begin
+    restore,hsmlSaveName,/verbose
+  endelse
+  
+  hsml = hsml[w]
+  
+  ; load quantity
+  if quantName eq 'dm_dens' then $
+    quant = fltarr(n_elements(hsml)) + 1.0 $
+  else $
+    quant = loadSnapshotSubset(sP=sP,partType='dm',field=rQuantName)
+
+  ; apply hsml factor
+  hsml = hsmlFac * temporary(hsml)
+
+  ; image control
+  nPixels2D = [nPixels,nPixels]
+  boxSizeImg = fltarr(3)
+  boxSizeImg[axes[0]] = 0.99 * boxSize ; avoid edge effects
+  boxSizeImg[axes[1]] = 0.99 * boxSize
+   
+  projAxis = ( where( histogram(axes,min=0,max=2) eq 0 ) )[0]
+  boxSizeImg[projAxis] = 0.99 * boxSize ;sliceWidth * 2 * haloRVir
+
+  sphmap = calcSphMap(pos,hsml,mass,quant,$
+                      boxSizeImg=boxSizeImg,boxSizeSim=0,boxCen=[0,0,0],$
+                      nPixels=nPixels2D,axes=axes,ndims=3)
+                      
+  ; make save structure
+  case quantName of
+    'dm_dens'     : localMap = alog10( sphMap.dens_out )
+    'dm_vdisp'    : localMap = alog10( sphMap.quant_out )
+    'dm_annih'    : localMap = alog10( sphMap.quant_out * sphMap.dens_out ) ; remove mass normalization
+    else          : localMap = sphMap.quant_out
+  endcase
+  
+  sphMap = {boxSize:boxSize,fileName:fileName,quant:localMap}    
+    
+  ; save and return
+  save,sphMap,filename=saveFilename
+  print,'Saved: '+strmid(saveFilename,strlen(sP.derivPath))
+  
+  return, sphMap
+end
+
 ; getColorBarLabel(): helper, shared below
 
 function getColorBarLabel, quantName
@@ -748,17 +850,18 @@ pro illustrisVisSingleHalo
   ; config
   ;sP = simParams(res=1820,run='illustris',redshift=0.0)
   ;sP = simParams(res=11,run='zoom_20mpc',hind=0,redshift=3.0)
-  sP = simParams(res=1,run='scylla',redshift=2.0)
+  ;sP = simParams(res=1,run='scylla',redshift=2.0)
+  sP = simParams(res=1,run='catepillar',redshift=1.3)
 
   haloID    = 0      ; fof number, 0, 1000
   sizeFac   = 2.1    ; boxlength in units of rvir
-  axes      = [1,2]  ; 01 02 12 (xy xz yz)
+  axes      = [0,1]  ; 01 02 12 (xy xz yz)
 
   ; plot configuration
   nPixels    = 1024   ; px
   sliceWidth = 2.1    ; depth of box to project through, in units of rvir (maximum is sizeFac)
   scaleBar   = 250.0  ; ckpc, 0 to disable
-  colorBar   = 1      ; 0 to disable
+  colorBar   = 0      ; 0 to disable
   
   ; 1820
   ;pConfigs = { $
@@ -785,14 +888,14 @@ pro illustrisVisSingleHalo
     p3 : {quantName:'gas_vrad',    hF:2.5, mapMM:[-400,400],  ga:1.0, nB:0,  ctName:'brewer-redpurple'} ,$
     p4 : {quantName:'gas_xray',    hF:2.5, mapMM:[-4.5,-1.2], ga:1.0, nB:20, ctName:'red-temp'} ,$ 
     p5 : {quantName:'gas_sz_y',    hF:2.5, mapMM:[2.6,4.6],   ga:1.8, nB:40, ctName:'ocR/zeu'} ,$
-    p6 : {quantName:'dm_dens',     hF:0.5, mapMM:[-5.0,0.2],  ga:1.0, nB:0,  ctName:'helix'}  ,$ ; 455
+    p6 : {quantName:'dm_dens',     hF:0.5, mapMM:[-5.5,-1.0],  ga:1.0, nB:0,  ctName:'dnelson/dmdens'}  ,$ ; helix
     p7 : {quantName:'dm_vmag',     hF:0.5, mapMM:[300,1500],  ga:2.0, nB:0,  ctName:'pm/f-34-35-36'} ,$
     p8 : {quantName:'dm_vdisp',    hF:0.5, mapMM:[1.9,3.0],   ga:2.0, nB:0,  ctName:'esri/events/fire_active_2'} ,$
-    p9 : {quantName:'dm_annih',    hF:1.0, mapMM:[-9.0,-1.0], ga:1.0, nB:0,  ctName:'td/DEM_poster'}  $ ; BAD for 1820, ok for 455?
+    p9 : {quantName:'dm_annih',    hF:1.0, mapMM:[-9.0,-1.0], ga:1.0, nB:0,  ctName:'td/DEM_poster'}  $ 
   }
   
   ; plot which?
-  foreach i,[1] do begin
+  foreach i,[6] do begin
   quantName = pConfigs.(i).quantName
   mapMinMax = pConfigs.(i).mapMM
   gamma     = pConfigs.(i).ga
@@ -803,8 +906,12 @@ pro illustrisVisSingleHalo
   ; calculate projection using mass-weighted sph kernel
   if sliceWidth gt sizeFac or sliceWidth le 0.0 then message,'Error'
   
-  sphMap = illustrisMakeMap(sP=sP,haloID=haloID,sizeFac=sizeFac,sliceWidth=sliceWidth,$
-                            hsmlFac=hsmlFac,nPixels=nPixels,axes=axes,quantName=quantName)
+  ; illustris:
+  ;sphMap = illustrisMakeMap(sP=sP,haloID=haloID,sizeFac=sizeFac,sliceWidth=sliceWidth,$
+  ;                          hsmlFac=hsmlFac,nPixels=nPixels,axes=axes,quantName=quantName)
+                            
+  ; catepillar:
+  sphMap = catepillarMakeMap(sP=sP,hsmlFac=hsmlFac,nPixels=nPixels,axes=axes,quantName=quantName)
 
   ; scaling
   w = where(~finite(sphMap.quant),count,comp=wc)
@@ -819,8 +926,8 @@ pro illustrisVisSingleHalo
   sphMap2D = fix(sphMap2D + nBottom) < 255 ; nBottom-255    
   
   ; rotate?
-  print,'ROTATING (scylla)'
-  sphMap2D = rotate(sphMap2D,4)
+  ;print,'ROTATING (scylla)'
+  ;sphMap2D = rotate(sphMap2D,4)
   
   ; plot
   xySize = 8 ; keep constant, charsize/pthick relative to pagesize
@@ -844,17 +951,17 @@ pro illustrisVisSingleHalo
     tv, sphMap2D, 0.0, 0.0, /normal
 
     ; circle at virial radius
-    tvcircle, sphMap.haloRVir, 0, 0, cgColor('white'), thick=0.8, /data    
+    ;tvcircle, sphMap.haloRVir, 0, 0, cgColor('white'), thick=0.8, /data    
   
     ; contours?
     ;cgContour, smooth(sphMap2D,ceil(nPixels/100)), levels=[140,180,220,240], label=0, /onImage
   
     ; scale bar
     if scaleBar gt 0 then begin
-      xpos = [xyMinMax[1]*0.96,xyMinMax[1]*0.96-scaleBar]
+      xpos = [xyMinMax[1]*0.96,xyMinMax[1]*0.96-scaleBar/0.7]
       ypos = replicate(xyMinMax[1]*0.96,2)
     
-      cgText,mean(xpos),ypos*0.94,string(scaleBar,format='(i3)')+' kpc/h',$
+      cgText,mean(xpos),ypos*0.94,string(scaleBar,format='(i3)')+' ckpc',$
         alignment=0.5,color=cgColor('white')
       oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
     endif

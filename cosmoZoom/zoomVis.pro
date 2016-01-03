@@ -1,6 +1,6 @@
 ; zoomVis.pro
 ; 'zoom project' specialized visualization
-; dnelson jan.2015
+; dnelson dec.2015
 
 ; zoomMeshAndSliceWithRes(): Voronoi mesh and temperature slice @ L9,L10,L11 for one halo
 ; NOTE: requires that the snapshots be first post-processed with Arepo (restart-flag=4)
@@ -227,8 +227,8 @@ pro multiMapZoomComp, doOne=doOne, doTwo=doTwo
   
   ; config
   redshift = 2.0
-  resLevel = [11,11,11,11] ;[9,10,10,10] ;
-  hInds    = [2,4,5,9] ;[0,1,7,8] ;[6,3] ;[3,3,5,9] ;
+  resLevel = [11,11,11,11] ;[9,10,10,10]
+  hInds    = [2,4,5,9] ;[0,1,7,8] ;[6,3] ;[3,3,5,9]
 
   ; plot config
   sizeFac       = 7.8          ; times rvir (master, must be >=max(sizeFac) below)
@@ -260,7 +260,7 @@ pro multiMapZoomComp, doOne=doOne, doTwo=doTwo
       field1 : { cF:'overdens', mapMM:[-1.0,4.0], sizeFac:5.5, rVirCircs:[1.0,2.0]   } ,$
       field2 : { cF:'dmdens',   mapMM:[1.5,5.5],  sizeFac:5.5, rVirCircs:[1.0,2.0]   } }
   endif
-    
+      
   numFields = n_tags(fields)
   numRuns   = n_elements(hInds)
   
@@ -323,6 +323,91 @@ pro multiMapZoomComp, doOne=doOne, doTwo=doTwo
   
     endfor ; numFields,j
   endfor ; numRuns,i
+  
+  end_PS, density=ceil(nPixels[0]/xySize), pngResize=100 ;, /deletePS
+  
+end
+
+; hotColdSplitZoomImage(): split temp projection into hot/cold following referee request
+
+pro hotColdSplitZoomImage
+  compile_opt idl2, hidden, strictarr, strictarrsubs
+  
+  ; config
+  redshift = 2.0
+  resLevel = 11
+  hInd     = 0
+
+  ; plot config
+  sizeFac       = 7.8          ; times rvir (master, must be >=max(sizeFac) below)
+  hsmlFac       = 3.0 ; 2.0 in draft0! ; times each cell radius for sph projections
+  nPixels       = [1200,1200]  ; px
+  xySize        = 7            ; final image is xySize*nPixels[0] high
+  axisPair      = [0,1]        ; xy, xz
+  barAreaHeight = 0.06         ; fractional
+  secondCutVal  = 5.0          ; log K
+  
+  saveTag = 'c'
+  fields = { field0 : { cF:'temp', mapMM:[4.0,6.3], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+             field1 : { cF:'temp', mapMM:[4.0,6.3], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] }  }
+    
+  numFields = 2
+  numRuns   = 1
+  
+  ; load metadata
+  sP = simParams(run='zoom_20Mpc',res=resLevel,hInd=hInd,redshift=redshift)
+  gcID = zoomTargetHalo(sP=sP)
+  
+  runsStr = 'L' + str(resLevel) + '_' + str(sP.snap) + '_h' + str(hInd)  
+  saveFilename = 'zoomMaps_'+runsStr+'_axes'+str(axisPair[0])+str(axisPair[1])+'_'+$
+                  saveTag + '_px' + str(nPixels[0]) + '_nF' +str(numFields)+'.eps'
+                 
+  xs = xySize*numFields
+  ys = xySize*numRuns*(1/(1.0-barAreaHeight))
+  
+  start_PS, sP.plotPath + saveFilename, xs=xs, ys=ys  
+
+    ; spatial cutouts, increase hsml for vis purposes
+    mapCutout = cosmoVisCutout(sP=sP,gcInd=gcID,sizeFac=sizeFac)
+    mapCutout.loc_hsml *= hsmlFac
+    
+    for j=0,numFields-1 do begin ;j=0 cold, j=1 hot
+      ; make boxsize appropriate for map cutout
+      mapCutout.boxSizeImg = fields.(j).sizeFac*[mapCutout.haloVirRad,$ ;x
+                                                 mapCutout.haloVirRad*nPixels[1]/nPixels[0],$ ;y
+                                                 mapCutout.haloVirRad] ;z
+  
+      ; mapping configuration
+      config = {saveFilename:'',nPixels:nPixels,axes:axisPair,fieldMinMax:[0,0],$
+                gcID:gcID,haloMass:mapCutout.haloMass,haloVirRad:mapCutout.haloVirRad,$
+                boxCen:[0,0,0],boxSizeImg:mapCutout.boxSizeImg,rVirCircs:fields.(j).rVirCircs,$
+                ctNameScat:'',ctNameMap:'',sP:sP,bartype:'',scaleBarLen:100.0,$
+                secondCutVal:0,secondText:'',nbottom:1,black0:1,secondGt:1,singleColorScale:1,$
+                barAreaHeight:barAreaHeight,newBoxSize:fields.(j).sizeFac,$
+                colorField:fields.(j).cF,mapMinMax:fields.(j).mapMM}
+       
+      ; temp split here (put eEOS gas into cold selection, since it is set to 1000K)
+      w = where(mapCutout.loc_temp ge 10.0^secondCutVal and mapCutout.loc_sf eq 0B, nw, comp=wc)
+      if j eq 0 then w = wc ; below
+      print,j,n_elements(w),n_elements(mapCutout.loc_temp)
+      
+      cutout = mapCutout
+      cutout = mod_struct( cutout, 'loc_temp', cutout.loc_temp[w] )
+      cutout = mod_struct( cutout, 'loc_sf',   cutout.loc_sf[w] )
+      cutout = mod_struct( cutout, 'loc_hsml', cutout.loc_hsml[w] )
+      cutout = mod_struct( cutout, 'loc_mass', cutout.loc_mass[w] )   
+      cutout = mod_struct( cutout, 'loc_pos',  cutout.loc_pos[*,w] )
+            
+      sub = cosmoVisCutoutSub(cutout=cutout,mapCutout=cutout,config=config)
+      
+      ; plot
+      plotMultiSphmap, map=sub, config=config, row=[0,numRuns], col=[j,numFields]
+  
+    endfor ; numFields,j
+    
+  ; custom titles
+  cgText,0.48,0.97,"cold",/normal,color='white',alignment=0.5
+  cgText,0.52,0.97,"hot",/normal,color='white',alignment=0.5
   
   end_PS, density=ceil(nPixels[0]/xySize), pngResize=100 ;, /deletePS
   

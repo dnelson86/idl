@@ -7,17 +7,18 @@
 pro plotPreBin, sP=sP, redshifts=redshifts
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  if n_elements(redshifts) eq 0 then message,'Error'
+  ;if n_elements(redshifts) eq 0 then message,'Error'
   
   ; config
   ;redshift   = sP.redshift ;2.0
-  ;redshifts  = [2.0,3.0]
+  redshifts  = [2.0]
   res        = sP.res ;256
   run        = sP.run
 
-  runs        = [sP.run] ;['feedback','gadget'] ;tracer
+  ;runs        = ['shytr1','shytr2'] ;[sP.run] ;['feedback','gadget'] ;tracer
+  runs = [sP.run]
   resolutions = [sP.res]
-  timeWindows = list(250.0) ;,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
+  timeWindows = list(500.0) ;,'all') ;list('all','tVir_tIGM','tVir_tIGM_bin') ; Myr
   accModes    = list('all','smooth','clumpy','stripped','recycled')
 
   foreach redshift,redshifts do begin
@@ -58,21 +59,21 @@ pro plotByMethod
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
+  runs       = ['shytr1','shytr2'] ;['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   accMode    = 'smooth' ; accretion mode: all, smooth, bclumpy, sclumpy
   timeWindow = 500.0 ; consider accretion over this past time range (Myr)
                       ; 250.0 500.0 1000.0 "all" "tVir_tIGM" or "tVir_tIGM_bin"
-  res        = 512
+  res        = 256
   redshift   = 2.0
   
   lines   = [1,0,2] ; tvircur,tviracc,const5.5
   sK      = 3 ; smoothing kernel size
-  cInd    = 1 ; color index
+  cInd    = 0 ; color index
   zoomSym = ['open circle','open square','open diamond'] ;cutVals/virVals
 
-  xrange = [10.0,12.0]
+  xrange = [10.5,12.5]
   yrange = [0.0,1.025]
-  yrange_rate = [0.001,20.0]
+  yrange_rate = [0.1,200.0]
   
   ; add any zoom run single points?
   ;sPz = mod_struct( sPz, 'sPz0', simParams(run='zoom_20Mpc',res=9,hInd=0,redshift=redshift) )
@@ -185,7 +186,7 @@ pro plotByMethod
       
     ; legend
     strings = textoidl("T_{max} / T_{vir,acc} < ")+string(mbv.(0).TvirVals,format='(f4.1)')
-    legend,strings,linestyle=indgen(n_elements(mbv.(0).TvirVals)),box=0,linesize=0.25,/top,/left
+    legend,strings,linestyle=indgen(n_elements(mbv.(0).TvirVals)),color=cgColor('dark gray'),box=0,linesize=0.25,/top,/left
 
     ; lr: gmem const
     ; ---
@@ -204,7 +205,7 @@ pro plotByMethod
     
     ; legend
     strings = textoidl("T_{max} < T_{c} = 10^{"+string(mbv.(0).TcutVals,format='(f3.1)')+"}")
-    legend,strings,linestyle=indgen(n_elements(mbv.(0).TcutVals)),box=0,linesize=0.25,/top,/right
+    legend,strings,linestyle=indgen(n_elements(mbv.(0).TcutVals)),box=0,color=cgColor('dark gray'),linesize=0.25,/top,/right
 
     legend,simNames,textcolors=simColors,box=0,/bottom,/left
 
@@ -230,7 +231,7 @@ pro plotByMethod
     rateInd = where( tag_names(mbv.(0).galaxyMedian) eq strupcase(label) )
   
   ; plot (1) - galaxy/halo, variable*const
-  if 0 then begin
+  if 1 then begin
   start_PS, sP.(0).plotPath + label + 'ByMethod.galaxy-halo.const.' + plotStr + '.eps', /big
     
     x0 = 0.13 & x1 = 0.53 & x2 = 0.93
@@ -304,7 +305,7 @@ pro plotByMethod
     
     ; legend
     strings = textoidl("T_{max} < T_{c} = 10^{"+string(mbv.(0).TcutVals,format='(f3.1)')+"}")
-    legend,strings,linestyle=indgen(n_elements(mbv.(0).TcutVals)),linesize=0.25,/top,/left
+    legend,strings,linestyle=indgen(n_elements(mbv.(0).TcutVals)),color=cgColor('dark gray'),linesize=0.25,/top,/left
 
     ; labels
     cgText,0.05,y1,"Gas "+ytitles[k]+" Rate "+textoidl("[_{ }h^{-1} M_{sun } yr^{-1 }]"),$
@@ -375,7 +376,7 @@ pro plotByMethod
     
     ; legend
     strings = textoidl("T_{max} / T_{vir,acc} < ")+string(mbv.(0).TvirVals,format='(f4.1)')
-    legend,strings,linestyle=indgen(n_elements(mbv.(0).TvirVals)),linesize=0.25,/bottom,/right
+    legend,strings,linestyle=indgen(n_elements(mbv.(0).TvirVals)),color=cgColor('dark gray'),linesize=0.25,/bottom,/right
     
     ; lr: cold halo
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange_rate,/xs,/ys,/ylog,yminor=0,$
@@ -416,20 +417,20 @@ pro plotByMode
   compile_opt idl2, hidden, strictarr, strictarrsubs
 
   ; config
-  redshift   = 0.0
-  res        = 512
-  timeWindow = 500.0
-  runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
+  redshift   = 2.0
+  res        = 256
+  timeWindow = 250.0
+  runs       = ['shytr1','shytr2'] ;['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   accModes   = ['all','smooth','clumpy','stripped','recycled']
   
   ; plot config
   sK     = 3 ; smoothing kernel size
-  cInd   = 1 ; color index
+  cInd   = 0 ; color index
   virInd = 0 ; 1.0 Tvir
   conInd = 1 ; 5.5 const
   lines  = [0,1,2,3,4] ; for each accMode
   
-  xrange = [10.0,12.0]
+  xrange = [10.5,12.5]
   yrange = [0.0,1.025]
   
   if accModes[0] ne 'all' then message,'Error: Fraction plot not going to work.'
@@ -520,7 +521,7 @@ pro plotByMode
         color=sP.(i).colors[cInd],line=lines[j],/overplot
     
     ; legend
-    legend,accModes,linestyle=lines,box=0,linesize=0.4,/bottom,/left
+    legend,accModes,linestyle=lines,color=cgColor('dark gray'),box=0,linesize=0.4,/bottom,/left
     
     ; lr: halo const
     cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,/xs,/ys,$
@@ -549,7 +550,7 @@ pro plotByMode
   
   ; --- accretion rates ---
 
-  yrange = [0.01,20.0]
+  yrange = [0.1,2000.0]
 
   ; plot (1) - net accretion rate galaxy/halo atmosphere variable*tvir
   start_PS, sP.(0).plotPath + 'netRateByMode.galaxy-halo.tvir.'+plotStr+'.eps', /big
@@ -601,8 +602,9 @@ pro plotByMode
         color=sP.(i).colors[cInd],line=lines[j],/overplot
 
     ; legend
-    legend,accModes,linestyle=lines,box=0,linesize=0.4,/top,/left
-      
+    print, lines
+    legend,accModes,linestyle=lines,color=cgColor('dark gray'),box=0,linesize=0.4,/top,/left
+    
     ; labels
     cgText,0.05,y1,"Net Accretion Rate "+textoidl("[_{ }h^{-1} M_{sun } yr^{-1 }]"),$
       alignment=0.5,orientation=90.0,/normal
@@ -668,7 +670,7 @@ pro plotByMode
         color=sP.(i).colors[cInd],line=lines[j],/overplot
     
     ; legend
-    legend,accModes[1:*],linestyle=lines[1:*],box=0,linesize=0.4,position=[11.2,0.95]
+    legend,accModes[1:*],linestyle=lines[1:*],color=cgColor('dark gray'),box=0,linesize=0.4,position=[11.2,0.95]
       
     ; labels
     cgText,0.05,y1,"Fraction of Net Accretion Rate",alignment=0.5,orientation=90.0,/normal

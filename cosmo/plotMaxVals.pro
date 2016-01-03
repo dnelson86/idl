@@ -237,16 +237,16 @@ pro plotValMaxHistos ;, redshift=redshift, res=res
   units = getUnits()
   
   ; config
-  runs       = ['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
+  runs       = ['shytr1','shytr2'] ;['gadget','tracer','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   redshift   = 2.0
-  res        = 512
+  res        = 256
   timeWindow = 500.0 ; Myr
   accMode    = 'smooth' ;'all','smooth','clumpy','stripped','recycled'
   tagNames   = ['Tmax','TmaxTviracc','EntMax','DensMax','MachMax'] ; plot each quantity
   
   ; plot config
   lines   = [0,1] ; gal,gmem
-  cInd    = 1 ; color index for simName labels
+  cInd    = 0 ; color index for simName labels
   
   ; 2D plot config
   exp     = 0.5   ; gamma exponent for non-linear color scaling
@@ -445,16 +445,16 @@ pro plotValMaxHistosByMode ;, redshift=redshift, res=res
   units = getUnits()
   
   ; config
-  runs       = ['tracer','gadget','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
+  runs       = ['shytr1','shytr2'] ;['tracer','gadget','feedback'] ;['feedback','feedback_noZ','feedback_noFB']
   redshift   = 2.0
-  res        = 512
-  timeWindow = 500.0 ; Myr
+  res        = 256
+  timeWindow = 250.0 ; Myr
   accModes   = ['all','smooth','clumpy','stripped','recycled']
   tagNames   = ['Tmax','TmaxTviracc','EntMax','DensMax','MachMax'] ; plot each quantity
   
   ; plot config
   lines   = [0,1,2,3,4] ; for each accMode
-  cInd    = 1 ; color index for simName labels
+  cInd    = 0 ; color index for simName labels
   
   if isnumeric(timeWindow) then twStr = str(fix(timeWindow))
   if ~isnumeric(timeWindow) then twStr = "-"+timeWindow

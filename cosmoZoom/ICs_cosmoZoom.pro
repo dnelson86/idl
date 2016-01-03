@@ -1,39 +1,6 @@
 ; ICs_cosmoZoom.pro
 ; zoom project - helper for generating zoom ICs with MUSIC (O. Hahn)
-; dnelson sep.2014
-
-; checkBHDerefGal(): debugging
-
-pro checkBHDerefGal
-
-  ; how similar are the snapshots?
-  snapNum = 0
-  sP_old = simParams(run='zoom_20Mpc',res=9,hInd=0,snap=snapNum)
-  sP_new = simParams(run='zoom_20Mpc_derefgal_nomod',res=9,hInd=0,snap=snapNum)
-  
-  h_old = loadSnapshotHeader(sP=sP_old)
-  h_new = loadSnapshotHeader(sP=sP_new)
-  
-  print,h_old.nPartTot
-  print,h_new.nPartTot
-  ; random number differences due to BHs being there? (new has more gas cells, less stars)
-  
-  stop
-  
-end
-
-; checkLowResStars(): are stars spawning from low res gas cells? if so which parttype do they have?
-
-pro checkLowResStars
-
-  sP = simParams(res=9,run='zoom_20mpc',hind=0,redshift=2.0)
-  h = loadSnapshotHeader(sP=sP)
-  
-  print,h.nparttot
-  
-  stop
-
-end
+; dnelson dec.2015
 
 pro checkZoomDerefineGal
 
@@ -355,7 +322,7 @@ pro zoomSelectHaloSimple
   print,'Normal soft: ',20000.0/(128*2.0^zoomlevel)/40.0
   print,'Num DM in pri subfind: '+str(n_elements(gc_ids_all))
   
-  ; load z=0 dm_ids and dm_pos
+  ; load z=target dm_ids and dm_pos
   ztarget_ids = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
   ztarget_pos = loadSnapshotSubset(sP=sP,partType='dm',field='pos')
 
@@ -555,10 +522,14 @@ pro orderLagrangianVolumes
   gcInds = where(gcMasses ge haloMassRange[0] and gcMasses lt haloMassRange[1], count)
   w = where(gcMasses gt haloMassRange[1], count2)
   
+  stop
+  
   gcIDs    = gcIDs[ gcInds ]
   gcMasses = gcMasses[ gcInds ]
   
   print,'Found ['+str(count)+'] halos in mass range, ['+str(count2)+'] more massive exist.'
+  
+
   
   ; load z=0 dm_ids and dm_pos
   ztarget_ids = loadSnapshotSubset(sP=sP,partType='dm',field='ids')
@@ -1121,6 +1092,169 @@ pro zoomProperties
     endforeach
   endforeach
 
+end
+
+; zoomSnapSpacings(): write some snapshot spacings
+
+pro zoomSnapSpacings
+
+  ; config
+  nSnaps = 100
+  zStart = 1.95 ;20.0
+  zEnd   = 0.0 ;2.0
+  fName  = "outputs.txt"
+  
+  ; calculate
+  aStart = 1.0 / (1+zStart)
+  aEnd   = 1.0 / (1+zEnd)
+  
+  ; (1) linear in a
+  aVals1 = linspace(aStart,aEnd,nSnaps)
+  zVals1 = 1/aVals1 - 1.0
+  ; (2) log in a
+  aVals2 = logspace(alog10(aStart),alog10(aEnd),nSnaps)
+  zVals2 = 1/aVals2 - 1.0
+  ; (3) linear in Gyr
+  ; todo
+  
+  ; look at time spacing
+  tVals1 = redshiftToAgeFlat(zVals1)  
+  tSpacings1 = tVals1 - shift(tVals1,1)
+  tSpacings1 = tSpacings1[1:*] * 1000 ; Myr
+  
+  tVals2 = redshiftToAgeFlat(zVals2)  
+  tSpacings2 = tVals2 - shift(tVals2,1)
+  tSpacings2 = tSpacings2[2:*] * 1000 ; Myr
+  
+  print,'linear in a:'
+  print,tSpacings1
+  
+  print,'log in a:'
+  print,tSpacings2
+  
+  ; write
+  openW,lun,fName,/GET_LUN
+  
+  printf,lun,'# dnelson OutputList (zStart='+str(zStart)+$
+                            ' zEnd='+str(zEnd)+$
+                            ' nSnaps='+str(nSnaps)+$
+                            ') (linear in scalefactor)'
+  
+  foreach aVal,aVals1,i do begin
+    outStr = " " + string(aVal,format='(f8.6)') 
+    outStr += " 1" ; dumpflag (0=no, 1=snap+groups, 2=snap only)
+    outStr += " # z=" + string(zVals1[i],format='(f06.3)')
+    outStr += " snap=" + string(i,format='(I03)')
+    printf,lun,outStr
+  endforeach
+  
+  close,lun
+  free_lun, lun
+
+
+  stop
+  
+end
+
+; TEST2
+
+pro test2
+  sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=2.0)
+  gc = loadGroupCat(sP=sP,/readIDs)  
+  gcMasses = codeMassToLogMsun(gc.subgroupMass)
+  gcMasses = alog10( 10.0^gcMasses / 0.7 )
+  
+  print,gcMasses[0:10]
 
 end
 
+; zoomFinalMasses(): locate the z=2 halos at z=0 (simple DM ID matching), find masses/environments
+
+pro zoomFinalMasses
+
+  ; config (parent dm box)
+  zTarg  = 2.0 ; target redshift that simulation was run to
+  zFinal = 0.0 ; redshift to re-locate halos at
+  hInds  = [0,1,2,4,5,7,8,9]
+  
+  matchType      = 'all' ; pri,sec,all to consider in matching
+  matchMassRange = [11.0,15.0] ; log msun halo mass range to consider in matching
+  nearbyMass     = 12.5 ; look for cluster env. by checking distance to closest halo above this mass
+  
+  sP = simParams(res=128,run='zoom_20Mpc_dm',redshift=zTarg)
+  
+  ; load z=target groups and DM ids
+  gc = loadGroupCat(sP=sP,/readIDs)  
+  gcMasses = codeMassToLogMsun(gc.subgroupMass)
+
+  ; load z=zFinal groups and DM ids
+  sP.redshift = zFinal
+  sP.snap = redshiftToSnapNum(sP=sP)
+  
+  gc0 = loadGroupCat(sP=sP,/readIDs)
+  gc0Masses = codeMassToLogMsun(gc0.subgroupMass)
+  
+  ; attempt crossmatch with all z=zFinal halos (e.g. centrals above 10^12)
+  candInds = gcIDList(gc=gc0,select=matchType,massRange=matchMassRange)
+  print, 'Ranking ['+str(n_elements(candInds))+'] candidates of ['+str(n_elements(gc.subgroupMass))+'] total.'
+  
+  foreach hInd,hInds do begin
+    ; load metadata
+    sP_halo = simParams(res=9,run='zoom_20mpc',hInd=hInd,redshift=zTarg)
+    gcID = sP_halo.targetHaloInd
+    gcMass = gcMasses[gcID]
+    gcPos  = gc.subgroupPos[*,gcID]
+    
+    print, 'hInd ['+str(hInd)+'] in paper is ['+str(sP_halo.hIndDisp)+'] using gcID = '+str(gcID)
+    print, ' Original mass = '+str(gcMass)+' (pos '+ str(gcPos[0])+' '+str(gcPos[1])+' '+str(gcPos[2])+')'
+  
+    gc_ids_all = gcPIDList(gc=gc, valGCids=gcID, partType='dm')
+    
+    print, ' Have ['+str(n_elements(gc_ids_all))+'] DM ids at z=target to match to z=0.'
+    
+    ; hold results
+    candScores = fltarr(n_elements(candInds))
+    candMasses = fltarr(n_elements(candInds))
+    candPos    = fltarr(3,n_elements(candInds))
+    
+    ; loop over all candidate halos at z=zFinal
+    foreach candInd,candInds,i do begin
+      cand_ids = gcPIDList(gc=gc0, valGCids=candInd, partType='dm')
+      shared_ids = intersection(gc_ids_all, cand_ids)
+      
+      ; handle empty return of intersection()
+      if n_elements(shared_ids) eq 1 then if shared_ids eq -1 then shared_ids = []
+      
+      ; calculate score (simply percentage matched) and aux values
+      candScores[i] = float(n_elements(shared_ids)) / n_elements(gc_ids_all)
+      candMasses[i] = codeMassToLogMsun( gc0.subgroupMass[ candInd ] )
+      candPos[*,i]  = gc0.subgroupPos[ *, candInd ]
+      
+      if candScores[i] gt 0.0 then $
+        print, '  ['+string(i,format='(I3)')+'] match ['+str(n_elements(shared_ids))+'] of ['+$
+               str(n_elements(cand_ids))+'] '+str(candScores[i]*100)+'%'
+    endforeach
+    
+    ; choose best match for this halo at z=zFinal
+    w = where(candScores eq max(candScores), nw)
+    if nw ne 1 then message,'Error'
+    
+    print, ' Winner: #'+str(w)+' candInd ['+str(candInds[w])+'] with mass = '+str(candMasses[w])+' (pos '+$
+           str(candPos[0,w])+' '+str(candPos[1,w])+' '+str(candPos[2,w])+')'
+           
+           
+    ; check for nearby massive halos
+    dists = periodicDists(reform(candPos[*,w]), gc.subgroupPos, sP=sP)
+    wNear = where(gc0Masses ge nearbyMass)
+    minDist = min(dists[wNear], minInd) / 0.7 / 1000.0 ; kpc/h -> Mpc
+    minInd  = wNear[minInd]
+    minMass = gc0Masses[minInd]
+    print, ' Closest halo above threshold mass is ['+str(minDist)+'] Mpc away '+$
+           '(ind='+str(minInd)+' mass='+str(minMass)+')'
+           
+    print,''
+    
+  endforeach
+  stop
+
+end

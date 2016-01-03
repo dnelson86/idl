@@ -441,7 +441,7 @@ pro plotShellInOutFracRateVsRedshift
   runStr = ''
   foreach run,runs do runStr += '_' + str(run)
   sP = simParams(res=res,run=runs[0],redshift=0.0)
-  saveFilename = sP.derivPath + 'hShells/shellFracRedshift.' + str(res) + runStr + '.snapFac2.sav'
+  saveFilename = sP.derivPath + 'hShells/shellFracRedshift.' + str(res) + runStr + '.snapFac2_shy.sav'
     
   if file_test(saveFilename) then begin
     restore,saveFilename
