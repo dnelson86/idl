@@ -557,7 +557,7 @@ function calcShellInfallFrac, sP=sP, massBinCens=massBinCens, blindSearch=blindS
   compile_opt idl2, hidden, strictarr, strictarrsubs
   
   ; config
-  radFacs      = [0.25,0.5,0.75,1.0,1.5] ; fractions of the virial radius to save results
+  radFacs      = [0.1,0.15,0.20,0.25] ;[0.25,0.5,0.75,1.0,1.5] ; fractions of the virial radius to save results
   cutSubS      = 1     ; cut satellite substructures out from halo
   threshValAbs = 20.0  ; e.g. greater than +/- 20 km/s vrad
   threshValRel = 0.1   ; e.g. greater than +/- 10% of circular velocity of NFW halo fit at that rad
@@ -676,7 +676,7 @@ function calcShellValuesAcrossRedshifts, run=run, doSnap=doSnap, getParams=getPa
   
   ; config
   res         = 512
-  runs        = ['feedback','tracer','gadget']
+  ;runs        = ['feedback','tracer','gadget']
   snapFac     = 2 ; 2=every other snap, 3=every third snap, etc
   maxRedshift = 6.0 ; don't go back further than this
   minRedshift = 0.0 ; don't go forward further than this

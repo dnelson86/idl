@@ -466,7 +466,7 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
   pos = [leftOffset,topOffset,leftOffset+colWidth,topOffset+rowHeight]
 
   ; output image
-  loadColorTable,config.ctNameMap
+  loadColorTable,config.ctNameMap,black0=(tag_exist(config,'black0'))
   
   cgPlot, /nodata, xMinMax, yMinMax, pos=pos, xs=5, ys=5, /noerase
   tv, sphmap.quant_out,pos[0],pos[1],/normal,xsize=colWidth ; mass-weighted quantity
@@ -528,7 +528,10 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     if totRows eq 4 and curRow eq 0 and curCol eq totCols-1 then $
       cgText,pos[2]-0.01,pos[3]-0.02,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
              color=cgColor('white'),/normal
-             
+    ; zoom 4x2
+    ;if totRows eq 2 and curRow eq 1 and curCol eq totCols-1 then $
+    ;  cgText,pos[2]-0.01,pos[1]+0.025,"z = "+string(config.sP.redshift,format='(f3.1)'),alignment=1.0,$
+    ;         color=cgColor('white'),/normal           
   endif else begin
     if zoom2x1 ne 1 then begin
       if (curRow eq 0 and curCol eq totCols-1) or (curRow eq 0 and totCols gt 3) then $
@@ -649,7 +652,7 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     
     pos = [y_bottom,x_left,y_top,x_right]
     
-    loadColorTable,config.ctNameMap
+    loadColorTable,config.ctNameMap,black0=(tag_exist(config,'black0'))
     cgColorbar,position=pos,divisions=0,charsize=0.000001,bottom=0,ticklen=0.00001
     
     ; colorbar labels

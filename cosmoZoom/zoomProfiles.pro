@@ -1,6 +1,6 @@
 ; zoomProfiles.pro
 ; 'zoom project' 1D and 2D radial profiles, phase diagrams
-; dnelson jan.2015
+; dnelson dec.2015
 
 ; zoomRadialBin(): do radial binning (1d and 2d) for multiple particle types
 
@@ -370,7 +370,7 @@ pro plotZoomRadialProfiles ;, input=input
   
   ; config
   hInds     = [0,1,7,8,2,4,5,9] ;re-ordered such that hIndDisp are in order ;[3,6]
-  resLevels = [9,10,11] ;[9,10,11]
+  resLevels = [11] ;[9,10,11] ;[9,10,11]
   redshift  = 2.0
   newSaves  = 0 ; override existing saves
   
@@ -425,7 +425,7 @@ pro plotZoomRadialProfiles ;, input=input
                     vrad  : { label:"v_{rad,stars} [_{ }km/s_{ }]",     range:[-100,200], log:0 } ,$
                     angm  : { label:"log j_{stars} [_{ }kpc km/s_{ }]", range:[3.0,5.0],  log:1 }  }
          
-  radLines = [0.15,1.5]
+  radLines = [0.07,0.15,1.5]
   sK       = 1
   
   ; A (resolutions are different linestyles, all same color and thickness)
@@ -439,18 +439,17 @@ pro plotZoomRadialProfiles ;, input=input
   cInds   = [2,1,1]
   
   ; test
-  masses = fltarr(8,3)
-  foreach hInd,hInds,i do begin
-    foreach resLevel,resLevels,j do begin
-      sP  = simParams(run='zoom_20Mpc',res=resLevel,hInd=hInd,redshift=redshift)
-      gc = {}
-      halo = {binMinMax:binMinMax,nBins:nBaseBins,gcInd:0,cutSubS:cutSubS}
-      gas = zoomRadialBin(sP=sP, gc=gc, partType='gas', halo=halo, mode=2)
-      masses[i,j] = gas
-    endforeach
-  endforeach    
-      
-  stop
+  ;masses = fltarr(8,3)
+  ;foreach hInd,hInds,i do begin
+  ;  foreach resLevel,resLevels,j do begin
+  ;    sP  = simParams(run='zoom_20Mpc',res=resLevel,hInd=hInd,redshift=redshift)
+  ;    gc = {}
+  ;    halo = {binMinMax:binMinMax,nBins:nBaseBins,gcInd:0,cutSubS:cutSubS}
+  ;    gas = zoomRadialBin(sP=sP, gc=gc, partType='gas', halo=halo, mode=2)
+  ;    masses[i,j] = gas
+  ;  endforeach
+  ;endforeach       
+  ;stop
   
   ; load  
   foreach hInd,hInds do begin
@@ -552,6 +551,7 @@ pro plotZoomRadialProfiles ;, input=input
   !except = 0
   
   ; plot (1) - 1D radial (median) profiles of all quantities, one per panel, all halos all resolutions
+  if 0 then begin
   foreach fName,['RAD'] do begin ;tag_names(pConfig) do begin
   
     qInd = where( tag_names(rp.(0).(0).gas) eq fName )
@@ -834,9 +834,7 @@ pro plotZoomRadialProfiles ;, input=input
     end_PS
   
   endforeach ; tag_names(pConfig)
-  stop
   
-  if 0 then begin
   ; plot (2) - 1D radial (median) profiles of DM/stars quantities, one per panel, all halos all resolutions
   foreach fName,['RAD'] do begin ;tag_names(pConfig_dm) do begin
   
@@ -931,7 +929,6 @@ pro plotZoomRadialProfiles ;, input=input
     end_PS
   
   endforeach ; tag_names(pConfig_dm)
-  stop
   
   ; plot (3) - 2d histograms of all quantities (3x2), one per panel, one halo one resolution
   for i=0,n_tags(rp)-1 do begin
@@ -1151,8 +1148,6 @@ pro plotZoomRadialProfiles ;, input=input
     endfor ;j
   endfor ;i
   
-  endif ;0
-  
   ; plot (5) - correlation matrix (for each halo, at each res)
   for i=0,n_tags(rp)-1 do begin
     for j=0,n_tags(rp.(i))-1 do begin
@@ -1359,7 +1354,7 @@ pro plotZoomRadialProfiles ;, input=input
         end_PS
     
   endforeach ; resLevels stack
-  stop
+  endif ;0
   
   ; plot (6) - stacked 2d histograms of all quantities, one per panel, all halos at each res
   foreach stackResLevel,resLevels do begin
@@ -1378,6 +1373,7 @@ pro plotZoomRadialProfiles ;, input=input
       xtitle = pConfig.(pInd).label
       xrange = binMinMax.(mInd1)
       
+      if 0 then begin
       start_PS, rp.(0).(0).sP.plotPath + 'zoomProfiles_'+fName+'_Gas_2D_' + plotStr2 + '.eps', $
         xs=12.0*1.4, ys=6.0*1.4
       
@@ -1415,7 +1411,7 @@ pro plotZoomRadialProfiles ;, input=input
             xtitle=textoidl(xtitle),ytitle=textoidl(ytitle),pos=pos[counter]+offset,/noerase
              
           foreach radLine,radLines do $
-            cgPlot,[radLine,radLine],yrange+[0.05,-0.05],line=1,color='light gray',/overplot
+            cgPlot,[radLine,radLine],yrange+[0.05,-0.05],line=1,color='gray',/overplot
           
           ; mean/median of each run
           for i=0,n_tags(rp)-1 do begin
@@ -1434,6 +1430,7 @@ pro plotZoomRadialProfiles ;, input=input
         endforeach ; tag_names(pConfig)
           
       end_PS
+      endif ;0
       
       ; plot (6b) - individual plots for some quantities        
       foreach curField,indivPlotsY do begin
@@ -1443,7 +1440,10 @@ pro plotZoomRadialProfiles ;, input=input
         start_PS, rp.(0).(0).sP.plotPath + 'zoomProfiles_'+fName+'-'+curField+$
           '_Gas_2D_' + plotStr2 + '.eps' ;, xs=12.0*1.4, ys=6.0*1.4
           
-          pos = [0.13,0.14,0.92,0.92]
+          !p.charsize *= 1.2
+               
+          ;pos = [0.13,0.14,0.92,0.92] ; old, no colobar
+          pos = [0.13,0.14,0.84,0.92] ; room for colorbar
           
           yInd = where( tag_names(pConfig) eq curField )
           mInd2 = where( tag_names(binMinMax) eq curField )
@@ -1471,7 +1471,7 @@ pro plotZoomRadialProfiles ;, input=input
             xtitle=textoidl(xtitle),ytitle=textoidl(ytitle),pos=pos,/noerase
              
           foreach radLine,radLines do $
-            cgPlot,[radLine,radLine],yrange+[0.05,-0.05],line=1,color='light gray',/overplot
+            cgPlot,[radLine,radLine],yrange+[0.01,-0.01],line=1,color='dark gray',/overplot
           
           ; mean/median of each run
           for i=0,n_tags(rp)-1 do begin
@@ -1485,6 +1485,11 @@ pro plotZoomRadialProfiles ;, input=input
             ;cgPlot,xx,smooth(yy[*,0],sK),line=line2D[0],color=lineColor2D[0],thick=thick2D[0],/overplot
             cgPlot,xx,smooth(yy[*,2],sK),line=line2D[1],color=lineColor2D[1],thick=thick2D[1],/overplot
           endfor
+          
+          ; colorbar
+          posCbar = [0.86,0.14,0.90,0.92]
+          cgColorbar,pos=posCbar,divisions=4,/vertical,/right,range=h2dMinMax,$
+            title=textoidl("Gas Mass per Pixel [M_{sun}]"),charsize=!p.charsize*0.8
                     
         end_PS ; (5b)
       endforeach ; indivPlotsY (5b)

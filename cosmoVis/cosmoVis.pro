@@ -698,7 +698,8 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
       ;if count gt 0 then mapCutout.loc_mass[w] = 0.0 ;set weight to zero
       
       if count gt 0 then begin
-        fieldValMap[w] = 1000.0 ; set to ~ISM temperature
+        fieldValMap[w] = 10.0^4.01 ;1000.0 ; set to ~ISM temperature
+        print,'WARNING: UNDO ABOVE LINE'
         if config.colorField eq 'temptvir' then $
           fieldValMap[w] /= haloVirTemp
       endif

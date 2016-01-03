@@ -1,6 +1,6 @@
 ; zoomRays.pro
 ; 'zoom project' radial rays at different angles
-; dnelson jan.2015
+; dnelson dec.2015
 
 ; helper function
 pro plotColoredRays, rr=rr, co_rr=co_rr, config=config, kBounds=kBounds
@@ -53,23 +53,23 @@ pro plotZoomRadialRays
   
   ; config
   hInds     = [0] ;[0,1,7,8,2,4,5,9] ;re-ordered such that hIndDisp are in order ;[3,6]
-  resLevels = [9,10,11]
+  resLevels = [9] ;[9,10,11]
   redshift  = 2.0
   newSaves  = 0 ; override existing shell saves
   
   ; binning config
-  Nside   = [64] ;[64] ;[8,16,32,64]  ; healpix resolution parameter, 2=12*4, 8=768, 16~3k, 32~12k, 64~50k
-  Nrad    = [400] ;[400] ;[100,200,400] ; number of radial sampling points
+  Nside   = [8] ;[64] ;[8,16,32,64]  ; healpix resolution parameter, 2=12*4, 8=768, 16~3k, 32~12k, 64~50k
+  Nrad    = [100] ;[400] ;[100,200,400] ; number of radial sampling points
   cutSubS = 2 ; remove substructures? (0=no, 1=satellites, 2=all subfind other than target group)
 
   ; individual rays (+sorting/selections), all 1d plots, which halo/res/ns/nr?
   hIndiv  = 0   ; which halo to plot individuals from
-  rIndiv  = 11   ; which resolution level to plot individuals from
-  nsIndiv = 64 ; Nside indiv
-  nrIndiv = 400 ; Nrad indiv
+  rIndiv  = 9   ; which resolution level to plot individuals from
+  nsIndiv = 8 ; Nside indiv
+  nrIndiv = 100 ; Nrad indiv
 
   skipRaw   = 1 ; skip plots (1) and (2) showing all rays individually (not a good idea Ns>=32)
-  skipSel   = 1 ; skip select testing plots
+  skipSel   = 0 ; skip select testing plots
   skip2D    = 1 ; skip making 2D panel plots
   skipStats = 1 ; skip ray statistics plots
   skipPDFs  = 1 ; skip ray PDF plots
@@ -340,7 +340,9 @@ pro plotZoomRadialRays
 
   foreach hInd,hInds,i do begin
     plotStr += str(hInd)
-    hNames  = [hNames,'h'+str(rr.(i).(0).sP.hIndDisp)]
+    ;hNames  = [hNames,'h'+str(rr.(i).(0).sP.hIndDisp)]
+    hNames  = [hNames, 'h0'] ; referee hack for ray fig (needed just for h0L9 alone, has an old sP copy inside)
+    if hInd ne 0 or i ne 0 then message,'Error, change above line back'
     hColors = [hColors,rr.(i).(0).sP.colors[cInds[-1]]]
   endforeach
   
@@ -748,12 +750,14 @@ pro plotZoomRadialRays
   
   ; plot (3a) - combined selections (yes/no side by side), all rays raster, mean on top
   if skipSel eq 0 then begin
+
   methods = [1,2] ; first splits by column, second splits by row
   yName   = 'TEMP' ; what value to put on the y-axis
   coName  = 'ENTR' ; what value to color by
   xysize  = [8.0,5.0]
   nRandom = 20
   
+  if 0 then begin
   start_PS, rr.(i).(j).sP.plotPath + 'raySelect_2x2='+str(methods[0])+str(methods[1])+'_' + $
     plotStrIndiv + '_'+yName+'_'+coName+'.eps', xs=xysize[0]*1.4, ys=xysize[1]*1.4
   
@@ -1107,6 +1111,7 @@ pro plotZoomRadialRays
     
   endforeach ;method
   end_PS
+  endif ;0
   endif ;skipSel
   
   ; plot (3c) - by hand selections, random rays selection, mean on top
@@ -1187,7 +1192,7 @@ pro plotZoomRadialRays
         quant = 'TEMP'        
         value = 3e5
         rMin = 0.2
-        rMax = 0.9
+        rMax = 0.9 ;;;;; NOTE: different below in stat computation (leave this for visual only, found in draft9-revised)
         
         value2 = 8e4
         rMin2 = 1.75
@@ -1309,8 +1314,9 @@ pro plotZoomRadialRays
       ;;;;rayNums = rayNums[0:(nRandom<n_elements(w_select))-1] ; sub-select nRandom of them
       ;rayNums = w_select[rayNums] ; transform to value[] indices
       rayNums = w_select
+      xx = rr.(i).(j).hsv.(count).(k).(m).radFacs
       
-      foreach rayNum,rayNums do begin
+      foreach rayNum,rayNums do begin        
         yy = reform( rr.(i).(j).hsv.(count).(k).(m).value[rayNum,*] )
         
         ; use temperature at each radial sample to color segment, map into [0,255] CT indices
@@ -1375,7 +1381,11 @@ pro plotZoomRadialRays
         sLa = str(string(round(vLa/5.0)*5.0,format='(I4)')) ; round to nearest 5 km/s
         
         cgText,xLa,yLa,sLa,color='black',alignment=0.5
+        
+        ; stddev (referee)
+        print, stddev( reform(la_vv[rayNums,rayPt]), dim=1 ) 
       endfor
+      print,''
       
       if select eq 0 or select eq 1 then begin
         ; exception example
@@ -1438,7 +1448,6 @@ pro plotZoomRadialRays
   endif ;skipSel
   
   ; print stats
-  ;if 0 then begin
   meanStatFracs = fltarr(n_tags(rr),n_tags(rr.(0)),5)
   
   for ii=0,n_tags(rr)-1 do begin
@@ -1513,9 +1522,14 @@ pro plotZoomRadialRays
         for d=0,n_elements(dd[*,0])-1 do dd[d,*] = -1.0 * deriv(reform(alog10(dd[d,*])))
         dd = dd/(2.0/nrIndiv)*0.1 ; deriv units: logK/(0.1r/rvir)
       
-        ; smooth derivative?
+        ; smooth derivative? to same spatial scale for different radial samplings
         if nrIndiv eq 200 then dd = smooth(dd,3,/nan)
         if nrIndiv eq 400 then dd = smooth(dd,5,/nan)
+        
+        ; smooth derivative? to same spatial scale for different sim resolutions
+        if rr.(ii).(jj).sP.levelMax eq 9  then dd = smooth(dd,1,/nan)
+        if rr.(ii).(jj).sP.levelMax eq 10 then dd = smooth(dd,3,/nan)
+        if rr.(ii).(jj).sP.levelMax eq 11 then dd = smooth(dd,5,/nan)
       
         ; select data
         yy_select = reform( rr.(ii).(jj).hsv.(select_ind).(k).(m).value[*,select_rInds] )
@@ -1526,31 +1540,32 @@ pro plotZoomRadialRays
         dd_maxRad = select_rVals[reform((array_indices(dd,dd_maxRad))[1,*])] ; convert into r/rvir values
         dd_minRad = select_rVals[reform((array_indices(dd,dd_minRad))[1,*])]
             
-        ; selections
-        if select eq 0 then $
-          w_select = where( smooth(dd_max,ddSK) ge 0.25 and $
-                            dd_maxRad ge 1.5 and $
-                            dd_maxRad le 2.0 and $
-                            min(yy_select,dim=2) ge value, comp=w_remaining )
-        if select eq 1 then $
-          w_select = where( smooth(dd_max[w_remaining_prev],ddSK) ge 0.25 and $
-                            dd_maxRad[w_remaining_prev] ge 0.80 and $
-                            dd_maxRad[w_remaining_prev] le 1.5 and $
-                            min(yy_select[w_remaining_prev,*],dim=2) ge value and $
-                            max(yy_select2[w_remaining_prev,*],dim=2) le value2, comp=w_remaining )
-        if select eq 2 then $
-          w_select = where( min(yy_select[w_remaining_prev,*],dim=2) ge value and $
-                            dd_max[w_remaining_prev] le 0.8, comp=w_remaining )
-        if select eq 3 then $
-          w_select = where( max(yy_select[w_remaining_prev,*],dim=2) le value, comp=w_remaining)
-        if select eq 4 then $
-          w_select = where( max(yy_select[w_remaining_prev,*],dim=2) ge value, comp=w_remaining )
-        if select eq 5 then $
-          w_select = lindgen(n_elements(w_remaining_prev)) ; remaining  
-
-
-        ; SELECTIONS TEST
+        ; selections (OLD, draft8-submitted)
         if 0 then begin
+          if select eq 0 then $
+            w_select = where( smooth(dd_max,ddSK) ge 0.25 and $
+                              dd_maxRad ge 1.5 and $
+                              dd_maxRad le 2.0 and $
+                              min(yy_select,dim=2) ge value, comp=w_remaining )
+          if select eq 1 then $
+            w_select = where( smooth(dd_max[w_remaining_prev],ddSK) ge 0.25 and $
+                              dd_maxRad[w_remaining_prev] ge 0.80 and $
+                              dd_maxRad[w_remaining_prev] le 1.5 and $
+                              min(yy_select[w_remaining_prev,*],dim=2) ge value and $
+                              max(yy_select2[w_remaining_prev,*],dim=2) le value2, comp=w_remaining )
+          if select eq 2 then $
+            w_select = where( min(yy_select[w_remaining_prev,*],dim=2) ge value and $
+                              dd_max[w_remaining_prev] le 0.8, comp=w_remaining )
+          if select eq 3 then $
+            w_select = where( max(yy_select[w_remaining_prev,*],dim=2) le value, comp=w_remaining)
+          if select eq 4 then $
+            w_select = where( max(yy_select[w_remaining_prev,*],dim=2) ge value, comp=w_remaining )
+          if select eq 5 then $
+            w_select = lindgen(n_elements(w_remaining_prev)) ; remaining  
+        endif
+        
+        ; selections (NEW, draft9-revised)
+        ;if 0 then begin
         if select eq 0 then $
           w_select = where( smooth(dd_max,ddSK) ge 0.25 and $
                             dd_maxRad ge 1.5 and $
@@ -1567,13 +1582,13 @@ pro plotZoomRadialRays
           w_select = where( max(yy_select[w_remaining_prev,*],dim=2) ge value, comp=w_remaining )
         if select eq 5 then $
           w_select = lindgen(n_elements(w_remaining_prev)) ; remaining  
-
+        ;endif ;0        
+        
         ; map indices into original rays (both for selection and remaining)
         if select gt 0 then begin
           w_select = w_remaining_prev[w_select]
           if select lt 5 then w_remaining = w_remaining_prev[w_remaining]
         endif
-        endif ;0
         
         w_remaining_prev = w_remaining
         
@@ -1594,7 +1609,6 @@ pro plotZoomRadialRays
       print,' '+string(mean(xx),format='(f4.1)')+' pm '+string(stddev(xx),format='(f4.1)')
     endfor
   endfor
-  ;endif ;0
   
   ; ----------------------------------------------------------------------------------
   

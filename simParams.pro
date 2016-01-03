@@ -547,6 +547,80 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     return, r  
   endif
   
+  ; shy: new tracer scheme
+  if run eq 'shytr1' or run eq 'shytr2' then begin
+    if res ne 256 then message,'Error'
+    
+    r.minNumGasPart  = -1 ; no additional cut
+    r.trVelPerCell   = 0
+    r.trMCPerCell    = 1
+    r.trMCFields     = [0,1,2,3,4,5,6,7,-1,-1,10,11,12] ; (11 of 13, missing 256 and 512)
+    r.gfmNumElements = 0
+    r.gfmWinds       = 0
+    r.gfmBHs         = 0
+    
+    r.boxSize       = 25000.0
+    
+    if res eq 256 then begin
+      r.snapRange     = [0,135]
+      r.groupCatRange = [45,135] ; z6=45, z5=49, z4=54, z3=60, z2=68, z1=85, z0=135
+    endif
+    
+    ;if res eq 128 then r.targetGasMass = 9.42966e-3
+    if res eq 256 then r.targetGasMass = (1.0/8.0)*9.42966e-3
+	
+    r.trMassConst = r.targetGasMass / r.trMCPerCell
+    
+    ;if res eq 128 then r.gravSoft = 4.0
+    if res eq 256 then r.gravSoft = 2.0
+    
+    if run eq 'shytr1' then genStr = 'GEN1'
+    if run eq 'shytr2' then genStr = 'GEN2'
+    
+    r.simPath    = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+genStr+'/output/'
+    r.arepoPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+genStr+'/'
+    r.savPrefix  = 'S'
+    r.simName    = 'Arepogit_'+genStr
+    r.saveTag    = 'str'
+    r.plotPrefix = 'str'
+    r.plotPath   = '/n/home07/dnelson/plots/'
+    r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+genStr+'/data.files/'
+  
+    if run eq 'shytr1' then r.colors = [getColor24(['a6'x,'00'x,'00'x])] ;red
+    if run eq 'shytr2' then r.colors = [getColor24(['08'x,'0b'x,'74'x])] ;blue
+  
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return, r  
+  endif
+  
+  ; griff: catepillar runs
+  if run eq 'catepillar' then begin    
+    r.minNumGasPart = -1 ; no additional cut
+    r.trMCFields    = fltarr(13)-1 ;none    
+    r.boxSize       = 25000.0
+    r.snapRange     = [0,108]
+    r.groupCatRange = [0,0] ; ?    
+    r.gravSoft      = 4.0 ;?
+    
+    r.simPath    = '/n/home07/dnelson/ArepoVTK/run.catepillar/output/'
+    r.arepoPath  = '/n/home07/dnelson/ArepoVTK/run.catepillar/'
+    r.savPrefix  = 'S'
+    r.simName    = 'H1599988_EX_Z127_P7_LN7_LX14_O4_NV4' ;'H796175_EB_Z127_P7_LN7_LX14_O4_NV4'
+    r.saveTag    = 'str'
+    r.plotPrefix = 'str'
+    r.plotPath   = '/n/home07/dnelson/plots/'
+    r.derivPath  = '/n/home07/dnelson/ArepoVTK/run.catepillar/data.files/'
+  
+    r.colors = [getColor24(['a6'x,'00'x,'00'x])] ;red
+  
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return, r  
+  endif
+  
   ; laura's dwarf zoom project: DM only single halo zooms (L=8/256 for fullbox)
   if run eq 'zoom_10mpc_dm' or run eq 'zoom_10mpc_dm_box' then begin
   
@@ -615,14 +689,14 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     else $
       pathStr = '128_' + str(fix(r.boxSize/1000)) + 'Mpc'
               
-    r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/output/'
-    r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/'
+    r.simPath    = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dm/output/'
+    r.arepoPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dm/'
     r.savPrefix  = 'Z'
     r.simName    = 'ZOOM_L'+str(r.levelMax)+'_DM'
     r.saveTag    = 'zDmL'+str(r.levelMax)
     r.plotPrefix = 'zDmL'+str(r.levelMax)
     r.plotPath   = '/n/home07/dnelson/plots/'
-    r.derivPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dmonly/data.files/'
+    r.derivPath  = '/n/home07/dnelson/sims.zooms/'+pathStr+'_dm/data.files/'
     
     ; if redshift passed in, convert to snapshot number and save
     if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
@@ -946,7 +1020,7 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
       r.arepoPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noUV/'
       r.savPrefix  = 'N'
       r.saveTag    = 'trMC'
-	  r.simName    = 'AREPO noUV'
+      r.simName    = 'AREPO noUV'
       r.plotPrefix = 'trNoUV'
       r.plotPath   = '/n/home07/dnelson/plots/'
       r.derivPath  = '/n/home07/dnelson/sims.tracers/'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc_noUV/data.files/'
@@ -984,8 +1058,8 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
     r.simPath    = '/n/home07/dnelson/sims.tracers/A'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/output/'
     r.arepoPath  = '/n/home07/dnelson/sims.tracers/A'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/'
     r.savPrefix  = 'A'
-	r.saveTag    = 'AR'
-	r.simName    = 'AREPO'
+    r.saveTag    = 'AR'
+    r.simName    = 'AREPO'
     r.plotPrefix = 'A'
     r.plotPath   = '/n/home07/dnelson/plots/'
     r.derivPath  = '/n/home07/dnelson/sims.tracers/A'+str(res)+'_'+str(fix(r.boxSize/1000))+'Mpc/data.files/'

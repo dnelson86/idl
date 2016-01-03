@@ -364,22 +364,24 @@ end
 pro plotRedshiftSpacings
 
   ; config
-  sP = mod_struct( sP, 'sP0', simParams(res=128,run='gadget') )
-  sP = mod_struct( sP, 'sP1', simParams(res=128,run='tracer') )
-  sP = mod_struct( sP, 'sP2', simParams(res=128,run='feedback') )
-  ;sP = mod_struct( sP, 'sP3', simParams(res=512,run='zoom_20mpc',hind=0) )
-  sP = mod_struct( sP, 'sP4', simParams(res=910,run='illustris') )
+  sP = mod_struct( sP, 'sP1', simParams(res=512,run='tracer') )
+  sP = mod_struct( sP, 'sP2', simParams(res=512,run='feedback') )
+  sP = mod_struct( sP, 'sP3', simParams(res=910,run='illustris') )
+  sP = mod_struct( sP, 'sP4', simParams(res=11,run='zoom_20mpc',hInd=2) )
 
   xrange = [0.0,14.0]
   yrange = [0.5,n_tags(sP)+0.5]
   
   runNames = []
   for i=0,n_tags(sP)-1 do runNames = [runNames,sP.(i).run]
-
+  
+  yrange += [0,2.0] ; (*) manual additions
+  runNames = [runNames,'log a','lin a'] ; (*) manual additions
+  
   start_PS, sP.(0).plotPath + 'redshift_spacing.eps', xs=16, ys=6
   
-    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,yticks=n_tags(sP)-1,$
-      ytickv=lindgen(n_tags(sP))+1,ytickname=[runNames],yminor=1,$
+    cgPlot,[0],[0],/nodata,xrange=xrange,yrange=yrange,yticks=n_elements(runNames)-1,$
+      ytickv=lindgen(n_elements(runNames))+1,ytickname=[runNames],yminor=1,$
       xtitle="Age of Universe [Gyr]",ytitle="Output Snapshot Spacing",xs=9,/ys,$
       pos=[0.12,0.12,0.96,0.94]
   
@@ -392,6 +394,23 @@ pro plotRedshiftSpacings
       for j=0,n_elements(zVals)-1 do $
         cgPlot,[zVals[j],zVals[j]],yLoc,color=sP.(i).colors[0],thick=!p.thick-2,/overplot
     endfor
+    
+    ; (*) manual additions
+    aStart = 1.0/(1+20.0)
+    aEnd   = 1.0/(1+2.0)
+    nSnaps = 151
+    
+    aVals = logspace(alog10(aStart),alog10(aEnd),nSnaps)
+    zVals = redshiftToAgeFlat(1/aVals - 1.0)
+    yLoc = (n_tags(sP)+1) + [-0.4,0.4]
+      for j=0,n_elements(zVals)-1 do $
+        cgPlot,[zVals[j],zVals[j]],yLoc,color='orange',thick=!p.thick-2,/overplot
+        
+    aVals = linspace(aStart,aEnd,nSnaps)
+    zVals = redshiftToAgeFlat(1/aVals - 1.0)
+    yLoc = (n_tags(sP)+2) + [-0.4,0.4]
+      for j=0,n_elements(zVals)-1 do $
+        cgPlot,[zVals[j],zVals[j]],yLoc,color='red',thick=!p.thick-2,/overplot 
     
     ; redshift axis
     sP.(0).snap = 0 ; indicate xaxis in Gyr not snapshot number
