@@ -226,13 +226,19 @@ pro multiMapZoomComp, doOne=doOne, doTwo=doTwo
   if n_elements(doOne) eq 0 and n_elements(doTwo) eq 0 then message,'Error'
   
   ; config
-  redshift = 2.0
-  resLevel = [11,11,11,11] ;[9,10,10,10]
-  hInds    = [2,4,5,9] ;[0,1,7,8] ;[6,3] ;[3,3,5,9]
+  ;run      = 'zoom_20mpc'
+  ;redshift = 2.0
+  ;resLevel = [11,11,11,11] ;[9,10,10,10]
+  ;hInds    = [2,4,5,9] ;[0,1,7,8] ;[6,3] ;[3,3,5,9]
+
+  run      = 'iClusters'
+  redshift = 0.0
+  resLevel = [2,2,2,2]
+  hInds    = [1,2,3,4]
 
   ; plot config
   sizeFac       = 7.8          ; times rvir (master, must be >=max(sizeFac) below)
-  hsmlFac       = 3.0 ; 2.0 in draft0! ; times each cell radius for sph projections
+  hsmlFac       = 3.0          ; 2.0 in draft0! ; times each cell radius for sph projections
   nPixels       = [1200,1200]  ; px
   xySize        = 3            ; final image is xySize*nPixels[0] high
   axisPair      = [0,1]        ; xy, xz
@@ -244,10 +250,10 @@ pro multiMapZoomComp, doOne=doOne, doTwo=doTwo
     saveTag = 'a'
     
     fields = { $
-      field4 : { cF:'overdens', mapMM:[-1.0,4.0], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
-      field0 : { cF:'temp',     mapMM:[4.4,6.3],  sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
-      field1 : { cF:'entropy',  mapMM:[6.5,9.1],  sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
-      field2 : { cF:'vrad',     mapMM:[-220,220], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } }
+      field4 : { cF:'overdens', mapMM:[0.0,7.0],   sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+      field0 : { cF:'temptvir', mapMM:[0.5,2.0],   sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+      field1 : { cF:'entnorm',  mapMM:[-6.0,-3.5], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+      field2 : { cF:'vradnorm', mapMM:[-1.0,1.0],  sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } }
   endif
   
   if keyword_set(doTwo) then begin
@@ -269,7 +275,7 @@ pro multiMapZoomComp, doOne=doOne, doTwo=doTwo
   
   foreach hInd,hInds,i do begin
     sP = mod_struct(sP, 'sP'+str(i), $
-                    simParams(run='zoom_20Mpc',res=resLevel[i],hInd=hInd,redshift=redshift))
+                    simParams(run=run,res=resLevel[i],hInd=hInd,redshift=redshift))
     gcIDs = [ gcIDs, zoomTargetHalo(sP=sP.(i)) ]
   endforeach
   
@@ -345,11 +351,15 @@ pro hotColdSplitZoomImage
   xySize        = 7            ; final image is xySize*nPixels[0] high
   axisPair      = [0,1]        ; xy, xz
   barAreaHeight = 0.06         ; fractional
-  secondCutVal  = 5.0          ; log K
+  secondCutVal  = 5.1          ; log K
   
-  saveTag = 'c'
-  fields = { field0 : { cF:'temp', mapMM:[4.0,6.3], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
-             field1 : { cF:'temp', mapMM:[4.0,6.3], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] }  }
+  ;saveTag = 'c'
+  ;fields = { field0 : { cF:'temp', mapMM:[4.0,secondCutVal], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+  ;           field1 : { cF:'temp', mapMM:[secondCutVal,6.3], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] }  }
+
+  saveTag = 'd'
+  fields = { field0 : { cF:'overdens', mapMM:[-0.5,4.0], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] } ,$
+             field1 : { cF:'overdens', mapMM:[-0.5,4.0], sizeFac:3.0, rVirCircs:[0.15,0.5,1.0] }  }
     
   numFields = 2
   numRuns   = 1
@@ -395,7 +405,8 @@ pro hotColdSplitZoomImage
       cutout = mod_struct( cutout, 'loc_temp', cutout.loc_temp[w] )
       cutout = mod_struct( cutout, 'loc_sf',   cutout.loc_sf[w] )
       cutout = mod_struct( cutout, 'loc_hsml', cutout.loc_hsml[w] )
-      cutout = mod_struct( cutout, 'loc_mass', cutout.loc_mass[w] )   
+      cutout = mod_struct( cutout, 'loc_mass', cutout.loc_mass[w] )
+      cutout = mod_struct( cutout, 'loc_dens', cutout.loc_dens[w] )
       cutout = mod_struct( cutout, 'loc_pos',  cutout.loc_pos[*,w] )
             
       sub = cosmoVisCutoutSub(cutout=cutout,mapCutout=cutout,config=config)
@@ -406,8 +417,8 @@ pro hotColdSplitZoomImage
     endfor ; numFields,j
     
   ; custom titles
-  cgText,0.48,0.97,"cold",/normal,color='white',alignment=0.5
-  cgText,0.52,0.97,"hot",/normal,color='white',alignment=0.5
+  cgText,0.46,0.97,"T < 0.1T"+textoidl("_{vir}"),/normal,color='white',alignment=0.5
+  cgText,0.54,0.97,"T > 0.1T"+textoidl("_{vir}"),/normal,color='white',alignment=0.5
   
   end_PS, density=ceil(nPixels[0]/xySize), pngResize=100 ;, /deletePS
   

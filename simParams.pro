@@ -490,6 +490,48 @@ function simParams, res=res, run=run, redshift=redshift, snap=snap, hInd=hInd, f
   if n_elements(snap) gt 0 then $
     r.snap = snap
  
+  ; iClusters (TNG_11)
+  if run eq 'iclusters' then begin
+    if res ne 3 and res ne 2 and res ne 1 then message,'Error: Invalid res.'
+
+    r.minNumGasPart  = -1 ; no additional cut
+    r.trVelPerCell   = 0
+    r.trMCPerCell    = 0
+    r.trMCFields     = [0,1,2,3,4,5,6,7,8,9,10,11,12] ; all (=4096, 13 of 13)
+    r.gfmNumElements = 9
+    r.gfmWinds       = 1
+    r.gfmBHs         = 1
+    
+    r.boxSize       = 3000.0 * 1000
+    r.snapRange     = [0,255]
+    r.groupCatRange = [21,255] ; unused
+    
+    if res eq 1 then r.targetGasMass = 0.0
+    if res eq 2 then r.targetGasMass = 0.0
+    if res eq 3 then r.targetGasMass = 0.0
+    
+    if res eq 1 then r.gravSoft = 1.0
+    if res eq 2 then r.gravSoft = 2.0
+    if res eq 3 then r.gravSoft = 4.0
+
+    r.zoomLevel = 99
+
+    dirStr = 'zoom_0' + str(hInd) + '_ill' + str(res) + '_TNG_00'
+    r.simPath    = '/n/home07/dnelson/dev.prime/iClusters/'+dirStr+'/output/'
+    r.arepoPath  = '/n/home07/dnelson/dev.prime/iClusters/'+dirStr+'/'
+    r.savPrefix  = 'IC'
+    r.simName    = 'iC' + str(hInd) + 'r' + str(res)
+    r.saveTag    = 'iC'
+    r.plotPrefix = 'iC'
+    r.plotPath   = '/n/home07/dnelson/plots/'
+    r.derivPath  = '/n/home07/dnelson/dev.prime/iClusters/'+dirStr+'/data.files/'
+
+    ; if redshift passed in, convert to snapshot number and save
+    if (n_elements(redshift) eq 1) then r.snap = redshiftToSnapNum(redshift,sP=r)
+    
+    return, r
+  endif
+
   ; illustris
   if (run eq 'illustris') or (run eq 'illustris_dm') then begin
     if res ne 455 and res ne 910 and res ne 1820 then message,'Error: Invalid res.'

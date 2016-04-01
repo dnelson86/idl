@@ -10,7 +10,7 @@
 function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectHalo
 
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  units = getUnits(redshift=sP.redshift)
+  units = getUnits(redshift=sP.redshift, mpc=(sP.zoomLevel eq 99))
   
   velVecFac = 0.01 ; times velocity (km/s) in plotted kpc
   hsmlFac   = 1.75 ; increase arepo 'hsml' to decrease visualization noise
@@ -41,6 +41,8 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
     
   gc    = loadGroupCat(sP=sP,/skipIDs,/verbose)
   sgcen = subgroupPosByMostBoundID(sP=sP)
+
+  if sP.zoomLevel eq 99 then sgcen = gc.subgroupPos ; iClusters
   
   ; have metallicities to include in cutout?
   metalsFlag = 0
@@ -172,14 +174,20 @@ function cosmoVisCutout, sP=sP, gcInd=gcInd, sizeFac=sizeFac, selectHalo=selectH
   foreach gcIndCur,gcInd,k do begin
     ; halo properties
     haloVirRad = gc.group_r_crit200[gc.subgroupGrNr[gcIndCur]] ;ckpc
-    haloMass = codeMassToLogMsun(gc.subgroupMass[gcIndCur])
     haloM200 = codeMassToLogMsun(gc.group_m_crit200[gc.subgroupGrNr[gcIndCur]])
-    haloV200 = sqrt(units.G * gc.subgroupMass[gcIndCur] / haloVirRad )
+
+    if sP.zoomLevel ne 99 then begin
+      haloMass = codeMassToLogMsun(gc.subgroupMass[gcIndCur])
+      haloV200 = sqrt(units.G * gc.subgroupMass[gcIndCur] / haloVirRad )
+    endif else begin
+      haloMass = haloM200
+      haloV200 = sqrt(units.G * gc.group_m_crit200[gc.subgroupGrNr[gcIndCur]] / haloVirRad )
+    endelse
     
     ; get subhalo position and size of imaging box
     boxCen     = sgcen[*,gcIndCur]
     boxSize    = ceil(sizeFac * haloVirRad / 10.0) * 10.0
-    
+
     ; make conservative cutout greater than boxsize accounting for periodic (do cube not sphere)
     
     ; gas
@@ -491,7 +499,9 @@ pro plotScatterComp, sub=sub, config=config, first=first, second=second, row=row
         if config.colorField eq 'vrad'      then labelText = "v_{rad} [km/s]"
         if config.colorField eq 'vradnorm'  then labelText = "v_{rad} / v_{200}"
         if config.colorField eq 'temp'      then labelText = "log T_{gas} [K]"
+        if config.colorField eq 'temptvir'  then labelText = "log (T_{gas} / T_{vir})"        
         if config.colorField eq 'entropy'   then labelText = "log (S) [cgs]"
+        if config.colorField eq 'entnorm'   then labelText = "log (S / S_{200})"        
         if config.colorField eq 'density'   then labelText = "\rho_{gas}"
         if config.colorField eq 'metal'     then labelText = "log Z"
         if config.colorField eq 'overdens'  then labelText = "log \rho_{DM} / <\rho_{DM}>"
@@ -597,14 +607,16 @@ end
 
 function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
   compile_opt idl2, hidden, strictarr, strictarrsubs
-  units = getUnits(redshift=config.sP.redshift)
+  units = getUnits(redshift=config.sP.redshift,mpc=(config.sP.zoomLevel eq 99))
   
   haloVirTemp = codeMassToVirTemp(cutout.haloMass, sP=config.sP)
+  haloVirEntr = codeMassToVirEnt(cutout.haloMass, sP=config.sP)
   
   ; create color index mapping
   if config.colorField eq 'temp'      then fieldVal = alog10( cutout.loc_temp )
   if config.colorField eq 'temptvir'  then fieldVal = alog10( cutout.loc_temp / haloVirTemp )
   if config.colorField eq 'entropy'   then fieldVal = alog10( cutout.loc_ent )
+  if config.colorField eq 'entnorm'   then fieldVal = alog10( cutout.loc_ent / haloVirEntr )
   if config.colorField eq 'density'   then fieldVal = cutout.loc_dens
   if config.colorField eq 'overdens'  then fieldVal = rhoRatioToCrit(cutout.loc_dens,sP=config.sP,/log)
   if config.colorField eq 'metal'     then fieldVal = alog10( cutout.loc_metal )
@@ -615,7 +627,7 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
   if config.colorField eq 'timeRatio' then fieldVal = cutout.loc_coolTime / cutout.loc_dynTime
   if config.colorField eq 'dmdens'    then fieldVal = replicate(1.0,n_elements(cutout.loc_temp)) ;dummy
   if config.colorField eq 'stardens'  then fieldVal = replicate(1.0,n_elements(cutout.loc_temp)) ;dummy
-  
+
   if config.colorField eq 'radmassflux' then begin
     fieldVal = cutout.loc_dens * cutout.loc_vrad
     fieldVal *= float(units.kmS_in_kpcYr) ; 10^10 msun/yr
@@ -647,9 +659,12 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
   ; show gas above this cut value (instead of below)?
   if config.secondGt then wSecond = wComp
     
-  pos_right   = cutout.loc_pos[*,wSecond]
-  pos_right2  = cutout.loc_pos2[*,wSecond]
-  cinds_right = cinds_all[wSecond]
+  ;pos_right   = cutout.loc_pos[*,wSecond]
+  ;pos_right2  = cutout.loc_pos2[*,wSecond]
+  ;cinds_right = cinds_all[wSecond]
+  pos_right = 0
+  pos_right2 = 0
+  cinds_right = 0
 
   ; use instead a differently scaled color mapping for the second panel?
   if config.singleColorScale eq 0 then begin
@@ -669,6 +684,7 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
     if config.colorField eq 'temp'      then fieldValMap = mapCutout.loc_temp
     if config.colorField eq 'temptvir'  then fieldValMap = mapCutout.loc_temp / haloVirTemp
     if config.colorField eq 'entropy'   then fieldValMap = mapCutout.loc_ent
+    if config.colorField eq 'entnorm'   then fieldValMap = mapCutout.loc_ent / haloVirEntr
     if config.colorField eq 'density'   then fieldValMap = mapCutout.loc_dens
     if config.colorField eq 'overdens'  then fieldValMap = rhoRatioToCrit(mapCutout.loc_dens,sP=config.sP)
     if config.colorField eq 'metal'     then fieldValMap = mapCutout.loc_metal
@@ -698,8 +714,7 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
       ;if count gt 0 then mapCutout.loc_mass[w] = 0.0 ;set weight to zero
       
       if count gt 0 then begin
-        fieldValMap[w] = 10.0^4.01 ;1000.0 ; set to ~ISM temperature
-        print,'WARNING: UNDO ABOVE LINE'
+        fieldValMap[w] = 1000.0 ; set to ~ISM temperature
         if config.colorField eq 'temptvir' then $
           fieldValMap[w] /= haloVirTemp
       endif
@@ -755,6 +770,11 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
     endif
     
     ; do projection with sph kernel
+    ;print, size(loc_pos)
+    ;print, size(loc_hsml)
+    ;print, size(loc_mass)
+    ;print, size(fieldValMap)
+    ;stop
     sphmap = calcSphMap(loc_pos,loc_hsml,loc_mass,fieldValMap,$
                         boxSizeImg=mapCutout.boxSizeImg,boxSizeSim=0,boxCen=[0,0,0],$
                         nPixels=config.nPixels,axes=config.axes,ndims=3)
@@ -763,6 +783,7 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
     if config.colorField eq 'temp'     then sphMap.quant_out = alog10( sphMap.quant_out )
     if config.colorField eq 'temptvir' then sphMap.quant_out = alog10( sphMap.quant_out )
     if config.colorField eq 'entropy'  then sphMap.quant_out = alog10( sphMap.quant_out )
+    if config.colorField eq 'entnorm'  then sphMap.quant_out = alog10( sphMap.quant_out )
     if config.colorField eq 'metal'    then sphMap.quant_out = alog10( sphMap.quant_out )
     if config.colorField eq 'overdens' then sphMap.quant_out = alog10( sphMap.quant_out )
     if config.colorField eq 'dmdens'   then sphMap.quant_out = alog10( sphMap.dens_out/units.rhoCrit_z )
@@ -784,8 +805,10 @@ function cosmoVisCutoutSub, cutout=cutout, config=config, mapCutout=mapCutout
     if config.colorField eq 'temp'        then config.ctNameMap  = 'blue-red2'
     if config.colorField eq 'temptvir'    then config.ctNameMap  = 'blue-red2'
     if config.colorField eq 'entropy'     then config.ctNameMap  = 'ocR/zeu'
+    if config.colorField eq 'entnorm'     then config.ctNameMap  = 'ocR/zeu'
     if config.colorField eq 'vrad'        then config.ctNameScat = 'brewer-redgreen'
     if config.colorField eq 'vrad'        then config.ctNameMap  = 'brewer-brownpurple'
+    if config.colorField eq 'vradnorm'    then config.ctNameMap  = 'brewer-brownpurple'    
     if config.colorField eq 'overdens'    then config.ctNameMap  = 'helix'
     if config.colorField eq 'dmdens'      then config.ctNameMap  = 'dnelson/dmdens'
     if config.colorField eq 'stardens'    then config.ctNameMap  = 'bw linear'
@@ -827,10 +850,6 @@ pro scatterMapHalos, selectHalo=selectHalo
   gcIDs = getMatchedIDs(simParams=sP,haloID=haloID)
 
   if n_elements(gcIDs) eq 0 then message,'Error: Must specify gcIDs.'
-
-  ; compare to a second run (2x2 panels instead of 2x1)?
-  ; TODO
-  ; xs=8, ys=8, /first, /second
   
   ; plot config
   singleColorScale = 0 ; 1=use same color scale for right panel, 0=rescale

@@ -497,9 +497,11 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     xpos = [xMinMax[0]*xfac,xMinMax[0]*xfac+config.scaleBarLen/convFac]
     ypos = replicate(yMinMax[1]*yfac2,2)
     
-    cgText,mean(xpos),ypos*yfac,string(config.scaleBarLen,format='(i3)')+' '+sLabel,$
-      alignment=0.5,color=cgColor('white')
-    oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
+    if config.sP.zoomLevel ne 99 then begin
+      cgText,mean(xpos),ypos*yfac,string(config.scaleBarLen,format='(i3)')+' '+sLabel,$
+        alignment=0.5,color=cgColor('white')
+      oplot,xpos,ypos,color=cgColor('white'),thick=!p.thick+0.5
+    endif
   endif
   
   if zoom4x2 or tag_exist(config,'secondScaleBar') then begin
@@ -549,11 +551,20 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     cgText,0.03-0.01*(totCols gt 3),mean(pos[[1,3]]),config.sP.simName,charsize=!p.charsize+0.2,$
       alignment=0.5,/normal,orientation=90,color=cgColor('white')
       
-  if curCol eq 0 and zoom4x4 then $
-    cgText,0.03-0.01*(totCols gt 3),mean(pos[[1,3]]),$
-      'h'+str(config.sP.hIndDisp)+'L'+str(config.sP.levelMax),$
-      charsize=!p.charsize+0.2,alignment=0.5,/normal,orientation=90,color=cgColor('white')
+  if config.sP.zoomLevel ne 99 then begin
+    if curCol eq 0 and zoom4x4 then $
+      cgText,0.03-0.01*(totCols gt 3),mean(pos[[1,3]]),$
+        'h'+str(config.sP.hIndDisp)+'L'+str(config.sP.levelMax),$
+        charsize=!p.charsize+0.2,alignment=0.5,/normal,orientation=90,color=cgColor('white')
       
+  endif else begin
+    ; iClusters
+    if curCol eq 0 then $
+      cgText,0.03-0.01*(totCols gt 3),mean(pos[[1,3]]),$
+        config.sP.simName+' M='+string(config.haloMass,format='(f4.1)'),$
+        charsize=!p.charsize+0.2,alignment=0.5,/normal,orientation=90,color=cgColor('white')
+  endelse
+
   if zoom2x1 then $
     cgText,0.965,0.97,config.sP.simName+'z'+str(fix(config.sP.redshift)),$
       charsize=!p.charsize+0.1,alignment=0.5,/normal,color='white'
@@ -586,8 +597,10 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     if config.colorField eq 'temp'     then labelText = "log T_{gas} [_{ }K_{ }]"
     if config.colorField eq 'temptvir' then labelText = "log ( T_{gas} / T_{vir} )"
     if config.colorField eq 'entropy'  then labelText = "log S [_{ }K cm^{2 }]"
+    if config.colorField eq 'entnorm'  then labelText = "log ( S / S_{200} )"
     if config.colorField eq 'overdens' then labelText = "log ( \rho_{gas} / \rho_{crit,b} )"
     if config.colorField eq 'vrad'     then labelText = "v_{rad} [_{ }km/s_{ }]"
+    if config.colorField eq 'vradnorm' then labelText = "v_{rad} / v_{200}"
     if config.colorField eq 'dmdens'   then labelText = "log ( \rho_{dm} / \rho_{crit} )"
     if config.colorField eq 'stardens' then labelText = "log ( \rho_{stars} / \rho_{crit,b} )"
     
@@ -661,7 +674,8 @@ pro plotMultiSphmap, map=sphmap, config=config, row=row, col=col
     if config.colorField eq 'vrad' then $
       cbLabels = str(config.mapMinMax)
     if config.colorField eq 'overdens' or config.colorField eq 'temptvir' or $
-       config.colorField eq 'dmdens' or config.colorField eq 'stardens' then $
+       config.colorField eq 'dmdens' or config.colorField eq 'stardens' or $
+       config.colorfield eq 'vradnorm' or config.colorField eq 'entnorm' then $
       cbLabels = str(string(config.mapMinMax,format='(f4.1)'))
     
     if zoom4x2 or zoom2x1 then cbLabels = strtrim(cbLabels) ; since outside
