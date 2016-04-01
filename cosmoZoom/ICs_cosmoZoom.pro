@@ -697,6 +697,8 @@ end
 
 function zoomTargetHalo, sP=sP, gc=gc
 
+  if sP.run eq 'iclusters' then return, 0 ; HARDCODED
+
   if n_elements(sP) eq 0 then message,'Error: Must supply sP.'
   if n_elements(gc) eq 0 then gc = loadGroupCat(sP=sP,/skipIDs)
 

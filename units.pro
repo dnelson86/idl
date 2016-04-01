@@ -7,7 +7,7 @@
 
 ; getUnits(): return a structure of useful units
 
-function getUnits, redshift=redshift
+function getUnits, redshift=redshift, mpc=mpc
 
   units = { units,                                             $
   
@@ -74,6 +74,9 @@ function getUnits, redshift=redshift
             kmS_in_kpcGyr : 0.0                                $
       }
       
+  ; MPC length system? (iClusters)
+  if keyword_set(mpc) then units.UnitLength_in_cm = double(3.085678e24)
+
   ; derived units
   units.UnitTime_in_s       = units.UnitLength_in_cm / units.UnitVelocity_in_cm_per_s
   units.UnitDensity_in_cgs  = units.UnitMass_in_g / units.UnitLength_in_cm^3.0
@@ -244,7 +247,11 @@ function codeDensToPhys, dens, sP=sP, scalefac=scalefac, redshift=redshift, cgs=
 
   dens_phys = dens * units.HubbleParam * units.HubbleParam / scalefac^3.0
 
-  if keyword_set(cgs) then dens_phys *= units.UnitDensity_in_cgs
+  ; iClusters
+  mpcFac = 1.0
+  if sP.zoomLevel eq 99 then mpcFac = 1.0/(1000)^3.0
+
+  if keyword_set(cgs) then dens_phys *= units.UnitDensity_in_cgs * mpcFac
   
   return, dens_phys
   
@@ -279,7 +286,7 @@ function convertUtoTemp, u, nelec, log=log
 
   ; calculate temperature (K)
   temp = (units.gamma-1.0) * u / units.boltzmann * units.UnitEnergy_in_cgs / units.UnitMass_in_g * meanmolwt
-  
+
   ; convert to log(K) if requested
   if keyword_set(log) then begin
     w = where(temp eq 0.0,count)
@@ -326,7 +333,7 @@ function codeMassToVirEnt, mass, redshift=redshift, sP=sP, log=log
   virU = convertTempToU(virTempLog)
   r200crit = critBaryonRatioToCode(200.0,redshift=redshift)
   
-  s200 = calcEntropyCGS(virU, r200crit, redshift=redshift, log=log)
+  s200 = calcEntropyCGS(virU, r200crit, sP=sP, log=log)
   
   return, s200
 
@@ -384,7 +391,7 @@ end
 function calcEntropyCGS, u, dens, gamma=gamma, log=log, sP=sP, redshift=redshift
   compile_opt idl2, hidden, strictarr, strictarrsubs
   forward_function snapNumToRedshift
-  units = getUnits()
+  units = getUnits(mpc=(sP.zoomLevel eq 99))
   
   if n_elements(redshift) eq 0 and n_elements(sP) eq 0 then message,'Error: need redshift or sP.'
   
@@ -450,7 +457,7 @@ function rhoRatioToCrit, rho, sP=sP, redshift=redshift, log=log
   if n_elements(redshift) gt 0 then zzz = redshift
   if n_elements(sP) gt 0 then zzz = sP.redshift
   
-  units = getUnits(redshift=zzz)
+  units = getUnits(redshift=zzz,mpc=(sP.zoomLevel eq 99))
   
   rho_b = units.omega_b * units.rhoCrit_z
   
